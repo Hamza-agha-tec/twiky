@@ -1,9 +1,9 @@
 import { Controller, Delete, Get, Post } from '@nestjs/common';
-import { AuthService } from '../services/auth.service.js';
+import { AuthService } from '../services/auth.service';
 
-@Controller()
+@Controller('auth')
 export class AuthController {
-  constructor(authService) {}
+  constructor(private readonly authService: AuthService) {}
 
   @Post()
   authenticate() {
