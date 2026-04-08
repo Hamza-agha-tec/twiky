@@ -6,8 +6,8 @@ import { cookies } from 'next/headers'
 export async function createClientForServer() {
   const cookieStore = await cookies()
   return createServerClient(
-    "https://jcljudjpdnzslwknjzqb.supabase.co",
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpjbGp1ZGpwZG56c2x3a25qenFiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NzU1ODAwOCwiZXhwIjoyMDgzMTM0MDA4fQ.iJL7X5_dL4r982yyMXXDwLbhOobELXlQARdy2TWe9Ko",
+    "https://qmdfqlvsrpebevswmugt.supabase.co",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFtZGZxbHZzcnBlYmV2c3dtdWd0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTM1MTMsImV4cCI6MjA5MTIyOTUxM30.XQOGUMd-wqFq1INxA19Fvqa76oe8HsW1mbDnZvRHOkQ",
     {
       cookies: {
         getAll() {
