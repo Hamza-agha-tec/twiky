@@ -8,6 +8,8 @@ export interface Chat {
   isGroup: boolean;
   isPinned?: boolean;
   isMuted?: boolean;
+  isOnline?: boolean;
+  pinnedMessage?: string;
 }
 
 export interface Message {
@@ -49,6 +51,8 @@ export const chatsData: Chat[] = [
     unread: 2,
     isGroup: false,
     isPinned: true,
+    isOnline: true,
+    pinnedMessage: 'Check out this design walkthrough!',
   },
   {
     id: 'design-team',
@@ -58,6 +62,7 @@ export const chatsData: Chat[] = [
     timestamp: new Date(now.getTime() - 30 * 60 * 1000).toISOString(),
     unread: 5,
     isGroup: true,
+    isOnline: true,
   },
   {
     id: 'bob',
@@ -68,6 +73,7 @@ export const chatsData: Chat[] = [
     unread: 0,
     isGroup: false,
     isMuted: true,
+    isOnline: false,
   },
   {
     id: 'marketing',
@@ -77,6 +83,7 @@ export const chatsData: Chat[] = [
     timestamp: yesterday.toISOString(),
     unread: 0,
     isGroup: true,
+    isOnline: true,
   },
   {
     id: 'sarah',
@@ -86,6 +93,7 @@ export const chatsData: Chat[] = [
     timestamp: twoDaysAgo.toISOString(),
     unread: 0,
     isGroup: false,
+    isOnline: false,
   },
   {
     id: 'dev-chat',
@@ -95,6 +103,7 @@ export const chatsData: Chat[] = [
     timestamp: twoDaysAgo.toISOString(),
     unread: 0,
     isGroup: true,
+    isOnline: false,
   },
 ];
 

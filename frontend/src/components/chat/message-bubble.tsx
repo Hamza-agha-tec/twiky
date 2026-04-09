@@ -1,8 +1,8 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { Check, CheckCheck, Forward, Play } from 'lucide-react';
+import { Check, CheckCheck, Forward, Play, Pause } from 'lucide-react';
 import { Message } from '@/lib/mock-data';
 import { format } from 'date-fns';
 import { useState, useEffect, useRef } from 'react';
@@ -11,12 +11,16 @@ import { MessageContextMenu } from './message-context-menu';
 interface MessageBubbleProps {
   message: Message;
   showAvatar?: boolean;
+  onReply?: (message: Message) => void;
 }
 
-export function MessageBubble({ message, showAvatar = true }: MessageBubbleProps) {
-  const [showReactions, setShowReactions] = useState(false);
+// Realistic waveform bar heights
+const WAVEFORM = [30, 55, 40, 75, 60, 45, 85, 50, 65, 35, 70, 80, 45, 60, 40, 75, 55, 90, 35, 65, 50, 80, 45, 70, 55];
+
+export function MessageBubble({ message, showAvatar = true, onReply }: MessageBubbleProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [messageReactions, setMessageReactions] = useState<Record<string, number>>(
     message.reactions?.reduce((acc, r) => ({ ...acc, [r.emoji]: r.count }), {}) || {}
   );
@@ -45,15 +49,20 @@ export function MessageBubble({ message, showAvatar = true }: MessageBubbleProps
     }));
   };
 
+  const handlePlayToggle = () => {
+    setIsPlaying((p) => !p);
+    if (!isPlaying) setTimeout(() => setIsPlaying(false), 3000);
+  };
+
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      className={`flex gap-2 ${message.isOwn ? 'justify-end' : 'justify-start'}`}
+      transition={{ duration: 0.18 }}
+      className={`flex gap-2 group relative ${message.isOwn ? 'justify-end' : 'justify-start'}`}
     >
       {!message.isOwn && (
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0 self-end">
           {showAvatar ? (
             <Avatar className="h-8 w-8">
               <AvatarImage src={message.avatar} alt={message.senderName} />
@@ -67,22 +76,22 @@ export function MessageBubble({ message, showAvatar = true }: MessageBubbleProps
         </div>
       )}
 
-      <div className={`flex flex-col ${message.isOwn ? 'items-end' : 'items-start'}`}>
+      <div className={`flex flex-col max-w-sm ${message.isOwn ? 'items-end' : 'items-start'}`}>
         {/* Reply Preview */}
         {message.reply && (
-          <div className={`mb-2 text-xs px-3 py-2 rounded-lg border-l-2 ${
+          <div className={`mb-1.5 text-xs px-3 py-2 rounded-xl border-l-2 max-w-xs ${
             message.isOwn
-              ? 'border-primary/50 bg-primary/5 text-muted-foreground'
-              : 'border-muted-foreground/50 bg-muted text-muted-foreground'
+              ? 'border-primary/40 bg-primary/8 text-muted-foreground'
+              : 'border-muted-foreground/30 bg-muted text-muted-foreground'
           }`}>
-            <p className="font-medium text-foreground">{message.reply.senderName}</p>
+            <p className="font-semibold text-foreground text-[11px] mb-0.5">{message.reply.senderName}</p>
             <p className="truncate">{message.reply.content}</p>
           </div>
         )}
 
         {/* Forwarded Indicator */}
         {message.isForwarded && (
-          <div className="text-xs text-muted-foreground flex items-center gap-1 mb-1 px-2">
+          <div className="text-[11px] text-muted-foreground flex items-center gap-1 mb-1 px-1">
             <Forward className="h-3 w-3" />
             <span>Forwarded</span>
           </div>
@@ -91,119 +100,136 @@ export function MessageBubble({ message, showAvatar = true }: MessageBubbleProps
         {/* Message Content */}
         <div
           ref={messageRef}
-          className={`rounded-2xl px-4 py-2 max-w-sm relative group cursor-context-menu ${
+          className={`rounded-2xl relative cursor-context-menu ${
+            message.type === 'image' || message.type === 'video' ? 'p-0 overflow-hidden' : 'px-4 py-2.5'
+          } ${
             message.isOwn
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-muted text-foreground'
+              ? 'bg-primary text-primary-foreground rounded-br-sm'
+              : 'bg-muted text-foreground rounded-bl-sm'
           }`}
-          onMouseEnter={() => setShowReactions(true)}
-          onMouseLeave={() => setShowReactions(false)}
           onContextMenu={handleContextMenu}
         >
-          {/* Text Message */}
+          {/* Text */}
           {message.type === 'text' && (
-            <p className="text-sm break-words whitespace-pre-wrap">{message.content}</p>
+            <p className="text-sm break-words whitespace-pre-wrap leading-relaxed">{message.content}</p>
           )}
 
-          {/* Image Message */}
+          {/* Image */}
           {message.type === 'image' && (
-            <div className="max-w-xs">
+            <img
+              src={message.content}
+              alt="Shared image"
+              className="max-w-xs max-h-64 object-cover block"
+            />
+          )}
+
+          {/* Video */}
+          {message.type === 'video' && (
+            <div className="max-w-xs relative group/video overflow-hidden">
               <img
                 src={message.content}
-                alt="Shared image"
-                className="rounded-lg max-h-64 object-cover"
+                alt="Video thumbnail"
+                className="max-h-64 w-full object-cover group-hover/video:scale-105 transition-transform duration-300"
               />
-            </div>
-          )}
-
-          {/* Video Message */}
-          {message.type === 'video' && (
-            <div className="max-w-sm">
-              <div className="relative group/video overflow-hidden rounded-lg">
-                <img
-                  src={message.content}
-                  alt="Video thumbnail"
-                  className="rounded-lg max-h-72 w-full object-cover group-hover/video:scale-105 transition-transform duration-300"
-                />
-                {/* Gradient Overlay */}
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/40 rounded-lg" />
-                
-                {/* Play Button */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <motion.button
-                    whileHover={{ scale: 1.15 }}
-                    whileTap={{ scale: 0.95 }}
-                    className="p-3 bg-white/90 backdrop-blur-sm rounded-full shadow-lg hover:bg-white transition-all"
-                  >
-                    <Play className="h-7 w-7 text-black fill-black" />
-                  </motion.button>
-                </div>
-                
-                {/* Duration Badge */}
-                {message.duration && (
-                  <div className="absolute bottom-2 right-2 bg-black/75 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-md font-medium">
-                    {message.duration}
-                  </div>
-                )}
+              <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/50" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <motion.button
+                  whileHover={{ scale: 1.12 }}
+                  whileTap={{ scale: 0.92 }}
+                  className="p-3 bg-white/90 backdrop-blur-sm rounded-full shadow-lg"
+                >
+                  <Play className="h-6 w-6 text-black fill-black" />
+                </motion.button>
               </div>
+              {message.duration && (
+                <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-0.5 rounded font-medium">
+                  {message.duration}
+                </div>
+              )}
             </div>
           )}
 
           {/* Voice Message */}
           {message.type === 'voice' && (
-            <div className="flex items-center gap-3 min-w-48">
-              <div className="flex gap-1">
-                {[...Array(20)].map((_, i) => (
+            <div className="flex items-center gap-3 min-w-[200px] py-0.5">
+              <motion.button
+                whileHover={{ scale: 1.08 }}
+                whileTap={{ scale: 0.92 }}
+                onClick={handlePlayToggle}
+                className={`h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  message.isOwn ? 'bg-white/20 hover:bg-white/30' : 'bg-primary/15 hover:bg-primary/25'
+                } transition-colors`}
+              >
+                {isPlaying ? (
+                  <Pause className="h-3.5 w-3.5 fill-current" />
+                ) : (
+                  <Play className="h-3.5 w-3.5 fill-current ml-0.5" />
+                )}
+              </motion.button>
+
+              {/* Waveform bars */}
+              <div className="flex items-center gap-px h-8 flex-1">
+                {WAVEFORM.map((h, i) => (
                   <motion.div
                     key={i}
-                    className="h-1 w-1 rounded-full bg-current opacity-60"
-                    animate={{ scaleY: [1, 2, 1] }}
-                    transition={{
-                      duration: 0.6,
+                    className={`w-1 rounded-full flex-shrink-0 ${
+                      message.isOwn ? 'bg-white/70' : 'bg-primary/60'
+                    }`}
+                    style={{ height: `${h}%` }}
+                    animate={isPlaying ? {
+                      scaleY: [1, 1.5 + Math.random(), 1],
+                      opacity: [0.6, 1, 0.6],
+                    } : { scaleY: 1, opacity: 0.7 }}
+                    transition={isPlaying ? {
+                      duration: 0.4 + Math.random() * 0.3,
                       repeat: Infinity,
-                      delay: i * 0.05,
-                    }}
+                      delay: i * 0.02,
+                    } : {}}
                   />
                 ))}
               </div>
-              <span className="text-xs whitespace-nowrap">{message.content}</span>
+
+              <span className="text-xs whitespace-nowrap opacity-75">{message.content}</span>
             </div>
           )}
 
-          {/* Edited Indicator */}
+          {/* Edited */}
           {message.isEdited && (
-            <p className="text-xs opacity-70 mt-1 ml-1">(edited)</p>
+            <p className="text-[10px] opacity-60 mt-0.5">(edited)</p>
           )}
         </div>
 
         {/* Reactions */}
         {Object.keys(messageReactions).length > 0 && (
-          <div className="flex gap-1 mt-1 flex-wrap">
+          <div className={`flex gap-1 mt-1 flex-wrap ${message.isOwn ? 'justify-end' : 'justify-start'}`}>
             {Object.entries(messageReactions).map(([emoji, count], idx) => (
-              <motion.div
-                key={`reaction-${message.id}-${idx}`}
+              <motion.button
+                key={`${message.id}-r-${idx}`}
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 whileHover={{ scale: 1.15 }}
-                className="flex items-center gap-1 bg-muted rounded-full px-2 py-1 text-xs cursor-pointer hover:bg-muted/80 transition-colors"
+                onClick={() => handleAddReaction(emoji)}
+                className="flex items-center gap-1 bg-muted border border-border rounded-full px-2 py-0.5 text-xs hover:bg-accent transition-colors"
               >
                 <span>{emoji}</span>
-                {count > 1 && <span>{count}</span>}
-              </motion.div>
+                {count > 1 && <span className="text-muted-foreground">{count}</span>}
+              </motion.button>
             ))}
           </div>
         )}
 
-        {/* Footer with Timestamp and Read Status */}
-        <div className="flex items-center gap-1 mt-1 px-2 text-xs text-muted-foreground">
+        {/* Timestamp + Read Status */}
+        <div className="flex items-center gap-1 mt-1 px-1 text-[11px] text-muted-foreground">
           {isMounted && <span>{format(new Date(message.timestamp), 'HH:mm')}</span>}
           {message.isOwn && (
             <>
               {message.isRead ? (
                 <CheckCheck className="h-3 w-3 text-blue-500" />
               ) : message.isDelivered ? (
-                <Check className="h-3 w-3" />
-              ) : null}
+                <CheckCheck className="h-3 w-3 text-muted-foreground/60" />
+              ) : (
+                <Check className="h-3 w-3 text-muted-foreground/60" />
+              )}
             </>
           )}
         </div>
@@ -216,6 +242,7 @@ export function MessageBubble({ message, showAvatar = true }: MessageBubbleProps
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
           onReact={handleAddReaction}
+          onReply={onReply ? () => { onReply(message); setContextMenu(null); } : undefined}
         />
       )}
     </motion.div>
