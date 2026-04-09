@@ -520,11 +520,11 @@ export default function Home() {
   const divider    = dark ? '#111'           : '#e5e5e5';
   const dotOverlay = dark ? '#ffffff07'      : '#00000005';
 
-  const navScrollBg = scrolled
+  const navShellClass = scrolled
     ? dark
-      ? 'bg-black/80 backdrop-blur-md border-b border-[#1a1a1a]'
-      : 'bg-white/80 backdrop-blur-md border-b border-gray-200'
-    : '';
+      ? 'mt-3 max-w-4xl rounded-2xl bg-black/75 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl'
+      : 'mt-3 max-w-4xl rounded-2xl bg-white/88 shadow-[0_18px_50px_rgba(15,23,42,0.12)] backdrop-blur-xl'
+    : 'max-w-5xl';
 
   return (
     <div className={`min-h-screen ${pageBg} ${textColor} font-sans antialiased transition-colors duration-300`}>
@@ -534,8 +534,8 @@ export default function Home() {
       />
 
       {/* Nav */}
-      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-200 ${navScrollBg}`}>
-        <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <nav className="fixed top-0 left-0 right-0 z-50 px-4 transition-all duration-300">
+        <div className={`mx-auto h-14 px-6 flex items-center justify-between transition-all duration-300 ${navShellClass}`}>
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2 font-semibold text-sm">
               <svg width="16" height="16" viewBox="0 0 24 24" fill={dark ? 'white' : '#1d1d1f'}>
@@ -555,10 +555,11 @@ export default function Home() {
             <button
               onClick={() => setDark(!dark)}
               aria-label="Toggle theme"
-              className="hidden sm:inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors"
+              className="hidden sm:inline-flex h-8 w-8 items-center justify-center rounded-md backdrop-blur-md transition-colors"
               style={{
-                background: dark ? '#111' : '#f3f4f6',
-                border: dark ? '1px solid #1f1f1f' : '1px solid #e5e7eb',
+                background: dark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.6)',
+                border: dark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,255,255,0.7)',
+                boxShadow: dark ? '0 8px 24px rgba(0,0,0,0.22)' : '0 8px 20px rgba(15,23,42,0.08)',
                 color: dark ? '#fafafa' : '#111827',
               }}
             >
@@ -599,7 +600,74 @@ export default function Home() {
       </nav>
 
       {/* Hero */}
-      <section className="relative pt-36 pb-4 px-6">
+      <section className="relative overflow-hidden pt-36 pb-4 px-6">
+        <div className="absolute inset-x-0 top-0 bottom-0 pointer-events-none">
+          <motion.div
+            className="absolute left-0 top-0 h-[520px] w-[46%]"
+            initial={{ opacity: 0, x: -36, y: -20 }}
+            animate={{ opacity: 1, x: 0, y: 0 }}
+            transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1], delay: 0.08 }}
+            style={{
+              background: dark
+                ? 'linear-gradient(136deg, rgba(16,185,129,0.42) 0%, rgba(16,185,129,0.16) 18%, rgba(16,185,129,0.04) 42%, transparent 68%)'
+                : 'linear-gradient(136deg, rgba(16,185,129,0.36) 0%, rgba(16,185,129,0.13) 18%, rgba(16,185,129,0.035) 42%, transparent 68%)',
+              clipPath: 'polygon(0 0, 100% 0, 54% 100%, 0 100%)',
+              filter: 'blur(2px)',
+            }}
+          />
+          <motion.div
+            className="absolute right-0 top-0 h-[520px] w-[46%]"
+            initial={{ opacity: 0, x: 36, y: -20 }}
+            animate={{ opacity: 1, x: 0, y: 0 }}
+            transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1], delay: 0.12 }}
+            style={{
+              background: dark
+                ? 'linear-gradient(224deg, rgba(16,185,129,0.38) 0%, rgba(16,185,129,0.15) 18%, rgba(16,185,129,0.04) 42%, transparent 68%)'
+                : 'linear-gradient(224deg, rgba(16,185,129,0.34) 0%, rgba(16,185,129,0.12) 18%, rgba(16,185,129,0.03) 42%, transparent 68%)',
+              clipPath: 'polygon(0 0, 100% 0, 100% 100%, 46% 100%)',
+              filter: 'blur(2px)',
+            }}
+          />
+          <motion.div
+            className="absolute left-0 top-0 h-[460px] w-[34%]"
+            initial={{ opacity: 0, x: -28, y: -14 }}
+            animate={{ opacity: dark ? 0.88 : 0.72, x: 0, y: 0 }}
+            transition={{ duration: 1, ease: [0.22, 1, 0.36, 1], delay: 0.18 }}
+            style={{
+              background: dark
+                ? 'linear-gradient(135deg, rgba(16,185,129,0.82) 0%, rgba(16,185,129,0.26) 16%, transparent 38%)'
+                : 'linear-gradient(135deg, rgba(16,185,129,0.72) 0%, rgba(16,185,129,0.22) 16%, transparent 38%)',
+              clipPath: 'polygon(0 0, 100% 0, 32% 100%, 0 100%)',
+              filter: 'blur(0.6px)',
+              mixBlendMode: dark ? 'screen' : 'multiply',
+            }}
+          />
+          <motion.div
+            className="absolute right-0 top-0 h-[460px] w-[34%]"
+            initial={{ opacity: 0, x: 28, y: -14 }}
+            animate={{ opacity: dark ? 0.82 : 0.68, x: 0, y: 0 }}
+            transition={{ duration: 1, ease: [0.22, 1, 0.36, 1], delay: 0.22 }}
+            style={{
+              background: dark
+                ? 'linear-gradient(225deg, rgba(16,185,129,0.76) 0%, rgba(16,185,129,0.24) 16%, transparent 38%)'
+                : 'linear-gradient(225deg, rgba(16,185,129,0.68) 0%, rgba(16,185,129,0.2) 16%, transparent 38%)',
+              clipPath: 'polygon(0 0, 100% 0, 100% 100%, 68% 100%)',
+              filter: 'blur(0.6px)',
+              mixBlendMode: dark ? 'screen' : 'multiply',
+            }}
+          />
+          <motion.div
+            className="absolute left-1/2 top-16 h-44 w-[38rem] -translate-x-1/2 rounded-full blur-3xl"
+            initial={{ opacity: 0, scaleX: 0.92, y: -12 }}
+            animate={{ opacity: dark ? 0.28 : 0.2, scaleX: 1, y: 0 }}
+            transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1], delay: 0.28 }}
+            style={{
+              background: dark
+                ? 'radial-gradient(circle, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.04) 34%, transparent 72%)'
+                : 'radial-gradient(circle, rgba(16,185,129,0.10) 0%, rgba(16,185,129,0.03) 36%, transparent 72%)',
+            }}
+          />
+        </div>
         <div className="max-w-2xl mx-auto text-center relative z-10">
           <motion.div {...fade(0)}>
             <div
