@@ -151,14 +151,14 @@ function ChatMsg({ msg, step, dark }: { msg: typeof MESSAGES[0]; step: number; d
               className="max-w-[72%] rounded-2xl px-3.5 py-2 text-[12px] leading-relaxed"
               style={{
                 background: msg.isOwn
-                  ? '#0ea5e9'
+                  ? '#10b981'
                   : dark ? '#1e1e1e' : '#f0f0f0',
                 color: msg.isOwn
                   ? 'white'
                   : dark ? 'white' : '#111',
                 borderRadius: msg.isOwn ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
                 border: msg.isOwn ? 'none' : `1px solid ${dark ? '#2a2a2a' : '#e5e5e5'}`,
-                boxShadow: msg.isOwn ? '0 4px 14px rgba(14,165,233,0.3)' : 'none',
+                boxShadow: 'none',
               }}
             >
               {msg.content}
@@ -203,9 +203,7 @@ function ChatMsg({ msg, step, dark }: { msg: typeof MESSAGES[0]; step: number; d
               }}
             >
               <motion.div
-                className="h-7 w-7 rounded-full bg-[#0ea5e9] flex items-center justify-center flex-shrink-0"
-                animate={{ boxShadow: ['0 0 0 0 rgba(14,165,233,0.4)', '0 0 0 6px rgba(14,165,233,0)', '0 0 0 0 rgba(14,165,233,0)'] }}
-                transition={{ duration: 2, repeat: Infinity }}
+                className="h-7 w-7 rounded-full bg-[#10b981] flex items-center justify-center flex-shrink-0"
               >
                 <svg width="8" height="8" viewBox="0 0 24 24" fill="white"><path d="M5 3l14 9-14 9V3z" /></svg>
               </motion.div>
@@ -213,7 +211,7 @@ function ChatMsg({ msg, step, dark }: { msg: typeof MESSAGES[0]; step: number; d
                 {WAVE.map((h, i) => (
                   <motion.div
                     key={i}
-                    className="w-[2px] rounded-full bg-[#0ea5e9]"
+                    className="w-[2px] rounded-full bg-[#10b981]"
                     style={{ height: `${Math.max(15, h * 0.55)}%` }}
                     initial={{ scaleY: 0, opacity: 0 }}
                     animate={{ scaleY: 1, opacity: 1 }}
@@ -367,16 +365,8 @@ function ScrollDemo({ dark }: { dark: boolean }) {
   const headerBg    = dark ? '#0a0a0a' : '#ffffff';
 
   return (
-    <section ref={sectionRef} className="relative -mt-8" style={{ height: '290vh' }}>
-      <div
-        className="pointer-events-none absolute left-0 right-0 top-0 z-[1] h-24"
-        style={{
-          background: dark
-            ? 'linear-gradient(to bottom, rgba(0,0,0,0.96), rgba(0,0,0,0.72), transparent)'
-            : 'linear-gradient(to bottom, rgba(245,245,247,0.96), rgba(245,245,247,0.7), transparent)',
-        }}
-      />
-      <div className="sticky top-0 h-screen flex items-center overflow-hidden">
+    <section ref={sectionRef} className="relative" style={{ height: '290vh' }}>
+      <div className="sticky top-0 h-screen flex items-end overflow-hidden pb-16">
         <div className="w-full max-w-4xl mx-auto px-6">
 
           {/* App window */}
@@ -384,6 +374,36 @@ function ScrollDemo({ dark }: { dark: boolean }) {
             <div className="absolute inset-y-0 -left-24 -right-24 z-0">
               <ChatCardBeams dark={dark} />
             </div>
+            {!dark && (
+              <>
+                <motion.img
+                  src="https://res.cloudinary.com/dectxiuco/image/upload/q_auto/f_auto/v1775776764/freepik__talk__43826-Photoroom_kl42nz.png"
+                  alt=""
+                  aria-hidden="true"
+                  {...fade(0.03)}
+                  className="pointer-events-none select-none absolute left-[-7%] top-[64%] z-[5] w-[280px] -translate-x-1/2 -translate-y-1/2 opacity-95 md:left-[-2%] md:top-[66%] md:w-[360px]"
+                  style={{
+                    filter: 'drop-shadow(0 18px 40px rgba(15,23,42,0.12))',
+                    transformOrigin: 'center',
+                    userSelect: 'none',
+                    WebkitUserSelect: 'none',
+                  }}
+                />
+                <motion.img
+                  src="https://res.cloudinary.com/dectxiuco/image/upload/q_auto/f_auto/v1775775705/rocket-paper_xqyprs.png"
+                  alt=""
+                  aria-hidden="true"
+                  {...fade(0.03)}
+                  className="pointer-events-none select-none absolute right-[-6%] top-[14%] z-[5] w-[190px] translate-x-1/2 -translate-y-1/2 opacity-95 md:right-[-3%] md:top-[12%] md:w-[240px]"
+                  style={{
+                    filter: 'drop-shadow(0 18px 40px rgba(15,23,42,0.12))',
+                    transformOrigin: 'center',
+                    userSelect: 'none',
+                    WebkitUserSelect: 'none',
+                  }}
+                />
+              </>
+            )}
 
             <div
               className="relative z-10 w-full rounded-2xl overflow-hidden"
@@ -447,8 +467,8 @@ function ScrollDemo({ dark }: { dark: boolean }) {
                       key={i}
                       className="flex items-center gap-2.5 px-3 py-2.5 cursor-pointer"
                       style={{
-                        background: i === 0 ? (dark ? 'rgba(14,165,233,0.07)' : 'rgba(14,165,233,0.06)') : 'transparent',
-                        borderLeft: i === 0 ? '2px solid #0ea5e9' : '2px solid transparent',
+                        background: i === 0 ? (dark ? 'rgba(16,185,129,0.08)' : 'rgba(16,185,129,0.07)') : 'transparent',
+                        borderLeft: i === 0 ? '2px solid #10b981' : '2px solid transparent',
                       }}
                     >
                       <div className="relative flex-shrink-0">
@@ -474,7 +494,7 @@ function ScrollDemo({ dark }: { dark: boolean }) {
                           {item.unread > 0 && (
                             <div
                               className="h-4 min-w-[16px] rounded-full flex items-center justify-center px-1 flex-shrink-0"
-                              style={{ backgroundColor: item.color }}
+                              style={{ backgroundColor: '#10b981' }}
                             >
                               <span style={{ fontSize: 9, color: 'white', fontWeight: 700 }}>{item.unread}</span>
                             </div>
@@ -572,7 +592,7 @@ function ScrollDemo({ dark }: { dark: boolean }) {
                   </div>
                   <motion.div
                     className="h-7 w-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                    style={{ background: '#0ea5e9' }}
+                    style={{ background: '#10b981' }}
                     whileHover={{ scale: 1.07 }}
                   >
                     <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
@@ -610,7 +630,7 @@ function ScrollDemo({ dark }: { dark: boolean }) {
                 {CALLOUTS.map((c) => (
                   <motion.div
                     key={c.id}
-                    style={{ height: 1, borderRadius: 1, background: '#0ea5e9' }}
+                    style={{ height: 1, borderRadius: 1, background: '#10b981' }}
                     animate={{ width: callout.id === c.id ? 14 : 5, opacity: callout.id === c.id ? 1 : 0.2 }}
                   />
                 ))}
@@ -754,7 +774,7 @@ export default function Home() {
       </nav>
 
       {/* Hero */}
-      <section className="relative overflow-hidden pt-36 pb-4 px-6">
+      <section className="relative overflow-visible pt-36 pb-4 px-6">
         <div
           className="absolute inset-x-0 top-0 h-[420px] pointer-events-none"
           style={{
@@ -838,31 +858,39 @@ export default function Home() {
                 color: dark ? '#666' : '#888',
               }}
             >
-              <span className="h-1.5 w-1.5 rounded-full bg-[#10b981]" />
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.2">
+                <path d="M22 2L11 13" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M22 2L15 22l-4-9-9-4 20-7z" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
               Twiky Web is now live
               <span style={{ color: dark ? '#333' : '#ccc', margin: '0 4px' }}>—</span>
               <Link href="/account/signup" className={`${textColor} hover:underline underline-offset-2`}>Get started →</Link>
             </div>
           </motion.div>
 
-          <motion.h1 {...fade(0.05)} className={`text-5xl md:text-[64px] font-bold leading-[1.05] tracking-[-0.03em] ${textColor} mb-5`}>
-            Messaging built for the modern web.
-          </motion.h1>
+          <div className="relative mb-5">
+            <motion.h1
+              {...fade(0.05)}
+              className={`relative z-10 text-5xl md:text-[64px] font-bold leading-[1.05] tracking-[-0.03em] ${textColor}`}
+            >
+              Messaging built for the modern web.
+            </motion.h1>
+          </div>
 
           <motion.p {...fade(0.1)} className={`${textMuted} text-base max-w-lg mx-auto mb-8 leading-relaxed`}>
             Fast, secure, and beautifully simple. Twiky gives teams and communities a better way to communicate.
           </motion.p>
 
-          <motion.div {...fade(0.15)} className="flex items-center justify-center gap-3">
+          <motion.div {...fade(0.15)} className="relative flex items-center justify-center gap-3">
             <button
               onClick={() => router.push(isAuthenticated ? '/chat' : '/account/signup')}
-              className="h-9 px-5 rounded-md text-sm font-semibold transition-colors"
+              className="relative z-10 h-9 px-5 rounded-md text-sm font-semibold transition-colors"
               style={{ background: dark ? 'white' : '#1d1d1f', color: dark ? 'black' : 'white' }}
             >
               Start for free
             </button>
             <button
-              className="h-9 px-5 rounded-md text-sm transition-colors"
+              className="relative z-10 h-9 px-5 rounded-md text-sm transition-colors"
               style={{
                 border: dark ? '1px solid #222' : '1px solid #e5e5e5',
                 color: dark ? '#888' : '#666',
