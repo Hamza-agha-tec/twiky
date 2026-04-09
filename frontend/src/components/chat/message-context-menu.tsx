@@ -1,8 +1,8 @@
 'use client';
 
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useState } from 'react';
-import { Copy, Reply, Forward, Trash2, Pin, Download } from 'lucide-react';
+import { Copy, Reply, Forward, Trash2, Pin } from 'lucide-react';
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '😍'];
 
@@ -15,19 +15,25 @@ interface MessageContextMenuProps {
   onDelete?: () => void;
 }
 
-export function MessageContextMenu({
-  x,
-  y,
-  onClose,
-  onReact,
-  onReply,
-  onDelete,
-}: MessageContextMenuProps) {
+export function MessageContextMenu({ x, y, onClose, onReact, onReply, onDelete }: MessageContextMenuProps) {
   const [showEmojis, setShowEmojis] = useState(false);
+
+  const menuItems = [
+    {
+      icon: '😊',
+      label: 'React',
+      onClick: () => setShowEmojis(!showEmojis),
+      isEmoji: true,
+    },
+    ...(onReply ? [{ icon: Reply, label: 'Reply', onClick: () => { onReply(); onClose(); } }] : []),
+    { icon: Forward, label: 'Forward', onClick: onClose },
+    { icon: Pin, label: 'Pin message', onClick: onClose },
+    { icon: Copy, label: 'Copy', onClick: onClose },
+    { icon: Trash2, label: 'Delete', onClick: () => { onDelete?.(); onClose(); }, danger: true },
+  ];
 
   return (
     <AnimatePresence>
-      {/* Backdrop */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -36,109 +42,58 @@ export function MessageContextMenu({
         className="fixed inset-0 z-40"
       />
 
-      {/* Emoji Reactions */}
       {showEmojis && (
         <motion.div
-          initial={{ opacity: 0, scale: 0.8, y: 10 }}
+          initial={{ opacity: 0, scale: 0.9, y: 6 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.8, y: 10 }}
-          style={{ left: `${x}px`, top: `${Math.max(60, y - 100)}px` }}
-          className="fixed z-50 bg-background border border-border rounded-2xl shadow-lg p-2 flex gap-2"
+          exit={{ opacity: 0, scale: 0.9 }}
+          style={{ left: `${x}px`, top: `${Math.max(60, y - 60)}px` }}
+          className="fixed z-50 bg-popover border border-border rounded-2xl shadow-xl p-2 flex gap-1"
         >
-          {EMOJI_REACTIONS.map((emoji, idx) => (
-            <motion.button
-              key={`emoji-reaction-${idx}`}
-              whileHover={{ scale: 1.3 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={() => {
-                onReact(emoji);
-                onClose();
-              }}
-              className="text-2xl hover:bg-accent rounded-lg p-1.5 transition-colors"
+          {EMOJI_REACTIONS.map((emoji) => (
+            <button
+              key={emoji}
+              onClick={() => { onReact(emoji); onClose(); }}
+              className="text-xl w-9 h-9 flex items-center justify-center rounded-xl hover:bg-accent transition-colors"
             >
               {emoji}
-            </motion.button>
+            </button>
           ))}
         </motion.div>
       )}
 
-      {/* Context Menu */}
       <motion.div
-        initial={{ opacity: 0, scale: 0.8, y: 10 }}
+        initial={{ opacity: 0, scale: 0.92, y: 6 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.8, y: 10 }}
-        style={{ left: `${x}px`, top: `${y}px` }}
-        className="fixed z-50 bg-background border border-border rounded-lg shadow-lg overflow-hidden min-w-48"
+        exit={{ opacity: 0, scale: 0.92 }}
+        transition={{ duration: 0.12 }}
+        style={{
+          left: `${Math.min(x, window.innerWidth - 192)}px`,
+          top: `${Math.min(y, window.innerHeight - 280)}px`,
+        }}
+        className="fixed z-50 bg-popover border border-border rounded-xl shadow-xl overflow-hidden min-w-44 py-1"
       >
-        {/* React Option */}
-        <motion.button
-          whileHover={{ backgroundColor: 'var(--color-accent)' }}
-          onClick={() => setShowEmojis(!showEmojis)}
-          className="w-full px-4 py-3 flex items-center gap-3 text-sm hover:bg-accent transition-colors border-b border-border"
-        >
-          <span className="text-lg">😊</span>
-          <span>React</span>
-        </motion.button>
-
-        {/* Reply Option */}
-        {onReply && (
-          <motion.button
-            whileHover={{ backgroundColor: 'var(--color-accent)' }}
-            onClick={() => {
-              onReply();
-              onClose();
-            }}
-            className="w-full px-4 py-3 flex items-center gap-3 text-sm hover:bg-accent transition-colors border-b border-border"
-          >
-            <Reply className="h-4 w-4" />
-            <span>Reply</span>
-          </motion.button>
-        )}
-
-        {/* Forward Option */}
-        <motion.button
-          whileHover={{ backgroundColor: 'var(--color-accent)' }}
-          onClick={onClose}
-          className="w-full px-4 py-3 flex items-center gap-3 text-sm hover:bg-accent transition-colors border-b border-border"
-        >
-          <Forward className="h-4 w-4" />
-          <span>Forward</span>
-        </motion.button>
-
-        {/* Copy Option */}
-        <motion.button
-          whileHover={{ backgroundColor: 'var(--color-accent)' }}
-          onClick={onClose}
-          className="w-full px-4 py-3 flex items-center gap-3 text-sm hover:bg-accent transition-colors border-b border-border"
-        >
-          <Copy className="h-4 w-4" />
-          <span>Copy</span>
-        </motion.button>
-
-        {/* Download Option */}
-        <motion.button
-          whileHover={{ backgroundColor: 'var(--color-accent)' }}
-          onClick={onClose}
-          className="w-full px-4 py-3 flex items-center gap-3 text-sm hover:bg-accent transition-colors border-b border-border"
-        >
-          <Download className="h-4 w-4" />
-          <span>Download</span>
-        </motion.button>
-
-        {/* Delete Option */}
-        {onDelete && (
-          <motion.button
-            whileHover={{ backgroundColor: 'var(--color-destructive)' }}
-            onClick={() => {
-              onDelete();
-              onClose();
-            }}
-            className="w-full px-4 py-3 flex items-center gap-3 text-sm text-destructive hover:bg-destructive/10 transition-colors"
-          >
-            <Trash2 className="h-4 w-4" />
-            <span>Delete</span>
-          </motion.button>
-        )}
+        {menuItems.map((item, i) => {
+          const isDanger = 'danger' in item && item.danger;
+          return (
+            <button
+              key={i}
+              onClick={item.onClick}
+              className={`w-full px-3 py-2 flex items-center gap-3 text-sm transition-colors ${
+                isDanger
+                  ? 'text-destructive hover:bg-destructive/10'
+                  : 'text-foreground hover:bg-accent'
+              }`}
+            >
+              {item.isEmoji ? (
+                <span className="text-base">{item.icon as string}</span>
+              ) : (
+                <item.icon className="h-4 w-4 flex-shrink-0" />
+              )}
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
       </motion.div>
     </AnimatePresence>
   );
