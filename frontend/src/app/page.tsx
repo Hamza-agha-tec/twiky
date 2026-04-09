@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import { AnimatedTooltipPreview } from "@/components/AnimatedTooltipPreview";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -544,6 +545,7 @@ export default function Home() {
             </div>
             <div className={`hidden md:flex items-center gap-5 text-[13px] ${textMuted}`}>
               <a href="#features" className="hover:text-current transition-colors">Features</a>
+              <a href="#team" className="hover:text-current transition-colors">Team</a>
               <a href="#security" className="hover:text-current transition-colors">Security</a>
               <a href="#download" className="hover:text-current transition-colors">Download</a>
             </div>
@@ -553,20 +555,21 @@ export default function Home() {
             <button
               onClick={() => setDark(!dark)}
               aria-label="Toggle theme"
-              className="h-8 w-8 rounded-full flex items-center justify-center transition-all"
+              className="hidden sm:inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors"
               style={{
-                background: dark ? '#1a1a1a' : '#ebebeb',
-                border: dark ? '1px solid #2a2a2a' : '1px solid #ddd',
+                background: dark ? '#111' : '#f3f4f6',
+                border: dark ? '1px solid #1f1f1f' : '1px solid #e5e7eb',
+                color: dark ? '#fafafa' : '#111827',
               }}
             >
               {dark ? (
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2" strokeLinecap="round">
-                  <circle cx="12" cy="12" r="4"/>
-                  <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                 </svg>
               ) : (
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" strokeLinecap="round">
-                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <circle cx="12" cy="12" r="4"/>
+                  <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
                 </svg>
               )}
             </button>
@@ -702,7 +705,7 @@ export default function Home() {
           <motion.div {...inView()}>
             <p style={{ fontSize: 11, color: dark ? '#444' : '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Security</p>
             <h2 className={`text-3xl font-bold tracking-tight ${textColor} mb-5`}>
-              Privacy is not a feature. It's the foundation.
+              Privacy is not a feature. It&apos;s the foundation.
             </h2>
             <p style={{ fontSize: 13, color: dark ? '#555' : '#888', lineHeight: 1.7, marginBottom: 32 }}>
               Every message is protected with end-to-end encryption. Your data never touches our servers in a readable form.
@@ -732,7 +735,7 @@ export default function Home() {
                   <span style={{ color: dark ? '#444' : '#999' }}>await</span> crypto.
                   <span style={{ color: dark ? 'white' : '#333' }}>generateKey</span>({'{'})
                 </div>
-                <div className="pl-4"><span style={{ color: dark ? '#555' : '#aaa' }}>name</span>: <span style={{ color: dark ? '#444' : '#888' }}>'AES-GCM'</span>,</div>
+                <div className="pl-4"><span style={{ color: dark ? '#555' : '#aaa' }}>name</span>: <span style={{ color: dark ? '#444' : '#888' }}>&apos;AES-GCM&apos;</span>,</div>
                 <div className="pl-4"><span style={{ color: dark ? '#555' : '#aaa' }}>length</span>: <span style={{ color: dark ? '#777' : '#666' }}>256</span>,</div>
                 <div>{'}'});</div>
                 <div className="mt-3">
@@ -744,6 +747,24 @@ export default function Home() {
                 <div className="mt-3" style={{ color: dark ? '#2a2a2a' : '#ddd' }}>{'// only recipient can decrypt'}</div>
               </div>
             </div>
+          </motion.div>
+        </div>
+      </section>
+
+      <section id="team" className="py-28 px-6 relative z-10" style={{ borderTop: `1px solid ${divider}` }}>
+        <div className="max-w-5xl mx-auto text-center">
+          <motion.div {...inView()} className="max-w-2xl mx-auto">
+            <p style={{ fontSize: 11, color: dark ? '#444' : '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Team</p>
+            <h2 className={`text-3xl md:text-4xl font-bold tracking-tight ${textColor} mb-5`}>
+              Built by a tight team.
+            </h2>
+            <p style={{ fontSize: 13, color: dark ? '#555' : '#888', lineHeight: 1.7, marginBottom: 32 }}>
+              Meet the two people shaping the Twiky experience from interface to product direction.
+            </p>
+          </motion.div>
+
+          <motion.div {...inView(0.08)}>
+            <AnimatedTooltipPreview />
           </motion.div>
         </div>
       </section>
