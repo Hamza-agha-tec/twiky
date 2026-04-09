@@ -45,6 +45,27 @@ const CALLOUTS = [
   { id: 'secure', range: [7.8, 9], tag: 'Security', title: 'Zero-knowledge. Always.' },
 ];
 
+const CHAT_BEAMS = [
+  {
+    id: 1,
+    path: 'M 18 104 C 132 104, 168 104, 222 104 S 320 104, 376 104 L 486 104 C 522 104, 540 122, 540 154 L 540 168 C 540 194, 556 208, 582 208 L 846 208',
+    duration: 8.6,
+    delay: 0,
+  },
+  {
+    id: 2,
+    path: 'M 10 170 C 122 170, 156 170, 210 170 S 306 170, 360 170 L 438 170 C 474 170, 492 188, 492 220 L 492 240 C 492 268, 510 284, 538 284 L 854 284',
+    duration: 9.4,
+    delay: 0.5,
+  },
+  {
+    id: 3,
+    path: 'M 24 236 C 138 236, 174 236, 230 236 S 328 236, 384 236 L 560 236 C 594 236, 612 254, 612 286 L 612 304 C 612 332, 628 348, 656 348 L 840 348',
+    duration: 10.2,
+    delay: 1,
+  },
+];
+
 const CONTACTS = [
   { color: '#0ea5e9', name: 'Alex',  photo: 'https://randomuser.me/api/portraits/men/1.jpg',   online: true,  unread: 2, preview: 'Crystal clear quality 🎙️', time: '2:34 PM' },
   { color: '#10b981', name: 'Sam',   photo: 'https://randomuser.me/api/portraits/men/15.jpg',  online: true,  unread: 0, preview: 'See you tomorrow!',          time: '1:12 PM' },
@@ -209,6 +230,125 @@ function ChatMsg({ msg, step, dark }: { msg: typeof MESSAGES[0]; step: number; d
   );
 }
 
+function ChatCardBeams({ dark }: { dark: boolean }) {
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div
+        className="absolute inset-0"
+        style={{
+          background: dark
+            ? 'radial-gradient(circle at 50% 20%, rgba(251,191,36,0.07), transparent 40%)'
+            : 'radial-gradient(circle at 50% 20%, rgba(251,191,36,0.05), transparent 40%)',
+        }}
+      />
+      <svg
+        viewBox="0 0 860 480"
+        className="absolute inset-0 h-full w-full"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        preserveAspectRatio="xMidYMid slice"
+      >
+        <defs>
+          <filter id="chat-beam-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feColorMatrix
+              in="blur"
+              type="matrix"
+              values="0.06 0 0 0 0
+                      0 0.72 0 0 0
+                      0 0 0.32 0 0
+                      0 0 0 1 0"
+            />
+          </filter>
+          <linearGradient id="chat-beam-trace" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="rgba(16,185,129,0)" />
+            <stop offset="28%" stopColor="rgba(16,185,129,0.08)" />
+            <stop offset="50%" stopColor="rgba(16,185,129,0.78)" />
+            <stop offset="72%" stopColor="rgba(16,185,129,0.08)" />
+            <stop offset="100%" stopColor="rgba(16,185,129,0)" />
+          </linearGradient>
+        </defs>
+
+        {CHAT_BEAMS.map((beam) => (
+          <g key={beam.id}>
+            <path
+              d={beam.path}
+              stroke={dark ? 'rgba(255,255,255,0.11)' : 'rgba(15,23,42,0.12)'}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="2 10"
+            />
+            <path
+              d={beam.path}
+              stroke={dark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.05)'}
+              strokeWidth="6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path
+              d={beam.path}
+              stroke="url(#chat-beam-trace)"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              pathLength="100"
+              strokeDasharray="12 88"
+            />
+            <path
+              d={beam.path}
+              stroke="url(#chat-beam-trace)"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              pathLength="100"
+              strokeDasharray="12 88"
+              strokeDashoffset="-88"
+            />
+            <motion.rect
+              width="72"
+              height="3"
+              rx="999"
+              fill="url(#chat-beam-trace)"
+              initial={{ offsetDistance: '0%' }}
+              animate={{ offsetDistance: ['0%', '100%'] }}
+              transition={{
+                duration: beam.duration,
+                delay: beam.delay,
+                ease: 'linear',
+                repeat: Infinity,
+              }}
+              style={{
+                offsetPath: `path("${beam.path}")`,
+                offsetRotate: '0deg',
+                transformBox: 'fill-box',
+                x: -36,
+                y: -1.5,
+              }}
+            />
+            <motion.circle
+              r="2.5"
+              fill="rgba(16,185,129,0.95)"
+              initial={{ offsetDistance: '0%' }}
+              animate={{ offsetDistance: ['0%', '100%'] }}
+              transition={{
+                duration: beam.duration,
+                delay: beam.delay,
+                ease: 'linear',
+                repeat: Infinity,
+              }}
+              style={{
+                offsetPath: `path("${beam.path}")`,
+                offsetRotate: '0deg',
+              }}
+            />
+          </g>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
 function ScrollDemo({ dark }: { dark: boolean }) {
   const sectionRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: sectionRef, offset: ['start start', 'end end'] });
@@ -227,26 +367,39 @@ function ScrollDemo({ dark }: { dark: boolean }) {
   const headerBg    = dark ? '#0a0a0a' : '#ffffff';
 
   return (
-    <section ref={sectionRef} className="relative" style={{ height: '290vh' }}>
+    <section ref={sectionRef} className="relative -mt-8" style={{ height: '290vh' }}>
+      <div
+        className="pointer-events-none absolute left-0 right-0 top-0 z-[1] h-24"
+        style={{
+          background: dark
+            ? 'linear-gradient(to bottom, rgba(0,0,0,0.96), rgba(0,0,0,0.72), transparent)'
+            : 'linear-gradient(to bottom, rgba(245,245,247,0.96), rgba(245,245,247,0.7), transparent)',
+        }}
+      />
       <div className="sticky top-0 h-screen flex items-center overflow-hidden">
         <div className="w-full max-w-4xl mx-auto px-6">
 
           {/* App window */}
-          <div
-            className="w-full rounded-2xl overflow-hidden"
-            style={{
-              border: `1px solid ${cardBorder}`,
-              background: chatAreaBg,
-              boxShadow: dark
-                ? '0 40px 100px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.03), inset 0 1px 0 rgba(255,255,255,0.04)'
-                : '0 40px 100px rgba(0,0,0,0.14), 0 0 0 1px rgba(0,0,0,0.05)',
-            }}
-          >
-            {/* macOS title bar */}
+          <div className="relative">
+            <div className="absolute inset-y-0 -left-24 -right-24 z-0">
+              <ChatCardBeams dark={dark} />
+            </div>
+
             <div
-              className="flex items-center px-4 gap-1.5"
-              style={{ height: 40, background: titleBarBg, borderBottom: `1px solid ${cardBorder}` }}
+              className="relative z-10 w-full rounded-2xl overflow-hidden"
+              style={{
+                border: `1px solid ${cardBorder}`,
+                background: chatAreaBg,
+                boxShadow: dark
+                  ? '0 40px 100px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.03), inset 0 1px 0 rgba(255,255,255,0.04)'
+                  : '0 40px 100px rgba(0,0,0,0.14), 0 0 0 1px rgba(0,0,0,0.05)',
+              }}
             >
+              {/* macOS title bar */}
+              <div
+                className="relative z-10 flex items-center px-4 gap-1.5"
+                style={{ height: 40, background: titleBarBg, borderBottom: `1px solid ${cardBorder}` }}
+              >
               <div className="w-3 h-3 rounded-full bg-[#ff5f57]" />
               <div className="w-3 h-3 rounded-full bg-[#febc2e]" />
               <div className="w-3 h-3 rounded-full bg-[#28c840]" />
@@ -265,9 +418,9 @@ function ScrollDemo({ dark }: { dark: boolean }) {
                   <span style={{ fontSize: 10, color: dark ? '#444' : '#aaa', fontFamily: 'monospace', letterSpacing: '-0.02em' }}>twiky.app/chat</span>
                 </div>
               </div>
-            </div>
+              </div>
 
-            <div className="flex" style={{ height: 480 }}>
+              <div className="relative z-10 flex" style={{ height: 480 }}>
               {/* Sidebar */}
               <div
                 className="w-56 flex-col hidden sm:flex"
@@ -428,6 +581,7 @@ function ScrollDemo({ dark }: { dark: boolean }) {
                   </motion.div>
                 </div>
               </div>
+            </div>
             </div>
           </div>
         </div>
@@ -601,7 +755,13 @@ export default function Home() {
 
       {/* Hero */}
       <section className="relative overflow-hidden pt-36 pb-4 px-6">
-        <div className="absolute inset-x-0 top-0 bottom-0 pointer-events-none">
+        <div
+          className="absolute inset-x-0 top-0 h-[420px] pointer-events-none"
+          style={{
+            maskImage: 'linear-gradient(to bottom, black 0%, black 62%, transparent 100%)',
+            WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 62%, transparent 100%)',
+          }}
+        >
           <motion.div
             className="absolute left-0 top-0 h-[520px] w-[46%]"
             initial={{ opacity: 0, x: -36, y: -20 }}
