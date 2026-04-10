@@ -32,11 +32,11 @@ export default function RootLayout({
       <body className="antialiased font-sans">
         <AuthProvider>
           <QueryProvider>
-            {/* <ThemeProvider> */}
+            <ThemeProvider attribute="class" defaultTheme="dark" disableTransitionOnChange>
               <ToastProvider>
                 {children}
               </ToastProvider>
-            {/* </ThemeProvider> */}
+            </ThemeProvider>
           </QueryProvider>
         </AuthProvider>
       </body>

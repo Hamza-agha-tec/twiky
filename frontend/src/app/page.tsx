@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { AnimatedTooltipPreview } from "@/components/AnimatedTooltipPreview";
-import { Spotlight } from "@/components/ui/spotlight";
+import { ShapeOverlay } from "@/components/ui/shape-overlay";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -120,7 +120,7 @@ function TypingDots({ dark }: { dark: boolean }) {
         }}>
         {[0, 0.15, 0.3].map((d, i) => (
           <motion.div key={i}
-            style={{ width: 6, height: 6, borderRadius: '50%', background: dark ? '#555' : '#9ca3af' }}
+            style={{ width: 6, height: 6, borderRadius: '50%', background: dark ? '#aaa' : '#9ca3af' }}
             animate={{ y: [0, -5, 0] }}
             transition={{ duration: 0.5, repeat: Infinity, delay: d }} />
         ))}
@@ -229,12 +229,12 @@ function ChatMsg({ msg, step, dark }: { msg: typeof MESSAGES[0]; step: number; d
                   className="flex items-center gap-1 mt-0.5 px-0.5"
                   style={{ marginTop: msg.type === 'image' ? 14 : 2 }}
                 >
-                  <span style={{ fontSize: 11, color: dark ? '#374151' : '#9ca3af' }}>
+                  <span style={{ fontSize: 11, color: dark ? '#888' : '#9ca3af' }}>
                     {MSG_TIMES[msg.id]}
                   </span>
                   {msg.isOwn && (
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                      stroke={step >= msg.showAt + 1 ? '#3b82f6' : (dark ? '#374151' : '#9ca3af')}
+                      stroke={step >= msg.showAt + 1 ? '#3b82f6' : (dark ? '#888' : '#9ca3af')}
                       strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="18 8 12 14 6 8" style={{ display: 'none' }} />
                       <path d="M2 12l5 5L22 4M9 12l5 5" />
@@ -455,10 +455,10 @@ function ScrollDemo({ dark }: { dark: boolean }) {
                     minWidth: 168,
                   }}
                 >
-                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke={dark ? '#444' : '#aaa'} strokeWidth="2">
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke={dark ? '#999' : '#aaa'} strokeWidth="2">
                     <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                   </svg>
-                  <span style={{ fontSize: 10, color: dark ? '#444' : '#aaa', fontFamily: 'monospace', letterSpacing: '-0.02em' }}>twiky.app/chat</span>
+                  <span style={{ fontSize: 10, color: dark ? '#999' : '#aaa', fontFamily: 'monospace', letterSpacing: '-0.02em' }}>twiky.app/chat</span>
                 </div>
               </div>
               </div>
@@ -486,7 +486,7 @@ function ScrollDemo({ dark }: { dark: boolean }) {
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={dark ? '#6b7280' : '#9ca3af'} strokeWidth="2">
                       <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
                     </svg>
-                    <span style={{ fontSize: 12, color: dark ? '#374151' : '#9ca3af' }}>Search...</span>
+                    <span style={{ fontSize: 12, color: dark ? '#888' : '#9ca3af' }}>Search...</span>
                   </div>
                 </div>
 
@@ -528,10 +528,10 @@ function ScrollDemo({ dark }: { dark: boolean }) {
                           <span style={{ fontSize: 13, fontWeight: 600, color: i === 0 ? (dark ? '#ededed' : '#111') : (dark ? '#6b7280' : '#6b7280') }}>
                             {item.name}
                           </span>
-                          <span style={{ fontSize: 10, color: dark ? '#374151' : '#9ca3af' }}>{item.time}</span>
+                          <span style={{ fontSize: 10, color: dark ? '#888' : '#9ca3af' }}>{item.time}</span>
                         </div>
                         <div className="flex items-center justify-between gap-1">
-                          <p style={{ fontSize: 11, color: dark ? '#374151' : '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                          <p style={{ fontSize: 11, color: dark ? '#888' : '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                             {item.preview}
                           </p>
                           {item.unread > 0 && (
@@ -702,7 +702,7 @@ function ScrollDemo({ dark }: { dark: boolean }) {
                 boxShadow: dark ? '0 8px 32px rgba(0,0,0,0.5)' : '0 8px 32px rgba(0,0,0,0.1)',
               }}
             >
-              <span style={{ fontSize: 10, color: dark ? '#444' : '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{callout.tag}</span>
+              <span style={{ fontSize: 10, color: dark ? '#999' : '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{callout.tag}</span>
               <div style={{ width: 1, height: 12, background: dark ? '#222' : '#e0e0e0' }} />
               <span style={{ fontSize: 12, fontWeight: 600, color: dark ? 'white' : '#111' }}>{callout.title}</span>
               <div className="flex gap-1 ml-1">
@@ -726,14 +726,14 @@ function ScrollDemo({ dark }: { dark: boolean }) {
               exit={{ opacity: 0 }}
               className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2"
             >
-              <span style={{ fontSize: 10, color: dark ? '#333' : '#bbb', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Scroll to explore</span>
+              <span style={{ fontSize: 10, color: dark ? '#888' : '#bbb', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Scroll to explore</span>
               <motion.div
                 animate={{ y: [0, 5, 0] }}
                 transition={{ duration: 1.2, repeat: Infinity }}
                 className="w-4 h-6 rounded-full flex items-start justify-center pt-1"
                 style={{ border: dark ? '1px solid #222' : '1px solid #ddd' }}
               >
-                <div style={{ width: 2, height: 6, borderRadius: 1, background: dark ? '#333' : '#ccc' }} />
+                <div style={{ width: 2, height: 6, borderRadius: 1, background: dark ? '#888' : '#ccc' }} />
               </motion.div>
             </motion.div>
           )}
@@ -760,7 +760,7 @@ function FeatureCard({ label, desc, index, dark, textColor }: { label: string; d
         style={{ background: dark ? '#2a2a2a' : '#e0e0e0' }}
       />
       <h3 className={`text-sm font-semibold mb-2 ${textColor}`}>{label}</h3>
-      <p style={{ fontSize: 13, color: dark ? '#555' : '#888', lineHeight: 1.6 }}>{desc}</p>
+      <p style={{ fontSize: 13, color: dark ? '#aaa' : '#888', lineHeight: 1.6 }}>{desc}</p>
     </motion.div>
   );
 }
@@ -770,7 +770,10 @@ export default function Home() {
   const isAuthenticated = !!user;
   const router = useRouter();
   const [scrolled, setScrolled] = useState(false);
-  const [dark, setDark] = useState(true);
+  const [dark, setDark] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return localStorage.getItem('landing-theme') !== 'light';
+  });
 
   useEffect(() => {
     const fn = () => setScrolled(window.scrollY > 20);
@@ -824,7 +827,7 @@ export default function Home() {
 
   const pageBg     = dark ? 'bg-black'       : 'bg-[#f5f5f7]';
   const textColor  = dark ? 'text-white'     : 'text-[#1d1d1f]';
-  const textMuted  = dark ? 'text-[#666]'   : 'text-[#6e6e73]';
+  const textMuted  = dark ? 'text-[#999]'   : 'text-[#6e6e73]';
   const divider    = dark ? '#2a2a2a'        : '#e5e5e5';
   const dotOverlay = dark ? '#ffffff07'      : '#00000005';
 
@@ -835,7 +838,8 @@ export default function Home() {
     : 'max-w-5xl';
 
   return (
-    <div className={`min-h-screen ${pageBg} ${textColor} font-sans antialiased transition-colors duration-300`}>
+    <div className={`min-h-screen ${pageBg} ${textColor} font-sans antialiased`}>
+      <ShapeOverlay />
       <div
         className="fixed inset-0 pointer-events-none"
         style={{ backgroundImage: `radial-gradient(circle, ${dotOverlay} 1px, transparent 1px)`, backgroundSize: '28px 28px' }}
@@ -861,7 +865,15 @@ export default function Home() {
           <div className="flex items-center gap-2 text-[13px]">
             {/* Dark / light toggle */}
             <button
-              onClick={() => setDark(!dark)}
+              onClick={() => {
+                document.documentElement.classList.add('no-transitions');
+                setDark((d) => {
+                  const next = !d;
+                  localStorage.setItem('landing-theme', next ? 'dark' : 'light');
+                  return next;
+                });
+                requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.classList.remove('no-transitions')));
+              }}
               aria-label="Toggle theme"
               className="hidden sm:inline-flex h-8 w-8 items-center justify-center rounded-md backdrop-blur-md transition-colors"
               style={{
@@ -908,17 +920,7 @@ export default function Home() {
       </nav>
 
       {/* Hero */}
-      <section id="hero" className="relative overflow-visible pt-36 pb-4 px-6">
-        <div className="absolute inset-x-0 top-0 h-[420px] pointer-events-none z-20">
-          <Spotlight className="-top-20 left-0" fill="#10b981" style={{ animationDelay: '0.3s' }} />
-          <Spotlight className="-top-40 left-20" fill="#10b981" style={{ animationDelay: '0.6s' }} />
-          <Spotlight className="top-40 left-40" fill="#10b981" style={{ animationDelay: '0.9s' }} />
-          <div className="absolute inset-0 [transform:scaleX(-1)]">
-            <Spotlight className="-top-20 left-0" fill="#10b981" style={{ animationDelay: '0.45s' }} />
-            <Spotlight className="-top-40 left-20" fill="#10b981" style={{ animationDelay: '0.75s' }} />
-            <Spotlight className="top-40 left-40" fill="#10b981" style={{ animationDelay: '1.05s' }} />
-          </div>
-        </div>
+      <section id="hero" className="relative overflow-visible pt-36 pb-4 px-6" style={{ zIndex: 2 }}>
         <div className="max-w-2xl mx-auto text-center relative z-30">
           <motion.div {...fade(0)}>
             <div
@@ -934,7 +936,7 @@ export default function Home() {
                 <path d="M22 2L15 22l-4-9-9-4 20-7z" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               Twiky Web is now live
-              <span style={{ color: dark ? '#333' : '#ccc', margin: '0 4px' }}>—</span>
+              <span style={{ color: dark ? '#888' : '#ccc', margin: '0 4px' }}>—</span>
               <Link href="/account/signup" className={`${textColor} hover:underline underline-offset-2`}>Get started →</Link>
             </div>
           </motion.div>
@@ -974,12 +976,12 @@ export default function Home() {
         </div>
       </section>
 
-      <ScrollDemo dark={dark} />
+      <div style={{ position: 'relative', zIndex: 4 }}><ScrollDemo dark={dark} /></div>
 
       {/* Logos */}
       <section className="py-8 px-6 relative z-10" style={{ borderTop: `1px solid ${divider}`, borderBottom: `1px solid ${divider}` }}>
         <div className="max-w-5xl mx-auto">
-          <p className={`text-center text-[11px] uppercase tracking-widest mb-6 ${dark ? 'text-[#333]' : 'text-[#bbb]'}`}>Trusted by teams at</p>
+          <p className={`text-center text-[11px] uppercase tracking-widest mb-6 ${dark ? 'text-[#888]' : 'text-[#bbb]'}`}>Trusted by teams at</p>
           <div className="flex items-center justify-center gap-10 flex-wrap">
             {LOGOS.map((name) => (
               <span
@@ -998,7 +1000,7 @@ export default function Home() {
       <section id="features" className="py-28 px-6 relative z-10">
         <div className="max-w-5xl mx-auto">
           <motion.div {...inView()} className="mb-16">
-            <p style={{ fontSize: 11, color: dark ? '#444' : '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Features</p>
+            <p style={{ fontSize: 11, color: dark ? '#999' : '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Features</p>
             <h2 className={`text-3xl md:text-4xl font-bold tracking-tight ${textColor} max-w-lg`}>
               Everything you need to communicate.
             </h2>
@@ -1018,16 +1020,16 @@ export default function Home() {
       <section id="security" className="py-20 px-6 relative z-10" style={{ borderTop: `1px solid ${divider}` }}>
         <div className="max-w-5xl mx-auto grid md:grid-cols-2 gap-16 items-center">
           <motion.div {...inView()}>
-            <p style={{ fontSize: 11, color: dark ? '#444' : '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Security</p>
+            <p style={{ fontSize: 11, color: dark ? '#999' : '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Security</p>
             <h2 className={`text-3xl font-bold tracking-tight ${textColor} mb-5`}>
               Privacy is not a feature. It&apos;s the foundation.
             </h2>
-            <p style={{ fontSize: 13, color: dark ? '#555' : '#888', lineHeight: 1.7, marginBottom: 32 }}>
+            <p style={{ fontSize: 13, color: dark ? '#aaa' : '#888', lineHeight: 1.7, marginBottom: 32 }}>
               Every message is protected with end-to-end encryption. Your data never touches our servers in a readable form.
             </p>
             <div className="space-y-3">
               {['End-to-end encryption by default', 'Zero-knowledge architecture', 'Open-source cryptography', 'GDPR & SOC 2 compliant'].map((item) => (
-                <div key={item} className="flex items-center gap-3" style={{ fontSize: 13, color: dark ? '#555' : '#888' }}>
+                <div key={item} className="flex items-center gap-3" style={{ fontSize: 13, color: dark ? '#aaa' : '#888' }}>
                   <div className="h-1.5 w-1.5 rounded-full bg-[#10b981] flex-shrink-0" />
                   {item}
                 </div>
@@ -1041,22 +1043,22 @@ export default function Home() {
             >
               <div className="flex items-center gap-2 mb-4">
                 <div className="h-2 w-2 rounded-full bg-[#10b981]" />
-                <span style={{ fontSize: 11, color: dark ? '#333' : '#aaa' }}>encryption.ts</span>
+                <span style={{ fontSize: 11, color: dark ? '#888' : '#aaa' }}>encryption.ts</span>
               </div>
-              <div className="space-y-1" style={{ color: dark ? '#333' : '#bbb' }}>
+              <div className="space-y-1" style={{ color: dark ? '#888' : '#bbb' }}>
                 <div>
-                  <span style={{ color: dark ? '#555' : '#aaa' }}>const</span>{' '}
+                  <span style={{ color: dark ? '#aaa' : '#aaa' }}>const</span>{' '}
                   <span style={{ color: dark ? '#777' : '#666' }}>key</span> ={' '}
-                  <span style={{ color: dark ? '#444' : '#999' }}>await</span> crypto.
+                  <span style={{ color: dark ? '#999' : '#999' }}>await</span> crypto.
                   <span style={{ color: dark ? 'white' : '#333' }}>generateKey</span>({'{'})
                 </div>
-                <div className="pl-4"><span style={{ color: dark ? '#555' : '#aaa' }}>name</span>: <span style={{ color: dark ? '#444' : '#888' }}>&apos;AES-GCM&apos;</span>,</div>
-                <div className="pl-4"><span style={{ color: dark ? '#555' : '#aaa' }}>length</span>: <span style={{ color: dark ? '#777' : '#666' }}>256</span>,</div>
+                <div className="pl-4"><span style={{ color: dark ? '#aaa' : '#aaa' }}>name</span>: <span style={{ color: dark ? '#999' : '#888' }}>&apos;AES-GCM&apos;</span>,</div>
+                <div className="pl-4"><span style={{ color: dark ? '#aaa' : '#aaa' }}>length</span>: <span style={{ color: dark ? '#777' : '#666' }}>256</span>,</div>
                 <div>{'}'});</div>
                 <div className="mt-3">
-                  <span style={{ color: dark ? '#555' : '#aaa' }}>const</span>{' '}
+                  <span style={{ color: dark ? '#aaa' : '#aaa' }}>const</span>{' '}
                   <span style={{ color: dark ? '#777' : '#666' }}>encrypted</span> ={' '}
-                  <span style={{ color: dark ? '#444' : '#999' }}>await</span>
+                  <span style={{ color: dark ? '#999' : '#999' }}>await</span>
                 </div>
                 <div className="pl-4">crypto.<span style={{ color: dark ? 'white' : '#333' }}>encrypt</span>(message, key);</div>
                 <div className="mt-3" style={{ color: dark ? '#2a2a2a' : '#ddd' }}>{'// only recipient can decrypt'}</div>
@@ -1069,11 +1071,11 @@ export default function Home() {
       <section id="team" className="py-14 px-6 relative z-10" style={{ borderTop: `1px solid ${divider}` }}>
         <div className="max-w-5xl mx-auto text-center">
           <motion.div {...inView()} className="max-w-2xl mx-auto">
-            <p style={{ fontSize: 11, color: dark ? '#444' : '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Team</p>
+            <p style={{ fontSize: 11, color: dark ? '#999' : '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Team</p>
             <h2 className={`text-3xl md:text-4xl font-bold tracking-tight ${textColor} mb-5`}>
               Built by a tight team.
             </h2>
-            <p style={{ fontSize: 13, color: dark ? '#555' : '#888', lineHeight: 1.7, marginBottom: 32 }}>
+            <p style={{ fontSize: 13, color: dark ? '#aaa' : '#888', lineHeight: 1.7, marginBottom: 32 }}>
               Meet the two people shaping the Twiky experience from interface to product direction.
             </p>
           </motion.div>
@@ -1089,7 +1091,7 @@ export default function Home() {
         <div className="max-w-xl mx-auto text-center">
           <motion.div {...inView()}>
             <h2 className={`text-4xl font-bold tracking-[-0.03em] ${textColor} mb-4`}>Start messaging today.</h2>
-            <p style={{ fontSize: 13, color: dark ? '#555' : '#888', marginBottom: 32 }}>
+            <p style={{ fontSize: 13, color: dark ? '#aaa' : '#888', marginBottom: 32 }}>
               Free forever. No credit card. Available on iOS, Android, and the web.
             </p>
             <div className="flex items-center justify-center gap-3">
@@ -1120,7 +1122,7 @@ export default function Home() {
             </svg>
             Twiky
           </div>
-          <div className="flex gap-6 text-[13px]" style={{ color: dark ? '#333' : '#bbb' }}>
+          <div className="flex gap-6 text-[13px]" style={{ color: dark ? '#888' : '#bbb' }}>
             {['Privacy', 'Terms', 'Security', 'API', 'Blog'].map((l) => (
               <a key={l} href="#" className="hover:text-current transition-colors">{l}</a>
             ))}
