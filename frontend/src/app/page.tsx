@@ -106,122 +106,142 @@ function UserAvatar({ photo, color = '#0ea5e9', initial = 'A', size = 28 }: {
 function TypingDots({ dark }: { dark: boolean }) {
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.85, y: 6 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.85, y: 6 }}
-      transition={{ duration: 0.18 }}
-      className="flex items-end gap-2 mb-1"
+      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 8 }} transition={{ duration: 0.18 }}
+      className="flex gap-2 items-end mb-1"
     >
-      <UserAvatar photo={ALEX_PHOTO} initial="A" size={24} />
-      <div
-        className="rounded-2xl rounded-bl-sm px-3.5 py-2.5 flex gap-1 items-center"
+      <UserAvatar photo={ALEX_PHOTO} initial="A" size={28} />
+      <div className="flex gap-1 items-center px-4 py-3 rounded-2xl"
         style={{
-          background: dark ? '#1e1e1e' : '#f0f0f0',
-          border: `1px solid ${dark ? '#2a2a2a' : '#e5e5e5'}`,
-        }}
-      >
-        {[0, 0.18, 0.36].map((d, i) => (
-          <motion.div
-            key={i}
-            style={{ width: 6, height: 6, borderRadius: '50%', background: dark ? '#555' : '#bbb' }}
-            animate={{ y: [0, -4, 0], opacity: [0.4, 1, 0.4] }}
-            transition={{ duration: 0.7, repeat: Infinity, delay: d }}
-          />
+          background: dark ? '#111111' : '#f1f5f9',
+          borderBottomLeftRadius: 4,
+        }}>
+        {[0, 0.15, 0.3].map((d, i) => (
+          <motion.div key={i}
+            style={{ width: 6, height: 6, borderRadius: '50%', background: dark ? '#555' : '#9ca3af' }}
+            animate={{ y: [0, -5, 0] }}
+            transition={{ duration: 0.5, repeat: Infinity, delay: d }} />
         ))}
       </div>
     </motion.div>
   );
 }
 
+const MSG_TIMES: Record<number, string> = {
+  1: '2:31 PM', 2: '2:32 PM', 3: '2:33 PM',
+  4: '2:33 PM', 5: '2:34 PM', 6: '2:34 PM', 7: '2:35 PM',
+};
+
 function ChatMsg({ msg, step, dark }: { msg: typeof MESSAGES[0]; step: number; dark: boolean }) {
   const visible = step >= msg.showAt;
+  const showExtras = step >= msg.showAt + 0.85;
+  const mutedBg = dark ? '#111111' : '#f1f5f9';
+  const mutedText = dark ? '#e5e5e5' : '#111111';
+
   return (
     <AnimatePresence>
       {visible && (
         <motion.div
-          initial={msg.isOwn ? { opacity: 0, x: 28, scale: 0.88, y: 4 } : { opacity: 0, x: -28, scale: 0.88, y: 4 }}
-          animate={{ opacity: 1, x: 0, scale: 1, y: 0 }}
-          transition={{ type: 'spring', stiffness: 500, damping: 32, mass: 0.7 }}
-          className={`flex items-end gap-2 ${msg.isOwn ? 'justify-end' : 'justify-start'} mb-1`}
+          className={`flex gap-2 mb-1.5 ${msg.isOwn ? 'justify-end' : 'justify-start'}`}
+          initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.18 }}
         >
-          {!msg.isOwn && <UserAvatar photo={ALEX_PHOTO} initial="A" size={26} />}
-
-          {msg.type === 'text' && (
-            <motion.div
-              className="max-w-[72%] rounded-2xl px-3.5 py-2 text-[12px] leading-relaxed"
-              style={{
-                background: msg.isOwn
-                  ? '#10b981'
-                  : dark ? '#1e1e1e' : '#f0f0f0',
-                color: msg.isOwn
-                  ? 'white'
-                  : dark ? 'white' : '#111',
-                borderRadius: msg.isOwn ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-                border: msg.isOwn ? 'none' : `1px solid ${dark ? '#2a2a2a' : '#e5e5e5'}`,
-                boxShadow: 'none',
-              }}
-            >
-              {msg.content}
-              {msg.isOwn && (
-                <span className="ml-2 text-[10px]" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                  {step >= msg.showAt + 1 ? '✓✓' : '✓'}
-                </span>
-              )}
-            </motion.div>
-          )}
-
-          {msg.type === 'image' && (
-            <motion.div
-              className="w-44 h-28 rounded-2xl overflow-hidden relative"
-              style={{ border: `1px solid ${dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}` }}
-              initial={{ filter: 'blur(8px)', scale: 0.95 }}
-              animate={{ filter: 'blur(0px)', scale: 1 }}
-              transition={{ duration: 0.55, ease: [0.25, 0.1, 0.25, 1] }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={CHAT_IMAGE}
-                alt="Shared photo"
-                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-              />
-              <div
-                className="absolute bottom-1.5 right-2 rounded-full px-1.5 py-0.5"
-                style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)' }}
-              >
-                <span className="text-[9px] text-white/90 font-medium">Photo</span>
-              </div>
-            </motion.div>
-          )}
-
-          {msg.type === 'voice' && (
-            <div
-              className="flex items-center gap-2.5 rounded-2xl px-3 py-2.5 min-w-[160px]"
-              style={{
-                background: dark ? '#1e1e1e' : '#f0f0f0',
-                border: `1px solid ${dark ? '#2a2a2a' : '#e5e5e5'}`,
-                borderRadius: '18px 18px 18px 4px',
-              }}
-            >
-              <motion.div
-                className="h-7 w-7 rounded-full bg-[#10b981] flex items-center justify-center flex-shrink-0"
-              >
-                <svg width="8" height="8" viewBox="0 0 24 24" fill="white"><path d="M5 3l14 9-14 9V3z" /></svg>
-              </motion.div>
-              <div className="flex items-center gap-[2px] h-5 flex-1">
-                {WAVE.map((h, i) => (
-                  <motion.div
-                    key={i}
-                    className="w-[2px] rounded-full bg-[#10b981]"
-                    style={{ height: `${Math.max(15, h * 0.55)}%` }}
-                    initial={{ scaleY: 0, opacity: 0 }}
-                    animate={{ scaleY: 1, opacity: 1 }}
-                    transition={{ delay: i * 0.018, duration: 0.25, ease: 'backOut' }}
-                  />
-                ))}
-              </div>
-              <span style={{ fontSize: 10, color: dark ? '#555' : '#aaa' }}>{msg.content}</span>
+          {!msg.isOwn && (
+            <div className="flex-shrink-0 self-end">
+              <UserAvatar photo={ALEX_PHOTO} initial="A" size={28} />
             </div>
           )}
+
+          <div className={`flex flex-col max-w-[75%] ${msg.isOwn ? 'items-end' : 'items-start'}`}>
+            {msg.type === 'text' && (
+              <div style={{
+                padding: '8px 14px',
+                background: msg.isOwn ? '#10b981' : mutedBg,
+                color: msg.isOwn ? 'white' : mutedText,
+                borderRadius: 18,
+                borderBottomRightRadius: msg.isOwn ? 4 : 18,
+                borderBottomLeftRadius: msg.isOwn ? 18 : 4,
+                fontSize: 13,
+                lineHeight: 1.5,
+              }}>
+                {msg.content}
+              </div>
+            )}
+
+            {msg.type === 'image' && (
+              <div className="relative">
+                <motion.div className="overflow-hidden"
+                  style={{ borderRadius: 18, borderBottomLeftRadius: 4, maxWidth: 200 }}
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={CHAT_IMAGE} alt="Shared photo"
+                    style={{ width: 200, height: 130, objectFit: 'cover', display: 'block' }} />
+                  <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, transparent 50%, rgba(0,0,0,0.35) 100%)' }} />
+                </motion.div>
+                <AnimatePresence>
+                  {showExtras && (
+                    <motion.button
+                      initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                      transition={{ duration: 0.15 }}
+                      className="flex items-center gap-1 border rounded-full px-2 py-0.5 text-xs absolute -bottom-3 left-2"
+                      style={{
+                        background: dark ? '#111111' : '#ffffff',
+                        border: `1px solid ${dark ? '#2a2a2a' : '#e5e7eb'}`,
+                      }}>
+                      <span style={{ fontSize: 11 }}>❤️</span>
+                      <span style={{ fontSize: 10, color: dark ? '#9ca3af' : '#6b7280' }}>2</span>
+                    </motion.button>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+
+            {msg.type === 'voice' && (
+              <div className="flex items-center gap-2.5 min-w-[180px]" style={{
+                padding: '8px 14px',
+                background: mutedBg,
+                borderRadius: 18,
+                borderBottomLeftRadius: 4,
+              }}>
+                <div className="h-7 w-7 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{ background: 'rgba(16,185,129,0.15)' }}>
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="#10b981"><path d="M5 3l14 9-14 9V3z" /></svg>
+                </div>
+                <div className="flex items-center gap-px h-7 flex-1">
+                  {WAVE.map((h, i) => (
+                    <motion.div key={i} className="w-[2px] rounded-full"
+                      style={{ height: `${Math.max(15, h * 0.55)}%`, background: 'rgba(16,185,129,0.6)' }}
+                      initial={{ scaleY: 0 }} animate={{ scaleY: 1 }}
+                      transition={{ delay: i * 0.015, duration: 0.2 }} />
+                  ))}
+                </div>
+                <span style={{ fontSize: 10, color: dark ? '#6b7280' : '#9ca3af' }}>{msg.content}</span>
+              </div>
+            )}
+
+            {/* Timestamp */}
+            <AnimatePresence>
+              {showExtras && (
+                <motion.div
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}
+                  className="flex items-center gap-1 mt-0.5 px-0.5"
+                  style={{ marginTop: msg.type === 'image' ? 14 : 2 }}
+                >
+                  <span style={{ fontSize: 11, color: dark ? '#374151' : '#9ca3af' }}>
+                    {MSG_TIMES[msg.id]}
+                  </span>
+                  {msg.isOwn && (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                      stroke={step >= msg.showAt + 1 ? '#3b82f6' : (dark ? '#374151' : '#9ca3af')}
+                      strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="18 8 12 14 6 8" style={{ display: 'none' }} />
+                      <path d="M2 12l5 5L22 4M9 12l5 5" />
+                    </svg>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </motion.div>
       )}
     </AnimatePresence>
@@ -358,15 +378,15 @@ function ScrollDemo({ dark }: { dark: boolean }) {
   const showTyping = !!nextReceivedMsg;
   const callout = CALLOUTS.find((c) => step >= c.range[0] && step < c.range[1]) ?? CALLOUTS[CALLOUTS.length - 1];
 
-  const cardBorder  = dark ? '#1e1e1e' : '#e5e7eb';
+  const cardBorder  = dark ? '#1c1c1c' : '#e5e7eb';
   const titleBarBg  = dark ? '#0d0d0d' : '#f5f5f7';
-  const sidebarBg   = dark ? '#0a0a0a' : '#f9fafb';
-  const chatAreaBg  = dark ? '#080808' : '#fafafa';
+  const sidebarBg   = dark ? '#0a0a0a' : '#ffffff';
+  const chatAreaBg  = dark ? '#0a0a0a' : '#ffffff';
   const headerBg    = dark ? '#0a0a0a' : '#ffffff';
 
   return (
     <section ref={sectionRef} className="relative" style={{ height: '290vh' }}>
-      <div className="sticky top-0 h-screen flex items-end overflow-hidden pb-16">
+      <div className="sticky top-0 h-screen flex items-end overflow-hidden pb-10">
         <div className="w-full max-w-4xl mx-auto px-6">
 
           {/* App window */}
@@ -406,13 +426,14 @@ function ScrollDemo({ dark }: { dark: boolean }) {
             )}
 
             <div
-              className="relative z-10 w-full rounded-2xl overflow-hidden"
+              className="relative z-10 w-full overflow-hidden"
               style={{
+                borderRadius: 12,
                 border: `1px solid ${cardBorder}`,
                 background: chatAreaBg,
                 boxShadow: dark
-                  ? '0 40px 100px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.03), inset 0 1px 0 rgba(255,255,255,0.04)'
-                  : '0 40px 100px rgba(0,0,0,0.14), 0 0 0 1px rgba(0,0,0,0.05)',
+                  ? '0 24px 64px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.02)'
+                  : '0 24px 64px rgba(0,0,0,0.09), 0 0 0 1px rgba(0,0,0,0.04)',
               }}
             >
               {/* macOS title bar */}
@@ -427,7 +448,7 @@ function ScrollDemo({ dark }: { dark: boolean }) {
                 <div
                   className="h-5 rounded-md flex items-center gap-1.5 px-3"
                   style={{
-                    background: dark ? '#1a1a1a' : '#ebebeb',
+                    background: dark ? '#111111' : '#ebebeb',
                     border: `1px solid ${dark ? '#2a2a2a' : '#ddd'}`,
                     minWidth: 168,
                   }}
@@ -443,59 +464,77 @@ function ScrollDemo({ dark }: { dark: boolean }) {
               <div className="relative z-10 flex" style={{ height: 480 }}>
               {/* Sidebar */}
               <div
-                className="w-56 flex-col hidden sm:flex"
+                className="w-60 flex-col hidden sm:flex"
                 style={{ background: sidebarBg, borderRight: `1px solid ${cardBorder}` }}
               >
-                <div className="px-3 py-3" style={{ borderBottom: `1px solid ${cardBorder}` }}>
-                  <p style={{ fontSize: 10, color: dark ? '#333' : '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600, marginBottom: 8 }}>
-                    Messages
-                  </p>
-                  <div
-                    className="h-7 rounded-lg flex items-center px-2.5 gap-2"
-                    style={{ background: dark ? '#111' : '#efefef', border: `1px solid ${dark ? '#1e1e1e' : '#e5e5e5'}` }}
-                  >
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={dark ? '#333' : '#ccc'} strokeWidth="2">
+                {/* Header */}
+                <div className="px-4 py-3 flex-shrink-0" style={{ borderBottom: `1px solid ${cardBorder}` }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <span style={{ fontSize: 15, fontWeight: 700, color: dark ? '#ededed' : '#111' }}>Messages</span>
+                    <div className="h-7 w-7 rounded-full flex items-center justify-center cursor-pointer"
+                      style={{ background: dark ? '#111111' : '#f1f5f9' }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={dark ? '#6b7280' : '#9ca3af'} strokeWidth="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                    </div>
+                  </div>
+                  <div className="relative flex items-center h-9 rounded-full px-3 gap-2"
+                    style={{ background: dark ? '#111111' : '#f1f5f9' }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={dark ? '#6b7280' : '#9ca3af'} strokeWidth="2">
                       <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
                     </svg>
-                    <div style={{ height: 6, width: 80, borderRadius: 3, background: dark ? '#1e1e1e' : '#e0e0e0' }} />
+                    <span style={{ fontSize: 12, color: dark ? '#374151' : '#9ca3af' }}>Search...</span>
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-hidden py-1">
+                {/* Filter tabs */}
+                <div className="px-3 py-2 flex gap-1 flex-shrink-0" style={{ borderBottom: `1px solid ${cardBorder}` }}>
+                  {['All', 'Unread', 'Groups'].map((tab, i) => (
+                    <div key={tab} className="flex items-center gap-1 h-6 px-3 rounded-full cursor-pointer"
+                      style={{
+                        background: i === 0 ? '#10b981' : 'transparent',
+                        fontSize: 11, fontWeight: 500,
+                        color: i === 0 ? 'white' : dark ? '#6b7280' : '#9ca3af',
+                      }}>
+                      {tab}
+                      {tab === 'Unread' && (
+                        <span className="rounded-full px-1 text-[9px] font-bold"
+                          style={{ background: '#10b981', color: 'white' }}>8</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Chat list */}
+                <div className="flex-1 overflow-hidden">
                   {CONTACTS.map((item, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-2.5 px-3 py-2.5 cursor-pointer"
+                    <div key={i} className="flex items-center gap-3 px-4 py-3 cursor-pointer"
                       style={{
                         background: i === 0 ? (dark ? 'rgba(16,185,129,0.08)' : 'rgba(16,185,129,0.07)') : 'transparent',
-                        borderLeft: i === 0 ? '2px solid #10b981' : '2px solid transparent',
-                      }}
-                    >
+                        borderRight: i === 0 ? '2px solid #10b981' : '2px solid transparent',
+                      }}>
                       <div className="relative flex-shrink-0">
-                        <UserAvatar photo={item.photo} color={item.color} initial={item.name[0]} size={34} />
+                        <UserAvatar photo={item.photo} color={item.color} initial={item.name[0]} size={40} />
                         {item.online && (
-                          <div
-                            className="absolute -bottom-px -right-px h-2.5 w-2.5 rounded-full bg-[#10b981]"
-                            style={{ border: `2px solid ${sidebarBg}` }}
-                          />
+                          <div className="absolute -bottom-px -right-px h-3 w-3 rounded-full bg-[#10b981]"
+                            style={{ border: `2px solid ${sidebarBg}` }} />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
-                          <span style={{ fontSize: 12, fontWeight: 600, color: i === 0 ? (dark ? 'white' : '#111') : (dark ? '#555' : '#999') }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: i === 0 ? (dark ? '#ededed' : '#111') : (dark ? '#6b7280' : '#6b7280') }}>
                             {item.name}
                           </span>
-                          <span style={{ fontSize: 9, color: dark ? '#2a2a2a' : '#bbb' }}>{item.time}</span>
+                          <span style={{ fontSize: 10, color: dark ? '#374151' : '#9ca3af' }}>{item.time}</span>
                         </div>
                         <div className="flex items-center justify-between gap-1">
-                          <p style={{ fontSize: 10, color: dark ? '#2a2a2a' : '#bbb', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                          <p style={{ fontSize: 11, color: dark ? '#374151' : '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                             {item.preview}
                           </p>
                           {item.unread > 0 && (
-                            <div
-                              className="h-4 min-w-[16px] rounded-full flex items-center justify-center px-1 flex-shrink-0"
-                              style={{ backgroundColor: '#10b981' }}
-                            >
+                            <div className="h-4 min-w-[16px] rounded-full flex items-center justify-center px-1 flex-shrink-0"
+                              style={{ backgroundColor: '#10b981' }}>
                               <span style={{ fontSize: 9, color: 'white', fontWeight: 700 }}>{item.unread}</span>
                             </div>
                           )}
@@ -504,40 +543,57 @@ function ScrollDemo({ dark }: { dark: boolean }) {
                     </div>
                   ))}
                 </div>
+
+                {/* Profile footer */}
+                <div className="flex items-center gap-3 px-4 py-3 flex-shrink-0" style={{ borderTop: `1px solid ${cardBorder}` }}>
+                  <div className="relative flex-shrink-0">
+                    <UserAvatar photo="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop" initial="Y" size={34} />
+                    <div className="absolute -bottom-px -right-px h-2.5 w-2.5 rounded-full bg-[#10b981]"
+                      style={{ border: `2px solid ${sidebarBg}` }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p style={{ fontSize: 12, fontWeight: 600, color: dark ? '#ededed' : '#111' }}>You</p>
+                    <p style={{ fontSize: 11, color: '#10b981' }}>Available</p>
+                  </div>
+                  <div className="h-7 w-7 rounded-full flex items-center justify-center cursor-pointer"
+                    style={{ background: dark ? '#111111' : '#f1f5f9' }}>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={dark ? '#6b7280' : '#9ca3af'} strokeWidth="2">
+                      <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                  </div>
+                </div>
               </div>
 
               {/* Main chat area */}
               <div className="flex-1 flex flex-col min-w-0">
                 {/* Chat header */}
-                <div
-                  className="h-13 flex items-center px-4 gap-3 flex-shrink-0"
-                  style={{ height: 52, borderBottom: `1px solid ${cardBorder}`, background: headerBg }}
-                >
-                  <div className="relative">
+                <div className="flex items-center px-4 gap-3 flex-shrink-0"
+                  style={{ height: 56, borderBottom: `1px solid ${cardBorder}`, background: headerBg }}>
+                  <div className="relative flex-shrink-0 cursor-pointer">
                     <UserAvatar photo={ALEX_PHOTO} initial="A" size={36} />
-                    <motion.div
-                      className="absolute -bottom-px -right-px h-2.5 w-2.5 rounded-full bg-[#10b981]"
+                    <motion.div className="absolute -bottom-px -right-px h-2.5 w-2.5 rounded-full bg-[#10b981]"
                       style={{ border: `2px solid ${headerBg}` }}
-                      animate={{ scale: [1, 1.3, 1] }}
-                      transition={{ duration: 2, repeat: Infinity }}
-                    />
+                      animate={{ opacity: [1, 0.4, 1] }} transition={{ duration: 1.8, repeat: Infinity }} />
                   </div>
-                  <div>
-                    <p style={{ fontSize: 13, fontWeight: 700, color: dark ? 'white' : '#111', lineHeight: 1.2 }}>Alex</p>
-                    <p style={{ fontSize: 10, color: '#10b981' }}>● Online</p>
+                  <div className="flex-1 min-w-0">
+                    <p style={{ fontSize: 13, fontWeight: 600, color: dark ? '#ededed' : '#111', lineHeight: 1.2 }}>Alex</p>
+                    <div className="flex items-center gap-1.5">
+                      <motion.span className="h-1.5 w-1.5 rounded-full bg-[#10b981]"
+                        animate={{ opacity: [1, 0.4, 1] }} transition={{ duration: 1.8, repeat: Infinity }} />
+                      <span style={{ fontSize: 11, color: '#10b981', fontWeight: 500 }}>Online</span>
+                    </div>
                   </div>
-                  <div className="ml-auto flex gap-1.5">
+                  <div className="flex gap-1 flex-shrink-0">
                     {[
-                      'M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z',
-                      'M23 7l-7 5 7 5V7zM1 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V5z',
-                    ].map((d, i) => (
-                      <div
-                        key={i}
-                        className="h-7 w-7 rounded-lg flex items-center justify-center"
-                        style={{ background: dark ? '#111' : '#f5f5f5', border: `1px solid ${cardBorder}` }}
-                      >
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={dark ? '#444' : '#aaa'} strokeWidth="2">
-                          <path d={d} strokeLinecap="round" strokeLinejoin="round" />
+                      <><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></>,
+                      <><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></>,
+                      <><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></>,
+                      <><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></>,
+                    ].map((icon, i) => (
+                      <div key={i} className="h-8 w-8 rounded-full flex items-center justify-center cursor-pointer"
+                        style={{ color: dark ? '#6b7280' : '#9ca3af' }}>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          {icon}
                         </svg>
                       </div>
                     ))}
@@ -546,59 +602,80 @@ function ScrollDemo({ dark }: { dark: boolean }) {
 
                 {/* Messages */}
                 <div
-                  className="flex-1 px-4 py-3 flex flex-col justify-end overflow-hidden gap-0.5 relative"
+                  className="flex-1 px-4 py-3 flex flex-col justify-end overflow-hidden relative"
                   style={{
-                    background: chatAreaBg,
-                    backgroundImage: `radial-gradient(circle, ${dark ? 'rgba(255,255,255,0.015)' : 'rgba(0,0,0,0.015)'} 1px, transparent 1px)`,
-                    backgroundSize: '20px 20px',
+                    background: dark ? '#0a0a0a' : '#ffffff',
                   }}
                 >
-                  {MESSAGES.map((msg) => (
-                    <ChatMsg key={msg.id} msg={msg} step={step} dark={dark} />
-                  ))}
-                  <AnimatePresence>
-                    {showTyping && <TypingDots dark={dark} />}
-                  </AnimatePresence>
+                  {/* Subtle ambient light */}
+                  <div className="absolute inset-0 pointer-events-none" style={{
+                    background: dark
+                      ? 'radial-gradient(ellipse at 50% 0%, rgba(16,185,129,0.04) 0%, transparent 60%)'
+                      : 'radial-gradient(ellipse at 50% 0%, rgba(16,185,129,0.04) 0%, transparent 60%)',
+                  }} />
+
+                  {/* Date separator */}
+                  <div className="flex items-center gap-3 my-3 relative z-10">
+                    <div className="flex-1 h-px" style={{ background: dark ? '#1e1e1e' : '#e5e7eb' }} />
+                    <span className="text-[11px] font-medium px-3 py-1 rounded-full"
+                      style={{
+                        background: dark ? '#111111' : '#f1f5f9',
+                        color: dark ? '#6b7280' : '#9ca3af',
+                      }}>Today</span>
+                    <div className="flex-1 h-px" style={{ background: dark ? '#1e1e1e' : '#e5e7eb' }} />
+                  </div>
+
+                  <div className="relative z-10">
+                    {MESSAGES.map((msg) => (
+                      <ChatMsg key={msg.id} msg={msg} step={step} dark={dark} />
+                    ))}
+                    <AnimatePresence>
+                      {showTyping && <TypingDots dark={dark} />}
+                    </AnimatePresence>
+                  </div>
                 </div>
 
                 {/* Composer */}
-                <div
-                  className="flex items-center px-3 gap-2 flex-shrink-0"
-                  style={{ height: 52, borderTop: `1px solid ${cardBorder}`, background: headerBg }}
-                >
-                  <div
-                    className="h-7 w-7 rounded-lg flex-shrink-0 flex items-center justify-center"
-                    style={{ background: dark ? '#111' : '#f5f5f5', border: `1px solid ${cardBorder}` }}
-                  >
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={dark ? '#333' : '#ccc'} strokeWidth="2">
-                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" strokeLinecap="round"/>
-                    </svg>
+                <div className="flex-shrink-0" style={{ borderTop: `1px solid ${cardBorder}`, background: headerBg }}>
+                  <div className="flex items-end gap-2 p-3">
+                    {/* Emoji */}
+                    <div className="h-9 w-9 flex-shrink-0 rounded-full flex items-center justify-center cursor-pointer"
+                      style={{ color: dark ? '#6b7280' : '#9ca3af' }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                        <line x1="9" y1="9" x2="9.01" y2="9" strokeWidth="2.5"/>
+                        <line x1="15" y1="9" x2="15.01" y2="9" strokeWidth="2.5"/>
+                      </svg>
+                    </div>
+                    {/* Attachment */}
+                    <div className="h-9 w-9 flex-shrink-0 rounded-full flex items-center justify-center cursor-pointer"
+                      style={{ color: dark ? '#6b7280' : '#9ca3af' }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                      </svg>
+                    </div>
+                    {/* Textarea-style input */}
+                    <div className="flex-1 flex items-center rounded-2xl px-4 gap-2 min-h-[40px]"
+                      style={{ background: dark ? '#111111' : '#f1f5f9' }}>
+                      <motion.div className="h-2 rounded-full"
+                        style={{ background: dark ? '#111111' : '#dde3eb' }}
+                        animate={{ width: ['40px', '100px', '70px', '90px'] }}
+                        transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }} />
+                      <motion.div style={{ height: 14, width: 1.5, borderRadius: 1, background: dark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.35)' }}
+                        animate={{ opacity: [1, 0, 1] }} transition={{ duration: 0.8, repeat: Infinity }} />
+                    </div>
+                    {/* Mic / Send */}
+                    <motion.div className="h-9 w-9 flex-shrink-0 rounded-full flex items-center justify-center cursor-pointer"
+                      style={{ background: '#10b981' }}
+                      whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.92 }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round">
+                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                        <line x1="12" y1="19" x2="12" y2="22"/>
+                      </svg>
+                    </motion.div>
                   </div>
-                  <div
-                    className="flex-1 h-7 rounded-lg flex items-center px-2.5 gap-2"
-                    style={{ background: dark ? '#111' : '#f5f5f5', border: `1px solid ${cardBorder}` }}
-                  >
-                    <motion.div
-                      className="h-[7px] rounded"
-                      style={{ background: dark ? '#2a2a2a' : '#e0e0e0' }}
-                      animate={{ width: ['40px', '90px', '60px', '80px'] }}
-                      transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-                    />
-                    <motion.div
-                      style={{ height: 12, width: 1, background: dark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.35)' }}
-                      animate={{ opacity: [1, 0, 1] }}
-                      transition={{ duration: 0.8, repeat: Infinity }}
-                    />
-                  </div>
-                  <motion.div
-                    className="h-7 w-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                    style={{ background: '#10b981' }}
-                    whileHover={{ scale: 1.07 }}
-                  >
-                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-                      <path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </motion.div>
                 </div>
               </div>
             </div>
@@ -691,7 +768,7 @@ export default function Home() {
   const pageBg     = dark ? 'bg-black'       : 'bg-[#f5f5f7]';
   const textColor  = dark ? 'text-white'     : 'text-[#1d1d1f]';
   const textMuted  = dark ? 'text-[#666]'   : 'text-[#6e6e73]';
-  const divider    = dark ? '#111'           : '#e5e5e5';
+  const divider    = dark ? '#2a2a2a'        : '#e5e5e5';
   const dotOverlay = dark ? '#ffffff07'      : '#00000005';
 
   const navShellClass = scrolled
@@ -978,7 +1055,7 @@ export default function Home() {
           <motion.div {...inView(0.1)}>
             <div
               className="rounded-xl p-6 font-mono text-[12px]"
-              style={{ border: `1px solid ${dark ? '#1a1a1a' : '#e5e5e5'}`, background: dark ? '#080808' : '#fafafa' }}
+              style={{ border: `1px solid ${dark ? '#2a2a2a' : '#e5e5e5'}`, background: dark ? '#0a0a0a' : '#fafafa' }}
             >
               <div className="flex items-center gap-2 mb-4">
                 <div className="h-2 w-2 rounded-full bg-[#10b981]" />

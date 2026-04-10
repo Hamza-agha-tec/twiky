@@ -119,6 +119,10 @@
   * {
     @apply border-border outline-ring/50;
   }
+  ::selection {
+    background: rgba(16, 185, 129, 0.28);
+    color: inherit;
+  }
   body {
     @apply bg-background text-foreground;
   }
