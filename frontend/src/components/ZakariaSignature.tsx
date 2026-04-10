@@ -13,6 +13,7 @@ type EffectProps = {
   strokeColor?: string;
   accentColor?: string;
   strokeWidth?: number;
+  onComplete?: () => void;
 };
 
 function ZakariaEffect({
@@ -21,6 +22,7 @@ function ZakariaEffect({
   strokeColor = "currentColor",
   accentColor = "#facc15",
   strokeWidth = 10,
+  onComplete,
 }: EffectProps) {
   const calc = (value: number) => value * speed;
 
@@ -54,7 +56,7 @@ function ZakariaEffect({
       <motion.path animate={animatePath} d="M542 194 C548 192 556 184 562 172 C558 148 564 114 590 100 C610 90 628 98 630 120 C632 142 618 170 598 186 C582 198 568 198 562 188 C556 178 564 160 580 152 C596 146 616 148 632 160 C644 170 650 182 652 192 C654 198 660 196 668 184" initial={initialPath} transition={{ duration: calc(0.7), ease: "easeOut", delay: calc(4.6), opacity: { duration: 0.35, delay: calc(4.6) } }} />
       <motion.path animate={animatePath} d="M668 184 C678 162 690 148 698 148 C706 148 706 158 700 172 C694 186 682 196 672 198" initial={initialPath} transition={{ duration: calc(0.3), ease: "easeOut", delay: calc(5.3), opacity: { duration: 0.15, delay: calc(5.3) } }} />
       <motion.circle animate={{ opacity: 1, scale: 1 }} cx="543" cy="74" fill={accentColor} initial={{ opacity: 0, scale: 0 }} r="5" stroke="none" transition={{ duration: calc(0.3), ease: "easeOut", delay: calc(6) }} />
-      <motion.path animate={animatePath} d="M80 218 C180 228 380 232 560 222 C640 216 680 208 700 198" initial={initialPath} stroke={accentColor} transition={{ duration: calc(0.6), ease: "easeInOut", delay: calc(6.3), opacity: { duration: 0.3, delay: calc(6.3) } }} />
+      <motion.path animate={animatePath} d="M80 218 C180 228 380 232 560 222 C640 216 680 208 700 198" initial={initialPath} stroke={accentColor} transition={{ duration: calc(0.6), ease: "easeInOut", delay: calc(6.3), opacity: { duration: 0.3, delay: calc(6.3) } }} onAnimationComplete={onComplete} />
     </motion.svg>
   );
 }
@@ -65,6 +67,7 @@ function HamzaEffect({
   strokeColor = "currentColor",
   accentColor = "#38bdf8",
   strokeWidth = 10,
+  onComplete,
 }: EffectProps) {
   const calc = (value: number) => value * speed;
 
@@ -93,7 +96,7 @@ function HamzaEffect({
       <motion.path animate={animatePath} d="M506 200 C534 198 562 198 590 200 C600 200 608 194 614 182" initial={initialPath} transition={{ duration: calc(0.34), ease: "easeOut", delay: calc(2.98), opacity: { duration: 0.16, delay: calc(2.98) } }} />
       <motion.path animate={animatePath} d="M614 182 C608 158 614 118 640 102 C660 92 678 100 680 122 C682 144 668 172 648 186 C632 196 618 196 614 188 C608 178 615 162 630 155 C646 148 666 150 682 162 C692 170 698 180 700 190 C702 196 706 194 712 182" initial={initialPath} transition={{ duration: calc(0.72), ease: "easeOut", delay: calc(3.32), opacity: { duration: 0.32, delay: calc(3.32) } }} />
       <motion.path animate={animatePath} d="M712 182 C724 164 738 152 750 152 C760 152 762 162 756 174 C750 188 736 196 724 198" initial={initialPath} transition={{ duration: calc(0.3), ease: "easeOut", delay: calc(4.04), opacity: { duration: 0.15, delay: calc(4.04) } }} />
-      <motion.path animate={animatePath} d="M90 220 C210 230 410 232 604 224 C686 220 734 210 756 198" initial={initialPath} stroke={accentColor} transition={{ duration: calc(0.58), ease: "easeInOut", delay: calc(4.32), opacity: { duration: 0.22, delay: calc(4.32) } }} />
+      <motion.path animate={animatePath} d="M90 220 C210 230 410 232 604 224 C686 220 734 210 756 198" initial={initialPath} stroke={accentColor} transition={{ duration: calc(0.58), ease: "easeInOut", delay: calc(4.32), opacity: { duration: 0.22, delay: calc(4.32) } }} onAnimationComplete={onComplete} />
     </motion.svg>
   );
 }
@@ -101,9 +104,11 @@ function HamzaEffect({
 export function TeamSignature({
   name,
   dark,
+  onComplete,
 }: {
   name: SignatureName;
   dark?: boolean;
+  onComplete?: () => void;
 }) {
   const stroke = dark ? "#f5f5f5" : "#171717";
   const accent = name === "Zakaria"
@@ -126,6 +131,7 @@ export function TeamSignature({
           speed={0.52}
           strokeColor={stroke}
           strokeWidth={9}
+          onComplete={onComplete}
         />
       ) : (
         <HamzaEffect
@@ -134,6 +140,7 @@ export function TeamSignature({
           speed={0.72}
           strokeColor={stroke}
           strokeWidth={9}
+          onComplete={onComplete}
         />
       )}
     </motion.div>
