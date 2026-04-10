@@ -770,6 +770,7 @@ export default function Home() {
   const isAuthenticated = !!user;
   const router = useRouter();
   const [scrolled, setScrolled] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dark, setDark] = useState(() => {
     if (typeof window === 'undefined') return true;
     return localStorage.getItem('landing-theme') !== 'light';
@@ -848,22 +849,33 @@ export default function Home() {
       {/* Nav */}
       <nav className="fixed top-0 left-0 right-0 z-[200] px-4 transition-all duration-300">
         <div className={`mx-auto h-14 px-6 flex items-center justify-between transition-all duration-300 ${navShellClass}`}>
-          <div className="flex items-center gap-6">
-            <button onClick={() => scrollToSection('hero')} className="flex items-center gap-2 font-semibold text-sm">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill={dark ? 'white' : '#1d1d1f'}>
-                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-              </svg>
-              Twiky
-            </button>
-            <div className={`hidden md:flex items-center gap-5 text-[13px] ${textMuted}`}>
-              <button onClick={() => scrollToSection('features')} className="hover:text-current transition-colors">Features</button>
-              <button onClick={() => scrollToSection('team')} className="hover:text-current transition-colors">Team</button>
-              <button onClick={() => scrollToSection('security')} className="hover:text-current transition-colors">Security</button>
-              <button onClick={() => scrollToSection('download')} className="hover:text-current transition-colors">Download</button>
-            </div>
+          {/* Logo */}
+          <button onClick={() => scrollToSection('hero')} className="flex items-center gap-2 font-semibold text-sm">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill={dark ? 'white' : '#1d1d1f'}>
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+            </svg>
+            Twiky
+          </button>
+
+          {/* Desktop links */}
+          <div className={`hidden md:flex items-center gap-1 text-[13px] ${textMuted}`}>
+            {['features','team','security','download'].map((s) => (
+              <button
+                key={s}
+                onClick={() => scrollToSection(s)}
+                className="relative px-3 py-1.5 rounded-lg capitalize transition-colors hover:text-current group"
+                style={{ color: 'inherit' }}
+              >
+                <span className="relative z-10">{s}</span>
+                <span className="absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                  style={{ background: dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' }} />
+              </button>
+            ))}
           </div>
+
+          {/* Right actions */}
           <div className="flex items-center gap-2 text-[13px]">
-            {/* Dark / light toggle */}
+            {/* Theme toggle */}
             <button
               onClick={() => {
                 document.documentElement.classList.add('no-transitions');
@@ -875,48 +887,85 @@ export default function Home() {
                 requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.classList.remove('no-transitions')));
               }}
               aria-label="Toggle theme"
-              className="hidden sm:inline-flex h-8 w-8 items-center justify-center rounded-md backdrop-blur-md transition-colors"
+              className="h-8 w-8 inline-flex items-center justify-center rounded-md backdrop-blur-md"
               style={{
                 background: dark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.6)',
                 border: dark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,255,255,0.7)',
-                boxShadow: dark ? '0 8px 24px rgba(0,0,0,0.22)' : '0 8px 20px rgba(15,23,42,0.08)',
                 color: dark ? '#fafafa' : '#111827',
               }}
             >
               {dark ? (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-                </svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
               ) : (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <circle cx="12" cy="12" r="4"/>
-                  <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
-                </svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
               )}
             </button>
 
+            {/* CTA — always visible */}
             {isAuthenticated ? (
-              <button
-                onClick={() => router.push('/chat')}
-                className="h-8 px-4 rounded-md font-medium text-sm transition-colors"
-                style={{ background: dark ? 'white' : '#1d1d1f', color: dark ? 'black' : 'white' }}
-              >
+              <button onClick={() => router.push('/chat')} className="hidden sm:block h-8 px-4 rounded-md font-medium text-sm" style={{ background: dark ? 'white' : '#1d1d1f', color: dark ? 'black' : 'white' }}>
                 Open App
               </button>
             ) : (
               <>
-                <Link href="/account/signin" className={`${textMuted} hover:text-current transition-colors`}>Log in</Link>
-                <Link
-                  href="/account/signup"
-                  className="h-8 px-4 rounded-md font-medium text-sm transition-colors inline-flex items-center"
-                  style={{ background: dark ? 'white' : '#1d1d1f', color: dark ? 'black' : 'white' }}
-                >
+                <Link href="/account/signin" className={`hidden sm:block ${textMuted} hover:text-current transition-colors`}>Log in</Link>
+                <Link href="/account/signup" className="h-8 px-4 rounded-md font-medium text-sm inline-flex items-center" style={{ background: dark ? 'white' : '#1d1d1f', color: dark ? 'black' : 'white' }}>
                   Sign up
                 </Link>
               </>
             )}
+
+            {/* Hamburger — mobile only */}
+            <button
+              onClick={() => setMobileMenuOpen(o => !o)}
+              className="md:hidden h-8 w-8 inline-flex items-center justify-center rounded-md"
+              style={{ color: dark ? '#fafafa' : '#111827' }}
+              aria-label="Menu"
+            >
+              {mobileMenuOpen ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+              )}
+            </button>
           </div>
         </div>
+
+        {/* Mobile menu */}
+        <AnimatePresence>
+          {mobileMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18 }}
+              className="md:hidden mx-auto mt-1 rounded-2xl overflow-hidden"
+              style={{
+                background: dark ? 'rgba(10,10,10,0.95)' : 'rgba(255,255,255,0.95)',
+                border: dark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.08)',
+                backdropFilter: 'blur(20px)',
+              }}
+            >
+              {['features', 'team', 'security', 'download'].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => { scrollToSection(s); setMobileMenuOpen(false); }}
+                  className="w-full text-left px-6 py-4 text-sm capitalize border-b last:border-0 flex items-center justify-between group transition-colors duration-150"
+                  style={{ color: dark ? '#ccc' : '#444', borderColor: dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <span>{s.charAt(0).toUpperCase() + s.slice(1)}</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                    className="opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-all duration-150"
+                    style={{ color: dark ? '#666' : '#aaa' }}>
+                    <path d="M5 12h14M12 5l7 7-7 7"/>
+                  </svg>
+                </button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </nav>
 
       {/* Hero */}
