@@ -754,6 +754,35 @@ export default function Home() {
     return () => window.removeEventListener('scroll', fn);
   }, []);
 
+  const scrollToSection = (id: string) => {
+    const target = document.getElementById(id);
+    if (!target) return;
+
+    const startY = window.scrollY;
+    const targetY = target.getBoundingClientRect().top + window.scrollY - 76;
+    const distance = targetY - startY;
+    const duration = 850;
+    let startTime: number | null = null;
+
+    const easeInOutCubic = (t: number) =>
+      t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+    const step = (timestamp: number) => {
+      if (startTime === null) startTime = timestamp;
+      const elapsed = timestamp - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = easeInOutCubic(progress);
+
+      window.scrollTo(0, startY + distance * eased);
+
+      if (progress < 1) {
+        window.requestAnimationFrame(step);
+      }
+    };
+
+    window.requestAnimationFrame(step);
+  };
+
   const FEATURES = [
     { label: 'Channels & Groups',      desc: 'Create channels for unlimited audiences or group chats with thousands of members.' },
     { label: 'End-to-End Encryption',  desc: 'Every message is encrypted. Zero-knowledge architecture — not even we can read it.' },
@@ -788,17 +817,17 @@ export default function Home() {
       <nav className="fixed top-0 left-0 right-0 z-50 px-4 transition-all duration-300">
         <div className={`mx-auto h-14 px-6 flex items-center justify-between transition-all duration-300 ${navShellClass}`}>
           <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2 font-semibold text-sm">
+            <button onClick={() => scrollToSection('hero')} className="flex items-center gap-2 font-semibold text-sm">
               <svg width="16" height="16" viewBox="0 0 24 24" fill={dark ? 'white' : '#1d1d1f'}>
                 <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
               </svg>
               Twiky
-            </div>
+            </button>
             <div className={`hidden md:flex items-center gap-5 text-[13px] ${textMuted}`}>
-              <a href="#features" className="hover:text-current transition-colors">Features</a>
-              <a href="#team" className="hover:text-current transition-colors">Team</a>
-              <a href="#security" className="hover:text-current transition-colors">Security</a>
-              <a href="#download" className="hover:text-current transition-colors">Download</a>
+              <button onClick={() => scrollToSection('features')} className="hover:text-current transition-colors">Features</button>
+              <button onClick={() => scrollToSection('team')} className="hover:text-current transition-colors">Team</button>
+              <button onClick={() => scrollToSection('security')} className="hover:text-current transition-colors">Security</button>
+              <button onClick={() => scrollToSection('download')} className="hover:text-current transition-colors">Download</button>
             </div>
           </div>
           <div className="flex items-center gap-2 text-[13px]">
@@ -851,7 +880,7 @@ export default function Home() {
       </nav>
 
       {/* Hero */}
-      <section className="relative overflow-visible pt-36 pb-4 px-6">
+      <section id="hero" className="relative overflow-visible pt-36 pb-4 px-6">
         <div
           className="absolute inset-x-0 top-0 h-[420px] pointer-events-none"
           style={{
@@ -1033,7 +1062,7 @@ export default function Home() {
       </section>
 
       {/* Security */}
-      <section id="security" className="py-28 px-6 relative z-10" style={{ borderTop: `1px solid ${divider}` }}>
+      <section id="security" className="py-20 px-6 relative z-10" style={{ borderTop: `1px solid ${divider}` }}>
         <div className="max-w-5xl mx-auto grid md:grid-cols-2 gap-16 items-center">
           <motion.div {...inView()}>
             <p style={{ fontSize: 11, color: dark ? '#444' : '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Security</p>
@@ -1084,7 +1113,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="team" className="py-28 px-6 relative z-10" style={{ borderTop: `1px solid ${divider}` }}>
+      <section id="team" className="py-14 px-6 relative z-10" style={{ borderTop: `1px solid ${divider}` }}>
         <div className="max-w-5xl mx-auto text-center">
           <motion.div {...inView()} className="max-w-2xl mx-auto">
             <p style={{ fontSize: 11, color: dark ? '#444' : '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Team</p>
