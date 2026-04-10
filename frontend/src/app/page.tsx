@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { AnimatedTooltipPreview } from "@/components/AnimatedTooltipPreview";
+import { Spotlight } from "@/components/ui/spotlight";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -10,6 +11,7 @@ import {
   useScroll,
   useTransform,
   useMotionValueEvent,
+  useInView,
   AnimatePresence,
 } from "framer-motion";
 
@@ -741,6 +743,28 @@ function ScrollDemo({ dark }: { dark: boolean }) {
   );
 }
 
+function FeatureCard({ label, desc, index, dark, textColor }: { label: string; desc: string; index: number; dark: boolean; textColor: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { once: false, margin: '-60px' });
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, y: 16 }}
+      animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 16 }}
+      transition={{ duration: 0.7, delay: index * 0.08, ease: [0.25, 0.1, 0.25, 1] }}
+      className="p-6 transition-colors group"
+      style={{ background: dark ? 'black' : 'white' }}
+    >
+      <div
+        className="h-px w-6 mb-4 group-hover:w-10 transition-all duration-300"
+        style={{ background: dark ? '#2a2a2a' : '#e0e0e0' }}
+      />
+      <h3 className={`text-sm font-semibold mb-2 ${textColor}`}>{label}</h3>
+      <p style={{ fontSize: 13, color: dark ? '#555' : '#888', lineHeight: 1.6 }}>{desc}</p>
+    </motion.div>
+  );
+}
+
 export default function Home() {
   const { user } = useAuth();
   const isAuthenticated = !!user;
@@ -753,6 +777,10 @@ export default function Home() {
     window.addEventListener('scroll', fn);
     return () => window.removeEventListener('scroll', fn);
   }, []);
+
+  useEffect(() => {
+    document.documentElement.style.background = dark ? '#000' : '#f5f5f7';
+  }, [dark]);
 
   const scrollToSection = (id: string) => {
     const target = document.getElementById(id);
@@ -814,7 +842,7 @@ export default function Home() {
       />
 
       {/* Nav */}
-      <nav className="fixed top-0 left-0 right-0 z-50 px-4 transition-all duration-300">
+      <nav className="fixed top-0 left-0 right-0 z-[200] px-4 transition-all duration-300">
         <div className={`mx-auto h-14 px-6 flex items-center justify-between transition-all duration-300 ${navShellClass}`}>
           <div className="flex items-center gap-6">
             <button onClick={() => scrollToSection('hero')} className="flex items-center gap-2 font-semibold text-sm">
@@ -881,80 +909,17 @@ export default function Home() {
 
       {/* Hero */}
       <section id="hero" className="relative overflow-visible pt-36 pb-4 px-6">
-        <div
-          className="absolute inset-x-0 top-0 h-[420px] pointer-events-none"
-          style={{
-            maskImage: 'linear-gradient(to bottom, black 0%, black 62%, transparent 100%)',
-            WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 62%, transparent 100%)',
-          }}
-        >
-          <motion.div
-            className="absolute left-0 top-0 h-[520px] w-[46%]"
-            initial={{ opacity: 0, x: -36, y: -20 }}
-            animate={{ opacity: 1, x: 0, y: 0 }}
-            transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1], delay: 0.08 }}
-            style={{
-              background: dark
-                ? 'linear-gradient(136deg, rgba(16,185,129,0.42) 0%, rgba(16,185,129,0.16) 18%, rgba(16,185,129,0.04) 42%, transparent 68%)'
-                : 'linear-gradient(136deg, rgba(16,185,129,0.36) 0%, rgba(16,185,129,0.13) 18%, rgba(16,185,129,0.035) 42%, transparent 68%)',
-              clipPath: 'polygon(0 0, 100% 0, 54% 100%, 0 100%)',
-              filter: 'blur(2px)',
-            }}
-          />
-          <motion.div
-            className="absolute right-0 top-0 h-[520px] w-[46%]"
-            initial={{ opacity: 0, x: 36, y: -20 }}
-            animate={{ opacity: 1, x: 0, y: 0 }}
-            transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1], delay: 0.12 }}
-            style={{
-              background: dark
-                ? 'linear-gradient(224deg, rgba(16,185,129,0.38) 0%, rgba(16,185,129,0.15) 18%, rgba(16,185,129,0.04) 42%, transparent 68%)'
-                : 'linear-gradient(224deg, rgba(16,185,129,0.34) 0%, rgba(16,185,129,0.12) 18%, rgba(16,185,129,0.03) 42%, transparent 68%)',
-              clipPath: 'polygon(0 0, 100% 0, 100% 100%, 46% 100%)',
-              filter: 'blur(2px)',
-            }}
-          />
-          <motion.div
-            className="absolute left-0 top-0 h-[460px] w-[34%]"
-            initial={{ opacity: 0, x: -28, y: -14 }}
-            animate={{ opacity: dark ? 0.88 : 0.72, x: 0, y: 0 }}
-            transition={{ duration: 1, ease: [0.22, 1, 0.36, 1], delay: 0.18 }}
-            style={{
-              background: dark
-                ? 'linear-gradient(135deg, rgba(16,185,129,0.82) 0%, rgba(16,185,129,0.26) 16%, transparent 38%)'
-                : 'linear-gradient(135deg, rgba(16,185,129,0.72) 0%, rgba(16,185,129,0.22) 16%, transparent 38%)',
-              clipPath: 'polygon(0 0, 100% 0, 32% 100%, 0 100%)',
-              filter: 'blur(0.6px)',
-              mixBlendMode: dark ? 'screen' : 'multiply',
-            }}
-          />
-          <motion.div
-            className="absolute right-0 top-0 h-[460px] w-[34%]"
-            initial={{ opacity: 0, x: 28, y: -14 }}
-            animate={{ opacity: dark ? 0.82 : 0.68, x: 0, y: 0 }}
-            transition={{ duration: 1, ease: [0.22, 1, 0.36, 1], delay: 0.22 }}
-            style={{
-              background: dark
-                ? 'linear-gradient(225deg, rgba(16,185,129,0.76) 0%, rgba(16,185,129,0.24) 16%, transparent 38%)'
-                : 'linear-gradient(225deg, rgba(16,185,129,0.68) 0%, rgba(16,185,129,0.2) 16%, transparent 38%)',
-              clipPath: 'polygon(0 0, 100% 0, 100% 100%, 68% 100%)',
-              filter: 'blur(0.6px)',
-              mixBlendMode: dark ? 'screen' : 'multiply',
-            }}
-          />
-          <motion.div
-            className="absolute left-1/2 top-16 h-44 w-[38rem] -translate-x-1/2 rounded-full blur-3xl"
-            initial={{ opacity: 0, scaleX: 0.92, y: -12 }}
-            animate={{ opacity: dark ? 0.28 : 0.2, scaleX: 1, y: 0 }}
-            transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1], delay: 0.28 }}
-            style={{
-              background: dark
-                ? 'radial-gradient(circle, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.04) 34%, transparent 72%)'
-                : 'radial-gradient(circle, rgba(16,185,129,0.10) 0%, rgba(16,185,129,0.03) 36%, transparent 72%)',
-            }}
-          />
+        <div className="absolute inset-x-0 top-0 h-[420px] pointer-events-none z-20">
+          <Spotlight className="-top-20 left-0" fill="#10b981" style={{ animationDelay: '0.3s' }} />
+          <Spotlight className="-top-40 left-20" fill="#10b981" style={{ animationDelay: '0.6s' }} />
+          <Spotlight className="top-40 left-40" fill="#10b981" style={{ animationDelay: '0.9s' }} />
+          <div className="absolute inset-0 [transform:scaleX(-1)]">
+            <Spotlight className="-top-20 left-0" fill="#10b981" style={{ animationDelay: '0.45s' }} />
+            <Spotlight className="-top-40 left-20" fill="#10b981" style={{ animationDelay: '0.75s' }} />
+            <Spotlight className="top-40 left-40" fill="#10b981" style={{ animationDelay: '1.05s' }} />
+          </div>
         </div>
-        <div className="max-w-2xl mx-auto text-center relative z-10">
+        <div className="max-w-2xl mx-auto text-center relative z-30">
           <motion.div {...fade(0)}>
             <div
               className="inline-flex items-center gap-2 h-7 px-3 rounded-full text-[11px] mb-8"
@@ -987,7 +952,7 @@ export default function Home() {
             Fast, secure, and beautifully simple. Twiky gives teams and communities a better way to communicate.
           </motion.p>
 
-          <motion.div {...fade(0.15)} className="relative flex items-center justify-center gap-3">
+          <motion.div {...fade(0.15)} className="relative z-[200] flex items-center justify-center gap-3">
             <button
               onClick={() => router.push(isAuthenticated ? '/chat' : '/account/signup')}
               className="relative z-10 h-9 px-5 rounded-md text-sm font-semibold transition-colors"
@@ -1043,19 +1008,7 @@ export default function Home() {
             style={{ background: divider, border: `1px solid ${divider}` }}
           >
             {FEATURES.map(({ label, desc }, i) => (
-              <motion.div
-                key={label}
-                {...inView(i * 0.05)}
-                className="p-6 transition-colors group"
-                style={{ background: dark ? 'black' : 'white' }}
-              >
-                <div
-                  className="h-px w-6 mb-4 group-hover:w-10 transition-all duration-300"
-                  style={{ background: dark ? '#2a2a2a' : '#e0e0e0' }}
-                />
-                <h3 className={`text-sm font-semibold mb-2 ${textColor}`}>{label}</h3>
-                <p style={{ fontSize: 13, color: dark ? '#555' : '#888', lineHeight: 1.6 }}>{desc}</p>
-              </motion.div>
+              <FeatureCard key={label} label={label} desc={desc} index={i} dark={dark} textColor={textColor} />
             ))}
           </div>
         </div>
