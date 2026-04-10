@@ -88,7 +88,7 @@ export function ShapeOverlay() {
       const { x, y, angle } = getWavePoint(REST0, t);
       el.style.left      = `${(x / 100) * window.innerWidth}px`;
       el.style.top       = `${(y / 100) * window.innerHeight}px`;
-      el.style.transform = `translate(-50%, -50%) rotate(${angle}deg)`;
+      el.style.transform = `translate(-50%, -50%) rotate(${angle + 45}deg)`;
     };
 
     onScroll();
