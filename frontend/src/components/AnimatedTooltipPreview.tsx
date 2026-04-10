@@ -11,7 +11,7 @@ const people = [
     designation: "Frontend Developer",
     signature: "Zakaria" as const,
     image:
-      "https://res.cloudinary.com/dectxiuco/image/upload/q_auto/f_auto/v1775835444/a-cartoon-caveman-sitting-at-a-table-with-a-laptop-vector_euprpw.jpg",
+      "https://res.cloudinary.com/dectxiuco/image/upload/q_auto/f_auto/v1775860636/caveman2_hnhf11.png",
   },
   {
     id: 2,
@@ -19,7 +19,7 @@ const people = [
     designation: "Backend Developer",
     signature: "Hamza" as const,
     image:
-      "https://res.cloudinary.com/dectxiuco/image/upload/q_auto/f_auto/v1775835481/cartoon-caveman-sitting-at-a-table-with-a-laptop-vector_fiqcu4.jpg",
+      "https://res.cloudinary.com/dectxiuco/image/upload/q_auto/f_auto/v1775860636/caveman1_fs7sft.png",
   },
 ];
 

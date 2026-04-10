@@ -5,6 +5,8 @@ import { useAuth } from "@/context/AuthContext";
 import { AnimatedTooltipPreview } from "@/components/AnimatedTooltipPreview";
 import { ShapeOverlay } from "@/components/ui/shape-overlay";
 import Link from "next/link";
+
+import { flushSync } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import {
   motion,
@@ -771,10 +773,38 @@ export default function Home() {
   const router = useRouter();
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [dark, setDark] = useState(() => {
-    if (typeof window === 'undefined') return true;
-    return localStorage.getItem('landing-theme') !== 'light';
-  });
+  const [dark, setDark] = useState(true);
+  const themeToggleBtnRef = useRef<HTMLButtonElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const activeVTRef = useRef<any>(null);
+
+  // Sync from localStorage after hydration
+  useEffect(() => {
+    setDark(localStorage.getItem('landing-theme') !== 'light');
+  }, []);
+
+  const toggleTheme = () => {
+    const btn = themeToggleBtnRef.current;
+    const nextDark = !dark;
+    if (btn) {
+      const rect = btn.getBoundingClientRect();
+      document.documentElement.style.setProperty('--theme-ripple-x', `${rect.left + rect.width / 2}px`);
+      document.documentElement.style.setProperty('--theme-ripple-y', `${rect.top + rect.height / 2}px`);
+    }
+    const apply = () => {
+      setDark(nextDark);
+      localStorage.setItem('landing-theme', nextDark ? 'dark' : 'light');
+    };
+    if ('startViewTransition' in document) {
+      activeVTRef.current?.skipTransition();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vt = (document as any).startViewTransition(() => { flushSync(apply); });
+      activeVTRef.current = vt;
+      vt.finished.finally(() => { activeVTRef.current = null; });
+    } else {
+      apply();
+    }
+  };
 
   useEffect(() => {
     const fn = () => setScrolled(window.scrollY > 20);
@@ -850,10 +880,8 @@ export default function Home() {
       <nav className="fixed top-0 left-0 right-0 z-[200] px-4 transition-all duration-300">
         <div className={`mx-auto h-14 px-6 flex items-center justify-between transition-all duration-300 ${navShellClass}`}>
           {/* Logo */}
-          <button onClick={() => scrollToSection('hero')} className="flex items-center gap-2 font-semibold text-sm">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill={dark ? 'white' : '#1d1d1f'}>
-              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-            </svg>
+          <button onClick={() => scrollToSection('hero')} className="flex items-center gap-0.5 font-semibold text-sm">
+            <img src="https://res.cloudinary.com/dectxiuco/image/upload/q_auto/f_auto/v1775863107/twiky_vbmk1y.png" alt="Twiky" width={52} height={52} style={{ objectFit: 'contain' }} />
             Twiky
           </button>
 
@@ -877,15 +905,8 @@ export default function Home() {
           <div className="flex items-center gap-2 text-[13px]">
             {/* Theme toggle */}
             <button
-              onClick={() => {
-                document.documentElement.classList.add('no-transitions');
-                setDark((d) => {
-                  const next = !d;
-                  localStorage.setItem('landing-theme', next ? 'dark' : 'light');
-                  return next;
-                });
-                requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.classList.remove('no-transitions')));
-              }}
+              ref={themeToggleBtnRef}
+              onClick={toggleTheme}
               aria-label="Toggle theme"
               className="h-8 w-8 inline-flex items-center justify-center rounded-md backdrop-blur-md"
               style={{
@@ -1165,10 +1186,8 @@ export default function Home() {
       {/* Footer */}
       <footer className="py-10 px-6 relative z-10" style={{ borderTop: `1px solid ${divider}` }}>
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill={dark ? 'white' : '#1d1d1f'}>
-              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-            </svg>
+          <div className="flex items-center gap-0.5 text-sm font-semibold">
+            <img src="https://res.cloudinary.com/dectxiuco/image/upload/q_auto/f_auto/v1775863107/twiky_vbmk1y.png" alt="Twiky" width={40} height={40} style={{ objectFit: 'contain' }} />
             Twiky
           </div>
           <div className="flex gap-6 text-[13px]" style={{ color: dark ? '#888' : '#bbb' }}>

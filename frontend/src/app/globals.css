@@ -121,6 +121,23 @@
   --animate-spotlight: spotlight 2s ease 0.75s 1 forwards;
 }
 
+/* ── Theme bubble transition (View Transitions API) ─────────────── */
+::view-transition {
+  pointer-events: none;
+}
+::view-transition-old(root) {
+  animation: none;
+  z-index: 1;
+}
+::view-transition-new(root) {
+  animation: theme-bubble-in 2.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  z-index: 2;
+}
+@keyframes theme-bubble-in {
+  from { clip-path: circle(0px at var(--theme-ripple-x, 50%) var(--theme-ripple-y, 50%)); }
+  to   { clip-path: circle(200vmax at var(--theme-ripple-x, 50%) var(--theme-ripple-y, 50%)); }
+}
+
 @keyframes spotlight {
   0% {
     opacity: 0;

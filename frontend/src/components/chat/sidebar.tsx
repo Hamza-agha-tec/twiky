@@ -10,6 +10,7 @@ import { ChatItem } from './chat-item';
 import { ConversationContextMenu } from './conversation-context-menu';
 import { ProfileSettings } from './profile-settings';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { ThemeBubble } from './theme-bubble';
 
 interface SidebarProps {
   activeChat: string;
@@ -109,9 +110,12 @@ export function Sidebar({
         <div className="p-4 border-b border-border flex-shrink-0">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-bold text-foreground">Messages</h1>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
-              <Edit className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-2">
+              <ThemeBubble />
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <Edit className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
 
           <div className="relative">
