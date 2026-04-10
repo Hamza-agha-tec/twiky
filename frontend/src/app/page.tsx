@@ -382,9 +382,9 @@ function ScrollDemo({ dark }: { dark: boolean }) {
 
   const cardBorder  = dark ? '#1c1c1c' : '#e5e7eb';
   const titleBarBg  = dark ? '#0d0d0d' : '#f5f5f7';
-  const sidebarBg   = dark ? '#0a0a0a' : '#ffffff';
-  const chatAreaBg  = dark ? '#0a0a0a' : '#ffffff';
-  const headerBg    = dark ? '#0a0a0a' : '#ffffff';
+  const sidebarBg   = dark ? '#000000' : '#ffffff';
+  const chatAreaBg  = dark ? '#000000' : '#ffffff';
+  const headerBg    = dark ? '#000000' : '#ffffff';
 
   return (
     <section ref={sectionRef} className="relative" style={{ height: '290vh' }}>
@@ -606,7 +606,7 @@ function ScrollDemo({ dark }: { dark: boolean }) {
                 <div
                   className="flex-1 px-4 py-3 flex flex-col justify-end overflow-hidden relative"
                   style={{
-                    background: dark ? '#0a0a0a' : '#ffffff',
+                    background: dark ? '#000000' : '#ffffff',
                   }}
                 >
                   {/* Subtle ambient light */}
@@ -1079,7 +1079,7 @@ export default function Home() {
           </motion.div>
 
           <motion.div {...inView(0.08)}>
-            <AnimatedTooltipPreview />
+            <AnimatedTooltipPreview dark={dark} />
           </motion.div>
         </div>
       </section>
