@@ -12,6 +12,7 @@ import { ProfileSettings } from './profile-settings';
 import { AddContactModal } from './add-contact-modal';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { useProfile, useContacts } from '@/hooks/use-user';
+import { useConversations, useCreateConversation } from '@/hooks/use-messaging';
 import { EditContactModal } from './edit-contact-modal';
 
 interface SidebarProps {
@@ -65,37 +66,74 @@ export function Sidebar({
   const [showAddContact, setShowAddContact] = useState(false);
   const [editContact, setEditContact] = useState<{ id: string; nickname: string } | null>(null);
   const { data: profile } = useProfile();
-  const { data: contacts = [], isLoading: contactsLoading } = useContacts();
+  const { data: contacts = [] } = useContacts();
+  const { data: conversations = [], isLoading: convsLoading } = useConversations();
+  const createConversation = useCreateConversation();
+
+  const isSearching = searchQuery.trim().length > 0;
+
+  const filteredContacts = useMemo(() => {
+    if (!isSearching) return [];
+    const q = searchQuery.toLowerCase();
+    return contacts.filter((c) =>
+      (c.nickname ?? c.username ?? '').toLowerCase().includes(q) ||
+      (c.phone_number ?? '').includes(q)
+    );
+  }, [contacts, searchQuery, isSearching]);
+
+  async function handleContactClick(contactId: string) {
+    // Check if DM conversation already exists
+    const existing = conversations.find(
+      (c) => !c.is_group && c.name === null
+    );
+    if (existing) {
+      onSelectChat(existing.id);
+      onSearchChange('');
+      return;
+    }
+    createConversation.mutate(
+      { participantIds: [contactId] },
+      {
+        onSuccess: (conv) => {
+          onSelectChat(conv.id);
+          onSearchChange('');
+        },
+      }
+    );
+  }
 
   useEffect(() => { setIsMounted(true); }, []);
 
   const filteredChats = useMemo(() => {
-    let result: Chat[] = contacts
-      .filter((c) => !deleted.has(c.id) && !c.is_archived)
-      .map((c) => ({
-        id: c.id,
-        name: c.nickname || c.username || 'Unknown',
-        avatar: c.avatar_url ?? '',
-        lastMessage: '',
-        timestamp: new Date().toISOString(),
-        unread: 0,
-        isGroup: false,
-        isPinned: chatMeta[c.id]?.isPinned ?? c.is_pinned,
-        isMuted: chatMeta[c.id]?.isMuted ?? c.is_muted,
-        isOnline: false,
-      }));
+    let result: Chat[] = conversations
+      .filter((c) => !deleted.has(c.id))
+      .map((c) => {
+        // For DMs, try to find the contact to get their name/avatar
+        const contact = !c.is_group ? contacts.find((ct) => ct.id !== profile?.id) : null;
+        return {
+          id: c.id,
+          name: c.name || contact?.nickname || contact?.username || 'Direct Chat',
+          avatar: contact?.avatar_url ?? '',
+          lastMessage: '',
+          timestamp: c.last_message_at ?? c.created_at,
+          unread: 0,
+          isGroup: c.is_group,
+          isPinned: chatMeta[c.id]?.isPinned ?? false,
+          isMuted: chatMeta[c.id]?.isMuted ?? false,
+          isOnline: false,
+        };
+      });
 
     if (filter === 'unread') result = result.filter((c) => c.unread > 0);
     else if (filter === 'groups') result = result.filter((c) => c.isGroup);
     else if (filter === 'direct') result = result.filter((c) => !c.isGroup);
 
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter((c) => c.name.toLowerCase().includes(q));
-    }
 
-    return result.sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0));
-  }, [contacts, filter, searchQuery, chatMeta, deleted]);
+    return result.sort((a, b) => {
+      if (b.isPinned !== a.isPinned) return (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0);
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+    });
+  }, [conversations, contacts, profile, filter, searchQuery, chatMeta, deleted]);
 
   const unreadCount = 0; // will come from conversations
 
@@ -167,7 +205,39 @@ export function Sidebar({
 
         {/* Chat List */}
         <div className="flex-1 overflow-y-auto">
-          {contactsLoading ? (
+          {isSearching ? (
+            <>
+              {filteredContacts.length > 0 && (
+                <>
+                  <p className="px-4 pt-3 pb-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Contacts</p>
+                  {filteredContacts.map((contact) => (
+                    <button
+                      key={contact.id}
+                      onClick={() => handleContactClick(contact.id)}
+                      disabled={createConversation.isPending}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-accent transition-colors"
+                    >
+                      <Avatar className="h-10 w-10 flex-shrink-0">
+                        <AvatarImage src={contact.avatar_url ?? ''} alt={contact.nickname ?? contact.username ?? ''} />
+                        <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+                          {(contact.nickname ?? contact.username ?? '?')[0].toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0 text-left">
+                        <p className="text-sm font-medium text-foreground truncate">{contact.nickname ?? contact.username}</p>
+                        <p className="text-xs text-muted-foreground truncate">{contact.phone_number}</p>
+                      </div>
+                    </button>
+                  ))}
+                </>
+              )}
+              {filteredContacts.length === 0 && (
+                <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
+                  <p className="text-sm">No contacts found</p>
+                </div>
+              )}
+            </>
+          ) : convsLoading ? (
             <div className="flex flex-col gap-1 p-2">
               {[...Array(5)].map((_, i) => (
                 <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-xl">

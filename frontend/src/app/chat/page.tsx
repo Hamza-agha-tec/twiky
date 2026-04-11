@@ -6,48 +6,21 @@ import { AnimatePresence } from 'framer-motion'
 import { ChatWindow } from '@/components/chat/chat-window'
 import { InfoPanel } from '@/components/chat/info-panel'
 import { Sidebar } from '@/components/chat/sidebar'
-import { type Message, messagesData } from '@/lib/mock-data'
+import { useMessages } from '@/hooks/use-messaging'
 
 export default function ChatPage() {
-  const [activeChat, setActiveChat] = useState('alice')
+  const [activeChat, setActiveChat] = useState<string | null>(null)
   const [selectedChats, setSelectedChats] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState('')
-  const [messages, setMessages] = useState<Record<string, Message[]>>(messagesData)
   const [sidebarOpen] = useState(true)
   const [showContactInfo, setShowContactInfo] = useState(false)
 
-  const handleSendMessage = (
-    content: string,
-    type: Message['type'] = 'text',
-    reply?: { senderName: string; content: string },
-  ) => {
-    if (!content.trim()) return
-
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      senderId: 'me',
-      senderName: 'You',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop',
-      content,
-      type,
-      timestamp: new Date().toISOString(),
-      isOwn: true,
-      isRead: true,
-      isDelivered: true,
-      duration: type === 'video' ? '0:45' : undefined,
-      reply,
-    }
-
-    setMessages((prev) => ({
-      ...prev,
-      [activeChat]: [...(prev[activeChat] || []), newMessage],
-    }))
-  }
+  const { data: messages = [] } = useMessages(activeChat)
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar
-        activeChat={activeChat}
+        activeChat={activeChat ?? ''}
         onSelectChat={(id) => {
           setActiveChat(id)
           setShowContactInfo(false)
@@ -59,15 +32,20 @@ export default function ChatPage() {
         isOpen={sidebarOpen}
       />
 
-      <ChatWindow
-        activeChat={activeChat}
-        messages={messages[activeChat] || []}
-        onSendMessage={handleSendMessage}
-        onProfileClick={() => setShowContactInfo((v) => !v)}
-      />
+      {activeChat ? (
+        <ChatWindow
+          activeChat={activeChat}
+          messages={messages}
+          onProfileClick={() => setShowContactInfo((v) => !v)}
+        />
+      ) : (
+        <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+          Select a conversation to start chatting
+        </div>
+      )}
 
       <AnimatePresence>
-        {showContactInfo && (
+        {showContactInfo && activeChat && (
           <InfoPanel
             activeChat={activeChat}
             onClose={() => setShowContactInfo(false)}
