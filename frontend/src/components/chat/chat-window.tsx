@@ -9,7 +9,7 @@ import type { Message } from '@/lib/mock-data';
 import { MessageBubble } from './message-bubble';
 import { Composer } from './composer';
 import { format } from 'date-fns';
-import { ChatMessage, useConversations, useEditMessage, useDeleteMessage, useReactToMessage, useUploadFile, getConvDisplayName } from '@/hooks/use-messaging';
+import { ChatMessage, useConversations, useEditMessage, useDeleteMessage, useReactToMessage, useUploadFile, getConvDisplayName, getDmContact } from '@/hooks/use-messaging';
 import { useProfile, useContacts } from '@/hooks/use-user';
 import { toast } from 'sonner';
 
@@ -18,6 +18,7 @@ interface ChatWindowProps {
   messages?: ChatMessage[];
   onSendMessage?: (content: string, type?: string, replyToId?: string) => void;
   onTyping?: (isTyping: boolean) => void;
+  otherIsTyping?: boolean;
   onProfileClick?: () => void;
 }
 
@@ -32,7 +33,7 @@ function toUiMessage(m: ChatMessage, myId: string): Message {
     id: m.id,
     senderId: m.sender_id,
     senderName: m.sender.username,
-    avatar: m.sender.avatar_url ?? '',
+    avatar: m.sender.avatar_url ?? undefined,
     content: m.content ?? '',
     type: (m.type as Message['type']) ?? 'text',
     timestamp: m.created_at,
@@ -42,7 +43,7 @@ function toUiMessage(m: ChatMessage, myId: string): Message {
   };
 }
 
-export function ChatWindow({ activeChat, messages: providedMessages = [], onSendMessage, onTyping, onProfileClick }: ChatWindowProps) {
+export function ChatWindow({ activeChat, messages: providedMessages = [], onSendMessage, onTyping, otherIsTyping = false, onProfileClick }: ChatWindowProps) {
   const { data: profile } = useProfile();
   const { data: contacts = [] } = useContacts();
   const { data: conversations = [] } = useConversations();
@@ -70,6 +71,9 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
   }, [activeChat]);
 
   const chatName = conv ? getConvDisplayName(conv, profile?.id ?? '', contacts) : 'Chat';
+  const dmParticipant = conv ? getDmContact(conv, profile?.id ?? '') : null;
+  const dmContact = contacts.find((c) => c.id === dmParticipant?.id);
+  const chatAvatar = dmContact?.avatar_url ?? dmParticipant?.avatar_url ?? undefined;
   const initials = chatName
     .split(' ')
     .map((word: string) => word[0])
@@ -119,6 +123,7 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
           >
             <div className="relative">
               <Avatar className="h-9 w-9">
+                {chatAvatar && <AvatarImage src={chatAvatar} alt={chatName} />}
                 <AvatarFallback className="bg-primary text-primary-foreground text-sm">
                   {initials}
                 </AvatarFallback>
@@ -220,7 +225,7 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
 
         {/* Typing Indicator */}
         <AnimatePresence>
-          {isTyping && (
+          {otherIsTyping && (
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -228,6 +233,7 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
               className="flex gap-2 items-end"
             >
               <Avatar className="h-7 w-7 flex-shrink-0">
+                {chatAvatar && <AvatarImage src={chatAvatar} alt={chatName} />}
                 <AvatarFallback className="bg-primary text-primary-foreground text-xs">
                   {chatName[0]}
                 </AvatarFallback>

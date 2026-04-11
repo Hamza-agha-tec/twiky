@@ -33,6 +33,8 @@ export function Composer({ onTyping, onSendMessage, replyTo, onCancelReply }: Co
   const [isRecording, setIsRecording] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onTypingRef = useRef(onTyping);
+  useEffect(() => { onTypingRef.current = onTyping; }, [onTyping]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -45,16 +47,17 @@ export function Composer({ onTyping, onSendMessage, replyTo, onCancelReply }: Co
 
   useEffect(() => {
     if (message) {
-      onTyping?.(true);
+      onTypingRef.current?.(true);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(() => onTyping?.(false), 1000);
+      typingTimeoutRef.current = setTimeout(() => onTypingRef.current?.(false), 2000);
     } else {
-      onTyping?.(false);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      onTypingRef.current?.(false);
     }
     return () => {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
-  }, [message, onTyping]);
+  }, [message]);
 
   // Focus when reply opens
   useEffect(() => {

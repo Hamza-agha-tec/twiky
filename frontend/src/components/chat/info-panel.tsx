@@ -73,6 +73,7 @@ export function InfoPanel({ activeChat, onClose }: InfoPanelProps) {
         <div className="p-5 flex flex-col items-center border-b border-border">
           <div className="relative mb-3">
             <Avatar className="h-16 w-16">
+              {dmContact?.avatar_url && <AvatarImage src={dmContact.avatar_url} alt={chatName} />}
               <AvatarFallback className="bg-primary text-primary-foreground text-xl">
                 {initials}
               </AvatarFallback>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Socket } from 'socket.io-client';
 import { getSocket } from '@/lib/socket';
@@ -9,6 +9,7 @@ import { MESSAGING_KEYS, ChatMessage } from './use-messaging';
 export function useSocket(conversationId: string | null) {
   const queryClient = useQueryClient();
   const socketRef = useRef<Socket | null>(null);
+  const [otherIsTyping, setOtherIsTyping] = useState(false);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -42,17 +43,23 @@ export function useSocket(conversationId: string | null) {
         );
       });
 
-      s.on('reactionUpdate', ({ messageId }: { messageId: string; emoji: string; userId: string; status: string }) => {
+      s.on('reactionUpdate', () => {
         queryClient.invalidateQueries({ queryKey: MESSAGING_KEYS.messages(conversationId) });
+      });
+
+      s.on('userTyping', ({ isTyping }: { userId: string; isTyping: boolean }) => {
+        if (mounted) setOtherIsTyping(isTyping);
       });
     });
 
     return () => {
       mounted = false;
+      setOtherIsTyping(false);
       socketRef.current?.off('newMessage');
       socketRef.current?.off('messageUpdated');
       socketRef.current?.off('messageDeleted');
       socketRef.current?.off('reactionUpdate');
+      socketRef.current?.off('userTyping');
       socketRef.current?.emit('leaveConversation', conversationId);
     };
   }, [conversationId, queryClient]);
@@ -70,7 +77,7 @@ export function useSocket(conversationId: string | null) {
     socketRef.current?.emit('typing', { conversationId: convId, isTyping });
   }, []);
 
-  return { sendMessage, sendTyping };
+  return { sendMessage, sendTyping, otherIsTyping };
 }
 
 export function useTypingIndicator(conversationId: string | null) {

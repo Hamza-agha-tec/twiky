@@ -16,7 +16,7 @@ export interface Message {
   id: string;
   senderId: string;
   senderName: string;
-  avatar: string;
+  avatar?: string;
   content: string;
   type: 'text' | 'image' | 'voice' | 'video';
   timestamp: string;

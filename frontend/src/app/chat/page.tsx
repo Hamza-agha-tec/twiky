@@ -17,7 +17,7 @@ export default function ChatPage() {
   const [showContactInfo, setShowContactInfo] = useState(false)
 
   const { data: messages = [] } = useMessages(activeChat)
-  const { sendMessage, sendTyping } = useSocket(activeChat)
+  const { sendMessage, sendTyping, otherIsTyping } = useSocket(activeChat)
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -42,6 +42,7 @@ export default function ChatPage() {
             sendMessage({ conversationId: activeChat, content, type, replyToId })
           }
           onTyping={(isTyping) => sendTyping(activeChat, isTyping)}
+          otherIsTyping={otherIsTyping}
           onProfileClick={() => setShowContactInfo((v) => !v)}
         />
       ) : (
