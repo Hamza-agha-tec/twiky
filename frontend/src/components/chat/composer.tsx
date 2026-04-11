@@ -9,6 +9,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import { useUploadFile } from '@/hooks/use-messaging';
+import { toast } from 'sonner';
 
 interface ReplyTo {
   senderName: string;
@@ -17,7 +19,7 @@ interface ReplyTo {
 
 interface ComposerProps {
   onTyping?: (isTyping: boolean) => void;
-  onSendMessage?: (content: string, type?: 'text' | 'video') => void;
+  onSendMessage?: (content: string, type?: string, fileUrl?: string) => void;
   replyTo?: ReplyTo | null;
   onCancelReply?: () => void;
 }
@@ -31,8 +33,13 @@ const EMOJIS = [
 export function Composer({ onTyping, onSendMessage, replyTo, onCancelReply }: ComposerProps) {
   const [message, setMessage] = useState('');
   const [isRecording, setIsRecording] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onTypingRef = useRef(onTyping);
+  useEffect(() => { onTypingRef.current = onTyping; }, [onTyping]);
+  const uploadFile = useUploadFile();
 
   // Auto-resize textarea
   useEffect(() => {
@@ -45,16 +52,17 @@ export function Composer({ onTyping, onSendMessage, replyTo, onCancelReply }: Co
 
   useEffect(() => {
     if (message) {
-      onTyping?.(true);
+      onTypingRef.current?.(true);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(() => onTyping?.(false), 1000);
+      typingTimeoutRef.current = setTimeout(() => onTypingRef.current?.(false), 2000);
     } else {
-      onTyping?.(false);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      onTypingRef.current?.(false);
     }
     return () => {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
-  }, [message, onTyping]);
+  }, [message]);
 
   // Focus when reply opens
   useEffect(() => {
@@ -87,6 +95,22 @@ export function Composer({ onTyping, onSendMessage, replyTo, onCancelReply }: Co
   const handleRecordClick = () => {
     setIsRecording(!isRecording);
     if (!isRecording) setTimeout(() => setIsRecording(false), 2000);
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setIsUploading(true);
+    try {
+      const { fileUrl, fileType } = await uploadFile.mutateAsync(file);
+      const type = fileType.startsWith('image/') ? 'image' : 'file';
+      onSendMessage?.(fileUrl, type, fileUrl);
+    } catch {
+      toast.error('Upload failed');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   return (
@@ -161,9 +185,23 @@ export function Composer({ onTyping, onSendMessage, replyTo, onCancelReply }: Co
           </PopoverContent>
         </Popover>
 
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,video/*,.pdf,.doc,.docx,.txt"
+          className="hidden"
+          onChange={handleFileChange}
+        />
         {/* Attachment Button */}
-        <Button variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0 rounded-full">
-          <Paperclip className="h-5 w-5 text-muted-foreground" />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 flex-shrink-0 rounded-full"
+          disabled={isUploading}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <Paperclip className={`h-5 w-5 ${isUploading ? 'animate-pulse text-primary' : 'text-muted-foreground'}`} />
         </Button>
 
         {/* Textarea */}

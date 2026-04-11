@@ -86,13 +86,12 @@ export class ChatGateway implements OnGatewayInit {
   @SubscribeMessage('editMessage')
   async handleEditMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() payload: EditMessageDto,
+    @MessageBody() payload: EditMessageDto & { conversationId: string },
   ) {
     const userId = client.data.user.userId;
     try {
-      const message = await this.messagingService.editMessage(userId, payload.messageId, payload.content);
-      // Broadcast update
-      this.server.to(`conv_${message.conversation_id}`).emit('messageUpdated', message);
+      const updated = await this.messagingService.editMessage(userId, payload.messageId, payload.content);
+      this.server.to(`conv_${payload.conversationId}`).emit('messageUpdated', updated);
       return { status: 'success' };
     } catch (error) {
       return { status: 'error', message: error.message };
@@ -107,7 +106,6 @@ export class ChatGateway implements OnGatewayInit {
     const userId = client.data.user.userId;
     try {
       await this.messagingService.deleteMessage(userId, payload.messageId);
-      // Broadcast deletion
       this.server.to(`conv_${payload.conversationId}`).emit('messageDeleted', payload.messageId);
       return { status: 'success' };
     } catch (error) {
@@ -116,23 +114,49 @@ export class ChatGateway implements OnGatewayInit {
   }
 
   @SubscribeMessage('reactToMessage')
-  async handleToggleReaction(
+  async handleReactToMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() payload: ToggleReactionDto,
+    @MessageBody() payload: ToggleReactionDto & { conversationId: string },
   ) {
     const userId = client.data.user.userId;
     try {
-      const result = await this.messagingService.toggleReaction(userId, payload.messageId, payload.emoji);
-      // We need the conversationId to broadcast. 
-      // Instead of querying DB, we'll expect it in payload or just broadcast to room if we had it.
-      // For now, let's just broadcast to a generic 'reactions' update if needed, 
-      // but ideally we broadcast to the specific room. 
-      // I'll update the DTO to include conversationId.
-      
-      this.server.emit('reactionUpdate', result); 
+      const result = await this.messagingService.reactToMessage(userId, payload.messageId, payload.emoji);
+      this.server.to(`conv_${payload.conversationId}`).emit('reactionUpdate', result);
       return { status: 'success' };
     } catch (error) {
       return { status: 'error', message: error.message };
+    }
+  }
+
+  /**
+   * Message Status
+   */
+
+  @SubscribeMessage('messageDelivered')
+  async handleMessageDelivered(
+    @ConnectedSocket() _client: Socket,
+    @MessageBody() payload: { messageId: string; conversationId: string },
+  ) {
+    await this.messagingService.updateMessageStatus(payload.messageId, 'delivered');
+    this.server.to(`conv_${payload.conversationId}`).emit('messageStatusUpdate', {
+      messageId: payload.messageId,
+      status: 'delivered',
+    });
+  }
+
+  @SubscribeMessage('markRead')
+  async handleMarkRead(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { conversationId: string },
+  ) {
+    const userId = client.data.user.userId;
+    const messageIds = await this.messagingService.markConversationRead(userId, payload.conversationId);
+    if (messageIds.length > 0) {
+      this.server.to(`conv_${payload.conversationId}`).emit('messagesRead', {
+        conversationId: payload.conversationId,
+        readBy: userId,
+        messageIds,
+      });
     }
   }
 

@@ -23,10 +23,13 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
   const [isMounted, setIsMounted] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [messageReactions, setMessageReactions] = useState<Record<string, number>>(
-    message.reactions?.reduce((acc, r) => ({ ...acc, [r.emoji]: r.count }), {}) || {}
-  );
   const messageRef = useRef<HTMLDivElement>(null);
+
+  // Derive reaction counts directly from props — never local state
+  const messageReactions: Record<string, number> = (message.reactions ?? []).reduce(
+    (acc, r) => ({ ...acc, [r.emoji]: (acc[r.emoji] ?? 0) + r.count }),
+    {} as Record<string, number>
+  );
 
   const initials = message.senderName
     .split(' ')
@@ -45,10 +48,6 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
   };
 
   const handleAddReaction = (emoji: string) => {
-    setMessageReactions((prev) => ({
-      ...prev,
-      [emoji]: (prev[emoji] || 0) + 1,
-    }));
     onReact?.(emoji);
   };
 

@@ -45,17 +45,24 @@ export class MessagingService {
   }
 
   async getConversations(userId: string) {
-    // We want conversations where the user is a participant
     const { data, error } = await this.supabaseService
       .getClient()
       .from('conversation_participants')
-      .select('conversation:conversations(*), role, joined_at')
+      .select(`
+        conversation:conversations(
+          *,
+          participants:conversation_participants(
+            user:users(id, username, avatar_url, phone_number)
+          )
+        ),
+        role,
+        joined_at
+      `)
       .eq('user_id', userId)
       .order('joined_at', { ascending: false });
 
     if (error) throw new Error(`Failed to fetch conversations: ${error.message}`);
 
-    // Transform to return conversation objects with participant info
     return data.map(item => item.conversation);
   }
 
@@ -87,11 +94,11 @@ export class MessagingService {
         content,
         type: type || 'text',
         file_url: fileUrl,
-        reply_to_id: sendDto.replyToId,
         is_forwarded: sendDto.isForwarded || false,
         metadata: metadata || {},
+        reply_to_id: sendDto.replyToId ?? null,
       })
-      .select('*, sender:users!sender_id(id, username, avatar_url), reply_to:messages!reply_to_id(id, content, type, sender:users!sender_id(username))')
+      .select('*, sender:users!sender_id(id, username, avatar_url), reply_to:messages!reply_to_id(id, content, sender:users!sender_id(id, username))')
       .single();
 
     if (error) throw new Error(`Failed to save message: ${error.message}`);
@@ -104,67 +111,6 @@ export class MessagingService {
       .eq('id', conversationId);
 
     return data;
-  }
-
-  async editMessage(userId: string, messageId: string, content: string) {
-    const { data, error } = await this.supabaseService
-      .getClient()
-      .from('messages')
-      .update({ content, is_edited: true })
-      .eq('id', messageId)
-      .eq('sender_id', userId) // Security: Only sender can edit
-      .select('*, sender:users!sender_id(id, username, avatar_url)')
-      .maybeSingle();
-
-    if (error) throw new Error(`Failed to edit message: ${error.message}`);
-    if (!data) throw new ForbiddenException('Message not found or you do not have permission to edit it');
-
-    return data;
-  }
-
-  async deleteMessage(userId: string, messageId: string) {
-    const { error } = await this.supabaseService
-      .getClient()
-      .from('messages')
-      .delete()
-      .eq('id', messageId)
-      .eq('sender_id', userId); // Security: Only sender can delete
-
-    if (error) throw new Error(`Failed to delete message: ${error.message}`);
-    return { success: true };
-  }
-
-  async toggleReaction(userId: string, messageId: string, emoji: string) {
-    const client = this.supabaseService.getClient();
-
-    // Check if reaction exists
-    const { data: existing } = await client
-      .from('message_reactions')
-      .select('*')
-      .eq('message_id', messageId)
-      .eq('user_id', userId)
-      .eq('emoji', emoji)
-      .maybeSingle();
-
-    if (existing) {
-      // Remove it
-      await client
-        .from('message_reactions')
-        .delete()
-        .eq('message_id', messageId)
-        .eq('user_id', userId)
-        .eq('emoji', emoji);
-      return { status: 'removed', messageId, emoji, userId };
-    } else {
-      // Add it
-      const { data, error } = await client
-        .from('message_reactions')
-        .insert({ message_id: messageId, user_id: userId, emoji })
-        .select()
-        .single();
-      if (error) throw new Error(error.message);
-      return { status: 'added', messageId, emoji, userId };
-    }
   }
 
   async getMessages(userId: string, conversationId: string, limit: number = 50, offset: number = 0) {
@@ -182,18 +128,100 @@ export class MessagingService {
     const { data, error } = await this.supabaseService
       .getClient()
       .from('messages')
-      .select(`
-        *,
-        sender:users!sender_id(id, username, avatar_url),
-        reply_to:messages!reply_to_id(id, content, type, sender:users!sender_id(username)),
-        reactions:message_reactions(emoji, user_id)
-      `)
+      .select('*, sender:users!sender_id(id, username, avatar_url), reply_to:messages!reply_to_id(id, content, sender:users!sender_id(id, username))')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (error) throw new Error(`Failed to fetch messages: ${error.message}`);
     return data;
+  }
+
+  /**
+   * EDIT / DELETE
+   */
+
+  async editMessage(userId: string, messageId: string, content: string) {
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('messages')
+      .update({ content, is_edited: true })
+      .eq('id', messageId)
+      .eq('sender_id', userId)
+      .select('*, sender:users!sender_id(id, username, avatar_url), reply_to:messages!reply_to_id(id, content, sender:users!sender_id(id, username))')
+      .maybeSingle();
+
+    if (error) throw new Error(`Failed to edit message: ${error.message}`);
+    if (!data) throw new ForbiddenException('Message not found or you do not have permission to edit it');
+    return data;
+  }
+
+  async deleteMessage(userId: string, messageId: string) {
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('messages')
+      .delete()
+      .eq('id', messageId)
+      .eq('sender_id', userId);
+
+    if (error) throw new Error(`Failed to delete message: ${error.message}`);
+    return { success: true };
+  }
+
+  /**
+   * REACTIONS
+   */
+
+  async reactToMessage(userId: string, messageId: string, emoji: string) {
+    const { data: msg, error: fetchError } = await this.supabaseService
+      .getClient()
+      .from('messages')
+      .select('reactions')
+      .eq('id', messageId)
+      .single();
+
+    if (fetchError) throw new Error(`Message not found: ${fetchError.message}`);
+
+    const reactions: { userId: string; emoji: string }[] = msg.reactions ?? [];
+    const existingIdx = reactions.findIndex((r) => r.userId === userId && r.emoji === emoji);
+
+    // Remove ALL reactions from this user, then add new one (unless toggling off)
+    const withoutUser = reactions.filter((r) => r.userId !== userId);
+    const updated = existingIdx >= 0 ? withoutUser : [...withoutUser, { userId, emoji }];
+
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('messages')
+      .update({ reactions: updated })
+      .eq('id', messageId);
+
+    if (error) throw new Error(`Failed to update reactions: ${error.message}`);
+
+    return { messageId, reactions: updated };
+  }
+
+  /**
+   * MESSAGE STATUS
+   */
+
+  async updateMessageStatus(messageId: string, status: 'sent' | 'delivered' | 'read') {
+    await this.supabaseService
+      .getClient()
+      .from('messages')
+      .update({ status })
+      .eq('id', messageId);
+  }
+
+  async markConversationRead(userId: string, conversationId: string): Promise<string[]> {
+    const { data } = await this.supabaseService
+      .getClient()
+      .from('messages')
+      .update({ status: 'read' })
+      .eq('conversation_id', conversationId)
+      .neq('sender_id', userId)
+      .in('status', ['sent', 'delivered'])
+      .select('id');
+    return data?.map((m: { id: string }) => m.id) ?? [];
   }
 
   /**
