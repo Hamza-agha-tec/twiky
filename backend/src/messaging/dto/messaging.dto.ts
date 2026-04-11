@@ -10,4 +10,5 @@ export class SendMessageDto {
   type?: 'text' | 'image' | 'file' | 'voice';
   fileUrl?: string;
   metadata?: any;
+  replyToId?: string;
 }

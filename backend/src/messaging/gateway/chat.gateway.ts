@@ -84,6 +84,38 @@ export class ChatGateway implements OnGatewayInit {
   }
 
   /**
+   * Message Status
+   */
+
+  @SubscribeMessage('messageDelivered')
+  async handleMessageDelivered(
+    @ConnectedSocket() _client: Socket,
+    @MessageBody() payload: { messageId: string; conversationId: string },
+  ) {
+    await this.messagingService.updateMessageStatus(payload.messageId, 'delivered');
+    this.server.to(`conv_${payload.conversationId}`).emit('messageStatusUpdate', {
+      messageId: payload.messageId,
+      status: 'delivered',
+    });
+  }
+
+  @SubscribeMessage('markRead')
+  async handleMarkRead(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { conversationId: string },
+  ) {
+    const userId = client.data.user.userId;
+    const messageIds = await this.messagingService.markConversationRead(userId, payload.conversationId);
+    if (messageIds.length > 0) {
+      this.server.to(`conv_${payload.conversationId}`).emit('messagesRead', {
+        conversationId: payload.conversationId,
+        readBy: userId,
+        messageIds,
+      });
+    }
+  }
+
+  /**
    * Typing Indicators
   */
 

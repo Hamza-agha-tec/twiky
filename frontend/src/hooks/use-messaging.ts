@@ -34,6 +34,7 @@ export interface ChatMessage {
   type: 'text' | 'image' | 'file' | 'voice';
   file_url: string | null;
   metadata: Record<string, unknown>;
+  status: 'sent' | 'delivered' | 'read';
   created_at: string;
   sender: {
     id: string;

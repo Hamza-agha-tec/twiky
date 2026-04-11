@@ -38,8 +38,8 @@ function toUiMessage(m: ChatMessage, myId: string): Message {
     type: (m.type as Message['type']) ?? 'text',
     timestamp: m.created_at,
     isOwn: m.sender_id === myId,
-    isRead: true,
-    isDelivered: true,
+    isRead: m.status === 'read',
+    isDelivered: m.status === 'delivered' || m.status === 'read',
   };
 }
 

@@ -136,6 +136,30 @@ export class MessagingService {
   }
 
   /**
+   * MESSAGE STATUS
+   */
+
+  async updateMessageStatus(messageId: string, status: 'sent' | 'delivered' | 'read') {
+    await this.supabaseService
+      .getClient()
+      .from('messages')
+      .update({ status })
+      .eq('id', messageId);
+  }
+
+  async markConversationRead(userId: string, conversationId: string): Promise<string[]> {
+    const { data } = await this.supabaseService
+      .getClient()
+      .from('messages')
+      .update({ status: 'read' })
+      .eq('conversation_id', conversationId)
+      .neq('sender_id', userId)
+      .in('status', ['sent', 'delivered'])
+      .select('id');
+    return data?.map((m: { id: string }) => m.id) ?? [];
+  }
+
+  /**
    * FILE SHARING
    */
 

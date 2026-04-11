@@ -27,6 +27,10 @@ export function useSocket(conversationId: string | null) {
           MESSAGING_KEYS.messages(conversationId),
           (old = []) => [message, ...old]
         );
+        // Confirm delivery to sender
+        socketRef.current?.emit('messageDelivered', { messageId: message.id, conversationId });
+        // Mark as read since the conversation is currently open
+        socketRef.current?.emit('markRead', { conversationId });
       });
 
       s.on('messageUpdated', (updated: ChatMessage) => {
@@ -47,9 +51,27 @@ export function useSocket(conversationId: string | null) {
         queryClient.invalidateQueries({ queryKey: MESSAGING_KEYS.messages(conversationId) });
       });
 
+      s.on('messageStatusUpdate', ({ messageId, status }: { messageId: string; status: string }) => {
+        queryClient.setQueryData<ChatMessage[]>(
+          MESSAGING_KEYS.messages(conversationId),
+          (old = []) => old.map((m) => m.id === messageId ? { ...m, status: status as ChatMessage['status'] } : m)
+        );
+      });
+
+      s.on('messagesRead', ({ messageIds }: { messageIds: string[] }) => {
+        const ids = new Set(messageIds);
+        queryClient.setQueryData<ChatMessage[]>(
+          MESSAGING_KEYS.messages(conversationId),
+          (old = []) => old.map((m) => ids.has(m.id) ? { ...m, status: 'read' as const } : m)
+        );
+      });
+
       s.on('userTyping', ({ isTyping }: { userId: string; isTyping: boolean }) => {
         if (mounted) setOtherIsTyping(isTyping);
       });
+
+      // Mark existing unread messages as read when opening conversation
+      s.emit('markRead', { conversationId });
     });
 
     return () => {
@@ -59,6 +81,8 @@ export function useSocket(conversationId: string | null) {
       socketRef.current?.off('messageUpdated');
       socketRef.current?.off('messageDeleted');
       socketRef.current?.off('reactionUpdate');
+      socketRef.current?.off('messageStatusUpdate');
+      socketRef.current?.off('messagesRead');
       socketRef.current?.off('userTyping');
       socketRef.current?.emit('leaveConversation', conversationId);
     };
