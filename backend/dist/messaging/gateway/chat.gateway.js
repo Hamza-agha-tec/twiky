@@ -56,6 +56,39 @@ let ChatGateway = ChatGateway_1 = class ChatGateway {
             return { status: 'error', message: error.message };
         }
     }
+    async handleEditMessage(client, payload) {
+        const userId = client.data.user.userId;
+        try {
+            const message = await this.messagingService.editMessage(userId, payload.messageId, payload.content);
+            this.server.to(`conv_${message.conversation_id}`).emit('messageUpdated', message);
+            return { status: 'success' };
+        }
+        catch (error) {
+            return { status: 'error', message: error.message };
+        }
+    }
+    async handleDeleteMessage(client, payload) {
+        const userId = client.data.user.userId;
+        try {
+            await this.messagingService.deleteMessage(userId, payload.messageId);
+            this.server.to(`conv_${payload.conversationId}`).emit('messageDeleted', payload.messageId);
+            return { status: 'success' };
+        }
+        catch (error) {
+            return { status: 'error', message: error.message };
+        }
+    }
+    async handleToggleReaction(client, payload) {
+        const userId = client.data.user.userId;
+        try {
+            const result = await this.messagingService.toggleReaction(userId, payload.messageId, payload.emoji);
+            this.server.emit('reactionUpdate', result);
+            return { status: 'success' };
+        }
+        catch (error) {
+            return { status: 'error', message: error.message };
+        }
+    }
     handleTyping(client, payload) {
         const userId = client.data.user.userId;
         client.to(`conv_${payload.conversationId}`).emit('userTyping', {
@@ -94,6 +127,32 @@ __decorate([
         messaging_dto_1.SendMessageDto]),
     __metadata("design:returntype", Promise)
 ], ChatGateway.prototype, "handleSendMessage", null);
+__decorate([
+    (0, websockets_1.SubscribeMessage)('editMessage'),
+    __param(0, (0, websockets_1.ConnectedSocket)()),
+    __param(1, (0, websockets_1.MessageBody)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [socket_io_1.Socket,
+        messaging_dto_1.EditMessageDto]),
+    __metadata("design:returntype", Promise)
+], ChatGateway.prototype, "handleEditMessage", null);
+__decorate([
+    (0, websockets_1.SubscribeMessage)('deleteMessage'),
+    __param(0, (0, websockets_1.ConnectedSocket)()),
+    __param(1, (0, websockets_1.MessageBody)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [socket_io_1.Socket, Object]),
+    __metadata("design:returntype", Promise)
+], ChatGateway.prototype, "handleDeleteMessage", null);
+__decorate([
+    (0, websockets_1.SubscribeMessage)('reactToMessage'),
+    __param(0, (0, websockets_1.ConnectedSocket)()),
+    __param(1, (0, websockets_1.MessageBody)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [socket_io_1.Socket,
+        messaging_dto_1.ToggleReactionDto]),
+    __metadata("design:returntype", Promise)
+], ChatGateway.prototype, "handleToggleReaction", null);
 __decorate([
     (0, websockets_1.SubscribeMessage)('typing'),
     __param(0, (0, websockets_1.ConnectedSocket)()),

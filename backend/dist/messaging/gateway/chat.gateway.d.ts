@@ -1,7 +1,7 @@
 import { OnGatewayInit } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { MessagingService } from '../messaging.service';
-import { SendMessageDto } from '../dto/messaging.dto';
+import { EditMessageDto, SendMessageDto, ToggleReactionDto } from '../dto/messaging.dto';
 import { ConfigService } from '@nestjs/config';
 export declare class ChatGateway implements OnGatewayInit {
     private readonly messagingService;
@@ -26,6 +26,30 @@ export declare class ChatGateway implements OnGatewayInit {
         status: string;
         message: any;
         messageId?: undefined;
+    }>;
+    handleEditMessage(client: Socket, payload: EditMessageDto): Promise<{
+        status: string;
+        message?: undefined;
+    } | {
+        status: string;
+        message: any;
+    }>;
+    handleDeleteMessage(client: Socket, payload: {
+        messageId: string;
+        conversationId: string;
+    }): Promise<{
+        status: string;
+        message?: undefined;
+    } | {
+        status: string;
+        message: any;
+    }>;
+    handleToggleReaction(client: Socket, payload: ToggleReactionDto): Promise<{
+        status: string;
+        message?: undefined;
+    } | {
+        status: string;
+        message: any;
     }>;
     handleTyping(client: Socket, payload: {
         conversationId: string;

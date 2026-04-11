@@ -75,9 +75,11 @@ let MessagingService = class MessagingService {
             content,
             type: type || 'text',
             file_url: fileUrl,
+            reply_to_id: sendDto.replyToId,
+            is_forwarded: sendDto.isForwarded || false,
             metadata: metadata || {},
         })
-            .select('*, sender:users!sender_id(id, username, avatar_url)')
+            .select('*, sender:users!sender_id(id, username, avatar_url), reply_to:messages!reply_to_id(id, content, type, sender:users!sender_id(username))')
             .single();
         if (error)
             throw new Error(`Failed to save message: ${error.message}`);
@@ -87,6 +89,61 @@ let MessagingService = class MessagingService {
             .update({ last_message_at: new Date().toISOString() })
             .eq('id', conversationId);
         return data;
+    }
+    async editMessage(userId, messageId, content) {
+        const { data, error } = await this.supabaseService
+            .getClient()
+            .from('messages')
+            .update({ content, is_edited: true })
+            .eq('id', messageId)
+            .eq('sender_id', userId)
+            .select('*, sender:users!sender_id(id, username, avatar_url)')
+            .maybeSingle();
+        if (error)
+            throw new Error(`Failed to edit message: ${error.message}`);
+        if (!data)
+            throw new common_1.ForbiddenException('Message not found or you do not have permission to edit it');
+        return data;
+    }
+    async deleteMessage(userId, messageId) {
+        const { error } = await this.supabaseService
+            .getClient()
+            .from('messages')
+            .delete()
+            .eq('id', messageId)
+            .eq('sender_id', userId);
+        if (error)
+            throw new Error(`Failed to delete message: ${error.message}`);
+        return { success: true };
+    }
+    async toggleReaction(userId, messageId, emoji) {
+        const client = this.supabaseService.getClient();
+        const { data: existing } = await client
+            .from('message_reactions')
+            .select('*')
+            .eq('message_id', messageId)
+            .eq('user_id', userId)
+            .eq('emoji', emoji)
+            .maybeSingle();
+        if (existing) {
+            await client
+                .from('message_reactions')
+                .delete()
+                .eq('message_id', messageId)
+                .eq('user_id', userId)
+                .eq('emoji', emoji);
+            return { status: 'removed', messageId, emoji, userId };
+        }
+        else {
+            const { data, error } = await client
+                .from('message_reactions')
+                .insert({ message_id: messageId, user_id: userId, emoji })
+                .select()
+                .single();
+            if (error)
+                throw new Error(error.message);
+            return { status: 'added', messageId, emoji, userId };
+        }
     }
     async getMessages(userId, conversationId, limit = 50, offset = 0) {
         const { data: member } = await this.supabaseService
@@ -101,7 +158,12 @@ let MessagingService = class MessagingService {
         const { data, error } = await this.supabaseService
             .getClient()
             .from('messages')
-            .select('*, sender:users!sender_id(id, username, avatar_url)')
+            .select(`
+        *,
+        sender:users!sender_id(id, username, avatar_url),
+        reply_to:messages!reply_to_id(id, content, type, sender:users!sender_id(username)),
+        reactions:message_reactions(emoji, user_id)
+      `)
             .eq('conversation_id', conversationId)
             .order('created_at', { ascending: false })
             .range(offset, offset + limit - 1);
