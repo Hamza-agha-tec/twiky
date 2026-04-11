@@ -9,17 +9,20 @@ import type { Message } from '@/lib/mock-data';
 import { MessageBubble } from './message-bubble';
 import { Composer } from './composer';
 import { format } from 'date-fns';
-import { ChatMessage, useConversations } from '@/hooks/use-messaging';
+import { ChatMessage, useConversations, useEditMessage, useDeleteMessage, useReactToMessage, useUploadFile } from '@/hooks/use-messaging';
 import { useProfile } from '@/hooks/use-user';
+import { toast } from 'sonner';
 
 interface ChatWindowProps {
   activeChat: string;
   messages?: ChatMessage[];
-  onSendMessage?: (content: string, type?: Message['type'], reply?: ReplyTo) => void;
+  onSendMessage?: (content: string, type?: string, replyToId?: string) => void;
+  onTyping?: (isTyping: boolean) => void;
   onProfileClick?: () => void;
 }
 
 interface ReplyTo {
+  id: string;
   senderName: string;
   content: string;
 }
@@ -39,10 +42,13 @@ function toUiMessage(m: ChatMessage, myId: string): Message {
   };
 }
 
-export function ChatWindow({ activeChat, messages: providedMessages = [], onSendMessage, onProfileClick }: ChatWindowProps) {
+export function ChatWindow({ activeChat, messages: providedMessages = [], onSendMessage, onTyping, onProfileClick }: ChatWindowProps) {
   const { data: profile } = useProfile();
   const { data: conversations = [] } = useConversations();
   const conv = conversations.find((c) => c.id === activeChat);
+  const editMessage = useEditMessage(activeChat);
+  const deleteMessage = useDeleteMessage(activeChat);
+  const reactToMessage = useReactToMessage(activeChat);
   const messages = providedMessages
     .slice()
     .reverse()
@@ -93,6 +99,7 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
 
   const handleReply = (message: Message) => {
     setReplyTo({
+      id: message.id,
       senderName: message.senderName,
       content: message.type === 'text' ? message.content : `[${message.type}]`,
     });
@@ -194,6 +201,16 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
                       dayMessages[index - 1].senderId !== message.senderId)
                   }
                   onReply={handleReply}
+                  onDelete={() => {
+                    deleteMessage.mutate(message.id, {
+                      onError: () => toast.error('Failed to delete message'),
+                    });
+                  }}
+                  onReact={(emoji) => {
+                    reactToMessage.mutate({ id: message.id, emoji }, {
+                      onError: () => toast.error('Failed to add reaction'),
+                    });
+                  }}
                 />
               ))}
             </div>
@@ -233,9 +250,9 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
 
       {/* Composer */}
       <Composer
-        onTyping={setIsTyping}
+        onTyping={(t) => { setIsTyping(t); onTyping?.(t); }}
         onSendMessage={(content, type) => {
-          onSendMessage?.(content, type, replyTo ?? undefined);
+          onSendMessage?.(content, type, replyTo?.id);
           setReplyTo(null);
         }}
         replyTo={replyTo}
