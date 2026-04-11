@@ -44,6 +44,11 @@ export const userApi = {
   getSettings: () => authedFetch('/users/settings'),
   updateSettings: (data: { theme?: string; notifications_enabled?: boolean }) =>
     authedFetch('/users/settings', { method: 'PATCH', body: JSON.stringify(data) }),
+  getContacts: () => authedFetch('/contacts'),
   addContact: (data: { nickname: string; phoneNumber: string }) =>
     authedFetch('/contacts', { method: 'POST', body: JSON.stringify(data) }),
+  updateContact: ({ id, ...data }: { id: string; nickname?: string }) =>
+    authedFetch(`/contacts/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteContact: (id: string) =>
+    authedFetch(`/contacts/${id}`, { method: 'DELETE' }),
 };
