@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAddContact } from '@/hooks/use-user';
-import toast from 'react-hot-toast';
+import { toast } from 'sonner';
 
 interface AddContactModalProps {
   onClose: () => void;

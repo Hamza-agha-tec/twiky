@@ -8,6 +8,18 @@ async function getToken(): Promise<string> {
   return data.session?.access_token ?? '';
 }
 
+function humanizeError(status: number, message?: string): string {
+  if (message?.toLowerCase().includes('not found') || status === 404)
+    return "We couldn't find anyone with that phone number.";
+  if (status === 401 || status === 403)
+    return 'You need to be logged in to do that.';
+  if (status === 409)
+    return 'This contact already exists.';
+  if (status >= 500)
+    return 'Something went wrong on our end. Please try again.';
+  return message ?? 'Something went wrong. Please try again.';
+}
+
 async function authedFetch(path: string, init: RequestInit = {}) {
   const token = await getToken();
   const res = await fetch(`${API_URL}${path}`, {
@@ -20,7 +32,7 @@ async function authedFetch(path: string, init: RequestInit = {}) {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.message ?? `Request failed (${res.status})`);
+    throw new Error(humanizeError(res.status, body.message));
   }
   return res.json();
 }
