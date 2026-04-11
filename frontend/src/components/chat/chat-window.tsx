@@ -5,14 +5,16 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Search, Phone, Video, MoreVertical, Pin, X } from 'lucide-react';
-import { chatsData, messagesData, Message } from '@/lib/mock-data';
+import type { Message } from '@/lib/mock-data';
 import { MessageBubble } from './message-bubble';
 import { Composer } from './composer';
 import { format } from 'date-fns';
+import { ChatMessage, useConversations } from '@/hooks/use-messaging';
+import { useProfile } from '@/hooks/use-user';
 
 interface ChatWindowProps {
   activeChat: string;
-  messages?: typeof messagesData['alice'];
+  messages?: ChatMessage[];
   onSendMessage?: (content: string, type?: Message['type'], reply?: ReplyTo) => void;
   onProfileClick?: () => void;
 }
@@ -22,9 +24,29 @@ interface ReplyTo {
   content: string;
 }
 
-export function ChatWindow({ activeChat, messages: providedMessages, onSendMessage, onProfileClick }: ChatWindowProps) {
-  const chat = chatsData.find((c) => c.id === activeChat);
-  const messages = providedMessages || messagesData[activeChat] || [];
+function toUiMessage(m: ChatMessage, myId: string): Message {
+  return {
+    id: m.id,
+    senderId: m.sender_id,
+    senderName: m.sender.username,
+    avatar: m.sender.avatar_url ?? '',
+    content: m.content ?? '',
+    type: (m.type as Message['type']) ?? 'text',
+    timestamp: m.created_at,
+    isOwn: m.sender_id === myId,
+    isRead: true,
+    isDelivered: true,
+  };
+}
+
+export function ChatWindow({ activeChat, messages: providedMessages = [], onSendMessage, onProfileClick }: ChatWindowProps) {
+  const { data: profile } = useProfile();
+  const { data: conversations = [] } = useConversations();
+  const conv = conversations.find((c) => c.id === activeChat);
+  const messages = providedMessages
+    .slice()
+    .reverse()
+    .map((m) => toUiMessage(m, profile?.id ?? ''));
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [replyTo, setReplyTo] = useState<ReplyTo | null>(null);
@@ -40,11 +62,10 @@ export function ChatWindow({ activeChat, messages: providedMessages, onSendMessa
     setShowPinned(true);
   }, [activeChat]);
 
-  if (!chat) return null;
-
-  const initials = chat.name
+  const chatName = conv?.name ?? 'Chat';
+  const initials = chatName
     .split(' ')
-    .map((word) => word[0])
+    .map((word: string) => word[0])
     .join('')
     .toUpperCase()
     .slice(0, 2);
@@ -90,35 +111,18 @@ export function ChatWindow({ activeChat, messages: providedMessages, onSendMessa
           >
             <div className="relative">
               <Avatar className="h-9 w-9">
-                <AvatarImage src={chat.avatar} alt={chat.name} />
                 <AvatarFallback className="bg-primary text-primary-foreground text-sm">
                   {initials}
                 </AvatarFallback>
               </Avatar>
-              {chat.isOnline && !chat.isGroup && (
-                <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-background" />
-              )}
             </div>
           </motion.button>
 
           <div className="flex-1 min-w-0">
-            <h2 className="font-semibold text-foreground text-sm leading-tight truncate">{chat.name}</h2>
-            <div className="flex items-center gap-1.5">
-              {chat.isOnline && !chat.isGroup ? (
-                <>
-                  <motion.span
-                    className="h-1.5 w-1.5 rounded-full bg-emerald-500 flex-shrink-0"
-                    animate={{ opacity: [1, 0.4, 1] }}
-                    transition={{ duration: 1.8, repeat: Infinity }}
-                  />
-                  <p className="text-xs text-emerald-500 font-medium">Online</p>
-                </>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  {chat.isGroup ? `${Math.floor(Math.random() * 50) + 10} members` : 'Offline'}
-                </p>
-              )}
-            </div>
+            <h2 className="font-semibold text-foreground text-sm leading-tight truncate">{chatName}</h2>
+            <p className="text-xs text-muted-foreground">
+              {conv?.is_group ? 'Group' : 'Direct message'}
+            </p>
           </div>
         </div>
 
@@ -140,7 +144,7 @@ export function ChatWindow({ activeChat, messages: providedMessages, onSendMessa
 
       {/* Pinned Message Banner */}
       <AnimatePresence>
-        {chat.pinnedMessage && showPinned && (
+        {false && showPinned && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
@@ -152,7 +156,7 @@ export function ChatWindow({ activeChat, messages: providedMessages, onSendMessa
               <Pin className="h-3.5 w-3.5 text-primary flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-[11px] font-semibold text-primary">Pinned Message</p>
-                <p className="text-xs text-muted-foreground truncate">{chat.pinnedMessage}</p>
+                <p className="text-xs text-muted-foreground truncate" />
               </div>
               <button
                 onClick={() => setShowPinned(false)}
@@ -207,7 +211,7 @@ export function ChatWindow({ activeChat, messages: providedMessages, onSendMessa
             >
               <Avatar className="h-7 w-7 flex-shrink-0">
                 <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                  {chat.name[0]}
+                  {chatName[0]}
                 </AvatarFallback>
               </Avatar>
               <div className="bg-muted rounded-2xl rounded-bl-sm px-4 py-3 flex gap-1 items-center">

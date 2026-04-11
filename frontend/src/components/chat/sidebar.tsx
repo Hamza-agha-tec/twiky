@@ -5,12 +5,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Search, Edit, MessageCircle, Settings } from 'lucide-react';
-import { chatsData, Chat } from '@/lib/mock-data';
+import { Chat } from '@/lib/mock-data';
 import { ChatItem } from './chat-item';
 import { ConversationContextMenu } from './conversation-context-menu';
 import { ProfileSettings } from './profile-settings';
 import { AddContactModal } from './add-contact-modal';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { useProfile, useContacts } from '@/hooks/use-user';
+import { useConversations, useCreateConversation } from '@/hooks/use-messaging';
+import { EditContactModal } from './edit-contact-modal';
 
 interface SidebarProps {
   activeChat: string;
@@ -43,7 +46,6 @@ interface ContextMenuState {
   chat: Chat;
 }
 
-const ME_AVATAR = 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop';
 
 export function Sidebar({
   activeChat,
@@ -56,40 +58,84 @@ export function Sidebar({
 }: SidebarProps) {
   const [filter, setFilter] = useState<Filter>('all');
   const [isMounted, setIsMounted] = useState(false);
-  const [chatMeta, setChatMeta] = useState<Record<string, ChatMeta>>(() =>
-    Object.fromEntries(chatsData.map((c) => [c.id, { isPinned: c.isPinned, isMuted: c.isMuted }]))
-  );
+  const [chatMeta, setChatMeta] = useState<Record<string, ChatMeta>>({});
   const [archived, setArchived] = useState<Set<string>>(new Set());
   const [deleted, setDeleted] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [showProfile, setShowProfile] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
+  const [editContact, setEditContact] = useState<{ id: string; nickname: string } | null>(null);
+  const { data: profile } = useProfile();
+  const { data: contacts = [] } = useContacts();
+  const { data: conversations = [], isLoading: convsLoading } = useConversations();
+  const createConversation = useCreateConversation();
+
+  const isSearching = searchQuery.trim().length > 0;
+
+  const filteredContacts = useMemo(() => {
+    if (!isSearching) return [];
+    const q = searchQuery.toLowerCase();
+    return contacts.filter((c) =>
+      (c.nickname ?? c.username ?? '').toLowerCase().includes(q) ||
+      (c.phone_number ?? '').includes(q)
+    );
+  }, [contacts, searchQuery, isSearching]);
+
+  async function handleContactClick(contactId: string) {
+    // Check if DM conversation already exists
+    const existing = conversations.find(
+      (c) => !c.is_group && c.name === null
+    );
+    if (existing) {
+      onSelectChat(existing.id);
+      onSearchChange('');
+      return;
+    }
+    createConversation.mutate(
+      { participantIds: [contactId] },
+      {
+        onSuccess: (conv) => {
+          onSelectChat(conv.id);
+          onSearchChange('');
+        },
+      }
+    );
+  }
 
   useEffect(() => { setIsMounted(true); }, []);
 
   const filteredChats = useMemo(() => {
-    let result = chatsData.filter((c) => !deleted.has(c.id) && !archived.has(c.id));
+    let result: Chat[] = conversations
+      .filter((c) => !deleted.has(c.id))
+      .map((c) => {
+        // For DMs, try to find the contact to get their name/avatar
+        const contact = !c.is_group ? contacts.find((ct) => ct.id !== profile?.id) : null;
+        return {
+          id: c.id,
+          name: c.name || contact?.nickname || contact?.username || 'Direct Chat',
+          avatar: contact?.avatar_url ?? '',
+          lastMessage: '',
+          timestamp: c.last_message_at ?? c.created_at,
+          unread: 0,
+          isGroup: c.is_group,
+          isPinned: chatMeta[c.id]?.isPinned ?? false,
+          isMuted: chatMeta[c.id]?.isMuted ?? false,
+          isOnline: false,
+        };
+      });
 
     if (filter === 'unread') result = result.filter((c) => c.unread > 0);
     else if (filter === 'groups') result = result.filter((c) => c.isGroup);
     else if (filter === 'direct') result = result.filter((c) => !c.isGroup);
 
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter((c) =>
-        c.name.toLowerCase().includes(q) || c.lastMessage.toLowerCase().includes(q)
-      );
-    }
 
-    // pinned first
     return result.sort((a, b) => {
-      const aPinned = chatMeta[a.id]?.isPinned ? 1 : 0;
-      const bPinned = chatMeta[b.id]?.isPinned ? 1 : 0;
-      return bPinned - aPinned;
+      if (b.isPinned !== a.isPinned) return (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0);
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
     });
-  }, [filter, searchQuery, chatMeta, deleted, archived]);
+  }, [conversations, contacts, profile, filter, searchQuery, chatMeta, deleted]);
 
-  const unreadCount = chatsData.filter((c) => !deleted.has(c.id)).reduce((s, c) => s + c.unread, 0);
+  const unreadCount = 0; // will come from conversations
 
   const handleContextMenu = (e: React.MouseEvent, chat: Chat) => {
     e.preventDefault();
@@ -159,7 +205,51 @@ export function Sidebar({
 
         {/* Chat List */}
         <div className="flex-1 overflow-y-auto">
-          {filteredChats.length > 0 ? (
+          {isSearching ? (
+            <>
+              {filteredContacts.length > 0 && (
+                <>
+                  <p className="px-4 pt-3 pb-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Contacts</p>
+                  {filteredContacts.map((contact) => (
+                    <button
+                      key={contact.id}
+                      onClick={() => handleContactClick(contact.id)}
+                      disabled={createConversation.isPending}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-accent transition-colors"
+                    >
+                      <Avatar className="h-10 w-10 flex-shrink-0">
+                        <AvatarImage src={contact.avatar_url ?? ''} alt={contact.nickname ?? contact.username ?? ''} />
+                        <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+                          {(contact.nickname ?? contact.username ?? '?')[0].toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0 text-left">
+                        <p className="text-sm font-medium text-foreground truncate">{contact.nickname ?? contact.username}</p>
+                        <p className="text-xs text-muted-foreground truncate">{contact.phone_number}</p>
+                      </div>
+                    </button>
+                  ))}
+                </>
+              )}
+              {filteredContacts.length === 0 && (
+                <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
+                  <p className="text-sm">No contacts found</p>
+                </div>
+              )}
+            </>
+          ) : convsLoading ? (
+            <div className="flex flex-col gap-1 p-2">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-xl">
+                  <div className="h-10 w-10 rounded-full bg-muted animate-pulse flex-shrink-0" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-3 bg-muted animate-pulse rounded w-1/2" />
+                    <div className="h-2.5 bg-muted animate-pulse rounded w-3/4" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : filteredChats.length > 0 ? (
             filteredChats.map((chat, index) => (
               <motion.div
                 key={chat.id}
@@ -192,13 +282,15 @@ export function Sidebar({
           >
             <div className="relative flex-shrink-0">
               <Avatar className="h-9 w-9">
-                <AvatarImage src={ME_AVATAR} alt="You" />
-                <AvatarFallback className="bg-primary text-primary-foreground text-sm">Y</AvatarFallback>
+                <AvatarImage src={profile?.avatar_url ?? ''} alt={profile?.username ?? 'You'} />
+                <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+                  {profile?.username?.[0]?.toUpperCase() ?? 'Y'}
+                </AvatarFallback>
               </Avatar>
               <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-background" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-foreground truncate">You</p>
+              <p className="text-sm font-semibold text-foreground truncate">{profile?.username ?? 'You'}</p>
               <p className="text-xs text-emerald-500 font-medium">Available</p>
             </div>
           </button>
@@ -231,6 +323,10 @@ export function Sidebar({
             onPin={() => updateMeta(contextMenu.chat.id, { isPinned: !chatMeta[contextMenu.chat.id]?.isPinned })}
             onBlock={() => setDeleted((prev) => new Set([...prev, contextMenu.chat.id]))}
             onDelete={() => setDeleted((prev) => new Set([...prev, contextMenu.chat.id]))}
+            onEditContact={() => {
+              setEditContact({ id: contextMenu.chat.id, nickname: contextMenu.chat.name });
+              setContextMenu(null);
+            }}
           />
         )}
       </AnimatePresence>
@@ -243,6 +339,15 @@ export function Sidebar({
       {/* Add Contact */}
       {isMounted && showAddContact && (
         <AddContactModal onClose={() => setShowAddContact(false)} />
+      )}
+
+      {/* Edit Contact */}
+      {isMounted && editContact && (
+        <EditContactModal
+          contactId={editContact.id}
+          currentNickname={editContact.nickname}
+          onClose={() => setEditContact(null)}
+        />
       )}
     </>
   );

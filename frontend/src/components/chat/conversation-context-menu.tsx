@@ -1,7 +1,7 @@
 'use client';
 
 import { AnimatePresence, motion } from 'framer-motion';
-import { Star, Archive, BellOff, Bell, Pin, PinOff, ShieldAlert, Trash2 } from 'lucide-react';
+import { Star, Archive, BellOff, Bell, Pin, PinOff, ShieldAlert, Trash2, Pencil } from 'lucide-react';
 
 interface ConversationContextMenuProps {
   x: number;
@@ -18,6 +18,7 @@ interface ConversationContextMenuProps {
   onPin: () => void;
   onBlock: () => void;
   onDelete: () => void;
+  onEditContact?: () => void;
 }
 
 export function ConversationContextMenu({
@@ -34,6 +35,7 @@ export function ConversationContextMenu({
   onPin,
   onBlock,
   onDelete,
+  onEditContact,
 }: ConversationContextMenuProps) {
   const safeX = Math.min(x, window.innerWidth - 210);
   const safeY = Math.min(y, window.innerHeight - 320);
@@ -63,6 +65,7 @@ export function ConversationContextMenu({
   ];
 
   const dangerItems = [
+    ...(!isGroup && onEditContact ? [{ icon: Pencil, label: 'Edit nickname', onClick: onEditContact }] : []),
     ...(!isGroup ? [{ icon: ShieldAlert, label: 'Block', onClick: onBlock }] : []),
     { icon: Trash2, label: 'Delete conversation', onClick: onDelete },
   ];

@@ -7,7 +7,21 @@ import { userApi } from '@/lib/user-api';
 export const USER_KEYS = {
   profile: ['user', 'profile'] as const,
   settings: ['user', 'settings'] as const,
+  contacts: ['user', 'contacts'] as const,
 };
+
+export interface Contact {
+  id: string;
+  nickname: string | null;
+  username: string | null;
+  avatar_url: string | null;
+  phone_number: string | null;
+  is_blocked: boolean;
+  is_archived: boolean;
+  is_favorite: boolean;
+  is_pinned: boolean;
+  is_muted: boolean;
+}
 
 export function useProfile() {
   return useQuery({
@@ -33,9 +47,34 @@ export function useSettings() {
   });
 }
 
+export function useContacts() {
+  return useQuery<Contact[]>({
+    queryKey: USER_KEYS.contacts,
+    queryFn: userApi.getContacts,
+  });
+}
+
 export function useAddContact() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: userApi.addContact,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: USER_KEYS.contacts }),
+  });
+}
+
+export function useUpdateContact() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: userApi.updateContact,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: USER_KEYS.contacts }),
+  });
+}
+
+export function useDeleteContact() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: userApi.deleteContact,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: USER_KEYS.contacts }),
   });
 }
 
