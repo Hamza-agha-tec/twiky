@@ -9,8 +9,8 @@ import type { Message } from '@/lib/mock-data';
 import { MessageBubble } from './message-bubble';
 import { Composer } from './composer';
 import { format } from 'date-fns';
-import { ChatMessage, useConversations, useEditMessage, useDeleteMessage, useReactToMessage, useUploadFile } from '@/hooks/use-messaging';
-import { useProfile } from '@/hooks/use-user';
+import { ChatMessage, useConversations, useEditMessage, useDeleteMessage, useReactToMessage, useUploadFile, getConvDisplayName } from '@/hooks/use-messaging';
+import { useProfile, useContacts } from '@/hooks/use-user';
 import { toast } from 'sonner';
 
 interface ChatWindowProps {
@@ -44,6 +44,7 @@ function toUiMessage(m: ChatMessage, myId: string): Message {
 
 export function ChatWindow({ activeChat, messages: providedMessages = [], onSendMessage, onTyping, onProfileClick }: ChatWindowProps) {
   const { data: profile } = useProfile();
+  const { data: contacts = [] } = useContacts();
   const { data: conversations = [] } = useConversations();
   const conv = conversations.find((c) => c.id === activeChat);
   const editMessage = useEditMessage(activeChat);
@@ -68,7 +69,7 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
     setShowPinned(true);
   }, [activeChat]);
 
-  const chatName = conv?.name ?? 'Chat';
+  const chatName = conv ? getConvDisplayName(conv, profile?.id ?? '', contacts) : 'Chat';
   const initials = chatName
     .split(' ')
     .map((word: string) => word[0])

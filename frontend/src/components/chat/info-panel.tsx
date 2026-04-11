@@ -6,7 +6,8 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Phone, Video, Search, Bell, BellOff, Trash2, X, ShieldAlert, Star, ChevronRight } from 'lucide-react';
-import { chatsData } from '@/lib/mock-data';
+import { useConversations, getConvDisplayName, getDmContact } from '@/hooks/use-messaging';
+import { useProfile, useContacts } from '@/hooks/use-user';
 
 interface InfoPanelProps {
   activeChat: string;
@@ -28,13 +29,20 @@ const SHARED_MEDIA = [
 ];
 
 export function InfoPanel({ activeChat, onClose }: InfoPanelProps) {
-  const chat = chatsData.find((c) => c.id === activeChat);
+  const { data: profile } = useProfile();
+  const { data: contacts = [] } = useContacts();
+  const { data: conversations = [] } = useConversations();
+  const conv = conversations.find((c) => c.id === activeChat);
   const [muted, setMuted] = useState(false);
   const [showAllStarred, setShowAllStarred] = useState(false);
 
-  if (!chat) return null;
+  if (!conv) return null;
 
-  const initials = chat.name
+  const myId = profile?.id ?? '';
+  const chatName = getConvDisplayName(conv, myId, contacts);
+  const dmParticipant = getDmContact(conv, myId);
+  const dmContact = contacts.find((c) => c.id === dmParticipant?.id) ?? null;
+  const initials = chatName
     .split(' ')
     .map((word) => word[0])
     .join('')
@@ -52,7 +60,7 @@ export function InfoPanel({ activeChat, onClose }: InfoPanelProps) {
       {/* Header */}
       <div className="h-14 border-b border-border px-4 flex items-center justify-between bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex-shrink-0">
         <h3 className="font-semibold text-foreground text-sm">
-          {chat.isGroup ? 'Group Info' : 'Contact Info'}
+          {conv.is_group ? 'Group Info' : 'Contact Info'}
         </h3>
         <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={onClose}>
           <X className="h-4 w-4" />
@@ -65,20 +73,14 @@ export function InfoPanel({ activeChat, onClose }: InfoPanelProps) {
         <div className="p-5 flex flex-col items-center border-b border-border">
           <div className="relative mb-3">
             <Avatar className="h-16 w-16">
-              <AvatarImage src={chat.avatar} alt={chat.name} />
               <AvatarFallback className="bg-primary text-primary-foreground text-xl">
                 {initials}
               </AvatarFallback>
             </Avatar>
-            {chat.isOnline && !chat.isGroup && (
-              <span className="absolute bottom-0.5 right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-background" />
-            )}
           </div>
-          <h2 className="text-base font-semibold text-foreground">{chat.name}</h2>
+          <h2 className="text-base font-semibold text-foreground">{chatName}</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {chat.isGroup
-              ? `${Math.floor(Math.random() * 50) + 10} members`
-              : chat.isOnline ? 'Active now' : 'Offline'}
+            {conv.is_group ? 'Group' : 'Direct message'}
           </p>
         </div>
 
@@ -108,14 +110,12 @@ export function InfoPanel({ activeChat, onClose }: InfoPanelProps) {
         </div>
 
         {/* About */}
-        <div className="px-4 py-3 border-b border-border">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">About</p>
-          <p className="text-sm text-foreground">
-            {chat.isGroup
-              ? 'Group chat for discussing design and development ideas'
-              : 'Product designer and coffee enthusiast ☕'}
-          </p>
-        </div>
+        {!conv.is_group && dmContact?.phone_number && (
+          <div className="px-4 py-3 border-b border-border">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Phone</p>
+            <p className="text-sm text-foreground">{dmContact.phone_number}</p>
+          </div>
+        )}
 
         {/* Starred Messages */}
         <div className="px-4 py-3 border-b border-border">
@@ -171,13 +171,13 @@ export function InfoPanel({ activeChat, onClose }: InfoPanelProps) {
             <Trash2 className="h-4 w-4" />
             Clear chat
           </Button>
-          {!chat.isGroup && (
+          {!conv.is_group && (
             <Button
               variant="ghost"
               className="w-full justify-start gap-2.5 text-destructive hover:text-destructive hover:bg-destructive/10 h-9 text-sm"
             >
               <ShieldAlert className="h-4 w-4" />
-              Block {chat.name.split(' ')[0]}
+              Block {chatName.split(' ')[0]}
             </Button>
           )}
           <Button

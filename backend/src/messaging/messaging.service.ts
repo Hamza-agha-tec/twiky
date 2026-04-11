@@ -45,17 +45,24 @@ export class MessagingService {
   }
 
   async getConversations(userId: string) {
-    // We want conversations where the user is a participant
     const { data, error } = await this.supabaseService
       .getClient()
       .from('conversation_participants')
-      .select('conversation:conversations(*), role, joined_at')
+      .select(`
+        conversation:conversations(
+          *,
+          participants:conversation_participants(
+            user:users(id, username, avatar_url, phone_number)
+          )
+        ),
+        role,
+        joined_at
+      `)
       .eq('user_id', userId)
       .order('joined_at', { ascending: false });
 
     if (error) throw new Error(`Failed to fetch conversations: ${error.message}`);
 
-    // Transform to return conversation objects with participant info
     return data.map(item => item.conversation);
   }
 
