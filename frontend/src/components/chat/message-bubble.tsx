@@ -12,12 +12,14 @@ interface MessageBubbleProps {
   message: Message;
   showAvatar?: boolean;
   onReply?: (message: Message) => void;
+  onDelete?: () => void;
+  onReact?: (emoji: string) => void;
 }
 
 // Realistic waveform bar heights
 const WAVEFORM = [30, 55, 40, 75, 60, 45, 85, 50, 65, 35, 70, 80, 45, 60, 40, 75, 55, 90, 35, 65, 50, 80, 45, 70, 55];
 
-export function MessageBubble({ message, showAvatar = true, onReply }: MessageBubbleProps) {
+export function MessageBubble({ message, showAvatar = true, onReply, onDelete, onReact }: MessageBubbleProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -47,6 +49,7 @@ export function MessageBubble({ message, showAvatar = true, onReply }: MessageBu
       ...prev,
       [emoji]: (prev[emoji] || 0) + 1,
     }));
+    onReact?.(emoji);
   };
 
   const handlePlayToggle = () => {
@@ -243,6 +246,7 @@ export function MessageBubble({ message, showAvatar = true, onReply }: MessageBu
           onClose={() => setContextMenu(null)}
           onReact={handleAddReaction}
           onReply={onReply ? () => { onReply(message); setContextMenu(null); } : undefined}
+          onDelete={onDelete ? () => { onDelete(); setContextMenu(null); } : undefined}
         />
       )}
     </motion.div>

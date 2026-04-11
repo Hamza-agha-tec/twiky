@@ -7,7 +7,10 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { X, Camera, Bell, Lock, Palette, HelpCircle, LogOut, ChevronRight, Moon, Sun, Smartphone } from 'lucide-react';
 import { useTheme } from 'next-themes';
+import { useRouter } from 'next/navigation';
 import { useProfile, useUpdateProfile, useSettings, useUpdateSettings } from '@/hooks/use-user';
+import { createClient } from '@/utils/supabase/client';
+import { disconnectSocket } from '@/lib/socket';
 
 interface ProfileSettingsProps {
   onClose: () => void;
@@ -30,8 +33,16 @@ const SETTINGS_GROUPS = [
 
 export function ProfileSettings({ onClose }: ProfileSettingsProps) {
   const { theme, setTheme } = useTheme();
+  const router = useRouter();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const vtRef = useRef<any>(null);
+
+  const handleLogout = async () => {
+    disconnectSocket();
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push('/login');
+  };
   const [status, setStatus] = useState('Available');
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ username: '', phone_number: '' });
@@ -247,7 +258,10 @@ export function ProfileSettings({ onClose }: ProfileSettingsProps) {
 
           {/* Logout */}
           <div className="px-4 py-3">
-            <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-destructive hover:bg-destructive/10 transition-colors">
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-destructive hover:bg-destructive/10 transition-colors"
+            >
               <LogOut className="h-4 w-4" />
               <span className="text-sm font-medium">Log out</span>
             </button>
