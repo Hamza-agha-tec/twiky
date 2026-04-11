@@ -1,2 +1,5 @@
 git_workflow.md
 .claude/
+backend/dist/
+frontend/.env.local
+frontend/.env*.local

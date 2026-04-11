@@ -1,23 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
 import { X, Camera, Bell, Lock, Palette, HelpCircle, LogOut, ChevronRight, Moon, Sun, Smartphone } from 'lucide-react';
 import { useTheme } from 'next-themes';
+import { useUserStore } from '@/store/user-store';
 
 interface ProfileSettingsProps {
   onClose: () => void;
 }
-
-const ME = {
-  name: 'You',
-  avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop',
-  status: 'Available',
-  phone: '+1 (555) 000-0000',
-};
 
 const SETTINGS_GROUPS = [
   {
@@ -37,11 +30,33 @@ const SETTINGS_GROUPS = [
 
 export function ProfileSettings({ onClose }: ProfileSettingsProps) {
   const { theme, setTheme } = useTheme();
-  const [status, setStatus] = useState(ME.status);
+  const [status, setStatus] = useState('Available');
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ username: '', phone_number: '' });
+  const { profile, loading, fetchProfile, updateProfile } = useUserStore();
+
+  useEffect(() => {
+    fetchProfile();
+  }, [fetchProfile]);
+
+  useEffect(() => {
+    if (profile) {
+      setForm({
+        username: profile.username ?? '',
+        phone_number: profile.phone_number ?? '',
+      });
+    }
+  }, [profile]);
+
+  async function handleSave() {
+    await updateProfile(form);
+    setEditing(false);
+  }
 
   return (
     <AnimatePresence>
       <motion.div
+        key="profile-backdrop"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -49,6 +64,7 @@ export function ProfileSettings({ onClose }: ProfileSettingsProps) {
         className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
       />
       <motion.div
+        key="profile-panel"
         initial={{ opacity: 0, x: -320 }}
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: -320 }}
@@ -68,15 +84,50 @@ export function ProfileSettings({ onClose }: ProfileSettingsProps) {
           <div className="p-6 flex flex-col items-center border-b border-border">
             <div className="relative mb-3 group cursor-pointer">
               <Avatar className="h-20 w-20">
-                <AvatarImage src={ME.avatar} alt={ME.name} />
-                <AvatarFallback className="bg-primary text-primary-foreground text-2xl">Y</AvatarFallback>
+                <AvatarImage src={profile?.avatar_url ?? ''} alt={profile?.full_name ?? 'You'} />
+                <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
+                  {profile?.username?.[0]?.toUpperCase() ?? 'Y'}
+                </AvatarFallback>
               </Avatar>
               <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                 <Camera className="h-5 w-5 text-white" />
               </div>
             </div>
-            <h3 className="font-semibold text-lg text-foreground">{ME.name}</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">{ME.phone}</p>
+
+            {editing ? (
+              <div className="w-full flex flex-col gap-2 mt-1">
+                <input
+                  className="w-full px-3 py-1.5 rounded-lg bg-muted text-sm text-foreground border border-border focus:outline-none focus:ring-1 focus:ring-primary"
+                  placeholder="Username"
+                  value={form.username}
+                  onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
+                />
+                <input
+                  className="w-full px-3 py-1.5 rounded-lg bg-muted text-sm text-foreground border border-border focus:outline-none focus:ring-1 focus:ring-primary"
+                  placeholder="Phone number"
+                  value={form.phone_number}
+                  onChange={(e) => setForm((f) => ({ ...f, phone_number: e.target.value }))}
+                />
+                <div className="flex gap-2 mt-1">
+                  <Button size="sm" className="flex-1" onClick={handleSave} disabled={loading}>
+                    {loading ? 'Saving…' : 'Save'}
+                  </Button>
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => setEditing(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <h3 className="font-semibold text-lg text-foreground">
+                  {loading ? '…' : (profile?.username ?? 'You')}
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">{profile?.phone_number ?? ''}</p>
+                <Button size="sm" variant="ghost" className="mt-2 text-xs h-7" onClick={() => setEditing(true)}>
+                  Edit profile
+                </Button>
+              </>
+            )}
 
             {/* Status */}
             <div className="mt-3 w-full">
