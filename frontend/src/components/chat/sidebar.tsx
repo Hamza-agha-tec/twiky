@@ -11,6 +11,7 @@ import { ConversationContextMenu } from './conversation-context-menu';
 import { ProfileSettings } from './profile-settings';
 import { AddContactModal } from './add-contact-modal';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { useProfile } from '@/hooks/use-user';
 
 interface SidebarProps {
   activeChat: string;
@@ -43,7 +44,6 @@ interface ContextMenuState {
   chat: Chat;
 }
 
-const ME_AVATAR = 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop';
 
 export function Sidebar({
   activeChat,
@@ -64,6 +64,7 @@ export function Sidebar({
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [showProfile, setShowProfile] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
+  const { data: profile } = useProfile();
 
   useEffect(() => { setIsMounted(true); }, []);
 
@@ -192,13 +193,15 @@ export function Sidebar({
           >
             <div className="relative flex-shrink-0">
               <Avatar className="h-9 w-9">
-                <AvatarImage src={ME_AVATAR} alt="You" />
-                <AvatarFallback className="bg-primary text-primary-foreground text-sm">Y</AvatarFallback>
+                <AvatarImage src={profile?.avatar_url ?? ''} alt={profile?.username ?? 'You'} />
+                <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+                  {profile?.username?.[0]?.toUpperCase() ?? 'Y'}
+                </AvatarFallback>
               </Avatar>
               <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-background" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-foreground truncate">You</p>
+              <p className="text-sm font-semibold text-foreground truncate">{profile?.username ?? 'You'}</p>
               <p className="text-xs text-emerald-500 font-medium">Available</p>
             </div>
           </button>
