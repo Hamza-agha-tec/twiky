@@ -9,6 +9,7 @@ import { chatsData, Chat } from '@/lib/mock-data';
 import { ChatItem } from './chat-item';
 import { ConversationContextMenu } from './conversation-context-menu';
 import { ProfileSettings } from './profile-settings';
+import { AddContactModal } from './add-contact-modal';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { ThemeBubble } from './theme-bubble';
 
@@ -63,6 +64,7 @@ export function Sidebar({
   const [deleted, setDeleted] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [showProfile, setShowProfile] = useState(false);
+  const [showAddContact, setShowAddContact] = useState(false);
 
   useEffect(() => { setIsMounted(true); }, []);
 
@@ -112,7 +114,7 @@ export function Sidebar({
             <h1 className="text-xl font-bold text-foreground">Messages</h1>
             <div className="flex items-center gap-2">
               <ThemeBubble />
-              <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowAddContact(true)}>
                 <Edit className="h-4 w-4" />
               </Button>
             </div>
@@ -238,6 +240,11 @@ export function Sidebar({
       {/* Profile Settings */}
       {isMounted && showProfile && (
         <ProfileSettings onClose={() => setShowProfile(false)} />
+      )}
+
+      {/* Add Contact */}
+      {isMounted && showAddContact && (
+        <AddContactModal onClose={() => setShowAddContact(false)} />
       )}
     </>
   );

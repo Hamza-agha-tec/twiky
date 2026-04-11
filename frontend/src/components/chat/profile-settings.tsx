@@ -6,7 +6,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { X, Camera, Bell, Lock, Palette, HelpCircle, LogOut, ChevronRight, Moon, Sun, Smartphone } from 'lucide-react';
 import { useTheme } from 'next-themes';
-import { useUserStore } from '@/store/user-store';
+import { useProfile, useUpdateProfile, useSettings, useUpdateSettings } from '@/hooks/use-user';
 
 interface ProfileSettingsProps {
   onClose: () => void;
@@ -15,7 +15,6 @@ interface ProfileSettingsProps {
 const SETTINGS_GROUPS = [
   {
     items: [
-      { icon: Bell, label: 'Notifications', desc: 'Manage alerts' },
       { icon: Lock, label: 'Privacy & Security', desc: 'Control who sees you' },
       { icon: Smartphone, label: 'Linked Devices', desc: '2 devices active' },
     ],
@@ -33,11 +32,11 @@ export function ProfileSettings({ onClose }: ProfileSettingsProps) {
   const [status, setStatus] = useState('Available');
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ username: '', phone_number: '' });
-  const { profile, loading, fetchProfile, updateProfile } = useUserStore();
 
-  useEffect(() => {
-    fetchProfile();
-  }, [fetchProfile]);
+  const { data: profile, isLoading: profileLoading } = useProfile();
+  const { data: settings } = useSettings();
+  const updateProfile = useUpdateProfile();
+  const updateSettings = useUpdateSettings();
 
   useEffect(() => {
     if (profile) {
@@ -48,9 +47,17 @@ export function ProfileSettings({ onClose }: ProfileSettingsProps) {
     }
   }, [profile]);
 
-  async function handleSave() {
-    await updateProfile(form);
-    setEditing(false);
+  function handleSave() {
+    updateProfile.mutate(form, { onSuccess: () => setEditing(false) });
+  }
+
+  function handleThemeChange(t: string) {
+    setTheme(t);
+    updateSettings.mutate({ theme: t });
+  }
+
+  function handleNotificationsToggle() {
+    updateSettings.mutate({ notifications_enabled: !settings?.notifications_enabled });
   }
 
   return (
@@ -84,7 +91,7 @@ export function ProfileSettings({ onClose }: ProfileSettingsProps) {
           <div className="p-6 flex flex-col items-center border-b border-border">
             <div className="relative mb-3 group cursor-pointer">
               <Avatar className="h-20 w-20">
-                <AvatarImage src={profile?.avatar_url ?? ''} alt={profile?.full_name ?? 'You'} />
+                <AvatarImage src={profile?.avatar_url ?? ''} alt={profile?.username ?? 'You'} />
                 <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
                   {profile?.username?.[0]?.toUpperCase() ?? 'Y'}
                 </AvatarFallback>
@@ -109,8 +116,8 @@ export function ProfileSettings({ onClose }: ProfileSettingsProps) {
                   onChange={(e) => setForm((f) => ({ ...f, phone_number: e.target.value }))}
                 />
                 <div className="flex gap-2 mt-1">
-                  <Button size="sm" className="flex-1" onClick={handleSave} disabled={loading}>
-                    {loading ? 'Saving…' : 'Save'}
+                  <Button size="sm" className="flex-1" onClick={handleSave} disabled={updateProfile.isPending}>
+                    {updateProfile.isPending ? 'Saving…' : 'Save'}
                   </Button>
                   <Button size="sm" variant="outline" className="flex-1" onClick={() => setEditing(false)}>
                     Cancel
@@ -120,7 +127,7 @@ export function ProfileSettings({ onClose }: ProfileSettingsProps) {
             ) : (
               <>
                 <h3 className="font-semibold text-lg text-foreground">
-                  {loading ? '…' : (profile?.username ?? 'You')}
+                  {profileLoading ? '…' : (profile?.username ?? 'You')}
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">{profile?.phone_number ?? ''}</p>
                 <Button size="sm" variant="ghost" className="mt-2 text-xs h-7" onClick={() => setEditing(true)}>
@@ -160,7 +167,7 @@ export function ProfileSettings({ onClose }: ProfileSettingsProps) {
               ].map(({ id, icon: Icon, label }) => (
                 <button
                   key={id}
-                  onClick={() => setTheme(id)}
+                  onClick={() => handleThemeChange(id)}
                   className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium transition-colors ${
                     theme === id
                       ? 'bg-primary text-primary-foreground'
@@ -172,6 +179,33 @@ export function ProfileSettings({ onClose }: ProfileSettingsProps) {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Notifications Toggle */}
+          <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center">
+                <Bell className="h-4 w-4 text-foreground" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-foreground">Notifications</p>
+                <p className="text-xs text-muted-foreground">
+                  {settings?.notifications_enabled ? 'Enabled' : 'Disabled'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleNotificationsToggle}
+              className={`relative w-10 h-5 rounded-full transition-colors ${
+                settings?.notifications_enabled ? 'bg-primary' : 'bg-muted'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                  settings?.notifications_enabled ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
           </div>
 
           {/* Settings Groups */}
