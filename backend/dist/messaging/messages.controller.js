@@ -17,6 +17,7 @@ const common_1 = require("@nestjs/common");
 const messaging_service_1 = require("./messaging.service");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const platform_express_1 = require("@nestjs/platform-express");
+const messaging_dto_1 = require("./dto/messaging.dto");
 let MessagesController = class MessagesController {
     messagingService;
     constructor(messagingService) {
@@ -24,6 +25,15 @@ let MessagesController = class MessagesController {
     }
     async uploadFile(req, file) {
         return this.messagingService.uploadFile(req.user.userId, file);
+    }
+    async edit(req, messageId, body) {
+        return this.messagingService.editMessage(req.user.userId, messageId, body.content);
+    }
+    async delete(req, messageId) {
+        return this.messagingService.deleteMessage(req.user.userId, messageId);
+    }
+    async react(req, messageId, body) {
+        return this.messagingService.toggleReaction(req.user.userId, messageId, body.emoji);
     }
     async findByConversation(req, conversationId, limit, offset) {
         return this.messagingService.getMessages(req.user.userId, conversationId, limit ? Number(limit) : 50, offset ? Number(offset) : 0);
@@ -39,6 +49,32 @@ __decorate([
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], MessagesController.prototype, "uploadFile", null);
+__decorate([
+    (0, common_1.Patch)(':messageId'),
+    __param(0, (0, common_1.Request)()),
+    __param(1, (0, common_1.Param)('messageId')),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, messaging_dto_1.EditMessageDto]),
+    __metadata("design:returntype", Promise)
+], MessagesController.prototype, "edit", null);
+__decorate([
+    (0, common_1.Delete)(':messageId'),
+    __param(0, (0, common_1.Request)()),
+    __param(1, (0, common_1.Param)('messageId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], MessagesController.prototype, "delete", null);
+__decorate([
+    (0, common_1.Post)(':messageId/react'),
+    __param(0, (0, common_1.Request)()),
+    __param(1, (0, common_1.Param)('messageId')),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, messaging_dto_1.ToggleReactionDto]),
+    __metadata("design:returntype", Promise)
+], MessagesController.prototype, "react", null);
 __decorate([
     (0, common_1.Get)(':conversationId'),
     __param(0, (0, common_1.Request)()),

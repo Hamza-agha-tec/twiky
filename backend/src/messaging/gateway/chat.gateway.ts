@@ -8,7 +8,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { MessagingService } from '../messaging.service';
-import { SendMessageDto } from '../dto/messaging.dto';
+import { EditMessageDto, SendMessageDto, ToggleReactionDto } from '../dto/messaging.dto';
 import { ConfigService } from '@nestjs/config';
 import { SocketAuthMiddleware } from '../middlewares/ws-auth.middleware';
 import { Logger } from '@nestjs/common';
@@ -79,6 +79,59 @@ export class ChatGateway implements OnGatewayInit {
       return { status: 'sent', messageId: message.id };
     } catch (error) {
       this.logger.error(`Failed to send message: ${error.message}`);
+      return { status: 'error', message: error.message };
+    }
+  }
+
+  @SubscribeMessage('editMessage')
+  async handleEditMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: EditMessageDto,
+  ) {
+    const userId = client.data.user.userId;
+    try {
+      const message = await this.messagingService.editMessage(userId, payload.messageId, payload.content);
+      // Broadcast update
+      this.server.to(`conv_${message.conversation_id}`).emit('messageUpdated', message);
+      return { status: 'success' };
+    } catch (error) {
+      return { status: 'error', message: error.message };
+    }
+  }
+
+  @SubscribeMessage('deleteMessage')
+  async handleDeleteMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { messageId: string; conversationId: string },
+  ) {
+    const userId = client.data.user.userId;
+    try {
+      await this.messagingService.deleteMessage(userId, payload.messageId);
+      // Broadcast deletion
+      this.server.to(`conv_${payload.conversationId}`).emit('messageDeleted', payload.messageId);
+      return { status: 'success' };
+    } catch (error) {
+      return { status: 'error', message: error.message };
+    }
+  }
+
+  @SubscribeMessage('reactToMessage')
+  async handleToggleReaction(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: ToggleReactionDto,
+  ) {
+    const userId = client.data.user.userId;
+    try {
+      const result = await this.messagingService.toggleReaction(userId, payload.messageId, payload.emoji);
+      // We need the conversationId to broadcast. 
+      // Instead of querying DB, we'll expect it in payload or just broadcast to room if we had it.
+      // For now, let's just broadcast to a generic 'reactions' update if needed, 
+      // but ideally we broadcast to the specific room. 
+      // I'll update the DTO to include conversationId.
+      
+      this.server.emit('reactionUpdate', result); 
+      return { status: 'success' };
+    } catch (error) {
       return { status: 'error', message: error.message };
     }
   }

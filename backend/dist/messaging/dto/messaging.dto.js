@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SendMessageDto = exports.CreateConversationDto = void 0;
+exports.ToggleReactionDto = exports.EditMessageDto = exports.SendMessageDto = exports.CreateConversationDto = void 0;
 class CreateConversationDto {
     isGroup;
     name;
@@ -12,7 +12,19 @@ class SendMessageDto {
     content;
     type;
     fileUrl;
+    replyToId;
+    isForwarded;
     metadata;
 }
 exports.SendMessageDto = SendMessageDto;
+class EditMessageDto {
+    messageId;
+    content;
+}
+exports.EditMessageDto = EditMessageDto;
+class ToggleReactionDto {
+    messageId;
+    emoji;
+}
+exports.ToggleReactionDto = ToggleReactionDto;
 //# sourceMappingURL=messaging.dto.js.map
