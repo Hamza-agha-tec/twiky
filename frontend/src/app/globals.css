@@ -1,6 +1,5 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
-@import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
@@ -122,12 +121,28 @@
   --animate-spotlight: spotlight 2s ease 0.75s 1 forwards;
 }
 
+/* ── Theme bubble transition (View Transitions API) ─────────────── */
+::view-transition {
+  pointer-events: none;
+}
+::view-transition-old(root) {
+  animation: none;
+  z-index: 1;
+}
+::view-transition-new(root) {
+  animation: theme-bubble-in 2.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  z-index: 2;
+}
+@keyframes theme-bubble-in {
+  from { clip-path: circle(0px at var(--theme-ripple-x, 50%) var(--theme-ripple-y, 50%)); }
+  to   { clip-path: circle(200vmax at var(--theme-ripple-x, 50%) var(--theme-ripple-y, 50%)); }
+}
+
 @keyframes spotlight {
   0% {
     opacity: 0;
     transform: translate(-72%, -62%);
   }
-
   100% {
     opacity: 1;
     transform: translate(-50%, -40%);
@@ -138,18 +153,23 @@
   * {
     @apply border-border outline-ring/50;
   }
-
+  .no-transitions,
+  .no-transitions *,
+  .no-transitions *::before,
+  .no-transitions *::after {
+    transition: none !important;
+    animation-duration: 0.001ms !important;
+  }
   ::selection {
     background: rgba(16, 185, 129, 0.28);
     color: inherit;
   }
-
   html {
     background: #000;
     overscroll-behavior: none;
+    overflow-x: hidden;
     @apply font-sans;
   }
-
   body {
     @apply bg-background text-foreground;
     overscroll-behavior: none;
