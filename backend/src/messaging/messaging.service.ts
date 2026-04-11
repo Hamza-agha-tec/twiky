@@ -94,7 +94,6 @@ export class MessagingService {
         content,
         type: type || 'text',
         file_url: fileUrl,
-        is_forwarded: sendDto.isForwarded || false,
         metadata: metadata || {},
         reply_to_id: sendDto.replyToId ?? null,
       })
@@ -149,10 +148,9 @@ export class MessagingService {
       .eq('id', messageId)
       .eq('sender_id', userId)
       .select('*, sender:users!sender_id(id, username, avatar_url), reply_to:messages!reply_to_id(id, content, sender:users!sender_id(id, username))')
-      .maybeSingle();
+      .single();
 
     if (error) throw new Error(`Failed to edit message: ${error.message}`);
-    if (!data) throw new ForbiddenException('Message not found or you do not have permission to edit it');
     return data;
   }
 

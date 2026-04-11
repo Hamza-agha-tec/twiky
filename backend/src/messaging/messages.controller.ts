@@ -2,7 +2,6 @@ import { Controller, Get, Post, Patch, Delete, Param, Query, Body, UseGuards, Re
 import { MessagingService } from './messaging.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { EditMessageDto } from './dto/messaging.dto';
 
 @Controller('messaging/messages')
 @UseGuards(JwtAuthGuard)
@@ -30,18 +29,18 @@ export class MessagesController {
     );
   }
 
-  @Patch(':messageId')
-  async editMessage(@Request() req: any, @Param('messageId') messageId: string, @Body() body: EditMessageDto) {
-    return this.messagingService.editMessage(req.user.userId, messageId, body.content);
+  @Patch(':id')
+  async editMessage(@Request() req: any, @Param('id') id: string, @Body() body: { content: string }) {
+    return this.messagingService.editMessage(req.user.userId, id, body.content);
   }
 
-  @Delete(':messageId')
-  async deleteMessage(@Request() req: any, @Param('messageId') messageId: string) {
-    return this.messagingService.deleteMessage(req.user.userId, messageId);
+  @Delete(':id')
+  async deleteMessage(@Request() req: any, @Param('id') id: string) {
+    return this.messagingService.deleteMessage(req.user.userId, id);
   }
 
-  @Post(':messageId/react')
-  async reactToMessage(@Request() req: any, @Param('messageId') messageId: string, @Body() body: { emoji: string }) {
-    return this.messagingService.reactToMessage(req.user.userId, messageId, body.emoji);
+  @Post(':id/react')
+  async reactToMessage(@Request() req: any, @Param('id') id: string, @Body() body: { emoji: string }) {
+    return this.messagingService.reactToMessage(req.user.userId, id, body.emoji);
   }
 }

@@ -8,7 +8,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { MessagingService } from '../messaging.service';
-import { EditMessageDto, SendMessageDto, ToggleReactionDto } from '../dto/messaging.dto';
+import { SendMessageDto } from '../dto/messaging.dto';
 import { ConfigService } from '@nestjs/config';
 import { SocketAuthMiddleware } from '../middlewares/ws-auth.middleware';
 import { Logger } from '@nestjs/common';
@@ -86,16 +86,11 @@ export class ChatGateway implements OnGatewayInit {
   @SubscribeMessage('editMessage')
   async handleEditMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() payload: EditMessageDto & { conversationId: string },
+    @MessageBody() payload: { messageId: string; conversationId: string; content: string },
   ) {
     const userId = client.data.user.userId;
-    try {
-      const updated = await this.messagingService.editMessage(userId, payload.messageId, payload.content);
-      this.server.to(`conv_${payload.conversationId}`).emit('messageUpdated', updated);
-      return { status: 'success' };
-    } catch (error) {
-      return { status: 'error', message: error.message };
-    }
+    const updated = await this.messagingService.editMessage(userId, payload.messageId, payload.content);
+    this.server.to(`conv_${payload.conversationId}`).emit('messageUpdated', updated);
   }
 
   @SubscribeMessage('deleteMessage')
@@ -104,28 +99,18 @@ export class ChatGateway implements OnGatewayInit {
     @MessageBody() payload: { messageId: string; conversationId: string },
   ) {
     const userId = client.data.user.userId;
-    try {
-      await this.messagingService.deleteMessage(userId, payload.messageId);
-      this.server.to(`conv_${payload.conversationId}`).emit('messageDeleted', payload.messageId);
-      return { status: 'success' };
-    } catch (error) {
-      return { status: 'error', message: error.message };
-    }
+    await this.messagingService.deleteMessage(userId, payload.messageId);
+    this.server.to(`conv_${payload.conversationId}`).emit('messageDeleted', payload.messageId);
   }
 
   @SubscribeMessage('reactToMessage')
   async handleReactToMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() payload: ToggleReactionDto & { conversationId: string },
+    @MessageBody() payload: { messageId: string; conversationId: string; emoji: string },
   ) {
     const userId = client.data.user.userId;
-    try {
-      const result = await this.messagingService.reactToMessage(userId, payload.messageId, payload.emoji);
-      this.server.to(`conv_${payload.conversationId}`).emit('reactionUpdate', result);
-      return { status: 'success' };
-    } catch (error) {
-      return { status: 'error', message: error.message };
-    }
+    const result = await this.messagingService.reactToMessage(userId, payload.messageId, payload.emoji);
+    this.server.to(`conv_${payload.conversationId}`).emit('reactionUpdate', result);
   }
 
   /**
