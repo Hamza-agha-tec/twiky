@@ -1,13 +1,26 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthController } from './auth/controllers/auth.controller';
 import { AuthService } from './auth/services/auth.service';
 import { UsersModule } from './users/users.module';
+import { SupabaseModule } from './supabase/supabase.module';
+import { ContactsModule } from './contacts/contacts.module';
+import { MessagingModule } from './messaging/messaging.module';
+import { PassportModule } from '@nestjs/passport';
+import { SupabaseStrategy } from './auth/strategies/supabase.strategy';
 
 @Module({
-  imports: [UsersModule],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    SupabaseModule,
+    PassportModule,
+    UsersModule,
+    ContactsModule,
+    MessagingModule,
+  ],
   controllers: [AppController, AuthController],
-  providers: [AppService, AuthService],
+  providers: [AppService, AuthService, SupabaseStrategy],
 })
 export class AppModule { }

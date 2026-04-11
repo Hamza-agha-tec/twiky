@@ -1,0 +1,131 @@
+import { Injectable, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
+import { SupabaseService } from '../supabase/supabase.module';
+import { UsersService } from '../users/users.service';
+import { CreateContactDto, UpdateContactDto } from './dto/contacts.dto';
+
+@Injectable()
+export class ContactsService {
+  constructor(
+    private supabaseService: SupabaseService,
+    private usersService: UsersService,
+  ) {}
+
+  async findAll(userId: string) {
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('contacts')
+      .select('nickname, is_blocked, is_archived, is_favorite, is_pinned, is_muted, contact:users!contact_id(id, username, avatar_url, phone_number)')
+      .eq('user_id', userId);
+
+    if (error) {
+      throw new Error(`Failed to fetch contacts: ${error.message}`);
+    }
+
+    // Flattening the response for a cleaner API
+    return data.map((item: any) => ({
+      nickname: item.nickname,
+      is_blocked: item.is_blocked,
+      is_archived: item.is_archived,
+      is_favorite: item.is_favorite,
+      is_pinned: item.is_pinned,
+      is_muted: item.is_muted,
+      ...item.contact,
+    }));
+  }
+
+  async addContact(userId: string, createContactDto: CreateContactDto) {
+    const { phoneNumber, nickname } = createContactDto;
+
+    // Find the user by phone number
+    const targetUser = await this.usersService.findByPhone(phoneNumber);
+    if (!targetUser) {
+      throw new NotFoundException(`User with phone number ${phoneNumber} not found`);
+    }
+
+    if (targetUser.id === userId) {
+      throw new BadRequestException('You cannot add yourself as a contact');
+    }
+
+    // Check if contact already exists
+    const { data: existing } = await this.supabaseService
+      .getClient()
+      .from('contacts')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('contact_id', targetUser.id)
+      .maybeSingle();
+
+    if (existing) {
+      throw new ConflictException('This user is already in your contacts');
+    }
+
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('contacts')
+      .insert({
+        user_id: userId,
+        contact_id: targetUser.id,
+        nickname,
+      })
+      .select('*, contact:users!contact_id(id, username, avatar_url, phone_number)')
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to add contact: ${error.message}`);
+    }
+
+    // Flatten the return object
+    return {
+      nickname: data.nickname,
+      is_blocked: data.is_blocked,
+      is_archived: data.is_archived,
+      is_favorite: data.is_favorite,
+      is_pinned: data.is_pinned,
+      is_muted: data.is_muted,
+      ...data.contact,
+    };
+  }
+
+  async updateContact(userId: string, contactId: string, updateContactDto: UpdateContactDto) {
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('contacts')
+      .update(updateContactDto)
+      .eq('user_id', userId)
+      .eq('contact_id', contactId)
+      .select('*, contact:users!contact_id(id, username, avatar_url, phone_number)')
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Failed to update contact: ${error.message}`);
+    }
+
+    if (!data) {
+      throw new NotFoundException(`Contact with ID ${contactId} not found in your list`);
+    }
+
+    return {
+      nickname: data.nickname,
+      is_blocked: data.is_blocked,
+      is_archived: data.is_archived,
+      is_favorite: data.is_favorite,
+      is_pinned: data.is_pinned,
+      is_muted: data.is_muted,
+      ...data.contact,
+    };
+  }
+
+  async removeContact(userId: string, contactId: string) {
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('contacts')
+      .delete()
+      .eq('user_id', userId)
+      .eq('contact_id', contactId);
+
+    if (error) {
+      throw new Error(`Failed to delete contact: ${error.message}`);
+    }
+    return { success: true };
+  }
+}

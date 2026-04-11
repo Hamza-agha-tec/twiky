@@ -28,6 +28,9 @@ export function AuthProvider({ children }) {
 
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        console.log('🔑 YOUR BEARER TOKEN:', session.access_token);
+      }
       setSession(session)
       setUser(session?.user ?? null)
       setLoading(false)
