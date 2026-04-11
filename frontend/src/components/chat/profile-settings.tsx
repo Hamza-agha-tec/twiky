@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,8 @@ const SETTINGS_GROUPS = [
 
 export function ProfileSettings({ onClose }: ProfileSettingsProps) {
   const { theme, setTheme } = useTheme();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const vtRef = useRef<any>(null);
   const [status, setStatus] = useState('Available');
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ username: '', phone_number: '' });
@@ -51,8 +54,21 @@ export function ProfileSettings({ onClose }: ProfileSettingsProps) {
     updateProfile.mutate(form, { onSuccess: () => setEditing(false) });
   }
 
-  function handleThemeChange(t: string) {
-    setTheme(t);
+  function handleThemeChange(t: string, e: React.MouseEvent) {
+    const btn = e.currentTarget as HTMLElement;
+    const rect = btn.getBoundingClientRect();
+    document.documentElement.style.setProperty('--theme-ripple-x', `${rect.left + rect.width / 2}px`);
+    document.documentElement.style.setProperty('--theme-ripple-y', `${rect.top + rect.height / 2}px`);
+    const apply = () => setTheme(t);
+    if ('startViewTransition' in document) {
+      vtRef.current?.skipTransition();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vt = (document as any).startViewTransition(() => { flushSync(apply); });
+      vtRef.current = vt;
+      vt.finished.finally(() => { vtRef.current = null; });
+    } else {
+      apply();
+    }
     updateSettings.mutate({ theme: t });
   }
 
@@ -167,7 +183,7 @@ export function ProfileSettings({ onClose }: ProfileSettingsProps) {
               ].map(({ id, icon: Icon, label }) => (
                 <button
                   key={id}
-                  onClick={() => handleThemeChange(id)}
+                  onClick={(e) => handleThemeChange(id, e)}
                   className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium transition-colors ${
                     theme === id
                       ? 'bg-primary text-primary-foreground'

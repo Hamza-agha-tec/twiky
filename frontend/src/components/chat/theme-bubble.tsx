@@ -3,11 +3,15 @@
 import { motion } from 'framer-motion';
 import { Sun, Moon } from 'lucide-react';
 import { useTheme } from 'next-themes';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 
 export function ThemeBubble() {
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const vtRef = useRef<any>(null);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -15,9 +19,29 @@ export function ThemeBubble() {
 
   const isDark = resolvedTheme === 'dark';
 
+  function handleToggle() {
+    const btn = btnRef.current;
+    if (btn) {
+      const rect = btn.getBoundingClientRect();
+      document.documentElement.style.setProperty('--theme-ripple-x', `${rect.left + rect.width / 2}px`);
+      document.documentElement.style.setProperty('--theme-ripple-y', `${rect.top + rect.height / 2}px`);
+    }
+    const apply = () => setTheme(isDark ? 'light' : 'dark');
+    if ('startViewTransition' in document) {
+      vtRef.current?.skipTransition();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vt = (document as any).startViewTransition(() => { flushSync(apply); });
+      vtRef.current = vt;
+      vt.finished.finally(() => { vtRef.current = null; });
+    } else {
+      apply();
+    }
+  }
+
   return (
     <motion.button
-      onClick={() => setTheme(isDark ? 'light' : 'dark')}
+      ref={btnRef}
+      onClick={handleToggle}
       aria-label="Toggle theme"
       className="relative flex items-center w-14 h-7 rounded-full bg-muted border border-border p-0.5 cursor-pointer overflow-hidden flex-shrink-0"
       whileTap={{ scale: 0.93 }}
