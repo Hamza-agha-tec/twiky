@@ -9,16 +9,19 @@ import type { Message } from '@/lib/mock-data';
 import { MessageBubble } from './message-bubble';
 import { Composer } from './composer';
 import { format } from 'date-fns';
-import { ChatMessage, useConversations, useEditMessage, useDeleteMessage, useReactToMessage, useUploadFile, getConvDisplayName, getDmContact } from '@/hooks/use-messaging';
+import { ChatMessage, useConversations, getConvDisplayName, getDmContact } from '@/hooks/use-messaging';
 import { useProfile, useContacts } from '@/hooks/use-user';
 import { toast } from 'sonner';
 
 interface ChatWindowProps {
   activeChat: string;
   messages?: ChatMessage[];
-  onSendMessage?: (content: string, type?: string, replyToId?: string) => void;
+  onSendMessage?: (content: string, type?: string, replyToId?: string, fileUrl?: string) => void;
   onTyping?: (isTyping: boolean) => void;
   otherIsTyping?: boolean;
+  onReact?: (messageId: string, emoji: string) => void;
+  onEdit?: (messageId: string, content: string) => void;
+  onDelete?: (messageId: string) => void;
   onProfileClick?: () => void;
 }
 
@@ -29,28 +32,36 @@ interface ReplyTo {
 }
 
 function toUiMessage(m: ChatMessage, myId: string): Message {
+  // Group reactions: [{ userId, emoji }] → [{ emoji, count }]
+  const reactionMap: Record<string, number> = {};
+  for (const r of m.reactions ?? []) {
+    reactionMap[r.emoji] = (reactionMap[r.emoji] ?? 0) + 1;
+  }
+  const reactions = Object.entries(reactionMap).map(([emoji, count]) => ({ emoji, count }));
+
   return {
     id: m.id,
     senderId: m.sender_id,
     senderName: m.sender.username,
     avatar: m.sender.avatar_url ?? undefined,
-    content: m.content ?? '',
+    content: m.file_url ?? m.content ?? '',
     type: (m.type as Message['type']) ?? 'text',
     timestamp: m.created_at,
     isOwn: m.sender_id === myId,
     isRead: m.status === 'read',
     isDelivered: m.status === 'delivered' || m.status === 'read',
+    reactions: reactions.length ? reactions : undefined,
+    reply: m.reply_to?.sender
+      ? { senderName: m.reply_to.sender.username, content: m.reply_to.content ?? '' }
+      : undefined,
   };
 }
 
-export function ChatWindow({ activeChat, messages: providedMessages = [], onSendMessage, onTyping, otherIsTyping = false, onProfileClick }: ChatWindowProps) {
+export function ChatWindow({ activeChat, messages: providedMessages = [], onSendMessage, onTyping, otherIsTyping = false, onReact, onEdit, onDelete, onProfileClick }: ChatWindowProps) {
   const { data: profile } = useProfile();
   const { data: contacts = [] } = useContacts();
   const { data: conversations = [] } = useConversations();
   const conv = conversations.find((c) => c.id === activeChat);
-  const editMessage = useEditMessage(activeChat);
-  const deleteMessage = useDeleteMessage(activeChat);
-  const reactToMessage = useReactToMessage(activeChat);
   const messages = providedMessages
     .slice()
     .reverse()
@@ -207,16 +218,8 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
                       dayMessages[index - 1].senderId !== message.senderId)
                   }
                   onReply={handleReply}
-                  onDelete={() => {
-                    deleteMessage.mutate(message.id, {
-                      onError: () => toast.error('Failed to delete message'),
-                    });
-                  }}
-                  onReact={(emoji) => {
-                    reactToMessage.mutate({ id: message.id, emoji }, {
-                      onError: () => toast.error('Failed to add reaction'),
-                    });
-                  }}
+                  onDelete={() => onDelete?.(message.id)}
+                  onReact={(emoji) => onReact?.(message.id, emoji)}
                 />
               ))}
             </div>
@@ -258,8 +261,8 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
       {/* Composer */}
       <Composer
         onTyping={(t) => { setIsTyping(t); onTyping?.(t); }}
-        onSendMessage={(content, type) => {
-          onSendMessage?.(content, type, replyTo?.id);
+        onSendMessage={(content, type, fileUrl) => {
+          onSendMessage?.(content, type, replyTo?.id, fileUrl);
           setReplyTo(null);
         }}
         replyTo={replyTo}

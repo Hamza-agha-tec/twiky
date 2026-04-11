@@ -47,8 +47,11 @@ export function useSocket(conversationId: string | null) {
         );
       });
 
-      s.on('reactionUpdate', () => {
-        queryClient.invalidateQueries({ queryKey: MESSAGING_KEYS.messages(conversationId) });
+      s.on('reactionUpdate', ({ messageId, reactions }: { messageId: string; reactions: { userId: string; emoji: string }[] }) => {
+        queryClient.setQueryData<ChatMessage[]>(
+          MESSAGING_KEYS.messages(conversationId),
+          (old = []) => old.map((m) => m.id === messageId ? { ...m, reactions } : m)
+        );
       });
 
       s.on('messageStatusUpdate', ({ messageId, status }: { messageId: string; status: string }) => {
@@ -93,6 +96,7 @@ export function useSocket(conversationId: string | null) {
     content: string;
     type?: string;
     replyToId?: string;
+    fileUrl?: string;
   }) => {
     socketRef.current?.emit('sendMessage', payload);
   }, []);
@@ -101,7 +105,19 @@ export function useSocket(conversationId: string | null) {
     socketRef.current?.emit('typing', { conversationId: convId, isTyping });
   }, []);
 
-  return { sendMessage, sendTyping, otherIsTyping };
+  const reactToMessage = useCallback((messageId: string, emoji: string) => {
+    socketRef.current?.emit('reactToMessage', { messageId, conversationId, emoji });
+  }, [conversationId]);
+
+  const editMessage = useCallback((messageId: string, content: string) => {
+    socketRef.current?.emit('editMessage', { messageId, conversationId, content });
+  }, [conversationId]);
+
+  const deleteMessage = useCallback((messageId: string) => {
+    socketRef.current?.emit('deleteMessage', { messageId, conversationId });
+  }, [conversationId]);
+
+  return { sendMessage, sendTyping, otherIsTyping, reactToMessage, editMessage, deleteMessage };
 }
 
 export function useTypingIndicator(conversationId: string | null) {

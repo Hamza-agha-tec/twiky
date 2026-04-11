@@ -35,6 +35,8 @@ export interface ChatMessage {
   file_url: string | null;
   metadata: Record<string, unknown>;
   status: 'sent' | 'delivered' | 'read';
+  reactions: { userId: string; emoji: string }[];
+  reply_to: { id: string; content: string | null; sender: { id: string; username: string } } | null;
   created_at: string;
   sender: {
     id: string;

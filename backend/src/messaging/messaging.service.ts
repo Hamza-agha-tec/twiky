@@ -95,8 +95,9 @@ export class MessagingService {
         type: type || 'text',
         file_url: fileUrl,
         metadata: metadata || {},
+        reply_to_id: sendDto.replyToId ?? null,
       })
-      .select('*, sender:users!sender_id(id, username, avatar_url)')
+      .select('*, sender:users!sender_id(id, username, avatar_url), reply_to:messages!reply_to_id(id, content, sender:users!sender_id(id, username))')
       .single();
 
     if (error) throw new Error(`Failed to save message: ${error.message}`);
@@ -126,13 +127,75 @@ export class MessagingService {
     const { data, error } = await this.supabaseService
       .getClient()
       .from('messages')
-      .select('*, sender:users!sender_id(id, username, avatar_url)')
+      .select('*, sender:users!sender_id(id, username, avatar_url), reply_to:messages!reply_to_id(id, content, sender:users!sender_id(id, username))')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (error) throw new Error(`Failed to fetch messages: ${error.message}`);
     return data;
+  }
+
+  /**
+   * EDIT / DELETE
+   */
+
+  async editMessage(userId: string, messageId: string, content: string) {
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('messages')
+      .update({ content, is_edited: true })
+      .eq('id', messageId)
+      .eq('sender_id', userId)
+      .select('*, sender:users!sender_id(id, username, avatar_url), reply_to:messages!reply_to_id(id, content, sender:users!sender_id(id, username))')
+      .single();
+
+    if (error) throw new Error(`Failed to edit message: ${error.message}`);
+    return data;
+  }
+
+  async deleteMessage(userId: string, messageId: string) {
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('messages')
+      .delete()
+      .eq('id', messageId)
+      .eq('sender_id', userId);
+
+    if (error) throw new Error(`Failed to delete message: ${error.message}`);
+    return { success: true };
+  }
+
+  /**
+   * REACTIONS
+   */
+
+  async reactToMessage(userId: string, messageId: string, emoji: string) {
+    const { data: msg, error: fetchError } = await this.supabaseService
+      .getClient()
+      .from('messages')
+      .select('reactions')
+      .eq('id', messageId)
+      .single();
+
+    if (fetchError) throw new Error(`Message not found: ${fetchError.message}`);
+
+    const reactions: { userId: string; emoji: string }[] = msg.reactions ?? [];
+    const existingIdx = reactions.findIndex((r) => r.userId === userId && r.emoji === emoji);
+
+    // Remove ALL reactions from this user, then add new one (unless toggling off)
+    const withoutUser = reactions.filter((r) => r.userId !== userId);
+    const updated = existingIdx >= 0 ? withoutUser : [...withoutUser, { userId, emoji }];
+
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('messages')
+      .update({ reactions: updated })
+      .eq('id', messageId);
+
+    if (error) throw new Error(`Failed to update reactions: ${error.message}`);
+
+    return { messageId, reactions: updated };
   }
 
   /**

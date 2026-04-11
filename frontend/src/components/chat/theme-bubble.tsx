@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { Sun, Moon } from 'lucide-react';
-import { useTheme } from 'next-themes';
+import { useTheme } from '@/components/theme-provider';
 import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 
@@ -10,8 +10,6 @@ export function ThemeBubble() {
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const vtRef = useRef<any>(null);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -26,15 +24,16 @@ export function ThemeBubble() {
       document.documentElement.style.setProperty('--theme-ripple-x', `${rect.left + rect.width / 2}px`);
       document.documentElement.style.setProperty('--theme-ripple-y', `${rect.top + rect.height / 2}px`);
     }
-    const apply = () => setTheme(isDark ? 'light' : 'dark');
+    const next = isDark ? 'light' : 'dark';
     if ('startViewTransition' in document) {
-      vtRef.current?.skipTransition();
+      document.documentElement.style.pointerEvents = 'none';
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const vt = (document as any).startViewTransition(() => { flushSync(apply); });
-      vtRef.current = vt;
-      vt.finished.finally(() => { vtRef.current = null; });
+      (document as any).startViewTransition(() => {
+        flushSync(() => setTheme(next));
+      });
+      document.documentElement.style.pointerEvents = '';
     } else {
-      apply();
+      setTheme(next);
     }
   }
 

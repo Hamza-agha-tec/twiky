@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Query, UseGuards, Request, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Query, Body, UseGuards, Request, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { MessagingService } from './messaging.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -27,5 +27,20 @@ export class MessagesController {
       limit ? Number(limit) : 50,
       offset ? Number(offset) : 0,
     );
+  }
+
+  @Patch(':id')
+  async editMessage(@Request() req: any, @Param('id') id: string, @Body() body: { content: string }) {
+    return this.messagingService.editMessage(req.user.userId, id, body.content);
+  }
+
+  @Delete(':id')
+  async deleteMessage(@Request() req: any, @Param('id') id: string) {
+    return this.messagingService.deleteMessage(req.user.userId, id);
+  }
+
+  @Post(':id/react')
+  async reactToMessage(@Request() req: any, @Param('id') id: string, @Body() body: { emoji: string }) {
+    return this.messagingService.reactToMessage(req.user.userId, id, body.emoji);
   }
 }

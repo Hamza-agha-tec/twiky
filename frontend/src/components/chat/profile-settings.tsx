@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { X, Camera, Bell, Lock, Palette, HelpCircle, LogOut, ChevronRight, Moon, Sun, Smartphone } from 'lucide-react';
-import { useTheme } from 'next-themes';
+import { useTheme } from '@/components/theme-provider';
 import { useRouter } from 'next/navigation';
 import { useProfile, useUpdateProfile, useSettings, useUpdateSettings } from '@/hooks/use-user';
 import { createClient } from '@/utils/supabase/client';
@@ -34,8 +34,6 @@ const SETTINGS_GROUPS = [
 export function ProfileSettings({ onClose }: ProfileSettingsProps) {
   const { theme, setTheme } = useTheme();
   const router = useRouter();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const vtRef = useRef<any>(null);
 
   const handleLogout = async () => {
     disconnectSocket();
@@ -65,20 +63,20 @@ export function ProfileSettings({ onClose }: ProfileSettingsProps) {
     updateProfile.mutate(form, { onSuccess: () => setEditing(false) });
   }
 
-  function handleThemeChange(t: string, e: React.MouseEvent) {
+  function handleThemeChange(t: 'light' | 'dark' | 'system', e: React.MouseEvent) {
     const btn = e.currentTarget as HTMLElement;
     const rect = btn.getBoundingClientRect();
     document.documentElement.style.setProperty('--theme-ripple-x', `${rect.left + rect.width / 2}px`);
     document.documentElement.style.setProperty('--theme-ripple-y', `${rect.top + rect.height / 2}px`);
-    const apply = () => setTheme(t);
     if ('startViewTransition' in document) {
-      vtRef.current?.skipTransition();
+      document.documentElement.style.pointerEvents = 'none';
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const vt = (document as any).startViewTransition(() => { flushSync(apply); });
-      vtRef.current = vt;
-      vt.finished.finally(() => { vtRef.current = null; });
+      (document as any).startViewTransition(() => {
+        flushSync(() => setTheme(t));
+      });
+      document.documentElement.style.pointerEvents = '';
     } else {
-      apply();
+      setTheme(t);
     }
     updateSettings.mutate({ theme: t });
   }
@@ -188,10 +186,10 @@ export function ProfileSettings({ onClose }: ProfileSettingsProps) {
           <div className="px-4 py-3 border-b border-border">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Theme</p>
             <div className="flex gap-2">
-              {[
-                { id: 'light', icon: Sun, label: 'Light' },
-                { id: 'dark', icon: Moon, label: 'Dark' },
-              ].map(({ id, icon: Icon, label }) => (
+              {([
+                { id: 'light' as const, icon: Sun, label: 'Light' },
+                { id: 'dark' as const, icon: Moon, label: 'Dark' },
+              ]).map(({ id, icon: Icon, label }) => (
                 <button
                   key={id}
                   onClick={(e) => handleThemeChange(id, e)}

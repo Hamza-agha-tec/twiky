@@ -83,6 +83,36 @@ export class ChatGateway implements OnGatewayInit {
     }
   }
 
+  @SubscribeMessage('editMessage')
+  async handleEditMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { messageId: string; conversationId: string; content: string },
+  ) {
+    const userId = client.data.user.userId;
+    const updated = await this.messagingService.editMessage(userId, payload.messageId, payload.content);
+    this.server.to(`conv_${payload.conversationId}`).emit('messageUpdated', updated);
+  }
+
+  @SubscribeMessage('deleteMessage')
+  async handleDeleteMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { messageId: string; conversationId: string },
+  ) {
+    const userId = client.data.user.userId;
+    await this.messagingService.deleteMessage(userId, payload.messageId);
+    this.server.to(`conv_${payload.conversationId}`).emit('messageDeleted', payload.messageId);
+  }
+
+  @SubscribeMessage('reactToMessage')
+  async handleReactToMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { messageId: string; conversationId: string; emoji: string },
+  ) {
+    const userId = client.data.user.userId;
+    const result = await this.messagingService.reactToMessage(userId, payload.messageId, payload.emoji);
+    this.server.to(`conv_${payload.conversationId}`).emit('reactionUpdate', result);
+  }
+
   /**
    * Message Status
    */

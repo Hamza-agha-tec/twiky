@@ -1,11 +1,6 @@
-"use client";
-
 import { Geist, Geist_Mono, Lora } from "next/font/google";
-import { ThemeProvider } from "@/components/theme-provider";
-import { AuthProvider } from "@/context/AuthContext";
+import { Providers } from "@/components/providers";
 import "./globals.css";
-import ToastProvider from '@/context/ToastProvider';
-import QueryProvider from '@/context/QueryProvider';
 
 const geist = Geist({
   variable: "--font-geist-sans",
@@ -20,7 +15,7 @@ const geistMono = Geist_Mono({
 const lora = Lora({
   subsets: ["latin"],
   variable: '--font-lora',
-})
+});
 
 export default function RootLayout({
   children,
@@ -29,16 +24,18 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${geist.variable} ${geistMono.variable} ${lora.variable}`} suppressHydrationWarning>
+      <head>
+        {/* Blocking theme script — prevents flash of wrong theme */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('theme')||'dark';if(t==='system')t=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';document.documentElement.classList.add(t);}catch(e){document.documentElement.classList.add('dark');}})();`,
+          }}
+        />
+      </head>
       <body className="antialiased font-sans">
-        <AuthProvider>
-          <QueryProvider>
-            <ThemeProvider attribute="class" defaultTheme="dark" disableTransitionOnChange>
-              <ToastProvider>
-                {children}
-              </ToastProvider>
-            </ThemeProvider>
-          </QueryProvider>
-        </AuthProvider>
+        <Providers>
+          {children}
+        </Providers>
       </body>
     </html>
   );
