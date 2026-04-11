@@ -16,6 +16,37 @@ export async function GET(request) {
     const supabase = await createClient()
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error) {
+      // Initialize user data in the database if it doesn't exist
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (user) {
+        // Check if user already has a profile entry
+        const { data: existingUser } = await supabase
+          .from('users')
+          .select('id')
+          .eq('id', user.id)
+          .single()
+
+        if (!existingUser) {
+          // Extract metadata from Google Auth
+          const username = user.user_metadata?.full_name || user.user_metadata?.name || `User_${user.id.substring(0, 5)}`
+          const avatar_url = user.user_metadata?.avatar_url || ''
+
+          // Create the main user profile
+          await supabase.from('users').insert({
+            id: user.id,
+            username: username,
+            avatar_url: avatar_url
+          })
+
+          // Create default settings for the user
+          await supabase.from('user_settings').insert({
+            user_id: user.id,
+            theme: 'dark'
+          })
+        }
+      }
+
       const forwardedHost = request.headers.get('x-forwarded-host') // original origin before load balancer
       const isLocalEnv = process.env.NODE_ENV === 'development'
       if (isLocalEnv) {
