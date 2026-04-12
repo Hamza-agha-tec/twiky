@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Socket } from 'socket.io-client';
 import { getSocket } from '@/lib/socket';
 import { MESSAGING_KEYS, ChatMessage, Conversation } from './use-messaging';
@@ -159,6 +159,9 @@ export function useGlobalSocket() {
 
       const onNewMessage = (message: ChatMessage) => {
         if (!mounted) return;
+        
+        let conversationExists = false;
+
         // Update messages cache only if already loaded (don't create empty caches)
         queryClient.setQueryData<ChatMessage[]>(
           MESSAGING_KEYS.messages(message.conversation_id),
@@ -168,19 +171,47 @@ export function useGlobalSocket() {
             return [message, ...old];
           }
         );
+
         // Always bump sidebar timestamp
         queryClient.setQueryData<Conversation[]>(
           MESSAGING_KEYS.conversations,
-          (old = []) => old.map((c) =>
-            c.id === message.conversation_id
-              ? { ...c, last_message_at: message.created_at }
-              : c
-          )
+          (old = []) => {
+            conversationExists = old.some(c => c.id === message.conversation_id);
+            return old.map((c) =>
+              c.id === message.conversation_id
+                ? { ...c, last_message_at: message.created_at }
+                : c
+            );
+          }
         );
+
+        // FIX: If conversation is not in the list (unknown sender), refetch everything
+        if (!conversationExists) {
+          queryClient.invalidateQueries({ queryKey: MESSAGING_KEYS.conversations });
+        }
+      };
+
+      const onUserStatusChange = ({ userId, status }: { userId: string; status: 'online' | 'offline' }) => {
+        queryClient.setQueryData<Set<string>>(['messaging', 'online-users'], (prev = new Set()) => {
+          const next = new Set(prev);
+          if (status === 'online') next.add(userId);
+          else next.delete(userId);
+          return next;
+        });
       };
 
       s.on('newMessage', onNewMessage);
-      cleanup = () => s.off('newMessage', onNewMessage);
+      s.on('userStatusChange', onUserStatusChange);
+
+      // Fetch initial online users
+      s.emit('getOnlineUsers', (userIds: string[]) => {
+        queryClient.setQueryData(['messaging', 'online-users'], new Set(userIds));
+      });
+
+      cleanup = () => {
+        s.off('newMessage', onNewMessage);
+        s.off('userStatusChange', onUserStatusChange);
+      };
     });
 
     return () => {
@@ -188,6 +219,15 @@ export function useGlobalSocket() {
       cleanup?.();
     };
   }, [queryClient]);
+}
+
+export function useOnlineUsers() {
+  const { data: onlineUsers = new Set<string>() } = useQuery({
+    queryKey: ['messaging', 'online-users'],
+    initialData: new Set<string>(),
+    staleTime: Infinity,
+  });
+  return onlineUsers;
 }
 
 export function useTypingIndicator(conversationId: string | null) {

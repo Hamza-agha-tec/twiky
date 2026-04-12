@@ -13,6 +13,7 @@ import { AddContactModal } from './add-contact-modal';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { useProfile, useContacts } from '@/hooks/use-user';
 import { useConversations, useCreateConversation, getConvDisplayName, getDmContact } from '@/hooks/use-messaging';
+import { useOnlineUsers } from '@/hooks/use-socket';
 import { EditContactModal } from './edit-contact-modal';
 
 interface SidebarProps {
@@ -69,6 +70,7 @@ export function Sidebar({
   const { data: contacts = [] } = useContacts();
   const { data: conversations = [], isLoading: convsLoading } = useConversations();
   const createConversation = useCreateConversation();
+  const onlineUsers = useOnlineUsers();
 
   const isSearching = searchQuery.trim().length > 0;
 
@@ -120,7 +122,7 @@ export function Sidebar({
           isGroup: c.is_group,
           isPinned: chatMeta[c.id]?.isPinned ?? false,
           isMuted: chatMeta[c.id]?.isMuted ?? false,
-          isOnline: false,
+          isOnline: dmParticipant ? onlineUsers.has(dmParticipant.id) : false,
         };
       });
 
@@ -263,6 +265,7 @@ export function Sidebar({
                   isActive={activeChat === chat.id}
                   isFavorite={chatMeta[chat.id]?.isFavorite}
                   onClick={() => onSelectChat(chat.id)}
+                  isOnline={chat.isOnline}
                 />
               </motion.div>
             ))

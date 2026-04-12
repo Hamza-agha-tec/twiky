@@ -25,6 +25,8 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   server: Server;
 
   private readonly logger = new Logger(ChatGateway.name);
+  // Track online users: Map<userId, Set<socketId>>
+  private onlineUsers = new Map<string, Set<string>>();
 
   constructor(
     private readonly messagingService: MessagingService,
@@ -42,6 +44,15 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     if (userId) {
       // Personal room — receives events for all conversations without explicit joins
       client.join(`user_${userId}`);
+      
+      // Track online status
+      if (!this.onlineUsers.has(userId)) {
+        this.onlineUsers.set(userId, new Set());
+        // Broadcast that user is now online
+        this.server.emit('userStatusChange', { userId, status: 'online' });
+      }
+      this.onlineUsers.get(userId)!.add(client.id);
+
       this.logger.log(`User ${userId} connected [${client.id}]`);
     } else {
       client.disconnect();
@@ -50,7 +61,26 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
 
   handleDisconnect(client: Socket) {
     const userId = client.data.user?.userId;
+    if (userId && this.onlineUsers.has(userId)) {
+      const userSockets = this.onlineUsers.get(userId)!;
+      userSockets.delete(client.id);
+      
+      if (userSockets.size === 0) {
+        this.onlineUsers.delete(userId);
+        // Broadcast that user is now offline
+        this.server.emit('userStatusChange', { userId, status: 'offline' });
+      }
+    }
     this.logger.log(`User ${userId ?? 'unknown'} disconnected [${client.id}]`);
+  }
+
+  /**
+   * Online Status
+   */
+
+  @SubscribeMessage('getOnlineUsers')
+  handleGetOnlineUsers() {
+    return Array.from(this.onlineUsers.keys());
   }
 
   /**

@@ -12,6 +12,7 @@ interface ChatItemProps {
   chat: Chat;
   isActive: boolean;
   isFavorite?: boolean;
+  isOnline?: boolean;
   onClick: () => void;
 }
 
@@ -24,7 +25,7 @@ function getLabel(ts: string | number | Date): string {
   return format(date, 'dd/MM/yyyy');
 }
 
-export function ChatItem({ chat, isActive, isFavorite, onClick }: ChatItemProps) {
+export function ChatItem({ chat, isActive, isFavorite, onClick, isOnline }: ChatItemProps) {
   const [label, setLabel] = useState<string>('');
 
   useEffect(() => {
