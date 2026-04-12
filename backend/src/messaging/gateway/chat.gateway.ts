@@ -5,6 +5,8 @@ import {
   ConnectedSocket,
   WebSocketServer,
   OnGatewayInit,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { MessagingService } from '../messaging.service';
@@ -18,11 +20,12 @@ import { Logger } from '@nestjs/common';
     origin: '*', // In production, replace with your frontend URL
   },
 })
-export class ChatGateway implements OnGatewayInit {
+export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
   private readonly logger = new Logger(ChatGateway.name);
+  private activeUsers = new Map<string, Set<string>>(); // userId -> Set of socketIds
 
   constructor(
     private readonly messagingService: MessagingService,
@@ -33,6 +36,43 @@ export class ChatGateway implements OnGatewayInit {
     const supabaseUrl = this.configService.get<string>('NEXT_PUBLIC_SUPABASE_URL') as string;
     server.use(SocketAuthMiddleware(supabaseUrl));
     this.logger.log('WS Gateway initialized with Supabase Auth Middleware');
+  }
+
+  async handleConnection(client: Socket) {
+    const userId = client.data?.user?.userId;
+    if (!userId) {
+      // In some cases, handlesConnection might be called before middleware attaches user data
+      // but the middleware should have run. Log for debugging.
+      this.logger.warn(`Connection attempt without user data: ${client.id}`);
+      return;
+    }
+
+    if (!this.activeUsers.has(userId)) {
+      this.activeUsers.set(userId, new Set());
+      this.server.emit('userStatus', { userId, isOnline: true });
+    }
+    this.activeUsers.get(userId).add(client.id);
+    this.logger.log(`User ${userId} online. Total active: ${this.activeUsers.size}`);
+  }
+
+  async handleDisconnect(client: Socket) {
+    const userId = client.data?.user?.userId;
+    if (!userId) return;
+
+    const userSockets = this.activeUsers.get(userId);
+    if (userSockets) {
+      userSockets.delete(client.id);
+      if (userSockets.size === 0) {
+        this.activeUsers.delete(userId);
+        this.server.emit('userStatus', { userId, isOnline: false });
+      }
+    }
+    this.logger.log(`User ${userId} disconnected. Remaining active: ${this.activeUsers.size}`);
+  }
+
+  @SubscribeMessage('getOnlineUsers')
+  handleGetOnlineUsers() {
+    return Array.from(this.activeUsers.keys());
   }
 
   /**
@@ -159,6 +199,21 @@ export class ChatGateway implements OnGatewayInit {
     client.to(`conv_${payload.conversationId}`).emit('userTyping', {
       userId,
       isTyping: payload.isTyping,
+    });
+  }
+
+  /**
+   * External Trigger for Service Layer
+   */
+
+  broadcastNewConversation(participantIds: string[], conversation: any) {
+    participantIds.forEach(pid => {
+      const userSockets = this.activeUsers.get(pid);
+      if (userSockets) {
+        userSockets.forEach(sid => {
+          this.server.to(sid).emit('newConversation', conversation);
+        });
+      }
     });
   }
 }

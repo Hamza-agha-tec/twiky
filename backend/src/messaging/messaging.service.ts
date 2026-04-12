@@ -1,10 +1,15 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.module';
 import { CreateConversationDto, SendMessageDto } from './dto/messaging.dto';
+import { ChatGateway } from './gateway/chat.gateway';
 
 @Injectable()
 export class MessagingService {
-  constructor(private supabaseService: SupabaseService) { }
+  constructor(
+    private supabaseService: SupabaseService,
+    @Inject(forwardRef(() => ChatGateway))
+    private chatGateway: ChatGateway,
+  ) { }
 
   /**
    * CONVERSATIONS
@@ -41,7 +46,19 @@ export class MessagingService {
 
     if (partError) throw new Error(`Failed to add participants: ${partError.message}`);
 
-    return conversation;
+    // Notify participants via Socket
+    const { data: fullConversation } = await this.supabaseService
+      .getClient()
+      .from('conversations')
+      .select('*, participants:conversation_participants(user:users(id, username, avatar_url, phone_number))')
+      .eq('id', conversation.id)
+      .single();
+
+    if (fullConversation) {
+      this.chatGateway.broadcastNewConversation(allParticipants, fullConversation);
+    }
+
+    return fullConversation || conversation;
   }
 
   async getConversations(userId: string) {
