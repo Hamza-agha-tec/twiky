@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -67,19 +67,24 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
     .reverse()
     .map((m) => toUiMessage(m, profile?.id ?? ''));
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const initialScrollDone = useRef(false);
   const [isTyping, setIsTyping] = useState(false);
   const [replyTo, setReplyTo] = useState<ReplyTo | null>(null);
   const [showPinned, setShowPinned] = useState(true);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [activeChat, messages]);
+  useLayoutEffect(() => {
+    if (messages.length === 0) return;
 
-  // Reset reply & pinned on chat switch
-  useEffect(() => {
-    setReplyTo(null);
-    setShowPinned(true);
-  }, [activeChat]);
+    const behavior = initialScrollDone.current ? 'smooth' : 'instant';
+    initialScrollDone.current = true;
+
+    // rAF ensures browser has finished layout before we scroll
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior });
+    });
+  }, [messages.length]);
+
 
   const chatName = conv ? getConvDisplayName(conv, profile?.id ?? '', contacts) : 'Chat';
   const dmParticipant = conv ? getDmContact(conv, profile?.id ?? '') : null;
@@ -194,7 +199,7 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
       </AnimatePresence>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+      <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4">
         {Object.entries(groupedMessages).map(([date, dayMessages]) => (
           <div key={date}>
             {/* Day Separator */}
