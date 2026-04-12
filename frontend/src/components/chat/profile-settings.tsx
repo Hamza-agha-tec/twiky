@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { X, Camera, Bell, Lock, Palette, HelpCircle, LogOut, ChevronRight, Moon, Sun, Smartphone } from 'lucide-react';
+import { LinkedDevicesPanel } from './linked-devices-panel';
 import { useTheme } from '@/components/theme-provider';
 import { useRouter } from 'next/navigation';
 import { useProfile, useUpdateProfile, useSettings, useUpdateSettings } from '@/hooks/use-user';
@@ -20,13 +21,13 @@ interface ProfileSettingsProps {
 const SETTINGS_GROUPS = [
   {
     items: [
-      { icon: Lock, label: 'Privacy & Security', desc: 'Control who sees you' },
-      { icon: Smartphone, label: 'Linked Devices', desc: '2 devices active' },
+      { icon: Lock, label: 'Privacy & Security', desc: 'Control who sees you', action: null },
+      { icon: Smartphone, label: 'Linked Devices', desc: '3 devices active', action: 'linked-devices' },
     ],
   },
   {
     items: [
-      { icon: HelpCircle, label: 'Help & Support', desc: 'FAQ, contact us' },
+      { icon: HelpCircle, label: 'Help & Support', desc: 'FAQ, contact us', action: null },
     ],
   },
 ];
@@ -43,6 +44,7 @@ export function ProfileSettings({ onClose }: ProfileSettingsProps) {
   const [status, setStatus] = useState('Available');
   const [editing, setEditing] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [showLinkedDevices, setShowLinkedDevices] = useState(false);
   const [form, setForm] = useState({ username: '', phone_number: '' });
 
   const { themeId: chatThemeId, setTheme: setChatTheme, resolved: resolvedChatTheme } = useChatThemeContext();
@@ -88,6 +90,9 @@ export function ProfileSettings({ onClose }: ProfileSettingsProps) {
 
   return (
     <AnimatePresence>
+      {showLinkedDevices && (
+        <LinkedDevicesPanel onBack={() => setShowLinkedDevices(false)} />
+      )}
       <motion.div
         key="profile-backdrop"
         initial={{ opacity: 0 }}
@@ -337,6 +342,7 @@ export function ProfileSettings({ onClose }: ProfileSettingsProps) {
               {group.items.map((item) => (
                 <button
                   key={item.label}
+                  onClick={() => item.action === 'linked-devices' && setShowLinkedDevices(true)}
                   className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors text-left"
                 >
                   <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
