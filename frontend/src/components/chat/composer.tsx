@@ -13,13 +13,14 @@ import { useUploadFile } from '@/hooks/use-messaging';
 import { toast } from 'sonner';
 
 interface ReplyTo {
+  id: string;
   senderName: string;
   content: string;
 }
 
 interface ComposerProps {
   onTyping?: (isTyping: boolean) => void;
-  onSendMessage?: (content: string, type?: string, fileUrl?: string) => void;
+  onSendMessage?: (content: string, type?: string, replyToId?: string, fileUrl?: string) => void;
   replyTo?: ReplyTo | null;
   onCancelReply?: () => void;
 }
@@ -71,7 +72,7 @@ export function Composer({ onTyping, onSendMessage, replyTo, onCancelReply }: Co
 
   const handleSend = () => {
     if (message.trim()) {
-      onSendMessage?.(message);
+      onSendMessage?.(message, 'text', replyTo?.id);
       setMessage('');
       onCancelReply?.();
       onTyping?.(false);
@@ -105,7 +106,8 @@ export function Composer({ onTyping, onSendMessage, replyTo, onCancelReply }: Co
     try {
       const { fileUrl, fileType } = await uploadFile.mutateAsync(file);
       const type = fileType.startsWith('image/') ? 'image' : 'file';
-      onSendMessage?.(fileUrl, type, fileUrl);
+      onSendMessage?.(fileUrl, type, replyTo?.id, fileUrl);
+      onCancelReply?.();
     } catch {
       toast.error('Upload failed');
     } finally {

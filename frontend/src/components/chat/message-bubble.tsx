@@ -74,19 +74,7 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
         </div>
       )}
 
-      <div className={`flex flex-col max-w-sm ${message.isOwn ? 'items-end' : 'items-start'}`}>
-        {/* Reply Preview */}
-        {message.reply && (
-          <div className={`mb-1.5 text-xs px-3 py-2 rounded-xl border-l-2 max-w-xs ${
-            message.isOwn
-              ? 'border-primary/40 bg-primary/8 text-muted-foreground'
-              : 'border-muted-foreground/30 bg-muted text-muted-foreground'
-          }`}>
-            <p className="font-semibold text-foreground text-[11px] mb-0.5">{message.reply.senderName}</p>
-            <p className="truncate">{message.reply.content}</p>
-          </div>
-        )}
-
+<div className={`flex flex-col max-w-sm ${message.isOwn ? 'items-end' : 'items-start'}`}>
         {/* Forwarded Indicator */}
         {message.isForwarded && (
           <div className="text-[11px] text-muted-foreground flex items-center gap-1 mb-1 px-1">
@@ -107,6 +95,28 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
           }`}
           onContextMenu={handleContextMenu}
         >
+          {/* Reply Quote */}
+          {message.reply && (
+            <div className={`mb-2.5 rounded-lg overflow-hidden border-l-[3px] ${
+              message.isOwn
+                ? 'border-primary-foreground/60 bg-primary-foreground/10'
+                : 'border-primary bg-primary/8'
+            }`}>
+              <div className="px-3 py-2">
+                <p className={`text-[11px] font-semibold mb-0.5 truncate ${
+                  message.isOwn ? 'text-primary-foreground/80' : 'text-primary'
+                }`}>
+                  {message.reply.senderName}
+                </p>
+                <p className={`text-[12px] truncate leading-snug ${
+                  message.isOwn ? 'text-primary-foreground/55' : 'text-foreground/60'
+                }`}>
+                  {message.reply.content}
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Text */}
           {message.type === 'text' && (
             <p className="text-sm break-words whitespace-pre-wrap leading-relaxed">{message.content}</p>

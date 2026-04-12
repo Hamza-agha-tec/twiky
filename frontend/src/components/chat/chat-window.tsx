@@ -106,7 +106,7 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
   const lastSeenTs = useLastSeen(dmContact?.id ?? null);
 
   const lastSeenLabel = (() => {
-    if (!lastSeenTs) return 'Offline';
+    if (!lastSeenTs) return null;
     const diff = Date.now() - lastSeenTs;
     const mins = Math.floor(diff / 60000);
     if (mins < 1) return 'Last seen just now';
@@ -170,11 +170,12 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
             <h2 className="font-semibold text-foreground text-sm leading-tight truncate">{chatName}</h2>
             {conv?.is_group ? (
               <p className="text-xs text-muted-foreground">Group</p>
-            ) : (
-              <p className={`text-xs font-medium ${isOnline ? 'text-green-500' : 'text-muted-foreground'}`}>
+            ) : (isOnline || lastSeenLabel) ? (
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                {isOnline && <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-500" />}
                 {isOnline ? 'Online' : lastSeenLabel}
               </p>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -289,8 +290,8 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
       {/* Composer */}
       <Composer
         onTyping={(t) => { setIsTyping(t); onTyping?.(t); }}
-        onSendMessage={(content, type, fileUrl) => {
-          onSendMessage?.(content, type, replyTo?.id, fileUrl);
+        onSendMessage={(content, type, replyToId, fileUrl) => {
+          onSendMessage?.(content, type, replyToId, fileUrl);
           setReplyTo(null);
         }}
         replyTo={replyTo}

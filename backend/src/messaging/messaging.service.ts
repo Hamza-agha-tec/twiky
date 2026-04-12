@@ -191,6 +191,29 @@
      * MESSAGES
      */
 
+    private async fetchReplyTo(replyToId: string | null) {
+      if (!replyToId) return null;
+      const { data } = await this.supabaseService
+        .getClient()
+        .from('messages')
+        .select('id, content, sender:users!sender_id(id, username)')
+        .eq('id', replyToId)
+        .single();
+      return data ?? null;
+    }
+
+    private async attachReplyTo(messages: any[]) {
+      const ids = [...new Set(messages.map((m) => m.reply_to_id).filter(Boolean))];
+      if (ids.length === 0) return messages;
+      const { data: parents } = await this.supabaseService
+        .getClient()
+        .from('messages')
+        .select('id, content, sender:users!sender_id(id, username)')
+        .in('id', ids);
+      const map = new Map((parents ?? []).map((p: any) => [p.id, p]));
+      return messages.map((m) => ({ ...m, reply_to: m.reply_to_id ? (map.get(m.reply_to_id) ?? null) : null }));
+    }
+
     async saveMessage(senderId: string, sendDto: SendMessageDto) {
       const { conversationId, content, type, fileUrl, metadata } = sendDto;
 
@@ -205,8 +228,8 @@
 
       if (!member) throw new ForbiddenException('You are not a member of this conversation');
 
-      // Save message
-      const { data, error } = await this.supabaseService
+      // Insert and fetch in two steps to avoid self-referential join ambiguity
+      const { data: inserted, error } = await this.supabaseService
         .getClient()
         .from('messages')
         .insert({
@@ -218,10 +241,21 @@
           metadata: metadata || {},
           reply_to_id: sendDto.replyToId ?? null,
         })
-        .select('*, sender:users!sender_id(id, username, avatar_url), reply_to:messages!reply_to_id(id, content, sender:users!sender_id(id, username))')
+        .select('id')
         .single();
 
       if (error) throw new Error(`Failed to save message: ${error.message}`);
+
+      const { data, error: fetchError } = await this.supabaseService
+        .getClient()
+        .from('messages')
+        .select('*, sender:users!sender_id(id, username, avatar_url)')
+        .eq('id', inserted.id)
+        .single();
+
+      if (fetchError) throw new Error(`Failed to fetch message: ${fetchError.message}`);
+
+      const reply_to = await this.fetchReplyTo(sendDto.replyToId ?? null);
 
       // Update conversation last_message_at
       await this.supabaseService
@@ -230,7 +264,7 @@
         .update({ last_message_at: new Date().toISOString() })
         .eq('id', conversationId);
 
-      return data;
+      return { ...data, reply_to };
     }
 
     async getMessages(userId: string, conversationId: string, limit: number = 50, offset: number = 0) {
@@ -248,13 +282,13 @@
       const { data, error } = await this.supabaseService
         .getClient()
         .from('messages')
-        .select('*, sender:users!sender_id(id, username, avatar_url), reply_to:messages!reply_to_id(id, content, sender:users!sender_id(id, username))')
+        .select('*, sender:users!sender_id(id, username, avatar_url)')
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
 
       if (error) throw new Error(`Failed to fetch messages: ${error.message}`);
-      return data;
+      return this.attachReplyTo(data);
     }
 
     /**
@@ -268,7 +302,7 @@
         .update({ content, is_edited: true })
         .eq('id', messageId)
         .eq('sender_id', userId)
-        .select('*, sender:users!sender_id(id, username, avatar_url), reply_to:messages!reply_to_id(id, content, sender:users!sender_id(id, username))')
+        .select('*, sender:users!sender_id(id, username, avatar_url)')
         .single();
 
       if (error) throw new Error(`Failed to edit message: ${error.message}`);
