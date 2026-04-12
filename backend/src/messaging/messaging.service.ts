@@ -1,6 +1,6 @@
   import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
   import { SupabaseService } from '../supabase/supabase.module';
-  import { CreateConversationDto, SendMessageDto } from './dto/messaging.dto';
+  import { CreateConversationDto, SendMessageDto, UpdateGroupDto, AddParticipantsDto } from './dto/messaging.dto';
 
   @Injectable()
   export class MessagingService {
@@ -10,39 +10,115 @@
      * CONVERSATIONS
      */
 
-    async createConversation(userId: string, createDto: CreateConversationDto) {
-      const { isGroup, name, participantIds } = createDto;
+  async createConversation(userId: string, createDto: CreateConversationDto) {
+    const { isGroup, name, description, avatarUrl, participantIds } = createDto;
 
-      // 1. Create the conversation record
-      const { data: conversation, error: convError } = await this.supabaseService
-        .getClient()
-        .from('conversations')
-        .insert({
-          is_group: isGroup || false,
-          name: name || (isGroup ? 'New Group' : null),
-        })
-        .select()
-        .single();
+    // 1. Create the conversation record
+    const { data: conversation, error: convError } = await this.supabaseService
+      .getClient()
+      .from('conversations')
+      .insert({
+        is_group: isGroup || false,
+        name: name || (isGroup ? 'New Group' : null),
+        description: description || null,
+        avatar_url: avatarUrl || null,
+      })
+      .select()
+      .single();
 
-      if (convError) throw new Error(`Failed to create conversation: ${convError.message}`);
+    if (convError) throw new Error(`Failed to create conversation: ${convError.message}`);
 
-      // 2. Add all participants (including the creator)
-      const allParticipants = Array.from(new Set([...participantIds, userId]));
-      const participantRows = allParticipants.map(pid => ({
-        conversation_id: conversation.id,
-        user_id: pid,
-        role: pid === userId ? 'admin' : 'member',
-      }));
+    // 2. Add all participants (including the creator)
+    const allParticipants = Array.from(new Set([...participantIds, userId]));
+    const participantRows = allParticipants.map(pid => ({
+      conversation_id: conversation.id,
+      user_id: pid,
+      role: pid === userId ? 'admin' : 'member',
+    }));
 
-      const { error: partError } = await this.supabaseService
-        .getClient()
-        .from('conversation_participants')
-        .insert(participantRows);
+    const { error: partError } = await this.supabaseService
+      .getClient()
+      .from('conversation_participants')
+      .insert(participantRows);
 
-      if (partError) throw new Error(`Failed to add participants: ${partError.message}`);
+    if (partError) throw new Error(`Failed to add participants: ${partError.message}`);
 
-      return conversation;
+    return conversation;
+  }
+
+  async isAdmin(userId: string, conversationId: string): Promise<boolean> {
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('conversation_participants')
+      .select('role')
+      .eq('conversation_id', conversationId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error || !data) return false;
+    return data.role === 'admin';
+  }
+
+  async updateGroup(userId: string, conversationId: string, updateDto: UpdateGroupDto) {
+    const isUserAdmin = await this.isAdmin(userId, conversationId);
+    if (!isUserAdmin) throw new ForbiddenException('Only admins can update group information');
+
+    // Only include fields that were actually provided
+    const updatePayload: Record<string, any> = {};
+    if (updateDto.name !== undefined) updatePayload.name = updateDto.name;
+    if (updateDto.description !== undefined) updatePayload.description = updateDto.description;
+    if (updateDto.avatarUrl !== undefined) updatePayload.avatar_url = updateDto.avatarUrl;
+
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('conversations')
+      .update(updatePayload)
+      .eq('id', conversationId)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to update group: ${error.message}`);
+    return data;
+  }
+
+
+  async addParticipants(userId: string, conversationId: string, addDto: AddParticipantsDto) {
+    const isUserAdmin = await this.isAdmin(userId, conversationId);
+    if (!isUserAdmin) throw new ForbiddenException('Only admins can add participants to this group');
+
+    const participantRows = addDto.participantIds.map(pid => ({
+      conversation_id: conversationId,
+      user_id: pid,
+      role: 'member',
+    }));
+
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('conversation_participants')
+      .insert(participantRows);
+
+    if (error) throw new Error(`Failed to add participants: ${error.message}`);
+    return { success: true };
+  }
+
+  async removeParticipant(userId: string, conversationId: string, targetUserId: string) {
+    const isUserAdmin = await this.isAdmin(userId, conversationId);
+    const isSelf = userId === targetUserId;
+
+    if (!isUserAdmin && !isSelf) {
+      throw new ForbiddenException('You do not have permission to remove this participant');
     }
+
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('conversation_participants')
+      .delete()
+      .eq('conversation_id', conversationId)
+      .eq('user_id', targetUserId);
+
+    if (error) throw new Error(`Failed to remove participant: ${error.message}`);
+    return { success: true };
+  }
 
     async getConversations(userId: string) {
       const { data, error } = await this.supabaseService
@@ -271,24 +347,33 @@
      * FILE SHARING
      */
 
-    async uploadFile(userId: string, file: Express.Multer.File) {
+    async uploadFile(userId: string, conversationId: string, file: Express.Multer.File) {
+      // Verify membership before allowing upload
+      const { data: member } = await this.supabaseService
+        .getClient()
+        .from('conversation_participants')
+        .select('user_id')
+        .eq('conversation_id', conversationId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (!member) throw new ForbiddenException('You are not a member of this conversation');
+
       const fileExt = file.originalname.split('.').pop();
-      const fileName = `${userId}_${Date.now()}.${fileExt}`;
-      const filePath = `uploads/${fileName}`;
+      const fileName = `${Date.now()}_${file.originalname}`;
+      // Each conversation has its own folder
+      const filePath = `conversations/${conversationId}/${fileName}`;
 
       const { error } = await this.supabaseService
         .getClient()
         .storage.from('chat-attachments')
         .upload(filePath, file.buffer, {
           contentType: file.mimetype,
-          upsert: true,
+          upsert: false,
         });
 
-      if (error) {
-        throw new Error(`Failed to upload file: ${error.message}`);
-      }
+      if (error) throw new Error(`Failed to upload file: ${error.message}`);
 
-      // Get public URL
       const { data: { publicUrl } } = this.supabaseService
         .getClient()
         .storage.from('chat-attachments')
@@ -299,5 +384,42 @@
         fileUrl: publicUrl,
         fileType: file.mimetype,
       };
+    }
+
+    async uploadGroupAvatar(userId: string, conversationId: string, file: Express.Multer.File) {
+      const isUserAdmin = await this.isAdmin(userId, conversationId);
+      if (!isUserAdmin) throw new ForbiddenException('Only admins can update the group avatar');
+
+      const fileExt = file.originalname.split('.').pop();
+      // Deterministic path — always overwrite the single avatar file
+      const filePath = `group-avatars/${conversationId}/avatar.${fileExt}`;
+
+      const { error } = await this.supabaseService
+        .getClient()
+        .storage.from('chat-attachments')
+        .upload(filePath, file.buffer, {
+          contentType: file.mimetype,
+          upsert: true, // overwrite existing avatar
+        });
+
+      if (error) throw new Error(`Failed to upload group avatar: ${error.message}`);
+
+      const { data: { publicUrl } } = this.supabaseService
+        .getClient()
+        .storage.from('chat-attachments')
+        .getPublicUrl(filePath);
+
+      // Persist the new avatar_url on the conversation
+      const { data, error: updateError } = await this.supabaseService
+        .getClient()
+        .from('conversations')
+        .update({ avatar_url: publicUrl })
+        .eq('id', conversationId)
+        .select()
+        .single();
+
+      if (updateError) throw new Error(`Failed to update group avatar: ${updateError.message}`);
+
+      return data;
     }
   }

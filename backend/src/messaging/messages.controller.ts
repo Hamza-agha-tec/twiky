@@ -8,10 +8,14 @@ import { FileInterceptor } from '@nestjs/platform-express';
 export class MessagesController {
   constructor(private readonly messagingService: MessagingService) {}
 
-  @Post('upload')
+  @Post('upload/:conversationId')
   @UseInterceptors(FileInterceptor('file'))
-  async uploadFile(@Request() req: any, @UploadedFile() file: Express.Multer.File) {
-    return this.messagingService.uploadFile(req.user.userId, file);
+  async uploadFile(
+    @Request() req: any,
+    @Param('conversationId') conversationId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.messagingService.uploadFile(req.user.userId, conversationId, file);
   }
 
   @Get(':conversationId')
