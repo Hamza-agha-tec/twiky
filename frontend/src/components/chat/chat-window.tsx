@@ -12,6 +12,7 @@ import { format } from 'date-fns';
 import { ChatMessage, useConversations, getConvDisplayName, getConversationAvatar, getDmContact } from '@/hooks/use-messaging';
 import { useProfile, useContacts } from '@/hooks/use-user';
 import { useOnlineUsers, useLastSeen } from '@/hooks/use-socket';
+import { useChatThemeContext } from '@/context/ChatThemeContext';
 import { toast } from 'sonner';
 
 interface ChatWindowProps {
@@ -67,6 +68,7 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
   const { data: contacts = [] } = useContacts();
   const { data: conversations = [] } = useConversations();
   const onlineUsers = useOnlineUsers();
+  const { resolved: chatTheme } = useChatThemeContext();
   const conv = conversations.find((c) => c.id === activeChat);
   const messages = providedMessages
     .slice()
@@ -223,7 +225,11 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
       </AnimatePresence>
 
       {/* Messages Area */}
-      <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4">
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4"
+        style={chatTheme.bg ? { backgroundColor: chatTheme.bg } : undefined}
+      >
         {Object.entries(groupedMessages).map(([date, dayMessages]) => (
           <div key={date}>
             {/* Day Separator */}

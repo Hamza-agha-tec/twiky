@@ -9,6 +9,8 @@ import { X, Camera, Bell, Lock, Palette, HelpCircle, LogOut, ChevronRight, Moon,
 import { useTheme } from '@/components/theme-provider';
 import { useRouter } from 'next/navigation';
 import { useProfile, useUpdateProfile, useSettings, useUpdateSettings } from '@/hooks/use-user';
+import { CHAT_THEMES } from '@/hooks/use-chat-theme';
+import { useChatThemeContext } from '@/context/ChatThemeContext';
 import { useAuth } from '@/context/AuthContext';
 
 interface ProfileSettingsProps {
@@ -24,7 +26,6 @@ const SETTINGS_GROUPS = [
   },
   {
     items: [
-      { icon: Palette, label: 'Appearance', desc: 'Theme & chat background' },
       { icon: HelpCircle, label: 'Help & Support', desc: 'FAQ, contact us' },
     ],
   },
@@ -41,8 +42,10 @@ export function ProfileSettings({ onClose }: ProfileSettingsProps) {
   };
   const [status, setStatus] = useState('Available');
   const [editing, setEditing] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [form, setForm] = useState({ username: '', phone_number: '' });
 
+  const { themeId: chatThemeId, setTheme: setChatTheme, resolved: resolvedChatTheme } = useChatThemeContext();
   const { data: profile, isLoading: profileLoading } = useProfile();
   const { data: settings } = useSettings();
   const updateProfile = useUpdateProfile();
@@ -229,6 +232,103 @@ export function ProfileSettings({ onClose }: ProfileSettingsProps) {
                 }`}
               />
             </button>
+          </div>
+
+          {/* Appearance */}
+          <div className="px-2 py-2 border-b border-border">
+            <button
+              onClick={() => setAppearanceOpen((v) => !v)}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors text-left"
+            >
+              <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                <Palette className="h-4 w-4 text-foreground" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground">Appearance</p>
+                <p className="text-xs text-muted-foreground">Theme & chat colors</p>
+              </div>
+              <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${appearanceOpen ? 'rotate-90' : ''}`} />
+            </button>
+
+            <AnimatePresence>
+              {appearanceOpen && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className="px-2 pt-2 pb-1 flex flex-col gap-4">
+                    {/* Theme grid */}
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {CHAT_THEMES.map((t) => {
+                        const v = theme === 'dark' ? t.dark : t.light;
+                        return (
+                          <button
+                            key={t.id}
+                            onClick={() => setChatTheme(t.id)}
+                            className={`flex flex-col items-center gap-1 p-1.5 rounded-xl transition-colors ${
+                              chatThemeId === t.id ? 'bg-accent' : 'hover:bg-accent/50'
+                            }`}
+                          >
+                            {/* Mini preview using correct light/dark variant */}
+                            <div
+                              className={`w-10 h-10 rounded-xl overflow-hidden flex flex-col justify-center gap-1 p-1.5 ${!v.bg ? 'bg-muted' : ''}`}
+                              style={v.bg ? { backgroundColor: v.bg } : undefined}
+                            >
+                              <div className="flex justify-end">
+                                <div className={`h-2.5 w-6 rounded-full ${!v.own ? 'bg-primary' : ''}`}
+                                  style={v.own ? { backgroundColor: v.own } : undefined} />
+                              </div>
+                              <div className="flex justify-start">
+                                <div className={`h-2.5 w-6 rounded-full ${!v.other ? 'bg-muted-foreground/30' : ''}`}
+                                  style={v.other ? { backgroundColor: v.other } : undefined} />
+                              </div>
+                            </div>
+                            <span className={`text-[9px] font-medium ${chatThemeId === t.id ? 'text-foreground' : 'text-muted-foreground'}`}>
+                              {t.name}
+                            </span>
+                            {chatThemeId === t.id && <div className="w-1 h-1 rounded-full bg-primary" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Live preview */}
+                    <div
+                      className={`rounded-xl p-3 flex flex-col gap-2 ${!resolvedChatTheme.bg ? 'bg-muted/40' : ''}`}
+                      style={resolvedChatTheme.bg ? { backgroundColor: resolvedChatTheme.bg } : undefined}
+                    >
+                      <div className="flex justify-end">
+                        <div
+                          className={`px-3 py-1.5 rounded-2xl rounded-br-sm text-xs ${!resolvedChatTheme.own ? 'bg-primary text-primary-foreground' : ''}`}
+                          style={resolvedChatTheme.own ? { backgroundColor: resolvedChatTheme.own, color: resolvedChatTheme.ownText } : undefined}
+                        >
+                          Hey! 👋
+                        </div>
+                      </div>
+                      <div className="flex justify-start">
+                        <div
+                          className={`px-3 py-1.5 rounded-2xl rounded-bl-sm text-xs ${!resolvedChatTheme.other ? 'bg-muted text-foreground' : ''}`}
+                          style={resolvedChatTheme.other ? { backgroundColor: resolvedChatTheme.other, color: resolvedChatTheme.otherText } : undefined}
+                        >
+                          Hello there!
+                        </div>
+                      </div>
+                      <div className="flex justify-end">
+                        <div
+                          className={`px-3 py-1.5 rounded-2xl rounded-br-sm text-xs ${!resolvedChatTheme.own ? 'bg-primary text-primary-foreground' : ''}`}
+                          style={resolvedChatTheme.own ? { backgroundColor: resolvedChatTheme.own, color: resolvedChatTheme.ownText } : undefined}
+                        >
+                          How are you?
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Settings Groups */}

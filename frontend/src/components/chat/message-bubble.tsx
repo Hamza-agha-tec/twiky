@@ -7,6 +7,7 @@ import { Message } from '@/lib/mock-data';
 import { format } from 'date-fns';
 import { useState, useEffect, useRef } from 'react';
 import { MessageContextMenu } from './message-context-menu';
+import { useChatThemeContext } from '@/context/ChatThemeContext';
 
 interface MessageBubbleProps {
   message: Message;
@@ -24,6 +25,7 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const messageRef = useRef<HTMLDivElement>(null);
+  const { resolved: theme } = useChatThemeContext();
 
   const messageReactions = message.reactions ?? [];
 
@@ -90,26 +92,46 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
             message.type === 'image' || message.type === 'video' ? 'p-0 overflow-hidden' : 'px-4 py-2.5'
           } ${
             message.isOwn
-              ? 'bg-primary text-primary-foreground rounded-br-sm'
-              : 'bg-muted text-foreground rounded-bl-sm'
+              ? `rounded-br-sm ${!theme.own ? 'bg-primary text-primary-foreground' : ''}`
+              : `rounded-bl-sm ${!theme.other ? 'bg-muted text-foreground' : ''}`
           }`}
+          style={
+            message.isOwn && theme.own
+              ? { backgroundColor: theme.own, color: theme.ownText }
+              : !message.isOwn && theme.other
+              ? { backgroundColor: theme.other, color: theme.otherText }
+              : undefined
+          }
           onContextMenu={handleContextMenu}
         >
           {/* Reply Quote */}
           {message.reply && (
-            <div className={`mb-2.5 rounded-lg overflow-hidden border-l-[3px] ${
-              message.isOwn
-                ? 'border-primary-foreground/60 bg-primary-foreground/10'
-                : 'border-primary bg-primary/8'
-            }`}>
+            <div
+              className={`mb-2.5 rounded-lg overflow-hidden border-l-[3px] ${
+                message.isOwn
+                  ? !theme.own ? 'border-primary-foreground/60 bg-primary-foreground/10' : ''
+                  : !theme.other ? 'border-primary bg-primary/8' : ''
+              }`}
+              style={
+                message.isOwn && theme.own
+                  ? { borderLeftColor: 'rgba(255,255,255,0.55)', backgroundColor: 'rgba(0,0,0,0.18)' }
+                  : !message.isOwn && theme.other
+                  ? { borderLeftColor: 'rgba(255,255,255,0.4)', backgroundColor: 'rgba(255,255,255,0.1)' }
+                  : undefined
+              }
+            >
               <div className="px-3 py-2">
                 <p className={`text-[11px] font-semibold mb-0.5 truncate ${
-                  message.isOwn ? 'text-primary-foreground/80' : 'text-primary'
+                  message.isOwn
+                    ? !theme.own ? 'text-primary-foreground/80' : 'text-white/85'
+                    : !theme.other ? 'text-primary' : 'text-white/85'
                 }`}>
                   {message.reply.senderName}
                 </p>
                 <p className={`text-[12px] truncate leading-snug ${
-                  message.isOwn ? 'text-primary-foreground/55' : 'text-foreground/60'
+                  message.isOwn
+                    ? !theme.own ? 'text-primary-foreground/55' : 'text-white/55'
+                    : 'text-foreground/60'
                 }`}>
                   {message.reply.content}
                 </p>

@@ -4,6 +4,7 @@ import { ThemeProvider } from '@/components/theme-provider';
 import { AuthProvider } from '@/context/AuthContext';
 import QueryProvider from '@/context/QueryProvider';
 import ToastProvider from '@/context/ToastProvider';
+import { ChatThemeProvider } from '@/context/ChatThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { usePresenceSocket } from '@/hooks/use-socket';
 
@@ -20,7 +21,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <PresenceBridge />
         <ThemeProvider attribute="class" defaultTheme="dark" disableTransitionOnChange>
           <ToastProvider>
-            {children}
+            <ChatThemeProvider>
+              {children}
+            </ChatThemeProvider>
           </ToastProvider>
         </ThemeProvider>
       </QueryProvider>
