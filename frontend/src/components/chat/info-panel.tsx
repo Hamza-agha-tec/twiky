@@ -6,7 +6,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Phone, Video, Search, Bell, BellOff, Trash2, X, ShieldAlert, Star, ChevronRight } from 'lucide-react';
-import { useConversations, getConvDisplayName, getDmContact } from '@/hooks/use-messaging';
+import { useConversations, getConvDisplayName, getDmContact, getConversationAvatar } from '@/hooks/use-messaging';
 import { useProfile, useContacts } from '@/hooks/use-user';
 
 interface InfoPanelProps {
@@ -42,6 +42,7 @@ export function InfoPanel({ activeChat, onClose }: InfoPanelProps) {
   const chatName = getConvDisplayName(conv, myId, contacts);
   const dmParticipant = getDmContact(conv, myId);
   const dmContact = contacts.find((c) => c.id === dmParticipant?.id) ?? null;
+  const chatAvatar = getConversationAvatar(conv, myId, contacts);
   const initials = chatName
     .split(' ')
     .map((word) => word[0])
@@ -73,7 +74,7 @@ export function InfoPanel({ activeChat, onClose }: InfoPanelProps) {
         <div className="p-5 flex flex-col items-center border-b border-border">
           <div className="relative mb-3">
             <Avatar className="h-16 w-16">
-              {dmContact?.avatar_url && <AvatarImage src={dmContact.avatar_url} alt={chatName} />}
+              {chatAvatar && <AvatarImage src={chatAvatar} alt={chatName} />}
               <AvatarFallback className="bg-primary text-primary-foreground text-xl">
                 {initials}
               </AvatarFallback>
