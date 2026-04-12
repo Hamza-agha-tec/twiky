@@ -180,7 +180,7 @@ export function Sidebar({
         initial={{ width: isOpen ? 320 : 0 }}
         animate={{ width: isOpen ? 320 : 0 }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
-        className="bg-background border-r border-border flex flex-col h-full overflow-hidden"
+        className="bg-sidebar border-r border-border flex flex-col h-full overflow-hidden"
       >
         {/* Header */}
         <div className="p-4 border-b border-border flex-shrink-0">

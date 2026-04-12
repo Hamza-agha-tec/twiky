@@ -102,7 +102,7 @@ export function ProfileSettings({ onClose }: ProfileSettingsProps) {
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: -320 }}
         transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-        className="fixed left-0 top-0 h-full w-80 z-50 bg-background border-r border-border flex flex-col shadow-2xl"
+        className="fixed left-0 top-0 h-full w-80 z-50 bg-sidebar border-r border-border flex flex-col shadow-2xl"
       >
         {/* Header */}
         <div className="h-14 px-4 flex items-center justify-between border-b border-border flex-shrink-0">

@@ -61,7 +61,7 @@ export default function ChatPage() {
           onProfileClick={() => setShowContactInfo((v) => !v)}
         />
       ) : (
-        <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+        <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm bg-sidebar">
           Select a conversation to start chatting
         </div>
       )}

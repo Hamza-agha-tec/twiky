@@ -148,9 +148,9 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-background h-full min-w-0">
+    <div className="flex-1 flex flex-col bg-sidebar h-full min-w-0">
       {/* Header */}
-      <div className="h-14 border-b border-border px-4 flex items-center justify-between bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex-shrink-0">
+      <div className="h-14 border-b border-border px-4 flex items-center justify-between bg-sidebar flex-shrink-0">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <motion.button
             whileHover={{ scale: 1.05 }}
