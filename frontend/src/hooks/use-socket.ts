@@ -272,6 +272,12 @@ export function usePresenceSocket(enabled: boolean = true) {
           else next.delete(userId);
           return next;
         });
+        if (status === 'offline') {
+          queryClient.setQueryData<Record<string, number>>(['messaging', 'last-seen'], (prev = {}) => ({
+            ...prev,
+            [userId]: Date.now(),
+          }));
+        }
       };
 
       const onOnlineUsersList = (userIds: string[]) => {
@@ -309,6 +315,16 @@ export function useOnlineUsers() {
     staleTime: Infinity,
   });
   return onlineUsers;
+}
+
+export function useLastSeen(userId: string | null) {
+  const { data: lastSeen = {} } = useQuery<Record<string, number>>({
+    queryKey: ['messaging', 'last-seen'],
+    initialData: {},
+    staleTime: Infinity,
+  });
+  if (!userId) return null;
+  return lastSeen[userId] ?? null;
 }
 
 export function useTypingIndicator(conversationId: string | null) {

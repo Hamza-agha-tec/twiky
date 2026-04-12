@@ -9,8 +9,9 @@ import type { Message } from '@/lib/mock-data';
 import { MessageBubble } from './message-bubble';
 import { Composer } from './composer';
 import { format } from 'date-fns';
-import { ChatMessage, useConversations, getConvDisplayName, getConversationAvatar } from '@/hooks/use-messaging';
+import { ChatMessage, useConversations, getConvDisplayName, getConversationAvatar, getDmContact } from '@/hooks/use-messaging';
 import { useProfile, useContacts } from '@/hooks/use-user';
+import { useOnlineUsers, useLastSeen } from '@/hooks/use-socket';
 import { toast } from 'sonner';
 
 interface ChatWindowProps {
@@ -65,6 +66,7 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
   const { data: profile } = useProfile();
   const { data: contacts = [] } = useContacts();
   const { data: conversations = [] } = useConversations();
+  const onlineUsers = useOnlineUsers();
   const conv = conversations.find((c) => c.id === activeChat);
   const messages = providedMessages
     .slice()
@@ -98,6 +100,21 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
     .join('')
     .toUpperCase()
     .slice(0, 2);
+
+  const dmContact = conv && !conv.is_group ? getDmContact(conv, profile?.id ?? '') : null;
+  const isOnline = dmContact ? onlineUsers.has(dmContact.id) : false;
+  const lastSeenTs = useLastSeen(dmContact?.id ?? null);
+
+  const lastSeenLabel = (() => {
+    if (!lastSeenTs) return 'Offline';
+    const diff = Date.now() - lastSeenTs;
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'Last seen just now';
+    if (mins < 60) return `Last seen ${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `Last seen ${hrs}h ago`;
+    return `Last seen ${Math.floor(hrs / 24)}d ago`;
+  })();
 
   const groupedMessages = messages.reduce(
     (acc, message) => {
@@ -151,9 +168,13 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
 
           <div className="flex-1 min-w-0">
             <h2 className="font-semibold text-foreground text-sm leading-tight truncate">{chatName}</h2>
-            <p className="text-xs text-muted-foreground">
-              {conv?.is_group ? 'Group' : 'Direct message'}
-            </p>
+            {conv?.is_group ? (
+              <p className="text-xs text-muted-foreground">Group</p>
+            ) : (
+              <p className={`text-xs font-medium ${isOnline ? 'text-green-500' : 'text-muted-foreground'}`}>
+                {isOnline ? 'Online' : lastSeenLabel}
+              </p>
+            )}
           </div>
         </div>
 
