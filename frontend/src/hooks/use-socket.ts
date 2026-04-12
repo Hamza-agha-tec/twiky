@@ -214,7 +214,37 @@ export function useGlobalSocket(onNewMessage?: (conversationId: string) => void)
         });
       };
 
+      const onReactionUpdate = ({ conversationId, emoji, reactorId, messageType, messageSenderId, isAdded }: {
+        conversationId: string; emoji: string; reactorId: string;
+        messageType: string; messageSenderId: string; messageId: string; isAdded: boolean;
+      }) => {
+        if (!mounted || !conversationId) return;
+        queryClient.setQueryData<Conversation[]>(
+          MESSAGING_KEYS.conversations,
+          (old = []) => old.map((c) => {
+            if (c.id !== conversationId) return c;
+            const lastMsg = c.last_message as any;
+            if (isAdded) {
+              return {
+                ...c,
+                last_message_at: new Date().toISOString(),
+                last_message: { ...lastMsg, _reactionPreview: { emoji, reactorId, messageType, messageSenderId } },
+              };
+            } else {
+              // Reaction removed — clear preview if it was showing this reaction
+              const preview = lastMsg?._reactionPreview;
+              if (preview?.emoji === emoji && preview?.reactorId === reactorId) {
+                const { _reactionPreview, ...rest } = lastMsg;
+                return { ...c, last_message: rest };
+              }
+              return c;
+            }
+          })
+        );
+      };
+
       s.on('newMessage', onNewMessage);
+      s.on('reactionUpdate', onReactionUpdate);
       s.on('userStatusChange', onUserStatusChange);
 
       // Fetch initial online users
@@ -224,6 +254,7 @@ export function useGlobalSocket(onNewMessage?: (conversationId: string) => void)
 
       cleanup = () => {
         s.off('newMessage', onNewMessage);
+        s.off('reactionUpdate', onReactionUpdate);
         s.off('userStatusChange', onUserStatusChange);
       };
     });

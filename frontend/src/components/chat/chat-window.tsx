@@ -32,12 +32,15 @@ interface ReplyTo {
 }
 
 function toUiMessage(m: ChatMessage, myId: string): Message {
-  // Group reactions: [{ userId, emoji }] → [{ emoji, count }]
-  const reactionMap: Record<string, number> = {};
+  // Group reactions: [{ userId, emoji }] → [{ emoji, count, reactedByMe }]
+  const reactionMap: Record<string, { count: number; reactedByMe: boolean }> = {};
   for (const r of m.reactions ?? []) {
-    reactionMap[r.emoji] = (reactionMap[r.emoji] ?? 0) + 1;
+    if (!reactionMap[r.emoji]) reactionMap[r.emoji] = { count: 0, reactedByMe: false };
+    reactionMap[r.emoji].count += 1;
+    if (r.userId === myId) reactionMap[r.emoji].reactedByMe = true;
   }
-  const reactions = Object.entries(reactionMap).map(([emoji, count]) => ({ emoji, count }));
+  const reactions = Object.entries(reactionMap).map(([emoji, { count, reactedByMe }]) => ({ emoji, count, reactedByMe }));
+  const myReaction = (m.reactions ?? []).find((r) => r.userId === myId)?.emoji ?? null;
 
   return {
     id: m.id,
@@ -51,6 +54,7 @@ function toUiMessage(m: ChatMessage, myId: string): Message {
     isRead: m.status === 'read',
     isDelivered: m.status === 'delivered' || m.status === 'read',
     reactions: reactions.length ? reactions : undefined,
+    myReaction,
     reply: m.reply_to?.sender
       ? { senderName: m.reply_to.sender.username, content: m.reply_to.content ?? '' }
       : undefined,

@@ -25,11 +25,7 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
   const [isPlaying, setIsPlaying] = useState(false);
   const messageRef = useRef<HTMLDivElement>(null);
 
-  // Derive reaction counts directly from props — never local state
-  const messageReactions: Record<string, number> = (message.reactions ?? []).reduce(
-    (acc, r) => ({ ...acc, [r.emoji]: (acc[r.emoji] ?? 0) + r.count }),
-    {} as Record<string, number>
-  );
+  const messageReactions = message.reactions ?? [];
 
   const initials = message.senderName
     .split(' ')
@@ -202,19 +198,24 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
         </div>
 
         {/* Reactions */}
-        {Object.keys(messageReactions).length > 0 && (
+        {messageReactions.length > 0 && (
           <div className={`flex gap-1 mt-1 flex-wrap ${message.isOwn ? 'justify-end' : 'justify-start'}`}>
-            {Object.entries(messageReactions).map(([emoji, count], idx) => (
+            {messageReactions.map(({ emoji, count, reactedByMe }, idx) => (
               <motion.button
                 key={`${message.id}-r-${idx}`}
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 whileHover={{ scale: 1.15 }}
+                whileTap={{ scale: 0.9 }}
                 onClick={() => handleAddReaction(emoji)}
-                className="flex items-center gap-1 bg-muted border border-border rounded-full px-2 py-0.5 text-xs hover:bg-accent transition-colors"
+                className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs border transition-colors ${
+                  reactedByMe
+                    ? 'bg-primary/15 border-primary/40 text-primary font-medium'
+                    : 'bg-muted border-border text-foreground hover:bg-accent'
+                }`}
               >
                 <span>{emoji}</span>
-                {count > 1 && <span className="text-muted-foreground">{count}</span>}
+                <span className={reactedByMe ? 'text-primary' : 'text-muted-foreground'}>{count}</span>
               </motion.button>
             ))}
           </div>

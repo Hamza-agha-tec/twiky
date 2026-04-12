@@ -108,8 +108,24 @@ export function Sidebar({
 
   useEffect(() => { setIsMounted(true); }, []);
 
-  function formatLastMessage(msg: any, myId: string): string {
+  function formatLastMessage(msg: any, myId: string, participants?: { user: { id: string; username: string } }[]): string {
     if (!msg) return '';
+
+    if (msg._reactionPreview) {
+      const { emoji, reactorId, messageType, messageSenderId } = msg._reactionPreview;
+      if (!emoji) return '';
+      const reactorIsMe = reactorId === myId;
+      const msgIsOwn = messageSenderId === myId;
+      const reactorUsername = participants?.find(p => p.user.id === reactorId)?.user.username;
+      const who = reactorIsMe ? 'You' : (reactorUsername ?? 'Someone');
+      const target = msgIsOwn ? 'your' : 'their';
+      const what = messageType === 'image' ? `${target} photo`
+        : messageType === 'voice' ? `${target} voice message`
+        : messageType === 'file' ? `${target} file`
+        : 'a message';
+      return `${who} reacted ${emoji} to ${what}`;
+    }
+
     const isOwn = msg.sender?.id === myId;
     const prefix = isOwn ? 'You: ' : '';
     if (msg.type === 'image') return `${prefix}📷 Photo`;
@@ -128,7 +144,7 @@ export function Sidebar({
           id: c.id,
           name: getConvDisplayName(c, profile?.id ?? '', contacts),
           avatar: dmContact?.avatar_url ?? dmParticipant?.avatar_url ?? '',
-          lastMessage: formatLastMessage(c.last_message, profile?.id ?? ''),
+          lastMessage: formatLastMessage(c.last_message, profile?.id ?? '', c.participants),
           timestamp: c.last_message_at ?? c.created_at,
           unread: unreadCounts[c.id] ?? 0,
           isGroup: c.is_group,

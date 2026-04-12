@@ -90,6 +90,16 @@
       }));
     }
 
+    async getUserUsername(userId: string): Promise<string> {
+      const { data } = await this.supabaseService
+        .getClient()
+        .from('users')
+        .select('username')
+        .eq('id', userId)
+        .single();
+      return data?.username ?? 'Someone';
+    }
+
     async getConversationParticipantIds(conversationId: string): Promise<string[]> {
       const { data, error } = await this.supabaseService
         .getClient()
@@ -209,7 +219,7 @@
       const { data: msg, error: fetchError } = await this.supabaseService
         .getClient()
         .from('messages')
-        .select('reactions')
+        .select('reactions, type, sender_id')
         .eq('id', messageId)
         .single();
 
@@ -230,7 +240,7 @@
 
       if (error) throw new Error(`Failed to update reactions: ${error.message}`);
 
-      return { messageId, reactions: updated };
+      return { messageId, reactions: updated, messageType: msg.type, messageSenderId: msg.sender_id, isAdded: existingIdx < 0 };
     }
 
     /**

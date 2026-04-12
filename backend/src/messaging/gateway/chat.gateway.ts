@@ -171,7 +171,30 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   ) {
     const userId = client.data.user.userId;
     const result = await this.messagingService.reactToMessage(userId, payload.messageId, payload.emoji);
-    this.server.to(`conv_${payload.conversationId}`).emit('reactionUpdate', result);
+    const fullResult = {
+      messageId: result.messageId,
+      reactions: result.reactions,
+      messageType: result.messageType,
+      messageSenderId: result.messageSenderId,
+      isAdded: result.isAdded,
+      conversationId: payload.conversationId,
+      reactorId: userId,
+      emoji: payload.emoji,
+    };
+    this.server.to(`conv_${payload.conversationId}`).emit('reactionUpdate', fullResult);
+
+    // Notify personal rooms for sidebar updates (both add and remove)
+    const participantIds = await this.messagingService.getConversationParticipantIds(payload.conversationId);
+    const convRoom = this.server.sockets.adapter.rooms.get(`conv_${payload.conversationId}`);
+    for (const participantId of participantIds) {
+      const userRoom = this.server.sockets.adapter.rooms.get(`user_${participantId}`);
+      if (!userRoom) continue;
+      for (const socketId of userRoom) {
+        if (!convRoom?.has(socketId)) {
+          this.server.to(socketId).emit('reactionUpdate', fullResult);
+        }
+      }
+    }
   }
 
   /**

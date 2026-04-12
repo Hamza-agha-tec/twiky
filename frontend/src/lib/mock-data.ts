@@ -29,7 +29,9 @@ export interface Message {
   reactions?: {
     emoji: string;
     count: number;
+    reactedByMe: boolean;
   }[];
+  myReaction?: string | null;
   reply?: {
     senderName: string;
     content: string;
