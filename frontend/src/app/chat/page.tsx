@@ -7,7 +7,7 @@ import { ChatWindow } from '@/components/chat/chat-window'
 import { InfoPanel } from '@/components/chat/info-panel'
 import { Sidebar } from '@/components/chat/sidebar'
 import { useMessages } from '@/hooks/use-messaging'
-import { useSocket } from '@/hooks/use-socket'
+import { useSocket, useGlobalSocket } from '@/hooks/use-socket'
 
 export default function ChatPage() {
   const [activeChat, setActiveChat] = useState<string | null>(null)
@@ -18,6 +18,7 @@ export default function ChatPage() {
 
   const { data: messages = [] } = useMessages(activeChat)
   const { sendMessage, sendTyping, otherIsTyping, reactToMessage, editMessage, deleteMessage } = useSocket(activeChat)
+  useGlobalSocket()
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">

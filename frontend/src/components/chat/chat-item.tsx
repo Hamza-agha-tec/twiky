@@ -6,7 +6,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Pin, BellOff, Star } from 'lucide-react';
 import { Chat } from '@/lib/mock-data';
-import { formatDistanceToNow } from 'date-fns';
+import { format, isToday, isYesterday } from 'date-fns';
 
 interface ChatItemProps {
   chat: Chat;
@@ -15,12 +15,28 @@ interface ChatItemProps {
   onClick: () => void;
 }
 
+function getLabel(ts: string | number | Date): string {
+  const date = new Date(ts);
+  const ageMs = Date.now() - date.getTime();
+  if (ageMs < 60_000) return 'now';
+  if (isToday(date)) return format(date, 'HH:mm');
+  if (isYesterday(date)) return 'Yesterday';
+  return format(date, 'dd/MM/yyyy');
+}
+
 export function ChatItem({ chat, isActive, isFavorite, onClick }: ChatItemProps) {
-  const [isMounted, setIsMounted] = useState(false);
+  const [label, setLabel] = useState<string>('');
 
   useEffect(() => {
-    setIsMounted(true);
-  }, []);
+    setLabel(getLabel(chat.timestamp));
+
+    const ageMs = Date.now() - new Date(chat.timestamp).getTime();
+    if (ageMs < 60_000) {
+      // Switch from "now" to real time after the remaining ms
+      const timer = setTimeout(() => setLabel(getLabel(chat.timestamp)), 60_000 - ageMs);
+      return () => clearTimeout(timer);
+    }
+  }, [chat.timestamp]);
 
   const initials = chat.name
     .split(' ')
@@ -43,7 +59,7 @@ export function ChatItem({ chat, isActive, isFavorite, onClick }: ChatItemProps)
       <div className="flex gap-3 items-center">
         {/* Avatar with online dot */}
         <div className="relative flex-shrink-0">
-          <Avatar className="h-12 w-12">
+          <Avatar className="h-10 w-10">
             <AvatarImage src={chat.avatar} alt={chat.name} />
             <AvatarFallback className="bg-primary text-primary-foreground font-medium">
               {initials}
@@ -74,9 +90,9 @@ export function ChatItem({ chat, isActive, isFavorite, onClick }: ChatItemProps)
                 <BellOff className="h-3 w-3 text-muted-foreground flex-shrink-0" />
               )}
             </div>
-            {isMounted && (
+            {label && (
               <span className="text-[11px] text-muted-foreground flex-shrink-0">
-                {formatDistanceToNow(new Date(chat.timestamp), { addSuffix: false })}
+                {label}
               </span>
             )}
           </div>

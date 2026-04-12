@@ -5,6 +5,8 @@ import {
   ConnectedSocket,
   WebSocketServer,
   OnGatewayInit,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { MessagingService } from '../messaging.service';
@@ -15,10 +17,10 @@ import { Logger } from '@nestjs/common';
 
 @WebSocketGateway({
   cors: {
-    origin: '*', // In production, replace with your frontend URL
+    origin: '*',
   },
 })
-export class ChatGateway implements OnGatewayInit {
+export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
@@ -27,16 +29,32 @@ export class ChatGateway implements OnGatewayInit {
   constructor(
     private readonly messagingService: MessagingService,
     private readonly configService: ConfigService,
-  ) { }
+  ) {}
 
   afterInit(server: Server) {
     const supabaseUrl = this.configService.get<string>('NEXT_PUBLIC_SUPABASE_URL') as string;
     server.use(SocketAuthMiddleware(supabaseUrl));
-    this.logger.log('WS Gateway initialized with Supabase Auth Middleware');
+    this.logger.log('WS Gateway initialized');
+  }
+
+  handleConnection(client: Socket) {
+    const userId = client.data.user?.userId;
+    if (userId) {
+      // Personal room — receives events for all conversations without explicit joins
+      client.join(`user_${userId}`);
+      this.logger.log(`User ${userId} connected [${client.id}]`);
+    } else {
+      client.disconnect();
+    }
+  }
+
+  handleDisconnect(client: Socket) {
+    const userId = client.data.user?.userId;
+    this.logger.log(`User ${userId ?? 'unknown'} disconnected [${client.id}]`);
   }
 
   /**
-   * Room Management
+   * Room Management (used for typing indicators in active conversation)
    */
 
   @SubscribeMessage('joinConversation')
@@ -45,7 +63,6 @@ export class ChatGateway implements OnGatewayInit {
     @MessageBody() conversationId: string,
   ) {
     client.join(`conv_${conversationId}`);
-    this.logger.log(`User ${client.data.user.userId} joined conversation ${conversationId}`);
     return { status: 'joined', conversationId };
   }
 
@@ -70,11 +87,25 @@ export class ChatGateway implements OnGatewayInit {
     const senderId = client.data.user.userId;
 
     try {
-      // 1. Save to DB
       const message = await this.messagingService.saveMessage(senderId, payload);
 
-      // 2. Broadcast to everyone in the room (including sender on other devices)
+      // Emit to the active conversation room (for open chat windows)
       this.server.to(`conv_${payload.conversationId}`).emit('newMessage', message);
+
+      // Also emit to every participant's personal room (for sidebar updates)
+      const participantIds = await this.messagingService.getConversationParticipantIds(payload.conversationId);
+      for (const participantId of participantIds) {
+        // Skip if already in conversation room (would double-receive)
+        const convRoom = this.server.sockets.adapter.rooms.get(`conv_${payload.conversationId}`);
+        const userRoom = this.server.sockets.adapter.rooms.get(`user_${participantId}`);
+        if (!userRoom) continue;
+
+        for (const socketId of userRoom) {
+          if (!convRoom?.has(socketId)) {
+            this.server.to(socketId).emit('newMessage', message);
+          }
+        }
+      }
 
       return { status: 'sent', messageId: message.id };
     } catch (error) {
@@ -147,7 +178,7 @@ export class ChatGateway implements OnGatewayInit {
 
   /**
    * Typing Indicators
-  */
+   */
 
   @SubscribeMessage('typing')
   handleTyping(
@@ -155,7 +186,6 @@ export class ChatGateway implements OnGatewayInit {
     @MessageBody() payload: { conversationId: string; isTyping: boolean },
   ) {
     const userId = client.data.user.userId;
-    // Broadcast to others in the room
     client.to(`conv_${payload.conversationId}`).emit('userTyping', {
       userId,
       isTyping: payload.isTyping,
