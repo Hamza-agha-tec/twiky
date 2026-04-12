@@ -66,19 +66,19 @@ function applyThemeVars(v: ChatThemeVariant, isDark: boolean) {
   el.style.setProperty('--sidebar-ring',               v.own);
 
   // Accent — hover / active states
-  el.style.setProperty('--accent',                     rgba(isDark ? 0.18 : 0.08));
+  el.style.setProperty('--accent',                     rgba(isDark ? 0.18 : 0.14));
   el.style.setProperty('--accent-foreground',          v.own);
-  el.style.setProperty('--sidebar-accent',             rgba(isDark ? 0.18 : 0.08));
+  el.style.setProperty('--sidebar-accent',             rgba(isDark ? 0.18 : 0.14));
   el.style.setProperty('--sidebar-accent-foreground',  v.own);
 
   // Muted — input backgrounds, skeletons, badges (opaque blend)
-  el.style.setProperty('--muted',   blendColor(r, g, b, mutedBase,   isDark ? 0.14 : 0.08));
+  el.style.setProperty('--muted',   blendColor(r, g, b, mutedBase,   isDark ? 0.14 : 0.16));
 
   // Sidebar — panel and surface backgrounds (opaque blend)
-  el.style.setProperty('--sidebar', blendColor(r, g, b, sidebarBase, isDark ? 0.08 : 0.04));
+  el.style.setProperty('--sidebar', blendColor(r, g, b, sidebarBase, isDark ? 0.08 : 0.10));
 
   // Border — subtle themed dividers
-  el.style.setProperty('--border',  rgba(isDark ? 0.14 : 0.10));
+  el.style.setProperty('--border',  rgba(isDark ? 0.14 : 0.18));
 }
 
 export function ChatThemeProvider({ children }: { children: React.ReactNode }) {

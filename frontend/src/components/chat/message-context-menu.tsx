@@ -82,7 +82,7 @@ export function MessageContextMenu({ x, y, onClose, onReact, onReply, onDelete }
           exit={{ opacity: 0, scale: 0.9 }}
           onClick={(e) => e.stopPropagation()}
           style={{ left: `${emojiLeft}px`, top: `${emojiTop}px` }}
-          className="fixed z-50 bg-popover border border-border rounded-2xl shadow-xl p-2 flex gap-1"
+          className="fixed z-50 bg-sidebar border border-border rounded-2xl shadow-xl p-2 flex gap-1"
         >
           {EMOJI_REACTIONS.map((emoji) => (
             <button
@@ -105,7 +105,7 @@ export function MessageContextMenu({ x, y, onClose, onReact, onReply, onDelete }
             left: `${menuLeft}px`,
             top: `${menuTop}px`,
           }}
-          className="fixed z-50 bg-popover border border-border rounded-xl shadow-xl overflow-hidden min-w-44 py-1"
+          className="fixed z-50 bg-sidebar border border-border rounded-xl shadow-xl overflow-hidden min-w-44 py-1"
         >
           {menuItems.map((item, i) => {
             const isDanger = 'danger' in item && item.danger;

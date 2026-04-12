@@ -85,7 +85,7 @@ export function ConversationContextMenu({
         exit={{ opacity: 0, scale: 0.92 }}
         transition={{ duration: 0.12 }}
         style={{ left: `${safeX}px`, top: `${safeY}px` }}
-        className="fixed z-50 bg-popover border border-border rounded-xl shadow-xl overflow-hidden w-52 py-1"
+        className="fixed z-50 bg-sidebar border border-border rounded-xl shadow-xl overflow-hidden w-52 py-1"
       >
         {normalItems.map((item) => (
           <button

@@ -56,10 +56,10 @@ export function InfoPanel({ activeChat, onClose }: InfoPanelProps) {
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 24 }}
       transition={{ duration: 0.22 }}
-      className="w-72 border-l border-border flex flex-col h-full bg-background overflow-hidden flex-shrink-0"
+      className="w-72 border-l border-border flex flex-col h-full bg-sidebar overflow-hidden flex-shrink-0"
     >
       {/* Header */}
-      <div className="h-14 border-b border-border px-4 flex items-center justify-between bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex-shrink-0">
+      <div className="h-14 border-b border-border px-4 flex items-center justify-between bg-sidebar flex-shrink-0">
         <h3 className="font-semibold text-foreground text-sm">
           {conv.is_group ? 'Group Info' : 'Contact Info'}
         </h3>
