@@ -116,7 +116,7 @@ export function ProfileSettings({ onClose }: ProfileSettingsProps) {
           <div className="p-6 flex flex-col items-center border-b border-border">
             <div className="relative mb-3 group cursor-pointer">
               <Avatar className="h-20 w-20">
-                <AvatarImage src={profile?.avatar_url ?? ''} alt={profile?.username ?? 'You'} />
+                <AvatarImage src={profile?.avatar_url || undefined} alt={profile?.username ?? 'You'} />
                 <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
                   {profile?.username?.[0]?.toUpperCase() ?? 'Y'}
                 </AvatarFallback>

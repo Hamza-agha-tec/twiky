@@ -4,7 +4,7 @@ import { createClient } from '@/utils/supabase/client';
 let socket: Socket | null = null;
 
 export async function getSocket(): Promise<Socket> {
-  if (socket?.connected) return socket;
+  if (socket) return socket;
 
   const supabase = createClient();
   const { data } = await supabase.auth.getSession();

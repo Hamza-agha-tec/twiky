@@ -282,7 +282,7 @@ export function Sidebar({
           >
             <div className="relative flex-shrink-0">
               <Avatar className="h-9 w-9">
-                <AvatarImage src={profile?.avatar_url ?? ''} alt={profile?.username ?? 'You'} />
+                <AvatarImage src={profile?.avatar_url || undefined} alt={profile?.username ?? 'You'} />
                 <AvatarFallback className="bg-primary text-primary-foreground text-sm">
                   {profile?.username?.[0]?.toUpperCase() ?? 'Y'}
                 </AvatarFallback>
