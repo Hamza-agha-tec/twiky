@@ -37,6 +37,7 @@ export default function ChatPage() {
 
       {activeChat ? (
         <ChatWindow
+          key={activeChat}
           activeChat={activeChat}
           messages={messages}
           onSendMessage={(content, type, replyToId, fileUrl) =>
