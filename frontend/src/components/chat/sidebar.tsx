@@ -24,6 +24,7 @@ interface SidebarProps {
   selectedChats: string[];
   onSelectChats: (chats: string[]) => void;
   isOpen?: boolean;
+  unreadCounts?: Record<string, number>;
 }
 
 type Filter = 'all' | 'unread' | 'groups' | 'direct';
@@ -56,6 +57,7 @@ export function Sidebar({
   selectedChats,
   onSelectChats,
   isOpen = true,
+  unreadCounts = {},
 }: SidebarProps) {
   const [filter, setFilter] = useState<Filter>('all');
   const [isMounted, setIsMounted] = useState(false);
@@ -106,6 +108,16 @@ export function Sidebar({
 
   useEffect(() => { setIsMounted(true); }, []);
 
+  function formatLastMessage(msg: any, myId: string): string {
+    if (!msg) return '';
+    const isOwn = msg.sender?.id === myId;
+    const prefix = isOwn ? 'You: ' : '';
+    if (msg.type === 'image') return `${prefix}📷 Photo`;
+    if (msg.type === 'file') return `${prefix}📎 File`;
+    if (msg.type === 'voice') return `${prefix}🎙 Voice`;
+    return `${prefix}${msg.content ?? ''}`;
+  }
+
   const filteredChats = useMemo(() => {
     let result: Chat[] = conversations
       .filter((c) => !deleted.has(c.id))
@@ -116,9 +128,9 @@ export function Sidebar({
           id: c.id,
           name: getConvDisplayName(c, profile?.id ?? '', contacts),
           avatar: dmContact?.avatar_url ?? dmParticipant?.avatar_url ?? '',
-          lastMessage: '',
+          lastMessage: formatLastMessage(c.last_message, profile?.id ?? ''),
           timestamp: c.last_message_at ?? c.created_at,
-          unread: 0,
+          unread: unreadCounts[c.id] ?? 0,
           isGroup: c.is_group,
           isPinned: chatMeta[c.id]?.isPinned ?? false,
           isMuted: chatMeta[c.id]?.isMuted ?? false,
@@ -135,9 +147,9 @@ export function Sidebar({
       if (b.isPinned !== a.isPinned) return (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0);
       return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
     });
-  }, [conversations, contacts, profile, filter, searchQuery, chatMeta, deleted]);
+  }, [conversations, contacts, profile, filter, searchQuery, chatMeta, deleted, unreadCounts]);
 
-  const unreadCount = 0; // will come from conversations
+  const unreadCount = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
 
   const handleContextMenu = (e: React.MouseEvent, chat: Chat) => {
     e.preventDefault();

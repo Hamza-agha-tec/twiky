@@ -24,6 +24,14 @@ export interface Conversation {
   last_message_at: string | null;
   created_at: string;
   participants: ConversationParticipant[];
+  last_message: {
+    id: string;
+    conversation_id: string;
+    content: string | null;
+    type: string;
+    created_at: string;
+    sender: { id: string; username: string };
+  } | null;
 }
 
 export interface ChatMessage {

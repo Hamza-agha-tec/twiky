@@ -147,8 +147,10 @@ export function useSocket(conversationId: string | null) {
  * Global listener — receives newMessage for ALL conversations via the personal
  * user room that the backend auto-joins on connect. Updates the sidebar in real-time.
  */
-export function useGlobalSocket() {
+export function useGlobalSocket(onNewMessage?: (conversationId: string) => void) {
   const queryClient = useQueryClient();
+  const onNewMessageRef = useRef(onNewMessage);
+  onNewMessageRef.current = onNewMessage;
 
   useEffect(() => {
     let mounted = true;
@@ -172,20 +174,32 @@ export function useGlobalSocket() {
           }
         );
 
-        // Always bump sidebar timestamp
+        // Bump sidebar timestamp + last_message
         queryClient.setQueryData<Conversation[]>(
           MESSAGING_KEYS.conversations,
           (old = []) => {
             conversationExists = old.some(c => c.id === message.conversation_id);
             return old.map((c) =>
               c.id === message.conversation_id
-                ? { ...c, last_message_at: message.created_at }
+                ? {
+                    ...c,
+                    last_message_at: message.created_at,
+                    last_message: {
+                      id: message.id,
+                      conversation_id: message.conversation_id,
+                      content: message.content,
+                      type: message.type,
+                      created_at: message.created_at,
+                      sender: message.sender,
+                    },
+                  }
                 : c
             );
           }
         );
 
-        // FIX: If conversation is not in the list (unknown sender), refetch everything
+        onNewMessageRef.current?.(message.conversation_id);
+
         if (!conversationExists) {
           queryClient.invalidateQueries({ queryKey: MESSAGING_KEYS.conversations });
         }

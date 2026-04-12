@@ -63,7 +63,31 @@
 
       if (error) throw new Error(`Failed to fetch conversations: ${error.message}`);
 
-      return data.map(item => item.conversation);
+      const conversations = data.map(item => item.conversation) as any[];
+      const convIds = conversations.map((c) => c.id);
+
+      if (convIds.length === 0) return [];
+
+      // Fetch most recent message per conversation in one query
+      const { data: messages } = await this.supabaseService
+        .getClient()
+        .from('messages')
+        .select('id, conversation_id, content, type, created_at, sender:users!sender_id(id, username)')
+        .in('conversation_id', convIds)
+        .order('created_at', { ascending: false })
+        .limit(convIds.length * 3);
+
+      const lastMessageMap: Record<string, any> = {};
+      for (const msg of messages ?? []) {
+        if (!lastMessageMap[msg.conversation_id]) {
+          lastMessageMap[msg.conversation_id] = msg;
+        }
+      }
+
+      return conversations.map((c) => ({
+        ...c,
+        last_message: lastMessageMap[c.id] ?? null,
+      }));
     }
 
     async getConversationParticipantIds(conversationId: string): Promise<string[]> {

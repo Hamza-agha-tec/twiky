@@ -3,7 +3,6 @@
 import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { Pin, BellOff, Star } from 'lucide-react';
 import { Chat } from '@/lib/mock-data';
 import { format, isToday, isYesterday } from 'date-fns';
@@ -99,13 +98,13 @@ export function ChatItem({ chat, isActive, isFavorite, onClick, isOnline }: Chat
           </div>
 
           <div className="flex items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground truncate">
-              {chat.lastMessage}
+            <p className={`text-xs truncate ${chat.unread > 0 ? 'text-foreground font-semibold' : 'text-muted-foreground font-normal'}`}>
+              {chat.lastMessage || <span className="italic opacity-50">No messages yet</span>}
             </p>
             {chat.unread > 0 && (
-              <Badge className="rounded-full h-5 min-w-5 flex items-center justify-center p-0 text-[10px] flex-shrink-0 bg-primary">
+              <span className="flex-shrink-0 min-w-[18px] h-[18px] px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center leading-none shadow-sm">
                 {chat.unread > 99 ? '99+' : chat.unread}
-              </Badge>
+              </span>
             )}
           </div>
         </div>
