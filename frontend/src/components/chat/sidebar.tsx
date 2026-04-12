@@ -163,7 +163,7 @@ export function Sidebar({
       if (b.isPinned !== a.isPinned) return (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0);
       return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
     });
-  }, [conversations, contacts, profile, filter, searchQuery, chatMeta, deleted, unreadCounts]);
+  }, [conversations, contacts, profile, filter, searchQuery, chatMeta, deleted, unreadCounts, onlineUsers]);
 
   const unreadCount = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
 

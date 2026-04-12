@@ -150,7 +150,10 @@ export function useSocket(conversationId: string | null) {
 export function useGlobalSocket(onNewMessage?: (conversationId: string) => void) {
   const queryClient = useQueryClient();
   const onNewMessageRef = useRef(onNewMessage);
-  onNewMessageRef.current = onNewMessage;
+
+  useEffect(() => {
+    onNewMessageRef.current = onNewMessage;
+  }, [onNewMessage]);
 
   useEffect(() => {
     let mounted = true;
@@ -205,15 +208,6 @@ export function useGlobalSocket(onNewMessage?: (conversationId: string) => void)
         }
       };
 
-      const onUserStatusChange = ({ userId, status }: { userId: string; status: 'online' | 'offline' }) => {
-        queryClient.setQueryData<Set<string>>(['messaging', 'online-users'], (prev = new Set()) => {
-          const next = new Set(prev);
-          if (status === 'online') next.add(userId);
-          else next.delete(userId);
-          return next;
-        });
-      };
-
       const onReactionUpdate = ({ conversationId, emoji, reactorId, messageType, messageSenderId, isAdded }: {
         conversationId: string; emoji: string; reactorId: string;
         messageType: string; messageSenderId: string; messageId: string; isAdded: boolean;
@@ -245,17 +239,10 @@ export function useGlobalSocket(onNewMessage?: (conversationId: string) => void)
 
       s.on('newMessage', onNewMessage);
       s.on('reactionUpdate', onReactionUpdate);
-      s.on('userStatusChange', onUserStatusChange);
-
-      // Fetch initial online users
-      s.emit('getOnlineUsers', (userIds: string[]) => {
-        queryClient.setQueryData(['messaging', 'online-users'], new Set(userIds));
-      });
 
       cleanup = () => {
         s.off('newMessage', onNewMessage);
         s.off('reactionUpdate', onReactionUpdate);
-        s.off('userStatusChange', onUserStatusChange);
       };
     });
 
@@ -264,6 +251,55 @@ export function useGlobalSocket(onNewMessage?: (conversationId: string) => void)
       cleanup?.();
     };
   }, [queryClient]);
+}
+
+export function usePresenceSocket(enabled: boolean = true) {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    let mounted = true;
+    let cleanup: (() => void) | null = null;
+
+    getSocket().then((s) => {
+      if (!mounted) return;
+
+      const onUserStatusChange = ({ userId, status }: { userId: string; status: 'online' | 'offline' }) => {
+        queryClient.setQueryData<Set<string>>(['messaging', 'online-users'], (prev = new Set()) => {
+          const next = new Set(prev);
+          if (status === 'online') next.add(userId);
+          else next.delete(userId);
+          return next;
+        });
+      };
+
+      const onOnlineUsersList = (userIds: string[]) => {
+        if (mounted) queryClient.setQueryData(['messaging', 'online-users'], new Set(userIds));
+      };
+
+      const syncOnlineUsers = () => {
+        s.emit('getOnlineUsers');
+      };
+
+      s.on('userStatusChange', onUserStatusChange);
+      s.on('onlineUsersList', onOnlineUsersList);
+      s.on('connect', syncOnlineUsers);
+
+      syncOnlineUsers();
+
+      cleanup = () => {
+        s.off('userStatusChange', onUserStatusChange);
+        s.off('onlineUsersList', onOnlineUsersList);
+        s.off('connect', syncOnlineUsers);
+      };
+    });
+
+    return () => {
+      mounted = false;
+      cleanup?.();
+    };
+  }, [enabled, queryClient]);
 }
 
 export function useOnlineUsers() {

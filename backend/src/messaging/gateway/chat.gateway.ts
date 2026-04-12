@@ -64,14 +64,24 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     if (userId && this.onlineUsers.has(userId)) {
       const userSockets = this.onlineUsers.get(userId)!;
       userSockets.delete(client.id);
-      
+
+      // Also purge any other stale socket IDs for this user
+      for (const socketId of userSockets) {
+        if (!this.server.sockets.sockets.has(socketId)) {
+          userSockets.delete(socketId);
+        }
+      }
+
+      this.logger.log(`User ${userId} disconnected [${client.id}] — remaining sockets: ${userSockets.size}`);
+
       if (userSockets.size === 0) {
         this.onlineUsers.delete(userId);
-        // Broadcast that user is now offline
         this.server.emit('userStatusChange', { userId, status: 'offline' });
+        this.logger.log(`User ${userId} is now offline`);
       }
+    } else {
+      this.logger.log(`Unknown/unauthenticated socket disconnected [${client.id}]`);
     }
-    this.logger.log(`User ${userId ?? 'unknown'} disconnected [${client.id}]`);
   }
 
   /**
@@ -79,8 +89,19 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
    */
 
   @SubscribeMessage('getOnlineUsers')
-  handleGetOnlineUsers() {
-    return Array.from(this.onlineUsers.keys());
+  handleGetOnlineUsers(@ConnectedSocket() client: Socket) {
+    // Purge any socket IDs that are no longer actually connected
+    for (const [userId, socketIds] of this.onlineUsers.entries()) {
+      for (const socketId of socketIds) {
+        if (!this.server.sockets.sockets.has(socketId)) {
+          socketIds.delete(socketId);
+        }
+      }
+      if (socketIds.size === 0) {
+        this.onlineUsers.delete(userId);
+      }
+    }
+    client.emit('onlineUsersList', Array.from(this.onlineUsers.keys()));
   }
 
   /**

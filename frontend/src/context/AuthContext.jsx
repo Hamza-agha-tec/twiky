@@ -1,6 +1,7 @@
 'use client'
 import { createContext, useContext, useEffect, useState } from 'react'
 import { createClient } from '@/utils/supabase/client'
+import { disconnectSocket, getSocket } from '@/lib/socket'
 
 const AuthContext = createContext()
 
@@ -8,7 +9,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient())
 
   const getCallbackUrl = () => {
     if (typeof window !== 'undefined') {
@@ -18,9 +19,18 @@ export function AuthProvider({ children }) {
   };
   const auth_callback_url = getCallbackUrl();
 
+  const syncSocketWithSession = async (session) => {
+    if (session?.access_token) {
+      await getSocket(session.access_token)
+      return
+    }
+    disconnectSocket()
+  }
+
   useEffect(() => {
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      void syncSocketWithSession(session)
       setSession(session)
       setUser(session?.user ?? null)
       setLoading(false)
@@ -28,6 +38,12 @@ export function AuthProvider({ children }) {
 
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || !session) {
+        disconnectSocket()
+      }
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        void syncSocketWithSession(session)
+      }
       if (session) {
         console.log('🔑 YOUR BEARER TOKEN:', session.access_token);
       }
@@ -129,7 +145,10 @@ export function AuthProvider({ children }) {
     updatePassword: (newPassword) => supabase.auth.updateUser({
       password: newPassword
     }),
-    signOut: () => supabase.auth.signOut(),
+    signOut: async () => {
+      disconnectSocket()
+      return supabase.auth.signOut()
+    },
     getSession: () => supabase.auth.getSession(),
     refreshSession: () => supabase.auth.refreshSession(),
   }

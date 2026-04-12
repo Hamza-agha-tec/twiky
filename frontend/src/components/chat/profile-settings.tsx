@@ -9,8 +9,7 @@ import { X, Camera, Bell, Lock, Palette, HelpCircle, LogOut, ChevronRight, Moon,
 import { useTheme } from '@/components/theme-provider';
 import { useRouter } from 'next/navigation';
 import { useProfile, useUpdateProfile, useSettings, useUpdateSettings } from '@/hooks/use-user';
-import { createClient } from '@/utils/supabase/client';
-import { disconnectSocket } from '@/lib/socket';
+import { useAuth } from '@/context/AuthContext';
 
 interface ProfileSettingsProps {
   onClose: () => void;
@@ -34,11 +33,10 @@ const SETTINGS_GROUPS = [
 export function ProfileSettings({ onClose }: ProfileSettingsProps) {
   const { theme, setTheme } = useTheme();
   const router = useRouter();
+  const { signOut } = useAuth();
 
   const handleLogout = async () => {
-    disconnectSocket();
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    await signOut();
     router.push('/login');
   };
   const [status, setStatus] = useState('Available');
