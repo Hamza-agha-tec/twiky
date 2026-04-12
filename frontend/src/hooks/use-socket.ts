@@ -9,6 +9,7 @@ import { MESSAGING_KEYS, ChatMessage } from './use-messaging';
 export function useSocket(conversationId: string | null) {
   const queryClient = useQueryClient();
   const socketRef = useRef<Socket | null>(null);
+  const reconnectRef = useRef<(() => void) | null>(null);
   const [otherIsTyping, setOtherIsTyping] = useState(false);
 
   useEffect(() => {
@@ -21,6 +22,11 @@ export function useSocket(conversationId: string | null) {
       socketRef.current = s;
 
       s.emit('joinConversation', conversationId);
+
+      reconnectRef.current = () => {
+        if (mounted) s.emit('joinConversation', conversationId);
+      };
+      s.on('connect', reconnectRef.current);
 
       s.on('newMessage', (message: ChatMessage) => {
         queryClient.setQueryData<ChatMessage[]>(
@@ -80,6 +86,7 @@ export function useSocket(conversationId: string | null) {
     return () => {
       mounted = false;
       setOtherIsTyping(false);
+      if (reconnectRef.current) socketRef.current?.off('connect', reconnectRef.current);
       socketRef.current?.off('newMessage');
       socketRef.current?.off('messageUpdated');
       socketRef.current?.off('messageDeleted');
