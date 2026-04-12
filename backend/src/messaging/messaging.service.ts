@@ -456,4 +456,26 @@
 
       return data;
     }
+
+    async updateLastSeen(userId: string) {
+      await this.supabaseService
+        .getClient()
+        .from('users')
+        .update({ last_seen_at: new Date().toISOString() })
+        .eq('id', userId);
+    }
+
+    async getLastSeenMap(userIds: string[]): Promise<Record<string, string>> {
+      if (userIds.length === 0) return {};
+      const { data } = await this.supabaseService
+        .getClient()
+        .from('users')
+        .select('id, last_seen_at')
+        .in('id', userIds);
+      const map: Record<string, string> = {};
+      for (const row of data ?? []) {
+        if (row.last_seen_at) map[row.id] = row.last_seen_at;
+      }
+      return map;
+    }
   }

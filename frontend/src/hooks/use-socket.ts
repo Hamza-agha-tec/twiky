@@ -265,7 +265,7 @@ export function usePresenceSocket(enabled: boolean = true) {
     getSocket().then((s) => {
       if (!mounted) return;
 
-      const onUserStatusChange = ({ userId, status }: { userId: string; status: 'online' | 'offline' }) => {
+      const onUserStatusChange = ({ userId, status, lastSeenAt }: { userId: string; status: 'online' | 'offline'; lastSeenAt?: string }) => {
         queryClient.setQueryData<Set<string>>(['messaging', 'online-users'], (prev = new Set()) => {
           const next = new Set(prev);
           if (status === 'online') next.add(userId);
@@ -273,15 +273,28 @@ export function usePresenceSocket(enabled: boolean = true) {
           return next;
         });
         if (status === 'offline') {
+          const ts = lastSeenAt ? new Date(lastSeenAt).getTime() : Date.now();
           queryClient.setQueryData<Record<string, number>>(['messaging', 'last-seen'], (prev = {}) => ({
             ...prev,
-            [userId]: Date.now(),
+            [userId]: ts,
           }));
         }
       };
 
+      const onLastSeenMap = (map: Record<string, string>) => {
+        if (!mounted) return;
+        queryClient.setQueryData<Record<string, number>>(['messaging', 'last-seen'], (prev = {}) => {
+          const next = { ...prev };
+          for (const [id, iso] of Object.entries(map)) {
+            next[id] = new Date(iso).getTime();
+          }
+          return next;
+        });
+      };
+
       const onOnlineUsersList = (userIds: string[]) => {
-        if (mounted) queryClient.setQueryData(['messaging', 'online-users'], new Set(userIds));
+        if (!mounted) return;
+        queryClient.setQueryData(['messaging', 'online-users'], new Set(userIds));
       };
 
       const syncOnlineUsers = () => {
@@ -289,6 +302,7 @@ export function usePresenceSocket(enabled: boolean = true) {
       };
 
       s.on('userStatusChange', onUserStatusChange);
+      s.on('lastSeenMap', onLastSeenMap);
       s.on('onlineUsersList', onOnlineUsersList);
       s.on('connect', syncOnlineUsers);
 
@@ -296,6 +310,7 @@ export function usePresenceSocket(enabled: boolean = true) {
 
       cleanup = () => {
         s.off('userStatusChange', onUserStatusChange);
+        s.off('lastSeenMap', onLastSeenMap);
         s.off('onlineUsersList', onOnlineUsersList);
         s.off('connect', syncOnlineUsers);
       };
@@ -323,6 +338,13 @@ export function useLastSeen(userId: string | null) {
     initialData: {},
     staleTime: Infinity,
   });
+
+  useEffect(() => {
+    if (!userId) return;
+    if (lastSeen[userId]) return; // already have it
+    getSocket().then((s) => s.emit('getLastSeen', [userId]));
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!userId) return null;
   return lastSeen[userId] ?? null;
 }

@@ -76,7 +76,9 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
 
       if (userSockets.size === 0) {
         this.onlineUsers.delete(userId);
-        this.server.emit('userStatusChange', { userId, status: 'offline' });
+        const lastSeenAt = new Date().toISOString();
+        this.messagingService.updateLastSeen(userId).catch(() => {});
+        this.server.emit('userStatusChange', { userId, status: 'offline', lastSeenAt });
         this.logger.log(`User ${userId} is now offline`);
       }
     } else {
@@ -87,6 +89,15 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   /**
    * Online Status
    */
+
+  @SubscribeMessage('getLastSeen')
+  async handleGetLastSeen(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() userIds: string[],
+  ) {
+    const map = await this.messagingService.getLastSeenMap(userIds);
+    client.emit('lastSeenMap', map);
+  }
 
   @SubscribeMessage('getOnlineUsers')
   handleGetOnlineUsers(@ConnectedSocket() client: Socket) {
