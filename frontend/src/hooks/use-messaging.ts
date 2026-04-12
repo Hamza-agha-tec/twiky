@@ -21,6 +21,7 @@ export interface Conversation {
   id: string;
   is_group: boolean;
   name: string | null;
+  avatar_url: string | null;
   last_message_at: string | null;
   created_at: string;
   participants: ConversationParticipant[];
@@ -69,6 +70,20 @@ export function getConvDisplayName(
   if (!participant) return conv.name ?? 'Unknown';
   const contact = contacts?.find((c) => c.id === participant.id);
   return contact?.nickname || contact?.username || participant.username || 'Unknown';
+}
+
+export function getConversationAvatar(
+  conv: Conversation,
+  myId: string,
+  contacts?: { id: string; avatar_url: string | null }[],
+): string | null {
+  if (conv.is_group) return conv.avatar_url ?? null;
+
+  const participant = getDmContact(conv, myId);
+  if (!participant) return null;
+
+  const contact = contacts?.find((c) => c.id === participant.id);
+  return contact?.avatar_url ?? participant.avatar_url ?? null;
 }
 
 export function useConversations() {

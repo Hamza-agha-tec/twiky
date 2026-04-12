@@ -12,7 +12,7 @@ import { ProfileSettings } from './profile-settings';
 import { AddContactModal } from './add-contact-modal';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { useProfile, useContacts } from '@/hooks/use-user';
-import { useConversations, useCreateConversation, getConvDisplayName, getDmContact } from '@/hooks/use-messaging';
+import { useConversations, useCreateConversation, getConvDisplayName, getDmContact, getConversationAvatar } from '@/hooks/use-messaging';
 import { useOnlineUsers } from '@/hooks/use-socket';
 import { EditContactModal } from './edit-contact-modal';
 
@@ -139,11 +139,10 @@ export function Sidebar({
       .filter((c) => !deleted.has(c.id))
       .map((c) => {
         const dmParticipant = getDmContact(c, profile?.id ?? '');
-        const dmContact = contacts.find((ct) => ct.id === dmParticipant?.id);
         return {
           id: c.id,
           name: getConvDisplayName(c, profile?.id ?? '', contacts),
-          avatar: dmContact?.avatar_url ?? dmParticipant?.avatar_url ?? '',
+          avatar: getConversationAvatar(c, profile?.id ?? '', contacts) ?? '',
           lastMessage: formatLastMessage(c.last_message, profile?.id ?? '', c.participants),
           timestamp: c.last_message_at ?? c.created_at,
           unread: unreadCounts[c.id] ?? 0,
