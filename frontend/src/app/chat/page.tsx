@@ -2,10 +2,13 @@
 
 import { useState, useCallback } from 'react'
 import { AnimatePresence } from 'framer-motion'
+import { UserPlus } from 'lucide-react'
 
+import { AddContactModal } from '@/components/chat/add-contact-modal'
 import { ChatWindow } from '@/components/chat/chat-window'
 import { InfoPanel } from '@/components/chat/info-panel'
 import { Sidebar } from '@/components/chat/sidebar'
+import { Button } from '@/components/ui/button'
 import { useMessages } from '@/hooks/use-messaging'
 import { useSocket, useGlobalSocket } from '@/hooks/use-socket'
 
@@ -15,6 +18,7 @@ export default function ChatPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [sidebarOpen] = useState(true)
   const [showContactInfo, setShowContactInfo] = useState(false)
+  const [showAddContact, setShowAddContact] = useState(false)
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
 
   const handleNewMessage = useCallback((convId: string) => {
@@ -61,8 +65,27 @@ export default function ChatPage() {
           onProfileClick={() => setShowContactInfo((v) => !v)}
         />
       ) : (
-        <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm bg-sidebar">
-          Select a conversation to start chatting
+        <div className="flex flex-1 items-center justify-center bg-sidebar p-6">
+          <div className="flex w-full max-w-sm flex-col items-center text-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
+              <UserPlus className="h-6 w-6 text-foreground" />
+            </div>
+
+            <h2 className="text-base font-semibold text-foreground">
+              Add a contact to start chatting
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Start by adding someone to your contacts, then open a direct message.
+            </p>
+
+            <Button
+              onClick={() => setShowAddContact(true)}
+              className="mt-5 h-10 rounded-full px-5 text-sm"
+            >
+              <UserPlus className="mr-2 h-4 w-4" />
+              Add Contact
+            </Button>
+          </div>
         </div>
       )}
 
@@ -74,6 +97,10 @@ export default function ChatPage() {
           />
         )}
       </AnimatePresence>
+
+      {showAddContact && (
+        <AddContactModal onClose={() => setShowAddContact(false)} />
+      )}
     </div>
   )
 }
