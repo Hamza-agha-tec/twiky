@@ -17,6 +17,7 @@ export interface StoryItem {
 interface StoryStripProps {
   stories: StoryItem[];
   onAddStory: () => void;
+  onOpenStory: (storyId: string) => void;
 }
 
 function getInitials(name: string) {
@@ -28,7 +29,7 @@ function getInitials(name: string) {
     .slice(0, 2);
 }
 
-export function StoryStrip({ stories, onAddStory }: StoryStripProps) {
+export function StoryStrip({ stories, onAddStory, onOpenStory }: StoryStripProps) {
   return (
     <div className="border-b border-border/70 px-3 py-2.5">
       <div className="mb-2 flex items-center justify-between">
@@ -51,7 +52,7 @@ export function StoryStrip({ stories, onAddStory }: StoryStripProps) {
               <div
                 className={cn(
                   'relative rounded-full p-[2px] transition-transform',
-                  story.isOwn && 'group-hover:scale-[1.03]',
+                  'group-hover:scale-[1.03]',
                   story.hasUnseen
                     ? 'bg-gradient-to-br from-sky-500 via-cyan-500 to-emerald-400'
                     : story.hasStory
@@ -60,26 +61,26 @@ export function StoryStrip({ stories, onAddStory }: StoryStripProps) {
                 )}
               >
                 <div className="rounded-full bg-sidebar p-[2px]">
-                  <Avatar className="h-12 w-12">
+                  <Avatar className="h-10 w-10">
                     <AvatarImage src={story.avatar ?? ''} alt={story.name} />
-                    <AvatarFallback className="bg-primary text-primary-foreground text-sm font-medium">
+                    <AvatarFallback className="bg-primary text-primary-foreground text-xs font-medium">
                       {getInitials(story.name)}
                     </AvatarFallback>
                   </Avatar>
                 </div>
 
-                {story.isOwn && (
-                  <span className="absolute bottom-0 right-0 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm ring-2 ring-sidebar">
-                    <Plus className="h-2.5 w-2.5" />
+                {story.isOwn && !story.hasStory && (
+                  <span className="absolute bottom-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm ring-2 ring-sidebar">
+                    <Plus className="h-2 w-2" />
                   </span>
                 )}
               </div>
 
               <div className="space-y-0.5">
-                <p className="line-clamp-1 text-[10px] font-medium text-foreground">
+                <p className="line-clamp-1 text-[9px] font-medium leading-none text-foreground">
                   {story.name}
                 </p>
-                <p className="line-clamp-1 text-[9px] text-muted-foreground">
+                <p className="line-clamp-1 text-[8px] leading-none text-muted-foreground">
                   {story.label}
                 </p>
               </div>
@@ -91,9 +92,9 @@ export function StoryStrip({ stories, onAddStory }: StoryStripProps) {
               <button
                 key={story.id}
                 type="button"
-                onClick={onAddStory}
+                onClick={() => (story.hasStory ? onOpenStory(story.id) : onAddStory())}
                 className={cn(
-                  'group flex w-[56px] flex-shrink-0 flex-col items-center gap-1 text-center',
+                  'group flex h-[76px] w-[56px] flex-shrink-0 flex-col items-center justify-start gap-1.5 text-center',
                   'cursor-pointer'
                 )}
               >
@@ -103,9 +104,14 @@ export function StoryStrip({ stories, onAddStory }: StoryStripProps) {
           }
 
           return (
-            <div key={story.id} className="flex w-[56px] flex-shrink-0 flex-col items-center gap-1 text-center">
+            <button
+              key={story.id}
+              type="button"
+              onClick={() => onOpenStory(story.id)}
+              className="flex h-[76px] w-[56px] flex-shrink-0 flex-col items-center justify-start gap-1.5 text-center"
+            >
               {content}
-            </div>
+            </button>
           );
         })}
       </div>
