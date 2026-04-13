@@ -6,15 +6,18 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Search, Edit, MessageCircle, Settings } from 'lucide-react';
 import { Chat } from '@/lib/mock-data';
+import { toast } from 'sonner';
 import { ChatItem } from './chat-item';
 import { ConversationContextMenu } from './conversation-context-menu';
 import { ProfileSettings } from './profile-settings';
 import { AddContactModal } from './add-contact-modal';
+import { AddStoryModal, StoryDraft } from './add-story-modal';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { useProfile, useContacts } from '@/hooks/use-user';
 import { useConversations, useCreateConversation, getConvDisplayName, getDmContact, getConversationAvatar } from '@/hooks/use-messaging';
 import { useOnlineUsers } from '@/hooks/use-socket';
 import { EditContactModal } from './edit-contact-modal';
+import { StoryStrip, StoryItem } from './story-strip';
 
 interface SidebarProps {
   activeChat: string;
@@ -48,6 +51,18 @@ interface ContextMenuState {
   chat: Chat;
 }
 
+function getStoryLabel(createdAt: string) {
+  const diffMs = Date.now() - new Date(createdAt).getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+
+  if (diffMinutes < 1) return 'Just now';
+  if (diffMinutes < 60) return `${diffMinutes}m`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h`;
+
+  return `${Math.floor(diffHours / 24)}d`;
+}
 
 export function Sidebar({
   activeChat,
@@ -67,6 +82,8 @@ export function Sidebar({
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [showProfile, setShowProfile] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
+  const [showAddStory, setShowAddStory] = useState(false);
+  const [myStory, setMyStory] = useState<StoryDraft | null>(null);
   const [editContact, setEditContact] = useState<{ id: string; nickname: string } | null>(null);
   const { data: profile } = useProfile();
   const { data: contacts = [] } = useContacts();
@@ -165,6 +182,36 @@ export function Sidebar({
   }, [conversations, contacts, profile, filter, searchQuery, chatMeta, deleted, unreadCounts, onlineUsers]);
 
   const unreadCount = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
+  const stories = useMemo<StoryItem[]>(() => {
+    const storyTimes = ['12m', '35m', '1h', '2h', '5h', '8h'];
+    const feed: StoryItem[] = [
+      {
+        id: 'my-story',
+        name: 'Your story',
+        avatar: profile?.avatar_url,
+        label: myStory ? getStoryLabel(myStory.createdAt) : 'Add story',
+        isOwn: true,
+        hasStory: !!myStory,
+        hasUnseen: !!myStory,
+      },
+    ];
+
+    contacts
+      .filter((contact) => !contact.is_archived && !contact.is_blocked)
+      .slice(0, 7)
+      .forEach((contact, index) => {
+        feed.push({
+          id: `story-${contact.id}`,
+          name: contact.nickname ?? contact.username ?? 'Contact',
+          avatar: contact.avatar_url,
+          label: onlineUsers.has(contact.id) ? 'Now' : storyTimes[index % storyTimes.length],
+          hasStory: true,
+          hasUnseen: index < 4,
+        });
+      });
+
+    return feed;
+  }, [contacts, myStory, onlineUsers, profile?.avatar_url]);
 
   const handleContextMenu = (e: React.MouseEvent, chat: Chat) => {
     e.preventDefault();
@@ -173,6 +220,11 @@ export function Sidebar({
 
   const updateMeta = (id: string, patch: Partial<ChatMeta>) =>
     setChatMeta((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+
+  function handleStorySubmit(story: StoryDraft) {
+    setMyStory(story);
+    toast.success('Story posted');
+  }
 
   return (
     <>
@@ -203,6 +255,10 @@ export function Sidebar({
             />
           </div>
         </div>
+
+        {!isSearching && (
+          <StoryStrip stories={stories} onAddStory={() => setShowAddStory(true)} />
+        )}
 
         {/* Filter Tabs */}
         <div className="px-3 py-2 border-b border-border flex-shrink-0">
@@ -369,6 +425,16 @@ export function Sidebar({
       {/* Add Contact */}
       {isMounted && showAddContact && (
         <AddContactModal onClose={() => setShowAddContact(false)} />
+      )}
+
+      {isMounted && (
+        <AddStoryModal
+          open={showAddStory}
+          onOpenChange={setShowAddStory}
+          profileName={profile?.username ?? 'You'}
+          profileAvatar={profile?.avatar_url}
+          onSubmit={handleStorySubmit}
+        />
       )}
 
       {/* Edit Contact */}
