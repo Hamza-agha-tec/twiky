@@ -345,15 +345,17 @@ export function WorkspaceSidebar({
               />
             </div>
           ) : (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="mt-2 h-8 w-8 rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground"
-              onClick={onToggleCollapse}
-              title="Search"
-            >
-              <Search className="h-4 w-4" />
-            </Button>
+            <div className="flex justify-center mt-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground"
+                onClick={onToggleCollapse}
+                title="Search"
+              >
+                <Search className="h-4 w-4" />
+              </Button>
+            </div>
           )}
         </div>
 

@@ -757,7 +757,7 @@ export function ChannelsPanel({
 
   return (
     <>
-      <div className="hidden h-full w-[216px] flex-shrink-0 flex-col border-r border-border bg-card/70 backdrop-blur lg:flex">
+      <div className="hidden h-full w-[216px] flex-shrink-0 flex-col border-r border-border bg-[#060b14] lg:flex">
         {/* Header */}
         <div className="border-b border-border px-3 py-3">
           <div className="flex items-center gap-2.5">
