@@ -8,6 +8,10 @@ import { UsersModule } from './users/users.module';
 import { SupabaseModule } from './supabase/supabase.module';
 import { ContactsModule } from './contacts/contacts.module';
 import { MessagingModule } from './messaging/messaging.module';
+import { PostsModule } from './posts/posts.module';
+import { ChannelsModule } from './channels/channels.module';
+import { GroupsModule } from './groups/groups.module';
+import { CollaborationModule } from './collaboration/collaboration.module';
 import { PassportModule } from '@nestjs/passport';
 import { SupabaseStrategy } from './auth/strategies/supabase.strategy';
 
@@ -19,6 +23,10 @@ import { SupabaseStrategy } from './auth/strategies/supabase.strategy';
     UsersModule,
     ContactsModule,
     MessagingModule,
+    PostsModule,
+    ChannelsModule,
+    GroupsModule,
+    CollaborationModule,
   ],
   controllers: [AppController, AuthController],
   providers: [AppService, AuthService, SupabaseStrategy],
