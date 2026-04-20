@@ -1,5 +1,8 @@
 import { Geist, Geist_Mono, Lora } from "next/font/google";
+
 import { Providers } from "@/components/providers";
+import { ThemeProvider } from "@/components/theme-provider";
+
 import "./globals.css";
 
 const geist = Geist({
@@ -14,7 +17,7 @@ const geistMono = Geist_Mono({
 
 const lora = Lora({
   subsets: ["latin"],
-  variable: '--font-lora',
+  variable: "--font-lora",
 });
 
 export default function RootLayout({
@@ -23,19 +26,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geist.variable} ${geistMono.variable} ${lora.variable}`} suppressHydrationWarning>
-      <head>
-        {/* Blocking theme script — prevents flash of wrong theme */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('theme')||'dark';if(t==='system')t=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';document.documentElement.classList.add(t);}catch(e){document.documentElement.classList.add('dark');}})();`,
-          }}
-        />
-      </head>
-      <body className="antialiased font-sans">
-        <Providers>
-          {children}
-        </Providers>
+    <html
+      lang="en"
+      className={`${geist.variable} ${geistMono.variable} ${lora.variable}`}
+      suppressHydrationWarning
+    >
+      <body className="font-sans antialiased">
+        <ThemeProvider attribute="class" defaultTheme="dark" disableTransitionOnChange>
+          <Providers>{children}</Providers>
+        </ThemeProvider>
       </body>
     </html>
   );

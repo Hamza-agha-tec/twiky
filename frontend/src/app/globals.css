@@ -4,6 +4,16 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Twiky brand palette */
+:root {
+  --twiky-blue: #0080c8;
+  --twiky-cyan: #92dce5;
+  --twiky-light: #f8f7f9;
+  --twiky-dark: #2b2d42;
+  --twiky-blue-bg: rgba(0,128,200,0.10);
+  --twiky-blue-border: rgba(0,128,200,0.28);
+}
+
 :root {
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
@@ -65,7 +75,9 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
+  --sidebar: oklch(0.14 0.02 260);
+  --background: oklch(0.12 0.02 260);
+  --primary: oklch(0.51 0.17 233);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);

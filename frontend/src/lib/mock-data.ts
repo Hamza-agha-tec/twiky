@@ -248,8 +248,8 @@ export const messagesData: Record<string, Message[]> = {
       isRead: true,
       isDelivered: true,
       reactions: [
-        { emoji: '👍', count: 1 },
-        { emoji: '❤️', count: 1 },
+        { emoji: '👍', count: 1, reactedByMe: false },
+        { emoji: '❤️', count: 1, reactedByMe: false },
       ],
     },
     {

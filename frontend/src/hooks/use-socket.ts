@@ -326,6 +326,7 @@ export function usePresenceSocket(enabled: boolean = true) {
 export function useOnlineUsers() {
   const { data: onlineUsers = new Set<string>() } = useQuery({
     queryKey: ['messaging', 'online-users'],
+    queryFn: async () => new Set<string>(),
     initialData: new Set<string>(),
     staleTime: Infinity,
   });
@@ -335,6 +336,7 @@ export function useOnlineUsers() {
 export function useLastSeen(userId: string | null) {
   const { data: lastSeen = {} } = useQuery<Record<string, number>>({
     queryKey: ['messaging', 'last-seen'],
+    queryFn: async () => ({}),
     initialData: {},
     staleTime: Infinity,
   });

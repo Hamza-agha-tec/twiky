@@ -3,3 +3,4 @@ git_workflow.md
 backend/dist/
 frontend/.env.local
 frontend/.env*.local
+app.html

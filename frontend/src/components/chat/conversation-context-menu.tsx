@@ -1,24 +1,34 @@
-'use client';
+'use client'
 
-import { AnimatePresence, motion } from 'framer-motion';
-import { Star, Archive, BellOff, Bell, Pin, PinOff, ShieldAlert, Trash2, Pencil } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion'
+import {
+  Archive,
+  Bell,
+  BellOff,
+  Pencil,
+  Pin,
+  PinOff,
+  ShieldAlert,
+  Star,
+  Trash2,
+} from 'lucide-react'
 
 interface ConversationContextMenuProps {
-  x: number;
-  y: number;
-  chatId: string;
-  isPinned?: boolean;
-  isMuted?: boolean;
-  isFavorite?: boolean;
-  isGroup?: boolean;
-  onClose: () => void;
-  onFavorite: () => void;
-  onArchive: () => void;
-  onMute: () => void;
-  onPin: () => void;
-  onBlock: () => void;
-  onDelete: () => void;
-  onEditContact?: () => void;
+  x: number
+  y: number
+  chatId: string
+  isPinned?: boolean
+  isMuted?: boolean
+  isFavorite?: boolean
+  isGroup?: boolean
+  onClose: () => void
+  onFavorite: () => void
+  onArchive: () => void
+  onMute: () => void
+  onPin: () => void
+  onBlock: () => void
+  onDelete: () => void
+  onEditContact?: () => void
 }
 
 export function ConversationContextMenu({
@@ -37,13 +47,13 @@ export function ConversationContextMenu({
   onDelete,
   onEditContact,
 }: ConversationContextMenuProps) {
-  const safeX = Math.min(x, window.innerWidth - 210);
-  const safeY = Math.min(y, window.innerHeight - 320);
+  const safeX = Math.min(x, window.innerWidth - 220)
+  const safeY = Math.min(y, window.innerHeight - 340)
 
   const normalItems = [
     {
       icon: Star,
-      label: isFavorite ? 'Remove from favorites' : 'Add to favorites',
+      label: isFavorite ? 'Remove favorite' : 'Add to favorites',
       onClick: onFavorite,
       active: isFavorite,
     },
@@ -62,13 +72,21 @@ export function ConversationContextMenu({
       label: isPinned ? 'Unpin' : 'Pin',
       onClick: onPin,
     },
-  ];
+  ]
 
   const dangerItems = [
-    ...(!isGroup && onEditContact ? [{ icon: Pencil, label: 'Edit nickname', onClick: onEditContact }] : []),
-    ...(!isGroup ? [{ icon: ShieldAlert, label: 'Block', onClick: onBlock }] : []),
-    { icon: Trash2, label: 'Delete conversation', onClick: onDelete },
-  ];
+    ...(!isGroup && onEditContact
+      ? [{ icon: Pencil, label: 'Edit nickname', onClick: onEditContact }]
+      : []),
+    ...(!isGroup
+      ? [{ icon: ShieldAlert, label: 'Block contact', onClick: onBlock }]
+      : []),
+    {
+      icon: Trash2,
+      label: isGroup ? 'Delete channel' : 'Delete conversation',
+      onClick: onDelete,
+    },
+  ]
 
   return (
     <AnimatePresence>
@@ -85,13 +103,16 @@ export function ConversationContextMenu({
         exit={{ opacity: 0, scale: 0.92 }}
         transition={{ duration: 0.12 }}
         style={{ left: `${safeX}px`, top: `${safeY}px` }}
-        className="fixed z-50 bg-sidebar border border-border rounded-xl shadow-xl overflow-hidden w-52 py-1"
+        className="fixed z-50 w-56 overflow-hidden rounded-2xl border border-border bg-sidebar py-1.5 shadow-xl"
       >
         {normalItems.map((item) => (
           <button
             key={item.label}
-            onClick={() => { item.onClick(); onClose(); }}
-            className={`w-full px-3 py-2 flex items-center gap-3 text-sm transition-colors hover:bg-accent ${
+            onClick={() => {
+              item.onClick()
+              onClose()
+            }}
+            className={`flex w-full items-center gap-3 px-3 py-2.5 text-sm transition-colors hover:bg-accent ${
               item.active ? 'text-amber-500' : 'text-foreground'
             }`}
           >
@@ -105,8 +126,11 @@ export function ConversationContextMenu({
         {dangerItems.map((item) => (
           <button
             key={item.label}
-            onClick={() => { item.onClick(); onClose(); }}
-            className="w-full px-3 py-2 flex items-center gap-3 text-sm text-destructive hover:bg-destructive/10 transition-colors"
+            onClick={() => {
+              item.onClick()
+              onClose()
+            }}
+            className="flex w-full items-center gap-3 px-3 py-2.5 text-sm text-destructive transition-colors hover:bg-destructive/10"
           >
             <item.icon className="h-4 w-4 flex-shrink-0" />
             <span>{item.label}</span>
@@ -114,5 +138,5 @@ export function ConversationContextMenu({
         ))}
       </motion.div>
     </AnimatePresence>
-  );
+  )
 }
