@@ -1,481 +1,272 @@
-  import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
-  import { SupabaseService } from '../supabase/supabase.module';
-  import { CreateConversationDto, SendMessageDto, UpdateGroupDto, AddParticipantsDto } from './dto/messaging.dto';
+import { Injectable, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
+import { SupabaseService } from '../supabase/supabase.module';
+import { StartDirectConversationDto, SendDirectMessageDto } from './dto/direct-messaging.dto';
+import { SendGroupMessageDto } from './dto/group-messaging.dto';
 
-  @Injectable()
-  export class MessagingService {
-    constructor(private supabaseService: SupabaseService) { }
+@Injectable()
+export class MessagingService {
+    constructor(private supabaseService: SupabaseService) {}
 
-    /**
-     * CONVERSATIONS
-     */
+    // ==========================================
+    // DIRECT MESSAGING
+    // ==========================================
 
-  async createConversation(userId: string, createDto: CreateConversationDto) {
-    const { isGroup, name, description, avatarUrl, participantIds } = createDto;
+    async createDirectConversation(userId: string, dto: StartDirectConversationDto) {
+        // Enforce MUTUAL FOLLOW RULE
+        // Ensure A follows B
+        const { data: followA } = await this.supabaseService
+            .getClient()
+            .from('follows')
+            .select('*')
+            .eq('follower_id', userId)
+            .eq('following_id', dto.targetUserId)
+            .single();
 
-    // 1. Create the conversation record
-    const { data: conversation, error: convError } = await this.supabaseService
-      .getClient()
-      .from('conversations')
-      .insert({
-        is_group: isGroup || false,
-        name: name || (isGroup ? 'New Group' : null),
-        description: description || null,
-        avatar_url: avatarUrl || null,
-      })
-      .select()
-      .single();
+        // Ensure B follows A
+        const { data: followB } = await this.supabaseService
+            .getClient()
+            .from('follows')
+            .select('*')
+            .eq('follower_id', dto.targetUserId)
+            .eq('following_id', userId)
+            .single();
 
-    if (convError) throw new Error(`Failed to create conversation: ${convError.message}`);
-
-    // 2. Add all participants (including the creator)
-    const allParticipants = Array.from(new Set([...participantIds, userId]));
-    const participantRows = allParticipants.map(pid => ({
-      conversation_id: conversation.id,
-      user_id: pid,
-      role: pid === userId ? 'admin' : 'member',
-    }));
-
-    const { error: partError } = await this.supabaseService
-      .getClient()
-      .from('conversation_participants')
-      .insert(participantRows);
-
-    if (partError) throw new Error(`Failed to add participants: ${partError.message}`);
-
-    return conversation;
-  }
-
-  async isAdmin(userId: string, conversationId: string): Promise<boolean> {
-    const { data, error } = await this.supabaseService
-      .getClient()
-      .from('conversation_participants')
-      .select('role')
-      .eq('conversation_id', conversationId)
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (error || !data) return false;
-    return data.role === 'admin';
-  }
-
-  async updateGroup(userId: string, conversationId: string, updateDto: UpdateGroupDto) {
-    const isUserAdmin = await this.isAdmin(userId, conversationId);
-    if (!isUserAdmin) throw new ForbiddenException('Only admins can update group information');
-
-    // Only include fields that were actually provided
-    const updatePayload: Record<string, any> = {};
-    if (updateDto.name !== undefined) updatePayload.name = updateDto.name;
-    if (updateDto.description !== undefined) updatePayload.description = updateDto.description;
-    if (updateDto.avatarUrl !== undefined) updatePayload.avatar_url = updateDto.avatarUrl;
-
-    const { data, error } = await this.supabaseService
-      .getClient()
-      .from('conversations')
-      .update(updatePayload)
-      .eq('id', conversationId)
-      .select()
-      .single();
-
-    if (error) throw new Error(`Failed to update group: ${error.message}`);
-    return data;
-  }
-
-
-  async addParticipants(userId: string, conversationId: string, addDto: AddParticipantsDto) {
-    const isUserAdmin = await this.isAdmin(userId, conversationId);
-    if (!isUserAdmin) throw new ForbiddenException('Only admins can add participants to this group');
-
-    const participantRows = addDto.participantIds.map(pid => ({
-      conversation_id: conversationId,
-      user_id: pid,
-      role: 'member',
-    }));
-
-    const { error } = await this.supabaseService
-      .getClient()
-      .from('conversation_participants')
-      .insert(participantRows);
-
-    if (error) throw new Error(`Failed to add participants: ${error.message}`);
-    return { success: true };
-  }
-
-  async removeParticipant(userId: string, conversationId: string, targetUserId: string) {
-    const isUserAdmin = await this.isAdmin(userId, conversationId);
-    const isSelf = userId === targetUserId;
-
-    if (!isUserAdmin && !isSelf) {
-      throw new ForbiddenException('You do not have permission to remove this participant');
-    }
-
-    const { error } = await this.supabaseService
-      .getClient()
-      .from('conversation_participants')
-      .delete()
-      .eq('conversation_id', conversationId)
-      .eq('user_id', targetUserId);
-
-    if (error) throw new Error(`Failed to remove participant: ${error.message}`);
-    return { success: true };
-  }
-
-    async getConversations(userId: string) {
-      const { data, error } = await this.supabaseService
-        .getClient()
-        .from('conversation_participants')
-        .select(`
-          conversation:conversations(
-            *,
-            participants:conversation_participants(
-              user:users(id, username, avatar_url, phone_number)
-            )
-          ),
-          role,
-          joined_at
-        `)
-        .eq('user_id', userId)
-        .order('joined_at', { ascending: false });
-
-      if (error) throw new Error(`Failed to fetch conversations: ${error.message}`);
-
-      const conversations = data.map(item => item.conversation) as any[];
-      const convIds = conversations.map((c) => c.id);
-
-      if (convIds.length === 0) return [];
-
-      // Fetch most recent message per conversation in one query
-      const { data: messages } = await this.supabaseService
-        .getClient()
-        .from('messages')
-        .select('id, conversation_id, content, type, created_at, sender:users!sender_id(id, username)')
-        .in('conversation_id', convIds)
-        .order('created_at', { ascending: false })
-        .limit(convIds.length * 3);
-
-      const lastMessageMap: Record<string, any> = {};
-      for (const msg of messages ?? []) {
-        if (!lastMessageMap[msg.conversation_id]) {
-          lastMessageMap[msg.conversation_id] = msg;
+        if (!followA || !followB) {
+            throw new ForbiddenException("You can only message mutual followers.");
         }
-      }
 
-      return conversations.map((c) => ({
-        ...c,
-        last_message: lastMessageMap[c.id] ?? null,
-      }));
+        // Sort alphabetically to prevent duplicate conversations (A->B and B->A)
+        const [userOneId, userTwoId] = [userId, dto.targetUserId].sort();
+
+        // Attempt to select first to avoid conflict error breaking the app flow
+        const { data: existing } = await this.supabaseService
+            .getClient()
+            .from('direct_conversations')
+            .select('*')
+            .eq('user_one_id', userOneId)
+            .eq('user_two_id', userTwoId)
+            .single();
+
+        if (existing) return existing;
+
+        const { data, error } = await this.supabaseService
+            .getClient()
+            .from('direct_conversations')
+            .insert({ user_one_id: userOneId, user_two_id: userTwoId })
+            .select()
+            .single();
+
+        if (error) throw new Error(`Failed to create DM: ${error.message}`);
+        return data;
     }
 
-    async getUserUsername(userId: string): Promise<string> {
-      const { data } = await this.supabaseService
-        .getClient()
-        .from('users')
-        .select('username')
-        .eq('id', userId)
-        .single();
-      return data?.username ?? 'Someone';
+    async getDirectConversations(userId: string) {
+        // Find where user is user_one OR user_two
+        const { data, error } = await this.supabaseService
+            .getClient()
+            .from('direct_conversations')
+            .select(`
+                *,
+                user_one:users!direct_conversations_user_one_id_fkey(id, username, avatar_url),
+                user_two:users!direct_conversations_user_two_id_fkey(id, username, avatar_url)
+            `)
+            .or(`user_one_id.eq.${userId},user_two_id.eq.${userId}`)
+            .order('created_at', { ascending: false });
+
+        if (error) throw new Error(`Failed to fetch inboxes: ${error.message}`);
+        return data;
     }
 
-    async getConversationParticipantIds(conversationId: string): Promise<string[]> {
-      const { data, error } = await this.supabaseService
-        .getClient()
-        .from('conversation_participants')
-        .select('user_id')
-        .eq('conversation_id', conversationId);
+    async sendDirectMessage(userId: string, conversationId: string, dto: SendDirectMessageDto) {
+        // Verify user is part of the conversation
+        const { data: conv } = await this.supabaseService
+            .getClient()
+            .from('direct_conversations')
+            .select('*')
+            .eq('id', conversationId)
+            .single();
 
-      if (error) return [];
-      return data.map((r: { user_id: string }) => r.user_id);
+        if (!conv || (conv.user_one_id !== userId && conv.user_two_id !== userId)) {
+            throw new ForbiddenException("You do not belong to this conversation.");
+        }
+
+        const { data, error } = await this.supabaseService
+            .getClient()
+            .from('direct_messages')
+            .insert({
+                conversation_id: conversationId,
+                sender_id: userId,
+                content: dto.content,
+                file_url: dto.fileUrl || null,
+                reply_to_id: dto.replyToId || null,
+                entity_mentions: dto.entityMentions || []
+            })
+            .select('*, sender:users!direct_messages_sender_id_fkey(id, username, avatar_url)')
+            .single();
+
+        if (error) throw new Error(`Failed to send DM: ${error.message}`);
+        return data;
     }
 
-    /**
-     * MESSAGES
-     */
+    async getDirectMessages(userId: string, conversationId: string) {
+        const { data: conv } = await this.supabaseService
+            .getClient()
+            .from('direct_conversations')
+            .select('*')
+            .eq('id', conversationId)
+            .single();
 
-    private async fetchReplyTo(replyToId: string | null) {
-      if (!replyToId) return null;
-      const { data } = await this.supabaseService
-        .getClient()
-        .from('messages')
-        .select('id, content, sender:users!sender_id(id, username)')
-        .eq('id', replyToId)
-        .single();
-      return data ?? null;
+        if (!conv || (conv.user_one_id !== userId && conv.user_two_id !== userId)) {
+            throw new ForbiddenException("Access denied.");
+        }
+
+        const { data, error } = await this.supabaseService
+            .getClient()
+            .from('direct_messages')
+            .select('*, sender:users!direct_messages_sender_id_fkey(id, username, avatar_url)')
+            .eq('conversation_id', conversationId)
+            .order('created_at', { ascending: true }); // typically chronologically ordered
+
+        if (error) throw new Error(`Failed to fetch DMs: ${error.message}`);
+        return data;
     }
 
-    private async attachReplyTo(messages: any[]) {
-      const ids = [...new Set(messages.map((m) => m.reply_to_id).filter(Boolean))];
-      if (ids.length === 0) return messages;
-      const { data: parents } = await this.supabaseService
-        .getClient()
-        .from('messages')
-        .select('id, content, sender:users!sender_id(id, username)')
-        .in('id', ids);
-      const map = new Map((parents ?? []).map((p: any) => [p.id, p]));
-      return messages.map((m) => ({ ...m, reply_to: m.reply_to_id ? (map.get(m.reply_to_id) ?? null) : null }));
+    async editDirectMessage(userId: string, messageId: string, content: string) {
+        const { data, error } = await this.supabaseService
+            .getClient()
+            .from('direct_messages')
+            .update({ content, is_edited: true })
+            .eq('id', messageId)
+            .eq('sender_id', userId)
+            .select('*, sender:users!direct_messages_sender_id_fkey(id, username, avatar_url)')
+            .single();
+
+        if (error) throw new Error(`Failed to edit DM: ${error.message}`);
+        return data;
     }
 
-    async saveMessage(senderId: string, sendDto: SendMessageDto) {
-      const { conversationId, content, type, fileUrl, metadata } = sendDto;
+    async deleteDirectMessage(userId: string, messageId: string) {
+        const { error } = await this.supabaseService
+            .getClient()
+            .from('direct_messages')
+            .delete()
+            .eq('id', messageId)
+            .eq('sender_id', userId);
 
-      // Verify membership
-      const { data: member } = await this.supabaseService
-        .getClient()
-        .from('conversation_participants')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        .eq('user_id', senderId)
-        .maybeSingle();
-
-      if (!member) throw new ForbiddenException('You are not a member of this conversation');
-
-      // Insert and fetch in two steps to avoid self-referential join ambiguity
-      const { data: inserted, error } = await this.supabaseService
-        .getClient()
-        .from('messages')
-        .insert({
-          conversation_id: conversationId,
-          sender_id: senderId,
-          content,
-          type: type || 'text',
-          file_url: fileUrl,
-          metadata: metadata || {},
-          reply_to_id: sendDto.replyToId ?? null,
-        })
-        .select('id')
-        .single();
-
-      if (error) throw new Error(`Failed to save message: ${error.message}`);
-
-      const { data, error: fetchError } = await this.supabaseService
-        .getClient()
-        .from('messages')
-        .select('*, sender:users!sender_id(id, username, avatar_url)')
-        .eq('id', inserted.id)
-        .single();
-
-      if (fetchError) throw new Error(`Failed to fetch message: ${fetchError.message}`);
-
-      const reply_to = await this.fetchReplyTo(sendDto.replyToId ?? null);
-
-      // Update conversation last_message_at
-      await this.supabaseService
-        .getClient()
-        .from('conversations')
-        .update({ last_message_at: new Date().toISOString() })
-        .eq('id', conversationId);
-
-      return { ...data, reply_to };
+        if (error) throw new Error(`Failed to delete DM: ${error.message}`);
+        return { success: true };
     }
 
-    async getMessages(userId: string, conversationId: string, limit: number = 50, offset: number = 0) {
-      // Verify membership
-      const { data: member } = await this.supabaseService
-        .getClient()
-        .from('conversation_participants')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        .eq('user_id', userId)
-        .maybeSingle();
+    async updateDirectMessageStatus(messageId: string, status: 'sent' | 'delivered' | 'read') {
+        const { error } = await this.supabaseService
+            .getClient()
+            .from('direct_messages')
+            .update({ status })
+            .eq('id', messageId);
 
-      if (!member) throw new ForbiddenException('Access denied to this conversation history');
-
-      const { data, error } = await this.supabaseService
-        .getClient()
-        .from('messages')
-        .select('*, sender:users!sender_id(id, username, avatar_url)')
-        .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: false })
-        .range(offset, offset + limit - 1);
-
-      if (error) throw new Error(`Failed to fetch messages: ${error.message}`);
-      return this.attachReplyTo(data);
+        // Optionally, don't throw an error if it fails because read receipts aren't critical
+        return { success: !error };
     }
 
-    /**
-     * EDIT / DELETE
-     */
+    // ==========================================
+    // GROUP MESSAGING
+    // ==========================================
 
-    async editMessage(userId: string, messageId: string, content: string) {
-      const { data, error } = await this.supabaseService
-        .getClient()
-        .from('messages')
-        .update({ content, is_edited: true })
-        .eq('id', messageId)
-        .eq('sender_id', userId)
-        .select('*, sender:users!sender_id(id, username, avatar_url)')
-        .single();
+    async sendGroupMessage(userId: string, groupId: string, dto: SendGroupMessageDto) {
+        // Verify user is in the group_members table
+        const { data: member } = await this.supabaseService
+            .getClient()
+            .from('group_members')
+            .select('*')
+            .eq('group_id', groupId)
+            .eq('user_id', userId)
+            .single();
 
-      if (error) throw new Error(`Failed to edit message: ${error.message}`);
-      return data;
+        if (!member) {
+            throw new ForbiddenException("You are not a member of this group.");
+        }
+
+        // Entity Mentions Validation
+        if (dto.entityMentions && dto.entityMentions.length > 0) {
+            for (const mention of dto.entityMentions) {
+                if (mention.type === 'task') {
+                    const { data: task } = await this.supabaseService.getClient().from('tasks').select('*').eq('id', mention.entityId).single();
+                    if (!task || task.group_id !== groupId) throw new BadRequestException(`Task not found in this group`);
+                } else if (mention.type === 'note') {
+                    const { data: note } = await this.supabaseService.getClient().from('notes').select('*').eq('id', mention.entityId).single();
+                    if (!note || note.group_id !== groupId) throw new BadRequestException(`Note not found in this group`);
+                } else if (mention.type === 'goal') {
+                    const { data: goal } = await this.supabaseService.getClient().from('goals').select('*').eq('id', mention.entityId).single();
+                    if (!goal || goal.group_id !== groupId) throw new BadRequestException(`Goal not found in this group`);
+                }
+            }
+        }
+
+        const { data, error } = await this.supabaseService
+            .getClient()
+            .from('group_messages')
+            .insert({
+                group_id: groupId,
+                sender_id: userId,
+                content: dto.content,
+                file_url: dto.fileUrl || null,
+                reply_to_id: dto.replyToId || null,
+                entity_mentions: dto.entityMentions || []
+            })
+            .select('*, sender:users!group_messages_sender_id_fkey(id, username, avatar_url)')
+            .single();
+
+        if (error) throw new Error(`Failed to send group message: ${error.message}`);
+        return data;
     }
 
-    async deleteMessage(userId: string, messageId: string) {
-      const { error } = await this.supabaseService
-        .getClient()
-        .from('messages')
-        .delete()
-        .eq('id', messageId)
-        .eq('sender_id', userId);
+    async getGroupMessages(userId: string, groupId: string) {
+        const { data: member } = await this.supabaseService
+            .getClient()
+            .from('group_members')
+            .select('*')
+            .eq('group_id', groupId)
+            .eq('user_id', userId)
+            .single();
 
-      if (error) throw new Error(`Failed to delete message: ${error.message}`);
-      return { success: true };
+        if (!member) {
+            throw new ForbiddenException("Access denied.");
+        }
+
+        const { data, error } = await this.supabaseService
+            .getClient()
+            .from('group_messages')
+            .select('*, sender:users!group_messages_sender_id_fkey(id, username, avatar_url)')
+            .eq('group_id', groupId)
+            .order('created_at', { ascending: true });
+
+        if (error) throw new Error(`Failed to fetch group messages: ${error.message}`);
+        return data;
     }
 
-    /**
-     * REACTIONS
-     */
+    async editGroupMessage(userId: string, messageId: string, content: string) {
+        const { data, error } = await this.supabaseService
+            .getClient()
+            .from('group_messages')
+            .update({ content, is_edited: true })
+            .eq('id', messageId)
+            .eq('sender_id', userId)
+            .select('*, sender:users!group_messages_sender_id_fkey(id, username, avatar_url)')
+            .single();
 
-    async reactToMessage(userId: string, messageId: string, emoji: string) {
-      const { data: msg, error: fetchError } = await this.supabaseService
-        .getClient()
-        .from('messages')
-        .select('reactions, type, sender_id')
-        .eq('id', messageId)
-        .single();
-
-      if (fetchError) throw new Error(`Message not found: ${fetchError.message}`);
-
-      const reactions: { userId: string; emoji: string }[] = msg.reactions ?? [];
-      const existingIdx = reactions.findIndex((r) => r.userId === userId && r.emoji === emoji);
-
-      // Remove ALL reactions from this user, then add new one (unless toggling off)
-      const withoutUser = reactions.filter((r) => r.userId !== userId);
-      const updated = existingIdx >= 0 ? withoutUser : [...withoutUser, { userId, emoji }];
-
-      const { error } = await this.supabaseService
-        .getClient()
-        .from('messages')
-        .update({ reactions: updated })
-        .eq('id', messageId);
-
-      if (error) throw new Error(`Failed to update reactions: ${error.message}`);
-
-      return { messageId, reactions: updated, messageType: msg.type, messageSenderId: msg.sender_id, isAdded: existingIdx < 0 };
+        if (error) throw new Error(`Failed to edit group message: ${error.message}`);
+        return data;
     }
 
-    /**
-     * MESSAGE STATUS
-     */
+    async deleteGroupMessage(userId: string, messageId: string) {
+        const { error } = await this.supabaseService
+            .getClient()
+            .from('group_messages')
+            .delete()
+            .eq('id', messageId)
+            .eq('sender_id', userId);
 
-    async updateMessageStatus(messageId: string, status: 'sent' | 'delivered' | 'read') {
-      await this.supabaseService
-        .getClient()
-        .from('messages')
-        .update({ status })
-        .eq('id', messageId);
+        if (error) throw new Error(`Failed to delete group message: ${error.message}`);
+        return { success: true };
     }
-
-    async markConversationRead(userId: string, conversationId: string): Promise<string[]> {
-      const { data } = await this.supabaseService
-        .getClient()
-        .from('messages')
-        .update({ status: 'read' })
-        .eq('conversation_id', conversationId)
-        .neq('sender_id', userId)
-        .in('status', ['sent', 'delivered'])
-        .select('id');
-      return data?.map((m: { id: string }) => m.id) ?? [];
-    }
-
-    /**
-     * FILE SHARING
-     */
-
-    async uploadFile(userId: string, conversationId: string, file: Express.Multer.File) {
-      // Verify membership before allowing upload
-      const { data: member } = await this.supabaseService
-        .getClient()
-        .from('conversation_participants')
-        .select('user_id')
-        .eq('conversation_id', conversationId)
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (!member) throw new ForbiddenException('You are not a member of this conversation');
-
-      const fileExt = file.originalname.split('.').pop();
-      const fileName = `${Date.now()}_${file.originalname}`;
-      // Each conversation has its own folder
-      const filePath = `conversations/${conversationId}/${fileName}`;
-
-      const { error } = await this.supabaseService
-        .getClient()
-        .storage.from('chat-attachments')
-        .upload(filePath, file.buffer, {
-          contentType: file.mimetype,
-          upsert: false,
-        });
-
-      if (error) throw new Error(`Failed to upload file: ${error.message}`);
-
-      const { data: { publicUrl } } = this.supabaseService
-        .getClient()
-        .storage.from('chat-attachments')
-        .getPublicUrl(filePath);
-
-      return {
-        fileName: file.originalname,
-        fileUrl: publicUrl,
-        fileType: file.mimetype,
-      };
-    }
-
-    async uploadGroupAvatar(userId: string, conversationId: string, file: Express.Multer.File) {
-      const isUserAdmin = await this.isAdmin(userId, conversationId);
-      if (!isUserAdmin) throw new ForbiddenException('Only admins can update the group avatar');
-
-      const fileExt = file.originalname.split('.').pop();
-      // Deterministic path — always overwrite the single avatar file
-      const filePath = `group-avatars/${conversationId}/avatar.${fileExt}`;
-
-      const { error } = await this.supabaseService
-        .getClient()
-        .storage.from('chat-attachments')
-        .upload(filePath, file.buffer, {
-          contentType: file.mimetype,
-          upsert: true, // overwrite existing avatar
-        });
-
-      if (error) throw new Error(`Failed to upload group avatar: ${error.message}`);
-
-      const { data: { publicUrl } } = this.supabaseService
-        .getClient()
-        .storage.from('chat-attachments')
-        .getPublicUrl(filePath);
-
-      // Persist the new avatar_url on the conversation
-      const { data, error: updateError } = await this.supabaseService
-        .getClient()
-        .from('conversations')
-        .update({ avatar_url: publicUrl })
-        .eq('id', conversationId)
-        .select()
-        .single();
-
-      if (updateError) throw new Error(`Failed to update group avatar: ${updateError.message}`);
-
-      return data;
-    }
-
-    async updateLastSeen(userId: string) {
-      await this.supabaseService
-        .getClient()
-        .from('users')
-        .update({ last_seen_at: new Date().toISOString() })
-        .eq('id', userId);
-    }
-
-    async getLastSeenMap(userIds: string[]): Promise<Record<string, string>> {
-      if (userIds.length === 0) return {};
-      const { data } = await this.supabaseService
-        .getClient()
-        .from('users')
-        .select('id, last_seen_at')
-        .in('id', userIds);
-      const map: Record<string, string> = {};
-      for (const row of data ?? []) {
-        if (row.last_seen_at) map[row.id] = row.last_seen_at;
-      }
-      return map;
-    }
-  }
+}
