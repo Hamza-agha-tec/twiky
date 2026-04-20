@@ -1,7 +1,6 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useTheme } from 'next-themes';
 import { userApi } from '@/lib/user-api';
 
 export const USER_KEYS = {

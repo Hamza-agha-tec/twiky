@@ -4,19 +4,25 @@ import { useState, useRef, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Search, Phone, Video, MoreVertical, Pin, X } from 'lucide-react';
+import { Search, Phone, Video, MoreVertical } from 'lucide-react';
 import type { Message } from '@/lib/mock-data';
 import { MessageBubble } from './message-bubble';
 import { Composer } from './composer';
-import { format } from 'date-fns';
+import { format, formatDistanceToNowStrict } from 'date-fns';
 import { ChatMessage, useConversations, getConvDisplayName, getConversationAvatar, getDmContact } from '@/hooks/use-messaging';
 import { useProfile, useContacts } from '@/hooks/use-user';
 import { useOnlineUsers, useLastSeen } from '@/hooks/use-socket';
 import { useChatThemeContext } from '@/context/ChatThemeContext';
-import { toast } from 'sonner';
+import { getMockUserAvatar } from '@/lib/mock-users';
 
 interface ChatWindowProps {
   activeChat: string;
+  chatOverride?: {
+    avatarUrl?: string | null;
+    isOnline?: boolean;
+    name: string;
+    subtitle?: string | null;
+  };
   messages?: ChatMessage[];
   onSendMessage?: (content: string, type?: string, replyToId?: string, fileUrl?: string) => void;
   onTyping?: (isTyping: boolean) => void;
@@ -31,6 +37,10 @@ interface ReplyTo {
   id: string;
   senderName: string;
   content: string;
+}
+
+function buildFallbackAvatar(name: string) {
+  return getMockUserAvatar(name);
 }
 
 function toUiMessage(m: ChatMessage, myId: string): Message {
@@ -63,7 +73,7 @@ function toUiMessage(m: ChatMessage, myId: string): Message {
   };
 }
 
-export function ChatWindow({ activeChat, messages: providedMessages = [], onSendMessage, onTyping, otherIsTyping = false, onReact, onEdit, onDelete, onProfileClick }: ChatWindowProps) {
+export function ChatWindow({ activeChat, chatOverride, messages: providedMessages = [], onSendMessage, onTyping, otherIsTyping = false, onReact, onDelete, onProfileClick }: ChatWindowProps) {
   const { data: profile } = useProfile();
   const { data: contacts = [] } = useContacts();
   const { data: conversations = [] } = useConversations();
@@ -75,11 +85,8 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
     .reverse()
     .map((m) => toUiMessage(m, profile?.id ?? ''));
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const initialScrollDone = useRef(false);
-  const [isTyping, setIsTyping] = useState(false);
   const [replyTo, setReplyTo] = useState<ReplyTo | null>(null);
-  const [showPinned, setShowPinned] = useState(true);
 
   useLayoutEffect(() => {
     if (messages.length === 0) return;
@@ -94,8 +101,13 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
   }, [messages.length]);
 
 
-  const chatName = conv ? getConvDisplayName(conv, profile?.id ?? '', contacts) : 'Chat';
-  const chatAvatar = conv ? getConversationAvatar(conv, profile?.id ?? '', contacts) ?? undefined : undefined;
+  const chatName = conv
+    ? getConvDisplayName(conv, profile?.id ?? '', contacts)
+    : chatOverride?.name ?? 'Chat';
+  const chatAvatar = conv
+    ? getConversationAvatar(conv, profile?.id ?? '', contacts) ?? undefined
+    : chatOverride?.avatarUrl ?? undefined;
+  const resolvedChatAvatar = chatAvatar || buildFallbackAvatar(chatName);
   const initials = chatName
     .split(' ')
     .map((word: string) => word[0])
@@ -104,19 +116,14 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
     .slice(0, 2);
 
   const dmContact = conv && !conv.is_group ? getDmContact(conv, profile?.id ?? '') : null;
-  const isOnline = dmContact ? onlineUsers.has(dmContact.id) : false;
+  const isOnline = chatOverride?.isOnline ?? (dmContact ? onlineUsers.has(dmContact.id) : false);
   const lastSeenTs = useLastSeen(dmContact?.id ?? null);
 
   const lastSeenLabel = (() => {
     if (!lastSeenTs) return null;
-    const diff = Date.now() - lastSeenTs;
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'Last seen just now';
-    if (mins < 60) return `Last seen ${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `Last seen ${hrs}h ago`;
-    return `Last seen ${Math.floor(hrs / 24)}d ago`;
+    return `Last seen ${formatDistanceToNowStrict(new Date(lastSeenTs))} ago`;
   })();
+  const chatSubtitle = chatOverride?.subtitle ?? lastSeenLabel;
 
   const groupedMessages = messages.reduce(
     (acc, message) => {
@@ -156,11 +163,12 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={onProfileClick}
-            className="rounded-full hover:ring-2 ring-primary/40 transition-all flex-shrink-0"
+            disabled={!onProfileClick}
+            className="rounded-full hover:ring-2 ring-primary/40 transition-all flex-shrink-0 disabled:cursor-default disabled:hover:ring-0"
           >
             <div className="relative">
               <Avatar className="h-9 w-9">
-                {chatAvatar && <AvatarImage src={chatAvatar} alt={chatName} />}
+                <AvatarImage src={resolvedChatAvatar} alt={chatName} />
                 <AvatarFallback className="bg-primary text-primary-foreground text-sm">
                   {initials}
                 </AvatarFallback>
@@ -171,11 +179,13 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
           <div className="flex-1 min-w-0">
             <h2 className="font-semibold text-foreground text-sm leading-tight truncate">{chatName}</h2>
             {conv?.is_group ? (
-              <p className="text-xs text-muted-foreground">Group</p>
-            ) : (isOnline || lastSeenLabel) ? (
+              <p className="text-xs text-muted-foreground">
+                Channel · {conv.participants.length} members
+              </p>
+            ) : (isOnline || chatSubtitle) ? (
               <p className="text-xs text-muted-foreground flex items-center gap-1">
                 {isOnline && <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-500" />}
-                {isOnline ? 'Online' : lastSeenLabel}
+                {isOnline ? (chatSubtitle ?? 'Online') : chatSubtitle}
               </p>
             ) : null}
           </div>
@@ -197,36 +207,8 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
         </div>
       </div>
 
-      {/* Pinned Message Banner */}
-      <AnimatePresence>
-        {false && showPinned && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden flex-shrink-0"
-          >
-            <div className="flex items-center gap-3 px-4 py-2 bg-primary/5 border-b border-primary/15">
-              <Pin className="h-3.5 w-3.5 text-primary flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-semibold text-primary">Pinned Message</p>
-                <p className="text-xs text-muted-foreground truncate" />
-              </div>
-              <button
-                onClick={() => setShowPinned(false)}
-                className="h-5 w-5 rounded-full flex items-center justify-center hover:bg-accent transition-colors flex-shrink-0"
-              >
-                <X className="h-3 w-3 text-muted-foreground" />
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Messages Area */}
       <div
-        ref={scrollContainerRef}
         className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4"
         style={chatTheme.bg ? { backgroundColor: chatTheme.bg } : undefined}
       >
@@ -271,7 +253,7 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
               className="flex gap-2 items-end"
             >
               <Avatar className="h-7 w-7 flex-shrink-0">
-                {chatAvatar && <AvatarImage src={chatAvatar} alt={chatName} />}
+                <AvatarImage src={resolvedChatAvatar} alt={chatName} />
                 <AvatarFallback className="bg-primary text-primary-foreground text-xs">
                   {chatName[0]}
                 </AvatarFallback>
@@ -295,7 +277,7 @@ export function ChatWindow({ activeChat, messages: providedMessages = [], onSend
 
       {/* Composer */}
       <Composer
-        onTyping={(t) => { setIsTyping(t); onTyping?.(t); }}
+        onTyping={onTyping}
         onSendMessage={(content, type, replyToId, fileUrl) => {
           onSendMessage?.(content, type, replyToId, fileUrl);
           setReplyTo(null);

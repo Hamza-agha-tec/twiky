@@ -15,10 +15,14 @@ import { useProfile, useContacts } from '@/hooks/use-user';
 import { useConversations, useCreateConversation, getConvDisplayName, getDmContact, getConversationAvatar } from '@/hooks/use-messaging';
 import { useOnlineUsers } from '@/hooks/use-socket';
 import { EditContactModal } from './edit-contact-modal';
+import { StoryStrip, StoryItem } from './story-strip';
 
 interface SidebarProps {
   activeChat: string;
   onSelectChat: (id: string) => void;
+  stories: StoryItem[];
+  onAddStory: () => void;
+  onOpenStory: (storyId: string) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
   selectedChats: string[];
@@ -48,10 +52,12 @@ interface ContextMenuState {
   chat: Chat;
 }
 
-
 export function Sidebar({
   activeChat,
   onSelectChat,
+  stories,
+  onAddStory,
+  onOpenStory,
   searchQuery,
   onSearchChange,
   selectedChats,
@@ -203,6 +209,14 @@ export function Sidebar({
             />
           </div>
         </div>
+
+        {!isSearching && (
+          <StoryStrip
+            stories={stories}
+            onAddStory={onAddStory}
+            onOpenStory={onOpenStory}
+          />
+        )}
 
         {/* Filter Tabs */}
         <div className="px-3 py-2 border-b border-border flex-shrink-0">
