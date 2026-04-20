@@ -1,4 +1,4 @@
-import { Controller, Get, Param, UseGuards, Request, Patch, Body, Query } from '@nestjs/common';
+import { Controller, Get, Param, Post, Delete, UseGuards, Request, Patch, Body, Query } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -36,6 +36,28 @@ export class UsersController {
     @Get("search")
     async search(@Query("phone") phone: string) {
         return this.usersService.searchByPhone(phone);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Post("follows/:id")
+    async followUser(@Request() req: any, @Param("id") followingId: string) {
+        return this.usersService.followUser(req.user.userId, followingId);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Delete("follows/:id")
+    async unfollowUser(@Request() req: any, @Param("id") followingId: string) {
+        return this.usersService.unfollowUser(req.user.userId, followingId);
+    }
+
+    @Get(":id/followers")
+    async getFollowers(@Param("id") id: string) {
+        return this.usersService.getFollowers(id);
+    }
+
+    @Get(":id/following")
+    async getFollowing(@Param("id") id: string) {
+        return this.usersService.getFollowing(id);
     }
 
     @Get(":id")
