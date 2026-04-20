@@ -10,7 +10,6 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { MessagingService } from '../messaging.service';
-import { SendMessageDto } from '../dto/messaging.dto';
 import { ConfigService } from '@nestjs/config';
 import { SocketAuthMiddleware } from '../middlewares/ws-auth.middleware';
 import { Logger } from '@nestjs/common';
@@ -25,7 +24,6 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   server: Server;
 
   private readonly logger = new Logger(ChatGateway.name);
-  // Track online users: Map<userId, Set<socketId>>
   private onlineUsers = new Map<string, Set<string>>();
 
   constructor(
@@ -36,23 +34,18 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   afterInit(server: Server) {
     const supabaseUrl = this.configService.get<string>('NEXT_PUBLIC_SUPABASE_URL') as string;
     server.use(SocketAuthMiddleware(supabaseUrl));
-    this.logger.log('WS Gateway initialized');
+    this.logger.log('WS Gateway initialized built for Direct and Group architecture');
   }
 
   handleConnection(client: Socket) {
     const userId = client.data.user?.userId;
     if (userId) {
-      // Personal room — receives events for all conversations without explicit joins
       client.join(`user_${userId}`);
-      
-      // Track online status
       if (!this.onlineUsers.has(userId)) {
         this.onlineUsers.set(userId, new Set());
-        // Broadcast that user is now online
         this.server.emit('userStatusChange', { userId, status: 'online' });
       }
       this.onlineUsers.get(userId)!.add(client.id);
-
       this.logger.log(`User ${userId} connected [${client.id}]`);
     } else {
       client.disconnect();
@@ -67,158 +60,188 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       
       if (userSockets.size === 0) {
         this.onlineUsers.delete(userId);
-        // Broadcast that user is now offline
         this.server.emit('userStatusChange', { userId, status: 'offline' });
       }
     }
     this.logger.log(`User ${userId ?? 'unknown'} disconnected [${client.id}]`);
   }
 
-  /**
-   * Online Status
-   */
-
   @SubscribeMessage('getOnlineUsers')
   handleGetOnlineUsers() {
     return Array.from(this.onlineUsers.keys());
   }
 
-  /**
-   * Room Management (used for typing indicators in active conversation)
-   */
+  // ==========================================
+  // ROOM MANAGEMENT & TYPING
+  // ==========================================
 
-  @SubscribeMessage('joinConversation')
-  handleJoinConversation(
+  @SubscribeMessage('joinDirectRoom')
+  handleJoinDirectConversation(
     @ConnectedSocket() client: Socket,
     @MessageBody() conversationId: string,
   ) {
-    client.join(`conv_${conversationId}`);
-    return { status: 'joined', conversationId };
+    client.join(`dm_${conversationId}`);
+    return { status: 'joined_dm', conversationId };
   }
 
-  @SubscribeMessage('leaveConversation')
-  handleLeaveConversation(
+  @SubscribeMessage('joinGroupRoom')
+  handleJoinGroupConversation(
     @ConnectedSocket() client: Socket,
-    @MessageBody() conversationId: string,
+    @MessageBody() groupId: string,
   ) {
-    client.leave(`conv_${conversationId}`);
-    return { status: 'left', conversationId };
+    client.join(`group_${groupId}`);
+    return { status: 'joined_group', groupId };
   }
 
-  /**
-   * Messaging
-   */
-
-  @SubscribeMessage('sendMessage')
-  async handleSendMessage(
+  @SubscribeMessage('leaveRoom')
+  handleLeaveRoom(
     @ConnectedSocket() client: Socket,
-    @MessageBody() payload: SendMessageDto,
+    @MessageBody() roomId: string, // Provide exact string 'dm_XX' or 'group_XX'
+  ) {
+    client.leave(roomId);
+    return { status: 'left', roomId };
+  }
+
+  @SubscribeMessage('typing')
+  handleTyping(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { roomId: string; isTyping: boolean }, // roomId should be prefixed e.g. 'dm_uuid'
+  ) {
+    const userId = client.data.user.userId;
+    client.to(payload.roomId).emit('userTyping', {
+      userId,
+      isTyping: payload.isTyping,
+    });
+  }
+
+  // ==========================================
+  // DIRECT MESSAGING
+  // ==========================================
+
+  @SubscribeMessage('sendDirectMessage')
+  async handleSendDirectMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { conversationId: string; content: string; fileUrl?: string; replyToId?: string; entityMentions?: any[] },
   ) {
     const senderId = client.data.user.userId;
-
     try {
-      const message = await this.messagingService.saveMessage(senderId, payload);
+      const message = await this.messagingService.sendDirectMessage(senderId, payload.conversationId, payload);
 
-      // Emit to the active conversation room (for open chat windows)
-      this.server.to(`conv_${payload.conversationId}`).emit('newMessage', message);
+      // Broadcast to local room
+      this.server.to(`dm_${payload.conversationId}`).emit('newDirectMessage', message);
 
-      // Also emit to every participant's personal room (for sidebar updates)
-      const participantIds = await this.messagingService.getConversationParticipantIds(payload.conversationId);
-      for (const participantId of participantIds) {
-        // Skip if already in conversation room (would double-receive)
-        const convRoom = this.server.sockets.adapter.rooms.get(`conv_${payload.conversationId}`);
-        const userRoom = this.server.sockets.adapter.rooms.get(`user_${participantId}`);
-        if (!userRoom) continue;
-
-        for (const socketId of userRoom) {
-          if (!convRoom?.has(socketId)) {
-            this.server.to(socketId).emit('newMessage', message);
-          }
-        }
+      // Alert both users globally (for notification syncing)
+      // Since DM has 2 users, we can just fetch the conv and emit to both
+      const conv = await this.messagingService.getDirectConversations(senderId);
+      const dmConv = conv.find(c => c.id === payload.conversationId);
+      if (dmConv) {
+        this.server.to(`user_${dmConv.user_one_id}`).to(`user_${dmConv.user_two_id}`).emit('newDirectMessageNotification', message);
       }
 
       return { status: 'sent', messageId: message.id };
     } catch (error) {
-      this.logger.error(`Failed to send message: ${error.message}`);
+      this.logger.error(`Send DM failed: ${error.message}`);
       return { status: 'error', message: error.message };
     }
   }
 
-  @SubscribeMessage('editMessage')
-  async handleEditMessage(
+  @SubscribeMessage('editDirectMessage')
+  async handleEditDirectMessage(
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: { messageId: string; conversationId: string; content: string },
   ) {
     const userId = client.data.user.userId;
-    const updated = await this.messagingService.editMessage(userId, payload.messageId, payload.content);
-    this.server.to(`conv_${payload.conversationId}`).emit('messageUpdated', updated);
+    try {
+      const updated = await this.messagingService.editDirectMessage(userId, payload.messageId, payload.content);
+      this.server.to(`dm_${payload.conversationId}`).emit('directMessageUpdated', updated);
+    } catch (error) {
+      this.logger.error(`Edit DM failed: ${error.message}`);
+    }
   }
 
-  @SubscribeMessage('deleteMessage')
-  async handleDeleteMessage(
+  @SubscribeMessage('deleteDirectMessage')
+  async handleDeleteDirectMessage(
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: { messageId: string; conversationId: string },
   ) {
     const userId = client.data.user.userId;
-    await this.messagingService.deleteMessage(userId, payload.messageId);
-    this.server.to(`conv_${payload.conversationId}`).emit('messageDeleted', payload.messageId);
+    try {
+      await this.messagingService.deleteDirectMessage(userId, payload.messageId);
+      this.server.to(`dm_${payload.conversationId}`).emit('directMessageDeleted', payload.messageId);
+    } catch (error) {
+      this.logger.error(`Delete DM failed: ${error.message}`);
+    }
   }
 
-  @SubscribeMessage('reactToMessage')
-  async handleReactToMessage(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: { messageId: string; conversationId: string; emoji: string },
-  ) {
-    const userId = client.data.user.userId;
-    const result = await this.messagingService.reactToMessage(userId, payload.messageId, payload.emoji);
-    this.server.to(`conv_${payload.conversationId}`).emit('reactionUpdate', result);
-  }
-
-  /**
-   * Message Status
-   */
-
-  @SubscribeMessage('messageDelivered')
-  async handleMessageDelivered(
+  @SubscribeMessage('directMessageDelivered')
+  async handleDirectMessageDelivered(
     @ConnectedSocket() _client: Socket,
     @MessageBody() payload: { messageId: string; conversationId: string },
   ) {
-    await this.messagingService.updateMessageStatus(payload.messageId, 'delivered');
-    this.server.to(`conv_${payload.conversationId}`).emit('messageStatusUpdate', {
+    await this.messagingService.updateDirectMessageStatus(payload.messageId, 'delivered');
+    this.server.to(`dm_${payload.conversationId}`).emit('directMessageStatusUpdate', {
       messageId: payload.messageId,
       status: 'delivered',
     });
   }
 
-  @SubscribeMessage('markRead')
-  async handleMarkRead(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: { conversationId: string },
+  @SubscribeMessage('markDirectRead')
+  async handleMarkDirectRead(
+    @ConnectedSocket() _client: Socket,
+    @MessageBody() payload: { messageId: string; conversationId: string },
   ) {
-    const userId = client.data.user.userId;
-    const messageIds = await this.messagingService.markConversationRead(userId, payload.conversationId);
-    if (messageIds.length > 0) {
-      this.server.to(`conv_${payload.conversationId}`).emit('messagesRead', {
-        conversationId: payload.conversationId,
-        readBy: userId,
-        messageIds,
-      });
+    await this.messagingService.updateDirectMessageStatus(payload.messageId, 'read');
+    this.server.to(`dm_${payload.conversationId}`).emit('directMessageStatusUpdate', {
+      messageId: payload.messageId,
+      status: 'read',
+    });
+  }
+
+  // ==========================================
+  // GROUP MESSAGING
+  // ==========================================
+
+  @SubscribeMessage('sendGroupMessage')
+  async handleSendGroupMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { groupId: string; content: string; fileUrl?: string; replyToId?: string; entityMentions?: any[] },
+  ) {
+    const senderId = client.data.user.userId;
+    try {
+      const message = await this.messagingService.sendGroupMessage(senderId, payload.groupId, payload);
+      this.server.to(`group_${payload.groupId}`).emit('newGroupMessage', message);
+      return { status: 'sent', messageId: message.id };
+    } catch (error) {
+      this.logger.error(`Send Group Message failed: ${error.message}`);
+      return { status: 'error', message: error.message };
     }
   }
 
-  /**
-   * Typing Indicators
-   */
-
-  @SubscribeMessage('typing')
-  handleTyping(
+  @SubscribeMessage('editGroupMessage')
+  async handleEditGroupMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() payload: { conversationId: string; isTyping: boolean },
+    @MessageBody() payload: { messageId: string; groupId: string; content: string },
   ) {
     const userId = client.data.user.userId;
-    client.to(`conv_${payload.conversationId}`).emit('userTyping', {
-      userId,
-      isTyping: payload.isTyping,
-    });
+    try {
+      const updated = await this.messagingService.editGroupMessage(userId, payload.messageId, payload.content);
+      this.server.to(`group_${payload.groupId}`).emit('groupMessageUpdated', updated);
+    } catch (error) {
+      this.logger.error(`Edit Group Msg failed: ${error.message}`);
+    }
+  }
+
+  @SubscribeMessage('deleteGroupMessage')
+  async handleDeleteGroupMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { messageId: string; groupId: string },
+  ) {
+    const userId = client.data.user.userId;
+    try {
+      await this.messagingService.deleteGroupMessage(userId, payload.messageId);
+      this.server.to(`group_${payload.groupId}`).emit('groupMessageDeleted', payload.messageId);
+    } catch (error) {
+      this.logger.error(`Delete Group Msg failed: ${error.message}`);
+    }
   }
 }

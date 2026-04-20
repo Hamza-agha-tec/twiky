@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.module';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
@@ -63,6 +63,56 @@ export class UsersService {
         if (error) {
             throw new Error(`Failed to update settings: ${error.message}`);
         }
+        return data;
+    }
+
+    async followUser(followerId: string, followingId: string) {
+        if (followerId === followingId) {
+            throw new BadRequestException("You cannot follow yourself.");
+        }
+
+        const { data, error } = await this.supabaseService
+            .getClient()
+            .from('follows')
+            .insert({ follower_id: followerId, following_id: followingId })
+            .select()
+            .single();
+
+        if (error) throw new Error(`Failed to follow user: ${error.message}`);
+        return data;
+    }
+
+    async unfollowUser(followerId: string, followingId: string) {
+        const { error } = await this.supabaseService
+            .getClient()
+            .from('follows')
+            .delete()
+            .match({ follower_id: followerId, following_id: followingId });
+
+        if (error) throw new Error(`Failed to unfollow user: ${error.message}`);
+        return { success: true };
+    }
+
+    async getFollowers(userId: string) {
+        const { data, error } = await this.supabaseService
+            .getClient()
+            .from('follows')
+            // Using raw select here, client might need to adjust specific relationship alias based on Supabase generated types
+            .select('follower_id, users!follows_follower_id_fkey(id, username, avatar_url, bio)')
+            .eq('following_id', userId);
+
+        if (error) throw new Error(`Failed to get followers: ${error.message}`);
+        return data;
+    }
+
+    async getFollowing(userId: string) {
+        const { data, error } = await this.supabaseService
+            .getClient()
+            .from('follows')
+            .select('following_id, users!follows_following_id_fkey(id, username, avatar_url, bio)')
+            .eq('follower_id', userId);
+
+        if (error) throw new Error(`Failed to get following: ${error.message}`);
         return data;
     }
 
