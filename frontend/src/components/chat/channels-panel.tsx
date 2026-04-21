@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
   Archive,
   Bell,
@@ -15,7 +16,6 @@ import {
   Users,
   Volume2,
 } from 'lucide-react'
-
 import { CreateEntityDialog } from '@/components/chat/create-entity-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -757,7 +757,12 @@ export function ChannelsPanel({
 
   return (
     <>
-      <div className="hidden h-full w-[216px] flex-shrink-0 flex-col border-r border-border bg-[#060b14] lg:flex">
+      <motion.div
+        className="hidden h-full w-[216px] flex-shrink-0 flex-col border-r border-border bg-sidebar lg:flex"
+        initial={{ opacity: 0, x: -20 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.28, ease: 'easeOut' }}
+      >
         {/* Header */}
         <div className="border-b border-border px-3 py-3">
           <div className="flex items-center gap-2.5">
@@ -805,13 +810,19 @@ export function ChannelsPanel({
           </div>
 
           <div className="space-y-0.5">
-            {channel.groups.map((group) => {
+            {channel.groups.map((group, idx) => {
               const isActive = activeGroup === group.id
               const isDefault = group.label.toLowerCase() === 'general'
               const GroupIcon = group.kind === 'voice' ? Volume2 : Hash
 
               return (
-                <div key={group.id} className="group relative">
+                <motion.div
+                  key={group.id}
+                  className="group relative"
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: idx * 0.05, duration: 0.2, ease: 'easeOut' }}
+                >
                   <button
                     onClick={() => onSelectGroup?.(group.id)}
                     className={cn(
@@ -882,12 +893,12 @@ export function ChannelsPanel({
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                </div>
+                </motion.div>
               )
             })}
           </div>
         </div>
-      </div>
+      </motion.div>
 
       <CreateEntityDialog
         open={showCreateGroup}

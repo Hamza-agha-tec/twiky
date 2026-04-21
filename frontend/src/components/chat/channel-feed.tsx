@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
   ArrowLeft,
   Bookmark,
@@ -39,14 +39,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  type ChatMessage,
-  getConvDisplayName,
-  getDmContact,
-  useConversations,
-  useCreateConversation,
-} from '@/hooks/use-messaging'
-import { useContacts, useProfile } from '@/hooks/use-user'
+import { type ChatMessage } from '@/hooks/use-messaging'
+import { useProfile } from '@/hooks/use-user'
 import { getMockUserAvatar, getMockUserBanner } from '@/lib/mock-users'
 import { cn } from '@/lib/utils'
 
@@ -204,19 +198,6 @@ const ROLE_COLORS: Record<string, string> = {
 
 function normalizePersonName(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '')
-}
-
-function matchesAuthorName(author: string, ...candidates: Array<string | null | undefined>) {
-  const normalizedAuthor = normalizePersonName(author)
-  return candidates.some((candidate) => {
-    if (!candidate) return false
-    const normalizedCandidate = normalizePersonName(candidate)
-    return (
-      normalizedCandidate === normalizedAuthor ||
-      normalizedCandidate.startsWith(normalizedAuthor) ||
-      normalizedAuthor.startsWith(normalizedCandidate)
-    )
-  })
 }
 
 function buildFeedMemberProfile(post: FeedPost, avatarUrl: string | null, handle?: string | null): FeedMemberProfile {
@@ -810,9 +791,7 @@ export function FeedMemberProfileView({
   const [activeTab, setActiveTab] = useState<'activity' | 'articles' | 'projects' | 'saved'>('activity')
   const [isFollowing, setIsFollowing] = useState(false)
   const bannerImage = createMockProfileBanner(memberProfile)
-  const avatarImage = isOwn
-    ? memberProfile.avatarUrl ?? createMockProfileAvatar(memberProfile)
-    : createMockProfileAvatar(memberProfile)
+  const avatarImage = memberProfile.avatarUrl ?? createMockProfileAvatar(memberProfile)
 
   const allFeedPosts = Object.values(FEED_BY_GROUP).flat()
   const memberPosts = allFeedPosts.filter((p) => p.author === memberProfile.name)
@@ -826,7 +805,7 @@ export function FeedMemberProfileView({
   const roleColor = ROLE_COLORS[memberProfile.role] ?? 'text-primary'
 
   return (
-    <div className="flex flex-1 flex-col overflow-y-auto bg-[#060b14] text-white">
+    <div className="flex flex-1 flex-col overflow-y-auto bg-sidebar text-foreground">
       {/* Banner */}
       <div className="relative h-[118px] flex-shrink-0 overflow-hidden">
         <img src={bannerImage} alt="" className="h-full w-full object-cover" />
@@ -843,16 +822,21 @@ export function FeedMemberProfileView({
       </div>
 
       {/* Identity */}
-      <div className="px-4 pb-3">
+      <motion.div
+        className="px-4 pb-3"
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05, duration: 0.3, ease: 'easeOut' }}
+      >
         <div className="-mt-9 mb-2.5 flex items-end justify-between">
           <div className="relative">
-            <Avatar className="h-[68px] w-[68px] overflow-hidden rounded-full border-[3px] border-[#060b14] bg-[#1d2430] shadow-xl">
+            <Avatar className="h-[68px] w-[68px] overflow-hidden rounded-full border-[3px] border-sidebar bg-muted shadow-xl">
               <AvatarImage src={avatarImage} alt={memberProfile.name} className="h-full w-full rounded-full object-cover" />
-              <AvatarFallback className="rounded-full bg-[#1d2430] text-[18px] font-bold text-white">
+              <AvatarFallback className="rounded-full bg-muted text-[18px] font-bold text-foreground">
                 {memberProfile.name[0]?.toUpperCase() ?? 'U'}
               </AvatarFallback>
             </Avatar>
-            <span className="absolute bottom-0.5 right-0.5 h-[12px] w-[12px] rounded-full border-2 border-[#060b14] bg-emerald-400" />
+            <span className="absolute bottom-0.5 right-0.5 h-[12px] w-[12px] rounded-full border-2 border-sidebar bg-emerald-400" />
           </div>
 
           {!isOwn && showMessageAction ? (
@@ -861,7 +845,7 @@ export function FeedMemberProfileView({
                 type="button"
                 onClick={onMessage}
                 disabled={messagePending}
-                className="inline-flex h-7 items-center gap-1.5 rounded-md border border-slate-700 bg-transparent px-3 text-[11px] font-medium text-slate-300 transition-colors hover:border-slate-500 hover:text-white disabled:opacity-50"
+                className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-transparent px-3 text-[11px] font-medium text-muted-foreground transition-colors hover:border-border/60 hover:text-foreground disabled:opacity-50"
               >
                 <MessageSquare className="h-3 w-3" />
                 {messagePending ? 'Opening…' : 'Message'}
@@ -872,8 +856,8 @@ export function FeedMemberProfileView({
                 className={cn(
                   'inline-flex h-7 items-center gap-1.5 rounded-md px-3 text-[11px] font-medium transition-colors',
                   isFollowing
-                    ? 'border border-slate-700 bg-transparent text-slate-300 hover:border-slate-500 hover:text-white'
-                    : 'bg-white text-slate-900 hover:bg-slate-100',
+                    ? 'border border-border bg-transparent text-muted-foreground hover:text-foreground'
+                    : 'bg-foreground text-background hover:bg-foreground/90',
                 )}
               >
                 {isFollowing
@@ -885,34 +869,45 @@ export function FeedMemberProfileView({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-[19px] font-black leading-none tracking-tight text-white">{memberProfile.name}</h1>
+          <h1 className="text-[19px] font-black leading-none tracking-tight text-foreground">{memberProfile.name}</h1>
           <span className={cn(
-            'rounded-md border border-current/30 bg-black/30 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.1em]',
+            'rounded-md border border-current/30 bg-muted/50 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.1em]',
             roleColor,
           )}>
             {memberProfile.role}
           </span>
         </div>
-        <p className="mt-0.5 text-[11px] text-white/45">@{memberProfile.handle}</p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">@{memberProfile.handle}</p>
         <div className="mt-2 flex items-center gap-3.5 text-[11px]">
           <p>
-            <span className="font-bold text-white">{formatCompactCount(memberProfile.followers)}</span>
-            {' '}<span className="text-white/40">Followers</span>
+            <span className="font-bold text-foreground">{formatCompactCount(memberProfile.followers)}</span>
+            {' '}<span className="text-muted-foreground">Followers</span>
           </p>
           <p>
-            <span className="font-bold text-white">{formatCompactCount(memberProfile.following)}</span>
-            {' '}<span className="text-white/40">Following</span>
+            <span className="font-bold text-foreground">{formatCompactCount(memberProfile.following)}</span>
+            {' '}<span className="text-muted-foreground">Following</span>
           </p>
         </div>
-      </div>
+      </motion.div>
 
-      <div className="mx-4 h-px bg-slate-800/80" />
+      <motion.div
+        className="mx-4 h-px bg-border"
+        initial={{ scaleX: 0 }}
+        animate={{ scaleX: 1 }}
+        transition={{ delay: 0.12, duration: 0.3 }}
+        style={{ originX: 0 }}
+      />
 
       {/* About */}
-      <div className="px-4 py-3">
-        <p className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-500">About</p>
-        <p className="text-[11.5px] leading-[1.65] text-slate-300">{memberProfile.bio}</p>
-        <div className="mt-2.5 space-y-1.5 text-[11px] text-slate-500">
+      <motion.div
+        className="px-4 py-3"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.14, duration: 0.28, ease: 'easeOut' }}
+      >
+        <p className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">About</p>
+        <p className="text-[11.5px] leading-[1.65] text-foreground">{memberProfile.bio}</p>
+        <div className="mt-2.5 space-y-1.5 text-[11px] text-muted-foreground">
           <div className="flex items-center gap-1.5">
             <MapPin className="h-3 w-3 flex-shrink-0" />
             <span>Based in {memberProfile.location}</span>
@@ -922,16 +917,21 @@ export function FeedMemberProfileView({
               <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
               <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
             </svg>
-            <span className="truncate text-sky-400/80">twiky.studio/{memberProfile.handle}</span>
+            <span className="truncate text-primary/80">twiky.studio/{memberProfile.handle}</span>
           </div>
         </div>
-      </div>
+      </motion.div>
 
-      <div className="mx-4 h-px bg-slate-800/80" />
+      <div className="mx-4 h-px bg-border" />
 
       {/* Tabs */}
-      <div className="px-4 pt-3 pb-2.5">
-        <div className="flex items-center gap-0.5 rounded-xl border border-slate-800 bg-[#0c1422] p-1">
+      <motion.div
+        className="px-4 pt-3 pb-2.5"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.22, duration: 0.26, ease: 'easeOut' }}
+      >
+        <div className="flex items-center gap-0.5 rounded-xl border border-border bg-card p-1">
           {([
             { id: 'activity' as const, label: 'Activity' },
             { id: 'projects' as const, label: 'Projects' },
@@ -947,8 +947,8 @@ export function FeedMemberProfileView({
                 className={cn(
                   'flex-1 rounded-lg py-1.5 text-[9.5px] font-semibold transition-colors',
                   isActive
-                    ? 'bg-sky-500 text-slate-950'
-                    : 'text-slate-400 hover:bg-slate-700/40 hover:text-white',
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                 )}
               >
                 {tab.label}
@@ -956,50 +956,62 @@ export function FeedMemberProfileView({
             )
           })}
         </div>
-      </div>
+      </motion.div>
 
       {/* Tab content */}
       <div className="flex-1 px-4 pb-4">
+        <AnimatePresence mode="wait">
         {activeTab === 'activity' ? (
-          <div className="space-y-2">
-            {featuredPosts.map((post) => {
+          <motion.div
+            key="activity"
+            className="space-y-2"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+          >
+            {featuredPosts.map((post, idx) => {
               const reactionsCount = post.reactions.reduce((t, r) => t + r.count, 0)
               const shareCount = Math.max(1, Math.round((reactionsCount + post.replyCount) / 3))
               const mediaSource = post.media?.[0]?.src ?? post.imageUrl
 
               return (
-                <article
+                <motion.article
                   key={post.id}
-                  className="overflow-hidden rounded-xl border border-slate-800 bg-[#0c1422] transition-colors hover:border-slate-700"
+                  className="overflow-hidden rounded-xl border border-border bg-card transition-colors hover:border-border/60"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.07, duration: 0.22, ease: 'easeOut' }}
+                  whileHover={{ scale: 1.012 }}
                 >
                   <div className="p-2.5 pb-2">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex min-w-0 items-center gap-2">
-                        <Avatar className="h-6 w-6 flex-shrink-0 rounded-full border border-slate-700 bg-[#0f1726]">
+                        <Avatar className="h-6 w-6 flex-shrink-0 rounded-full border border-border bg-muted">
                           <AvatarImage src={avatarImage} alt={memberProfile.name} className="h-full w-full rounded-full object-cover" />
-                          <AvatarFallback className="rounded-full bg-[#1d2430] text-[9px] font-bold text-white">
+                          <AvatarFallback className="rounded-full bg-muted text-[9px] font-bold text-foreground">
                             {memberProfile.name[0]?.toUpperCase() ?? 'U'}
                           </AvatarFallback>
                         </Avatar>
                         <div className="min-w-0">
-                          <p className="text-[11px] font-semibold leading-none text-white">
+                          <p className="text-[11px] font-semibold leading-none text-foreground">
                             {memberProfile.name}{' '}
-                            <span className="font-normal text-slate-400">posted an update</span>
+                            <span className="font-normal text-muted-foreground">posted an update</span>
                           </p>
-                          <p className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.06em] text-slate-500">
+                          <p className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                             {formatProfileTime(post.time)}
                           </p>
                         </div>
                       </div>
-                      <button type="button" className="text-slate-500 transition-colors hover:text-slate-300">
+                      <button type="button" className="text-muted-foreground transition-colors hover:text-foreground">
                         <MoreHorizontal className="h-3.5 w-3.5" />
                       </button>
                     </div>
-                    <p className="mt-1.5 text-[11px] leading-[1.6] text-slate-300">{post.body}</p>
+                    <p className="mt-1.5 text-[11px] leading-[1.6] text-foreground">{post.body}</p>
                   </div>
 
                   {mediaSource ? (
-                    <div className="mx-2.5 mb-2 overflow-hidden rounded-[8px] border border-slate-700/80">
+                    <div className="mx-2.5 mb-2 overflow-hidden rounded-[8px] border border-border">
                       <div className="relative h-[84px] w-full">
                         <Image src={mediaSource} alt={post.media?.[0]?.alt ?? 'Activity'} fill unoptimized sizes="340px" className="object-cover" />
                       </div>
@@ -1012,53 +1024,67 @@ export function FeedMemberProfileView({
                     </div>
                   )}
 
-                  <div className="flex items-center gap-3 border-t border-slate-800 px-2.5 py-1.5 text-[10px] text-slate-500">
-                    <button type="button" className="inline-flex items-center gap-1 transition-colors hover:text-slate-300">
+                  <div className="flex items-center gap-3 border-t border-border px-2.5 py-1.5 text-[10px] text-muted-foreground">
+                    <button type="button" className="inline-flex items-center gap-1 transition-colors hover:text-foreground">
                       <Heart className="h-3 w-3" />{reactionsCount}
                     </button>
-                    <button type="button" className="inline-flex items-center gap-1 transition-colors hover:text-slate-300">
+                    <button type="button" className="inline-flex items-center gap-1 transition-colors hover:text-foreground">
                       <MessageCircle className="h-3 w-3" />{post.replyCount}
                     </button>
-                    <button type="button" className="inline-flex items-center gap-1 transition-colors hover:text-slate-300">
+                    <button type="button" className="inline-flex items-center gap-1 transition-colors hover:text-foreground">
                       <Share2 className="h-3 w-3" />{shareCount}
                     </button>
-                    <button type="button" className="ml-auto inline-flex items-center gap-1 transition-colors hover:text-slate-300">
+                    <button type="button" className="ml-auto inline-flex items-center gap-1 transition-colors hover:text-foreground">
                       <Bookmark className="h-3 w-3" />Save
                     </button>
                   </div>
-                </article>
+                </motion.article>
               )
             })}
 
-            <article className="overflow-hidden rounded-xl border border-slate-800 bg-[#0c1422] p-2.5 transition-colors hover:border-slate-700">
+            <motion.article
+              className="overflow-hidden rounded-xl border border-border bg-card p-2.5 transition-colors hover:border-border/60"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: featuredPosts.length * 0.07, duration: 0.22, ease: 'easeOut' }}
+              whileHover={{ scale: 1.012 }}
+            >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <span className="inline-block rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.1em] text-sky-300">
+                  <span className="inline-block rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.1em] text-primary">
                     New Project
                   </span>
-                  <p className="mt-1.5 text-[12px] font-bold leading-snug text-white">{projectTitle}</p>
-                  <p className="mt-0.5 text-[10.5px] leading-[1.6] text-slate-400">
+                  <p className="mt-1.5 text-[12px] font-bold leading-snug text-foreground">{projectTitle}</p>
+                  <p className="mt-0.5 text-[10.5px] leading-[1.6] text-muted-foreground">
                     {projectBody}. Compact information hierarchies.
                   </p>
                 </div>
-                <span className="flex-shrink-0 text-[9px] text-slate-500">Yesterday</span>
+                <span className="flex-shrink-0 text-[9px] text-muted-foreground">Yesterday</span>
               </div>
-            </article>
-          </div>
+            </motion.article>
+          </motion.div>
         ) : (
-          <div className="rounded-xl border border-slate-800 bg-[#0c1422] p-3.5">
-            <p className="text-[12px] font-semibold text-white">
+          <motion.div
+            key={activeTab}
+            className="rounded-xl border border-border bg-card p-3.5"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+          >
+            <p className="text-[12px] font-semibold text-foreground">
               {activeTab === 'projects' ? 'Projects' : activeTab === 'articles' ? 'Articles' : 'Saved'}
             </p>
-            <p className="mt-1.5 text-[11px] leading-[1.75] text-slate-400">
+            <p className="mt-1.5 text-[11px] leading-[1.75] text-muted-foreground">
               {activeTab === 'projects'
                 ? memberProfile.focus
                 : activeTab === 'articles'
                   ? memberProfile.bio
                   : 'Pinned references and useful items will appear here.'}
             </p>
-          </div>
+          </motion.div>
         )}
+        </AnimatePresence>
       </div>
     </div>
   )
@@ -1238,6 +1264,9 @@ export function ChannelFeed({
   channel,
   group,
   myAvatarUrl,
+  postsOverride,
+  onSendPost,
+  sendingPost = false,
   onOpenDirectConversation,
   onProfilePanelWidthChange,
   onProfileSidebarContentChange,
@@ -1246,6 +1275,9 @@ export function ChannelFeed({
   channel: WorkspaceChannel
   group: MockChannelGroup
   myAvatarUrl?: string | null
+  postsOverride?: FeedPost[]
+  onSendPost?: (input: { content: string; fileUrl?: string; replyToId?: string }) => Promise<void>
+  sendingPost?: boolean
   onOpenDirectConversation?: (conversation: string | FeedDirectConversationTarget) => void
   onProfilePanelWidthChange?: (width: number) => void
   onProfileSidebarContentChange?: (content: ReactNode | null) => void
@@ -1260,19 +1292,15 @@ export function ChannelFeed({
   const [selectedProfile, setSelectedProfile] = useState<FeedProfileSelection | null>(null)
 
   const { data: profile } = useProfile()
-  const { data: contacts = [] } = useContacts()
-  const { data: conversations = [] } = useConversations()
-  const createConversation = useCreateConversation()
 
   const imageInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const posts = postsByGroup[group.id] ?? buildFallbackPosts(channel, group)
+  const posts = postsByGroup[group.id] ?? postsOverride ?? buildFallbackPosts(channel, group)
   const draft = drafts[group.id] ?? ''
   const draftImage = draftImages[group.id]
   const draftAttachment = draftAttachments[group.id]
   const selectedPost = contextMenu ? posts.find((p) => p.id === contextMenu.postId) ?? null : null
-  const myId = profile?.id ?? ''
   const profilePanelWidth = selectedProfile ? 360 : 0
   const profilePosts = selectedProfile
     ? Object.values({ ...postsByGroup, [group.id]: posts })
@@ -1285,6 +1313,11 @@ export function ChannelFeed({
   useEffect(() => {
     setSelectedProfile(null)
   }, [group.id])
+
+  useEffect(() => {
+    if (!postsOverride) return
+    setPostsByGroup((prev) => ({ ...prev, [group.id]: postsOverride }))
+  }, [group.id, postsOverride])
 
   useEffect(() => {
     onProfilePanelWidthChange?.(profilePanelWidth)
@@ -1304,14 +1337,13 @@ export function ChannelFeed({
         currentGroupLabel={group.kind === 'voice' ? group.label : `#${group.label}`}
         isOwn={!!selectedProfile.post.isOwn}
         memberProfile={selectedProfile.profile}
-        messagePending={createConversation.isPending}
+        messagePending={false}
         onBack={() => setSelectedProfile(null)}
         onMessage={() => handleMessageAuthor(selectedProfile.post, selectedProfile.profile)}
         posts={profilePosts}
       />,
     )
   }, [
-    createConversation.isPending,
     group.kind,
     group.label,
     onProfileSidebarContentChange,
@@ -1331,26 +1363,6 @@ export function ChannelFeed({
     return () => onProfileCloseRequestChange?.(null)
   }, [onProfileCloseRequestChange])
 
-  function findAuthorContact(author: string) {
-    return contacts.find((contact) => matchesAuthorName(author, contact.nickname, contact.username)) ?? null
-  }
-
-  function findAuthorConversation(author: string, contactId?: string | null) {
-    return conversations.find((conversation) => {
-      if (conversation.is_group) return false
-      if (contactId && conversation.participants.some((participant) => participant.user.id === contactId)) {
-        return true
-      }
-
-      const dmContact = getDmContact(conversation, myId)
-      return matchesAuthorName(
-        author,
-        getConvDisplayName(conversation, myId, contacts),
-        dmContact?.username,
-      )
-    }) ?? null
-  }
-
   function getAuthorContext(post: FeedPost) {
     if (post.isOwn) {
       return {
@@ -1359,16 +1371,11 @@ export function ChannelFeed({
       }
     }
 
-    const matchedContact = findAuthorContact(post.author)
-    const matchedConversation = findAuthorConversation(post.author, matchedContact?.id)
-    const dmContact = matchedConversation ? getDmContact(matchedConversation, myId) : null
-
     return {
       canMessage: true,
       profile: buildFeedMemberProfile(
         post,
-        matchedContact?.avatar_url ?? dmContact?.avatar_url ?? null,
-        matchedContact?.username ?? dmContact?.username ?? null,
+        createMockProfileAvatar(buildFeedMemberProfile(post, null)),
       ),
     }
   }
@@ -1412,27 +1419,7 @@ export function ChannelFeed({
   }
 
   function handleMessageAuthor(post: FeedPost, memberProfile: FeedMemberProfile) {
-    const matchedContact = findAuthorContact(post.author)
-    const matchedConversation = findAuthorConversation(post.author, matchedContact?.id)
-
-    if (matchedConversation) {
-      onOpenDirectConversation?.(matchedConversation.id)
-      return
-    }
-
-    if (!matchedContact || createConversation.isPending) {
-      onOpenDirectConversation?.(buildSyntheticConversationTarget(post, memberProfile))
-      return
-    }
-
-    createConversation.mutate(
-      { participantIds: [matchedContact.id] },
-      {
-        onSuccess: (conversation) => {
-          onOpenDirectConversation?.(conversation.id)
-        },
-      },
-    )
+    onOpenDirectConversation?.(buildSyntheticConversationTarget(post, memberProfile))
   }
 
   function setDraft(value: string) {
@@ -1470,9 +1457,22 @@ export function ChannelFeed({
     e.target.value = ''
   }
 
-  function sendDraft() {
+  async function sendDraft() {
     const body = draft.trim()
     if (!body && !draftImage && !draftAttachment) return
+
+    if (onSendPost) {
+      await onSendPost({
+        content: body,
+        fileUrl: draftAttachment?.src,
+        replyToId: undefined,
+      })
+      setDraft('')
+      setDraftImage(undefined)
+      setAttachment(undefined)
+      setReplyingTo(null)
+      return
+    }
 
     const post: FeedPost = {
       id: `${group.id}-${Date.now()}`,
@@ -1712,7 +1712,7 @@ export function ChannelFeed({
                 <Button
                   type="button"
                   onClick={sendDraft}
-                  disabled={!canSend}
+                  disabled={!canSend || sendingPost}
                   size="icon"
                   className="h-8 w-8 rounded-lg"
                 >

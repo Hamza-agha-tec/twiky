@@ -1,6 +1,7 @@
 'use client'
 
 import { type ReactNode, useState, useEffect } from 'react'
+import { motion } from 'framer-motion'
 import {
   BriefcaseBusiness,
   CalendarDays,
@@ -134,17 +135,24 @@ const SHOWCASE_ITEMS = [
 function ProfileSection({
   children,
   label,
+  delay = 0,
 }: {
   children: ReactNode
   label: string
+  delay?: number
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-background/70 p-4">
+    <motion.div
+      className="rounded-2xl border border-border bg-background/70 p-4"
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay, duration: 0.26, ease: 'easeOut' }}
+    >
       <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
         {label}
       </p>
       <div className="mt-3">{children}</div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -180,9 +188,14 @@ export function ProfileView({ profile }: ProfileViewProps) {
   )
 
   return (
-    <div className="flex min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top_left,rgba(146,220,229,0.18),transparent_35%),linear-gradient(180deg,rgba(2,6,23,0.03),transparent_28%)]">
+    <div className="flex min-h-0 flex-1 overflow-y-auto bg-background">
       <div className="mx-auto w-full max-w-6xl px-4 py-4">
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.14fr)_340px]">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.32, ease: 'easeOut' }}
+          >
           <Card className="overflow-hidden rounded-[30px] border-border bg-sidebar shadow-none">
             <div className="relative h-12 overflow-hidden">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(146,220,229,0.75),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(125,211,252,0.3),_transparent_25%),linear-gradient(135deg,#0f172a_0%,#12335b_40%,#0077b6_100%)]">
@@ -277,11 +290,11 @@ export function ProfileView({ profile }: ProfileViewProps) {
 
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
                   <div className="space-y-4">
-                    <ProfileSection label="About Me">
+                    <ProfileSection label="About Me" delay={0.18}>
                       <p className="text-[12px] leading-6 text-foreground">{saved.bio}</p>
                     </ProfileSection>
 
-                    <ProfileSection label="Current Focus">
+                    <ProfileSection label="Current Focus" delay={0.24}>
                       <div className="grid gap-3 md:grid-cols-3">
                         {FOCUS_ITEMS.map((item) => (
                           <div
@@ -302,7 +315,7 @@ export function ProfileView({ profile }: ProfileViewProps) {
                       </div>
                     </ProfileSection>
 
-                    <ProfileSection label="Room Rollout">
+                    <ProfileSection label="Room Rollout" delay={0.30}>
                       <div className="space-y-3">
                         {SHOWCASE_ITEMS.map((item) => (
                           <div
@@ -327,7 +340,7 @@ export function ProfileView({ profile }: ProfileViewProps) {
                   </div>
 
                   <div className="space-y-4">
-                    <ProfileSection label="User Info">
+                    <ProfileSection label="User Info" delay={0.2}>
                       <div className="space-y-2.5">
                         {profileDetails.map((item) => (
                           <div
@@ -350,7 +363,7 @@ export function ProfileView({ profile }: ProfileViewProps) {
                       </div>
                     </ProfileSection>
 
-                    <ProfileSection label="Profile Frame">
+                    <ProfileSection label="Profile Frame" delay={0.28}>
                       <div className="space-y-3">
                         <div className="rounded-2xl border border-border bg-muted/25 px-3 py-3">
                           <p className="text-[12px] font-semibold text-foreground">
@@ -375,8 +388,14 @@ export function ProfileView({ profile }: ProfileViewProps) {
               </div>
             </CardContent>
           </Card>
+          </motion.div>
 
-          <div className="space-y-4">
+          <motion.div
+            className="space-y-4"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.12, duration: 0.32, ease: 'easeOut' }}
+          >
             <Card className="overflow-hidden rounded-[30px] border-border bg-sidebar shadow-none">
               <CardContent className="p-4">
                 <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
@@ -434,7 +453,7 @@ export function ProfileView({ profile }: ProfileViewProps) {
                 </div>
               </CardContent>
             </Card>
-          </div>
+          </motion.div>
         </div>
       </div>
 

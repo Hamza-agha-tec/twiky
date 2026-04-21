@@ -8,10 +8,9 @@ import { Search, Phone, Video, MoreVertical } from 'lucide-react';
 import type { Message } from '@/lib/mock-data';
 import { MessageBubble } from './message-bubble';
 import { Composer } from './composer';
-import { format, formatDistanceToNowStrict } from 'date-fns';
-import { ChatMessage, useConversations, getConvDisplayName, getConversationAvatar, getDmContact } from '@/hooks/use-messaging';
-import { useProfile, useContacts } from '@/hooks/use-user';
-import { useOnlineUsers, useLastSeen } from '@/hooks/use-socket';
+import { format } from 'date-fns';
+import { ChatMessage } from '@/hooks/use-messaging';
+import { useProfile } from '@/hooks/use-user';
 import { useChatThemeContext } from '@/context/ChatThemeContext';
 import { getMockUserAvatar } from '@/lib/mock-users';
 
@@ -41,6 +40,10 @@ interface ReplyTo {
 
 function buildFallbackAvatar(name: string) {
   return getMockUserAvatar(name);
+}
+
+function getDisabledConversationMetadata(): { is_group: boolean; participants: unknown[] } | null {
+  return null;
 }
 
 function toUiMessage(m: ChatMessage, myId: string): Message {
@@ -73,13 +76,10 @@ function toUiMessage(m: ChatMessage, myId: string): Message {
   };
 }
 
-export function ChatWindow({ activeChat, chatOverride, messages: providedMessages = [], onSendMessage, onTyping, otherIsTyping = false, onReact, onDelete, onProfileClick }: ChatWindowProps) {
+export function ChatWindow({ chatOverride, messages: providedMessages = [], onSendMessage, onTyping, otherIsTyping = false, onReact, onDelete, onProfileClick }: ChatWindowProps) {
   const { data: profile } = useProfile();
-  const { data: contacts = [] } = useContacts();
-  const { data: conversations = [] } = useConversations();
-  const onlineUsers = useOnlineUsers();
   const { resolved: chatTheme } = useChatThemeContext();
-  const conv = conversations.find((c) => c.id === activeChat);
+  const conv = getDisabledConversationMetadata();
   const messages = providedMessages
     .slice()
     .reverse()
@@ -101,12 +101,8 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
   }, [messages.length]);
 
 
-  const chatName = conv
-    ? getConvDisplayName(conv, profile?.id ?? '', contacts)
-    : chatOverride?.name ?? 'Chat';
-  const chatAvatar = conv
-    ? getConversationAvatar(conv, profile?.id ?? '', contacts) ?? undefined
-    : chatOverride?.avatarUrl ?? undefined;
+  const chatName = chatOverride?.name ?? 'Chat';
+  const chatAvatar = chatOverride?.avatarUrl ?? undefined;
   const resolvedChatAvatar = chatAvatar || buildFallbackAvatar(chatName);
   const initials = chatName
     .split(' ')
@@ -115,15 +111,8 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
     .toUpperCase()
     .slice(0, 2);
 
-  const dmContact = conv && !conv.is_group ? getDmContact(conv, profile?.id ?? '') : null;
-  const isOnline = chatOverride?.isOnline ?? (dmContact ? onlineUsers.has(dmContact.id) : false);
-  const lastSeenTs = useLastSeen(dmContact?.id ?? null);
-
-  const lastSeenLabel = (() => {
-    if (!lastSeenTs) return null;
-    return `Last seen ${formatDistanceToNowStrict(new Date(lastSeenTs))} ago`;
-  })();
-  const chatSubtitle = chatOverride?.subtitle ?? lastSeenLabel;
+  const isOnline = chatOverride?.isOnline ?? false;
+  const chatSubtitle = chatOverride?.subtitle ?? null;
 
   const groupedMessages = messages.reduce(
     (acc, message) => {

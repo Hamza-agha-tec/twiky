@@ -1,29 +1,24 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { userApi } from '@/lib/user-api';
+import {
+  type FollowerRecord,
+  type FollowingRecord,
+  type UserPost,
+  type UserProfile,
+  userApi,
+} from '@/lib/user-api';
 
 export const USER_KEYS = {
   profile: ['user', 'profile'] as const,
   settings: ['user', 'settings'] as const,
-  contacts: ['user', 'contacts'] as const,
+  followers: (userId: string) => ['user', userId, 'followers'] as const,
+  following: (userId: string) => ['user', userId, 'following'] as const,
+  posts: (userId: string) => ['user', userId, 'posts'] as const,
 };
 
-export interface Contact {
-  id: string;
-  nickname: string | null;
-  username: string | null;
-  avatar_url: string | null;
-  phone_number: string | null;
-  is_blocked: boolean;
-  is_archived: boolean;
-  is_favorite: boolean;
-  is_pinned: boolean;
-  is_muted: boolean;
-}
-
 export function useProfile() {
-  return useQuery({
+  return useQuery<UserProfile>({
     queryKey: USER_KEYS.profile,
     queryFn: userApi.getProfile,
   });
@@ -46,34 +41,27 @@ export function useSettings() {
   });
 }
 
-export function useContacts() {
-  return useQuery<Contact[]>({
-    queryKey: USER_KEYS.contacts,
-    queryFn: userApi.getContacts,
+export function useUserFollowers(userId?: string) {
+  return useQuery<FollowerRecord[]>({
+    queryKey: userId ? USER_KEYS.followers(userId) : ['user', 'followers', 'missing'],
+    queryFn: () => userApi.getFollowers(userId!),
+    enabled: Boolean(userId),
   });
 }
 
-export function useAddContact() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: userApi.addContact,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: USER_KEYS.contacts }),
+export function useUserFollowing(userId?: string) {
+  return useQuery<FollowingRecord[]>({
+    queryKey: userId ? USER_KEYS.following(userId) : ['user', 'following', 'missing'],
+    queryFn: () => userApi.getFollowing(userId!),
+    enabled: Boolean(userId),
   });
 }
 
-export function useUpdateContact() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: userApi.updateContact,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: USER_KEYS.contacts }),
-  });
-}
-
-export function useDeleteContact() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: userApi.deleteContact,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: USER_KEYS.contacts }),
+export function useUserPosts(userId?: string) {
+  return useQuery<UserPost[]>({
+    queryKey: userId ? USER_KEYS.posts(userId) : ['user', 'posts', 'missing'],
+    queryFn: () => userApi.getUserPosts(userId!),
+    enabled: Boolean(userId),
   });
 }
 

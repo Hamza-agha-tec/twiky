@@ -107,7 +107,7 @@ export function StoryViewerScreen({
                   </div>
                   <div className="hidden rounded-full bg-black/20 px-3 py-1.5 text-xs text-white/80 backdrop-blur-sm sm:flex sm:items-center sm:gap-1.5">
                     <Eye className="h-3.5 w-3.5" />
-                    {activeStory.isOwn ? 'Seen by contacts' : 'Watching'}
+                    {activeStory.isOwn ? 'Seen by followers' : 'Watching'}
                   </div>
                 </div>
               </div>

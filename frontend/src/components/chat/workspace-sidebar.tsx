@@ -1,11 +1,10 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   ChevronLeft,
   ChevronRight,
-  ContactRound,
   Hash,
   ListTodo,
   MessageSquare,
@@ -19,19 +18,9 @@ import {
 import { CreateEntityDialog } from '@/components/chat/create-entity-dialog'
 import { type WorkspaceChannel } from '@/components/chat/channels-panel'
 import { ConversationContextMenu } from '@/components/chat/conversation-context-menu'
-import { EditContactModal } from '@/components/chat/edit-contact-modal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  type Conversation,
-  getConvDisplayName,
-  getConversationAvatar,
-  useConversations,
-  useCreateConversation,
-} from '@/hooks/use-messaging'
-import { useContacts, useProfile } from '@/hooks/use-user'
-import { useOnlineUsers } from '@/hooks/use-socket'
 import { Chat } from '@/lib/mock-data'
 import { getMockUserAvatar } from '@/lib/mock-users'
 import { cn } from '@/lib/utils'
@@ -90,17 +79,6 @@ const CHANNEL_TONES = [
   'from-fuchsia-500 via-violet-500 to-indigo-600',
 ]
 
-type ReactionPreviewMessage =
-  | (NonNullable<Conversation['last_message']> & {
-      _reactionPreview?: {
-        emoji?: string
-        messageSenderId: string
-        messageType: string
-        reactorId: string
-      }
-    })
-  | null
-
 function getChannelMonogram(label: string) {
   const words = label.split(/\s+/).filter(Boolean)
 
@@ -152,118 +130,10 @@ export function WorkspaceSidebar({
   const [deleted, setDeleted] = useState<Set<string>>(new Set())
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [showCreateChannel, setShowCreateChannel] = useState(false)
-  const [editContact, setEditContact] = useState<{ id: string; nickname: string } | null>(null)
-
-  const { data: profile } = useProfile()
-  const { data: contacts = [] } = useContacts()
-  const { data: conversations = [], isLoading: convsLoading } = useConversations()
-  const createConversation = useCreateConversation()
-  const onlineUsers = useOnlineUsers()
 
   const isSearching = searchQuery.trim().length > 0
 
-  const filteredContacts = useMemo(() => {
-    if (!isSearching) return []
-    const query = searchQuery.toLowerCase()
-    return contacts.filter((contact) =>
-      (contact.nickname ?? contact.username ?? '').toLowerCase().includes(query) ||
-      (contact.phone_number ?? '').includes(query),
-    )
-  }, [contacts, isSearching, searchQuery])
-
-  async function handleContactClick(contactId: string) {
-    const existing = conversations.find(
-      (conversation) =>
-        !conversation.is_group &&
-        conversation.participants.some((participant) => participant.user.id === contactId),
-    )
-
-    if (existing) {
-      onSelectChat(existing.id)
-      onSearchChange('')
-      return
-    }
-
-    createConversation.mutate(
-      { participantIds: [contactId] },
-      {
-        onSuccess: (conversation) => {
-          onSelectChat(conversation.id)
-          onSearchChange('')
-        },
-      },
-    )
-  }
-
-  const formatLastMessage = useCallback((
-    message: ReactionPreviewMessage,
-    myId: string,
-    participants?: { user: { id: string; username: string } }[],
-  ): string => {
-    if (!message) return ''
-
-    if (message._reactionPreview) {
-      const { emoji, reactorId, messageType, messageSenderId } = message._reactionPreview
-      if (!emoji) return ''
-
-      const reactorIsMe = reactorId === myId
-      const messageIsMine = messageSenderId === myId
-      const reactorUsername = participants?.find(
-        (participant) => participant.user.id === reactorId,
-      )?.user.username
-      const who = reactorIsMe ? 'You' : (reactorUsername ?? 'Someone')
-      const target = messageIsMine ? 'your' : 'their'
-      const contentLabel =
-        messageType === 'image'
-          ? `${target} photo`
-          : messageType === 'voice'
-            ? `${target} voice note`
-            : messageType === 'file'
-              ? `${target} file`
-              : 'a message'
-
-      return `${who} reacted ${emoji} to ${contentLabel}`
-    }
-
-    const isOwn = message.sender?.id === myId
-    const prefix = isOwn ? 'You: ' : ''
-
-    if (message.type === 'image') return `${prefix}Photo`
-    if (message.type === 'file') return `${prefix}File`
-    if (message.type === 'voice') return `${prefix}Voice note`
-
-    return `${prefix}${message.content ?? ''}`
-  }, [])
-
   const directChats = useMemo<SidebarChat[]>(() => {
-    const backendChats = conversations
-      .filter((conversation) => !conversation.is_group && !deleted.has(conversation.id))
-      .map((conversation) => {
-        const participant = conversation.participants.find(
-          (item) => item.user.id !== (profile?.id ?? ''),
-        )?.user
-
-        return {
-          id: conversation.id,
-          name: getConvDisplayName(conversation, profile?.id ?? '', contacts),
-          avatar: resolveConversationAvatar(
-            getConvDisplayName(conversation, profile?.id ?? '', contacts),
-            getConversationAvatar(conversation, profile?.id ?? '', contacts),
-          ),
-          lastMessage: formatLastMessage(
-            conversation.last_message,
-            profile?.id ?? '',
-            conversation.participants,
-          ),
-          timestamp: conversation.last_message_at ?? conversation.created_at,
-          unread: unreadCounts[conversation.id] ?? 0,
-          isGroup: false,
-          isPinned: chatMeta[conversation.id]?.isPinned ?? false,
-          isMuted: chatMeta[conversation.id]?.isMuted ?? false,
-          isOnline: participant ? onlineUsers.has(participant.id) : false,
-        } satisfies SidebarChat
-      })
-
     const localChats = syntheticDirectChats
       .filter((chat) => !deleted.has(chat.id))
       .map((chat) => ({
@@ -275,23 +145,22 @@ export function WorkspaceSidebar({
         unread: unreadCounts[chat.id] ?? chat.unread ?? 0,
       }))
 
-    return [...backendChats, ...localChats]
+    return localChats
       .filter((chat, index, items) => items.findIndex((candidate) => candidate.id === chat.id) === index)
       .sort((a, b) => {
         if (b.isPinned !== a.isPinned) return (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0)
         return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
       })
-  }, [
-    chatMeta,
-    contacts,
-    conversations,
-    deleted,
-    formatLastMessage,
-    onlineUsers,
-    profile,
-    syntheticDirectChats,
-    unreadCounts,
-  ])
+  }, [chatMeta, deleted, syntheticDirectChats, unreadCounts])
+
+  const visibleDirectChats = useMemo(() => {
+    if (!isSearching) return directChats
+    const query = searchQuery.toLowerCase()
+    return directChats.filter((chat) =>
+      chat.name.toLowerCase().includes(query) ||
+      chat.lastMessage.toLowerCase().includes(query),
+    )
+  }, [directChats, isSearching, searchQuery])
 
   const handleContextMenu = (event: React.MouseEvent, chat: SidebarChat) => {
     event.preventDefault()
@@ -462,53 +331,8 @@ export function WorkspaceSidebar({
             </div>
 
             <div className="flex-1 overflow-y-auto px-2.5 py-2">
-              {isSearching ? (
-                filteredContacts.length > 0 ? (
-                  <>
-                    <p className="px-2 pb-2 pt-1 text-[10px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">
-                      Contacts
-                    </p>
-                    {filteredContacts.map((contact) => (
-                      <button
-                        key={contact.id}
-                        onClick={() => handleContactClick(contact.id)}
-                        disabled={createConversation.isPending}
-                        className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-accent"
-                      >
-                        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-[12px] font-semibold text-primary">
-                          {(contact.nickname ?? contact.username ?? '?')[0].toUpperCase()}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[12px] font-medium text-foreground">
-                            {contact.nickname ?? contact.username}
-                          </p>
-                          <p className="truncate text-[11px] text-muted-foreground">
-                            {contact.phone_number}
-                          </p>
-                        </div>
-                      </button>
-                    ))}
-                  </>
-                ) : (
-                  <div className="flex h-32 flex-col items-center justify-center text-center text-muted-foreground">
-                    <ContactRound className="mb-2 h-7 w-7 opacity-40" />
-                    <p className="text-[12px]">No matching contacts</p>
-                  </div>
-                )
-              ) : convsLoading ? (
-                <div className="space-y-1.5">
-                  {[...Array(6)].map((_, index) => (
-                    <div key={index} className="flex items-center gap-2.5 rounded-xl px-2.5 py-2">
-                      <div className="h-8 w-8 animate-pulse rounded-xl bg-muted" />
-                      <div className="flex-1 space-y-1.5">
-                        <div className="h-2.5 w-1/2 animate-pulse rounded bg-muted" />
-                        <div className="h-2 w-2/3 animate-pulse rounded bg-muted" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : directChats.length > 0 ? (
-                directChats.map((chat, index) => (
+              {visibleDirectChats.length > 0 ? (
+                visibleDirectChats.map((chat, index) => (
                   <motion.button
                     key={chat.id}
                     initial={{ opacity: 0, x: -8 }}
@@ -561,7 +385,9 @@ export function WorkspaceSidebar({
               ) : (
                 <div className="flex h-40 flex-col items-center justify-center text-center text-muted-foreground">
                   <MessageSquare className="mb-3 h-8 w-8 opacity-35" />
-                  <p className="text-[12px]">No direct messages yet</p>
+                  <p className="text-[12px]">
+                    {isSearching ? 'No feed direct messages found' : 'Open a user from a channel feed'}
+                  </p>
                 </div>
               )}
             </div>
@@ -585,7 +411,7 @@ export function WorkspaceSidebar({
             <div className="space-y-1.5">
               {channels.map((channel) => {
                 const isActive = activeChannelId === channel.id
-                const storedAvatar = channelAssets[channel.id]?.avatar ?? null
+                const storedAvatar = channelAssets[channel.id]?.avatar ?? channel.avatarUrl ?? null
 
                 return (
                   <button
@@ -651,7 +477,7 @@ export function WorkspaceSidebar({
             <div className="flex flex-col items-center gap-2">
               {channels.map((channel) => {
                 const isActive = activeChannelId === channel.id
-                const storedAvatar = channelAssets[channel.id]?.avatar ?? null
+                const storedAvatar = channelAssets[channel.id]?.avatar ?? channel.avatarUrl ?? null
 
                 return (
                   <button
@@ -717,14 +543,6 @@ export function WorkspaceSidebar({
             }
             onBlock={() => setDeleted((prev) => new Set([...prev, contextMenu.chat.id]))}
             onDelete={() => setDeleted((prev) => new Set([...prev, contextMenu.chat.id]))}
-            onEditContact={() => {
-              if (contextMenu.chat.isSynthetic) {
-                setContextMenu(null)
-                return
-              }
-              setEditContact({ id: contextMenu.chat.id, nickname: contextMenu.chat.name })
-              setContextMenu(null)
-            }}
           />
         ) : null}
       </AnimatePresence>
@@ -743,13 +561,6 @@ export function WorkspaceSidebar({
         onSubmit={onCreateChannel ?? (() => {})}
       />
 
-      {editContact ? (
-        <EditContactModal
-          contactId={editContact.id}
-          currentNickname={editContact.nickname}
-          onClose={() => setEditContact(null)}
-        />
-      ) : null}
     </>
   )
 }

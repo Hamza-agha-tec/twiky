@@ -25,16 +25,6 @@ async function authedFetch(path: string, init: RequestInit = {}) {
 }
 
 export const messagingApi = {
-  // Conversations
-  getConversations: () => authedFetch('/messaging/conversations'),
-
-  createConversation: (data: { participantIds: string[]; isGroup?: boolean; name?: string }) =>
-    authedFetch('/messaging/conversations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    }),
-
   // Messages
   getMessages: (conversationId: string, limit = 50, offset = 0) =>
     authedFetch(`/messaging/messages/${conversationId}?limit=${limit}&offset=${offset}`),

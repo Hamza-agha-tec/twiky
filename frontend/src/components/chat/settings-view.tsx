@@ -1,10 +1,12 @@
 'use client'
 
 import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
   Archive,
   AtSign,
   Bell,
+  CalendarDays,
   ChevronRight,
   Database,
   Download,
@@ -13,6 +15,7 @@ import {
   Github,
   Globe,
   HardDrive,
+  ImageIcon,
   Languages,
   Link2,
   LogOut,
@@ -29,6 +32,7 @@ import {
   Upload,
   UserRound,
   UserRoundCog,
+  Users,
   Volume2,
   type LucideIcon,
 } from 'lucide-react'
@@ -49,6 +53,14 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
+import {
+  useProfile,
+  useUpdateProfile,
+  useUserFollowers,
+  useUserFollowing,
+  useUserPosts,
+} from '@/hooks/use-user'
+import type { UserPost, UserProfile } from '@/lib/user-api'
 import { cn } from '@/lib/utils'
 
 interface SettingsViewProps {
@@ -134,34 +146,74 @@ function SectionHeader({ title, description }: { title: string; description?: st
   )
 }
 
-function SectionBlock({ title, children }: { title?: string; children: ReactNode }) {
+function SectionBlock({ title, children, delay = 0 }: { title?: string; children: ReactNode; delay?: number }) {
   return (
-    <div className="mb-5">
+    <motion.div
+      className="mb-5"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay, duration: 0.24, ease: 'easeOut' }}
+    >
       {title ? (
         <p className="mb-2 px-1 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/70">{title}</p>
       ) : null}
-      <div className="overflow-hidden rounded-xl border border-border/60 bg-[oklch(0.14_0.02_260)] px-3 py-1 shadow-sm dark:border-white/[0.07]">
+      <div className="overflow-hidden rounded-xl border border-border/60 bg-card px-3 py-1 shadow-sm dark:border-white/[0.07]">
         {children}
       </div>
-    </div>
+    </motion.div>
   )
 }
 
 // ─── sections ─────────────────────────────────────────────────────────────────
 
-function AccountSection() {
+function formatDate(value?: string | null) {
+  if (!value) return 'Not available'
+
+  return new Intl.DateTimeFormat('en', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date(value))
+}
+
+function formatRelativeDate(value?: string | null) {
+  if (!value) return 'Never'
+
+  return new Intl.DateTimeFormat('en', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(value))
+}
+
+function getInitial(value?: string | null) {
+  return (value?.trim()[0] ?? 'T').toUpperCase()
+}
+
+function AccountSection({ profile }: { profile?: UserProfile }) {
   return (
     <>
       <SectionHeader title="My Account" description="Manage your credentials and linked accounts." />
       <SectionBlock title="Account Info">
-        <SettingRow title="Username" description="@zakaria12e">
+        <SettingRow title="Username" description={profile?.username ? `@${profile.username}` : 'Not set'}>
           <Button variant="outline" size="sm" className="h-8 rounded-xl text-[11px]">Edit</Button>
         </SettingRow>
-        <SettingRow title="Email" description="elbidali.zakaria@gmail.com">
-          <Button variant="outline" size="sm" className="h-8 rounded-xl text-[11px]">Edit</Button>
+        <SettingRow title="User ID" description={profile?.id ?? 'Loading profile...'}>
+          <Badge variant="outline" className="rounded-full text-[10px]">Backend</Badge>
         </SettingRow>
-        <SettingRow title="Phone number" description="Not set">
-          <Button variant="outline" size="sm" className="h-8 rounded-xl text-[11px]">Add</Button>
+        <SettingRow title="Phone number" description={profile?.phone_number ?? 'Not set'}>
+          <Button variant="outline" size="sm" className="h-8 rounded-xl text-[11px]">
+            {profile?.phone_number ? 'Edit' : 'Add'}
+          </Button>
+        </SettingRow>
+        <SettingRow title="Member since" description={formatDate(profile?.created_at)}>
+          <CalendarDays className="h-4 w-4 text-muted-foreground" />
+        </SettingRow>
+        <SettingRow title="Last seen" description={formatRelativeDate(profile?.last_seen_at)}>
+          <Badge variant="secondary" className="rounded-full text-[10px]">
+            {profile?.status ?? 'Offline'}
+          </Badge>
         </SettingRow>
       </SectionBlock>
       <SectionBlock title="Password & Authentication">
@@ -205,26 +257,49 @@ function AccountSection() {
 function ProfileSection({
   avatarUrl,
   bannerUrl,
+  followersCount,
+  followingCount,
+  posts,
+  profile,
+  profileLoading,
   onAvatarChange,
   onBannerChange,
 }: {
   avatarUrl: string | null
   bannerUrl: string | null
+  followersCount: number
+  followingCount: number
+  posts: UserPost[]
+  profile?: UserProfile
+  profileLoading: boolean
   onAvatarChange: (url: string) => void
   onBannerChange: (url: string) => void
 }) {
   const avatarRef = useRef<HTMLInputElement>(null)
   const bannerRef = useRef<HTMLInputElement>(null)
-  const [displayName, setDisplayName] = useState('Zakaria')
-  const [username, setUsername] = useState('zakaria12e')
+  const updateProfile = useUpdateProfile()
+  const [saveMessage, setSaveMessage] = useState<string | null>(null)
+  const initialUsername = profile?.username ?? ''
+  const [displayName, setDisplayName] = useState(initialUsername || 'Your Name')
+  const [username, setUsername] = useState(initialUsername)
   const [pronouns, setPronouns] = useState('')
   const [location, setLocation] = useState('')
-  const [bio, setBio] = useState('')
-  const [status, setStatus] = useState('')
+  const [bio, setBio] = useState(profile?.bio ?? '')
+  const [status, setStatus] = useState(profile?.status ?? '')
   const [statusEmoji, setStatusEmoji] = useState('🟢')
   const [twitter, setTwitter] = useState('')
   const [github, setGithub] = useState('')
   const [website, setWebsite] = useState('')
+
+  async function handleSaveProfile() {
+    setSaveMessage(null)
+    await updateProfile.mutateAsync({
+      bio: bio.trim() || null,
+      status: status.trim() || null,
+      username: username.trim() || undefined,
+    })
+    setSaveMessage('Saved')
+  }
 
   const BANNER_GRADIENTS = [
     'from-sky-500 via-cyan-500 to-blue-600',
@@ -234,6 +309,8 @@ function ProfileSection({
     'from-pink-500 via-rose-500 to-red-600',
     'from-indigo-500 via-blue-500 to-sky-600',
   ]
+  const effectiveAvatarUrl = avatarUrl ?? profile?.avatar_url ?? null
+  const effectiveBannerUrl = bannerUrl ?? profile?.banner ?? null
   const [selectedGradient, setSelectedGradient] = useState(0)
   const completionChecks = [
     displayName.trim().length > 0,
@@ -255,7 +332,7 @@ function ProfileSection({
         <div
           className={cn(
             'group relative h-20 cursor-pointer overflow-hidden rounded-t-2xl',
-            !bannerUrl && cn('bg-gradient-to-br', BANNER_GRADIENTS[selectedGradient]),
+            !effectiveBannerUrl && cn('bg-gradient-to-br', BANNER_GRADIENTS[selectedGradient]),
           )}
           onClick={() => bannerRef.current?.click()}
           onKeyDown={(event) => {
@@ -267,13 +344,13 @@ function ProfileSection({
           role="button"
           tabIndex={0}
         >
-          {bannerUrl ? <img src={bannerUrl} alt="Banner" className="h-full w-full object-cover" /> : null}
+          {effectiveBannerUrl ? <img src={effectiveBannerUrl} alt="Banner" className="h-full w-full object-cover" /> : null}
           <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/20 to-transparent" />
           <div className="absolute inset-0 bg-gradient-to-r from-primary/15 via-transparent to-transparent" />
           <div className="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/35 opacity-0 transition-opacity group-hover:opacity-100">
             <Upload className="h-4 w-4 text-white" />
             <span className="text-[12px] font-semibold text-white">
-              {bannerUrl ? 'Change banner' : 'Upload banner'}
+              {effectiveBannerUrl ? 'Change banner' : 'Upload banner'}
             </span>
           </div>
           <div className="absolute left-3 top-3 rounded-full border border-white/20 bg-black/40 px-2.5 py-1 backdrop-blur-sm">
@@ -282,7 +359,7 @@ function ProfileSection({
             </p>
           </div>
           <div className="absolute right-3 top-3 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-            {bannerUrl ? (
+            {effectiveBannerUrl ? (
               <button
                 type="button"
                 onClick={() => onBannerChange('')}
@@ -298,12 +375,12 @@ function ProfileSection({
               className="inline-flex h-7 items-center gap-1 rounded-full border border-white/20 bg-black/45 px-2.5 text-[10px] font-semibold text-white/90 backdrop-blur-sm transition-colors hover:bg-black/60"
             >
               <Upload className="h-3 w-3" />
-              {bannerUrl ? 'Replace' : 'Upload'}
+              {effectiveBannerUrl ? 'Replace' : 'Upload'}
             </button>
           </div>
           <input ref={bannerRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) { const r = new FileReader(); r.onload = () => onBannerChange(r.result as string); r.readAsDataURL(f) } }} />
 
-          {!bannerUrl ? (
+          {!effectiveBannerUrl ? (
             <div className="absolute bottom-2.5 right-2.5 flex items-center gap-1.5 rounded-full border border-white/20 bg-black/40 px-2 py-1.5 backdrop-blur-sm" onClick={(e) => e.stopPropagation()}>
               <span className="text-[10px] font-medium text-white/80">Style</span>
               {BANNER_GRADIENTS.map((g, i) => (
@@ -328,8 +405,8 @@ function ProfileSection({
               onClick={() => avatarRef.current?.click()}
             >
               <div className="h-16 w-16 overflow-hidden rounded-2xl border-4 border-card">
-                {avatarUrl ? (
-                  <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
+                {effectiveAvatarUrl ? (
+                  <img src={effectiveAvatarUrl} alt={displayName} className="h-full w-full object-cover" />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center bg-primary text-[22px] font-bold text-primary-foreground">
                     {displayName?.[0]?.toUpperCase() ?? 'Z'}
@@ -376,6 +453,24 @@ function ProfileSection({
                 ? 'Great profile. People can quickly understand who you are.'
                 : 'Add bio, location, and one social link to improve discoverability.'}
             </p>
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            {[
+              { label: 'Followers', value: followersCount, icon: Users },
+              { label: 'Following', value: followingCount, icon: UserRoundCog },
+              { label: 'Posts', value: posts.length, icon: ImageIcon },
+            ].map(({ label, value, icon: Icon }) => (
+              <div key={label} className="rounded-xl border border-border bg-background px-2.5 py-2">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Icon className="h-3 w-3" />
+                  <span className="text-[10px] font-medium">{label}</span>
+                </div>
+                <p className="mt-1 text-[15px] font-bold text-foreground">
+                  {profileLoading ? '-' : value}
+                </p>
+              </div>
+            ))}
           </div>
 
           {(twitter || github || website) ? (
@@ -447,6 +542,24 @@ function ProfileSection({
               Tip: profiles with a clear bio and one social link get more profile visits.
             </p>
           </div>
+          <div className="flex items-center justify-end gap-2">
+            {updateProfile.isError ? (
+              <span className="text-[11px] text-destructive">
+                {updateProfile.error.message}
+              </span>
+            ) : saveMessage ? (
+              <span className="text-[11px] text-emerald-600 dark:text-emerald-400">
+                {saveMessage}
+              </span>
+            ) : null}
+            <Button
+              className="h-9 rounded-xl text-[12px]"
+              disabled={!username.trim() || updateProfile.isPending}
+              onClick={handleSaveProfile}
+            >
+              {updateProfile.isPending ? 'Saving...' : 'Save profile'}
+            </Button>
+          </div>
         </div>
       </SectionBlock>
 
@@ -492,6 +605,40 @@ function ProfileSection({
           </div>
         </SettingRow>
       </SectionBlock>
+
+      <SectionBlock title="Recent Posts">
+        <div className="space-y-2 py-2">
+          {posts.length ? (
+            posts.slice(0, 3).map((post) => {
+              const firstMediaUrl = post.media_urls?.[0] ?? null
+
+              return (
+                <div key={post.id} className="flex gap-3 rounded-xl border border-border/70 bg-background p-3">
+                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
+                    {firstMediaUrl ? (
+                      <img src={firstMediaUrl} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="line-clamp-2 text-[12px] leading-5 text-foreground">
+                      {post.caption || 'No caption'}
+                    </p>
+                    <p className="mt-1 text-[10.5px] text-muted-foreground">
+                      {formatDate(post.created_at)}
+                    </p>
+                  </div>
+                </div>
+              )
+            })
+          ) : (
+            <p className="px-1 py-3 text-[12px] text-muted-foreground">
+              No posts from the backend yet.
+            </p>
+          )}
+        </div>
+      </SectionBlock>
     </>
   )
 }
@@ -501,9 +648,9 @@ function PrivacySection() {
   const [onlineStatus, setOnlineStatus] = useState(true)
   const [typingIndicators, setTypingIndicators] = useState(true)
   const [linkPreviews, setLinkPreviews] = useState(true)
-  const [lastSeen, setLastSeen] = useState('contacts')
+  const [lastSeen, setLastSeen] = useState('followers')
   const [profilePhoto, setProfilePhoto] = useState('everyone')
-  const [visibility, setVisibility] = useState('contacts')
+  const [visibility, setVisibility] = useState('followers')
   const [dmFromStrangers, setDmFromStrangers] = useState(true)
   const score = [readReceipts, onlineStatus, visibility !== 'public', lastSeen !== 'everyone'].filter(Boolean).length * 25
 
@@ -525,13 +672,13 @@ function PrivacySection() {
       </SectionBlock>
       <SectionBlock title="Visibility">
         <SettingRow title="Last seen" description="Who can see when you were last active.">
-          <Select value={lastSeen} onValueChange={setLastSeen}><SelectTrigger className="h-8 w-[130px] rounded-xl text-[12px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="everyone">Everyone</SelectItem><SelectItem value="contacts">Contacts</SelectItem><SelectItem value="nobody">Nobody</SelectItem></SelectContent></Select>
+          <Select value={lastSeen} onValueChange={setLastSeen}><SelectTrigger className="h-8 w-[130px] rounded-xl text-[12px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="everyone">Everyone</SelectItem><SelectItem value="followers">Followers</SelectItem><SelectItem value="nobody">Nobody</SelectItem></SelectContent></Select>
         </SettingRow>
         <SettingRow title="Profile photo" description="Who can see your avatar.">
-          <Select value={profilePhoto} onValueChange={setProfilePhoto}><SelectTrigger className="h-8 w-[130px] rounded-xl text-[12px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="everyone">Everyone</SelectItem><SelectItem value="contacts">Contacts</SelectItem><SelectItem value="nobody">Nobody</SelectItem></SelectContent></Select>
+          <Select value={profilePhoto} onValueChange={setProfilePhoto}><SelectTrigger className="h-8 w-[130px] rounded-xl text-[12px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="everyone">Everyone</SelectItem><SelectItem value="followers">Followers</SelectItem><SelectItem value="nobody">Nobody</SelectItem></SelectContent></Select>
         </SettingRow>
         <SettingRow title="Account discovery" description="Allow others to find you.">
-          <Select value={visibility} onValueChange={setVisibility}><SelectTrigger className="h-8 w-[130px] rounded-xl text-[12px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="public">Public</SelectItem><SelectItem value="contacts">Contacts</SelectItem><SelectItem value="private">Private</SelectItem></SelectContent></Select>
+          <Select value={visibility} onValueChange={setVisibility}><SelectTrigger className="h-8 w-[130px] rounded-xl text-[12px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="public">Public</SelectItem><SelectItem value="followers">Followers</SelectItem><SelectItem value="private">Private</SelectItem></SelectContent></Select>
         </SettingRow>
       </SectionBlock>
       <SectionBlock title="Messages">
@@ -1024,6 +1171,10 @@ export function SettingsView({ initialSection, onAvatarChange, avatarUrl: avatar
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(
     (initialSection as SettingsSectionId) ?? 'account',
   )
+  const { data: profile, isLoading: profileLoading } = useProfile()
+  const { data: followers = [] } = useUserFollowers(profile?.id)
+  const { data: following = [] } = useUserFollowing(profile?.id)
+  const { data: posts = [] } = useUserPosts(profile?.id)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(avatarUrlProp ?? null)
   const [bannerUrl, setBannerUrl] = useState<string | null>(() => {
     try { return localStorage.getItem('twiky-user-banner') } catch { return null }
@@ -1050,8 +1201,8 @@ export function SettingsView({ initialSection, onAvatarChange, avatarUrl: avatar
 
   function renderSection() {
     switch (activeSection) {
-      case 'account':       return <AccountSection />
-      case 'profile':       return <ProfileSection avatarUrl={avatarUrl} bannerUrl={bannerUrl} onAvatarChange={handleAvatarChange} onBannerChange={handleBannerChange} />
+      case 'account':       return <AccountSection profile={profile} />
+      case 'profile':       return <ProfileSection key={profile?.id ?? 'profile-loading'} avatarUrl={avatarUrl} bannerUrl={bannerUrl} followersCount={followers.length} followingCount={following.length} posts={posts} profile={profile} profileLoading={profileLoading} onAvatarChange={handleAvatarChange} onBannerChange={handleBannerChange} />
       case 'privacy':       return <PrivacySection />
       case 'notifications': return <NotificationsSection />
       case 'appearance':    return <AppearanceSection />
@@ -1078,27 +1229,38 @@ export function SettingsView({ initialSection, onAvatarChange, avatarUrl: avatar
             className="flex w-full items-center gap-2.5 rounded-xl border border-border/50 bg-background/60 px-3 py-2.5 text-left transition-colors hover:bg-accent"
           >
             <Avatar className="h-8 w-8 flex-shrink-0">
-              <AvatarImage src={avatarUrl ?? ''} alt="Zakaria" />
-              <AvatarFallback className="bg-primary text-[12px] font-bold text-primary-foreground">Z</AvatarFallback>
+              <AvatarImage src={avatarUrl ?? profile?.avatar_url ?? ''} alt={profile?.username ?? 'Profile'} />
+              <AvatarFallback className="bg-primary text-[12px] font-bold text-primary-foreground">
+                {getInitial(profile?.username)}
+              </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[12px] font-semibold text-foreground">Zakaria</p>
-              <p className="truncate text-[10.5px] text-muted-foreground">@zakaria12e</p>
+              <p className="truncate text-[12px] font-semibold text-foreground">
+                {profile?.username ?? 'Loading profile'}
+              </p>
+              <p className="truncate text-[10.5px] text-muted-foreground">
+                {profile?.username ? `@${profile.username}` : 'Backend profile'}
+              </p>
             </div>
             <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/50" />
           </button>
         </div>
 
         <div className="flex-1 space-y-5 px-2">
-          {NAV.map((category) => (
-            <div key={category.label}>
+          {NAV.map((category, catIdx) => (
+            <motion.div
+              key={category.label}
+              initial={{ opacity: 0, x: -12 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: catIdx * 0.06, duration: 0.22, ease: 'easeOut' }}
+            >
               <p className="mb-1.5 px-2 text-[9.5px] font-bold uppercase tracking-[0.12em] text-muted-foreground/50">{category.label}</p>
               <div className="space-y-0.5">
-                {category.items.map((item) => {
+                {category.items.map((item, itemIdx) => {
                   const Icon = item.icon
                   const isActive = activeSection === item.id
                   return (
-                    <button
+                    <motion.button
                       key={item.id}
                       onClick={() => setActiveSection(item.id)}
                       className={cn(
@@ -1107,17 +1269,22 @@ export function SettingsView({ initialSection, onAvatarChange, avatarUrl: avatar
                           ? 'bg-primary/10 font-semibold text-primary'
                           : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                       )}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: catIdx * 0.06 + itemIdx * 0.04, duration: 0.2 }}
+                      whileHover={{ x: 2 }}
+                      whileTap={{ scale: 0.97 }}
                     >
                       <Icon className={cn('h-3.5 w-3.5 flex-shrink-0', isActive ? 'text-primary' : 'text-muted-foreground/70')} />
                       <span className="flex-1 text-[12.5px]">{item.label}</span>
                       {item.badge ? (
                         <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">{item.badge}</span>
                       ) : null}
-                    </button>
+                    </motion.button>
                   )
                 })}
               </div>
-            </div>
+            </motion.div>
           ))}
         </div>
 
@@ -1132,7 +1299,19 @@ export function SettingsView({ initialSection, onAvatarChange, avatarUrl: avatar
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto bg-background px-8 py-7">
-        <div className="mx-auto max-w-[640px]">{renderSection()}</div>
+        <div className="mx-auto max-w-[640px]">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeSection}
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.22, ease: 'easeOut' }}
+            >
+              {renderSection()}
+            </motion.div>
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   )

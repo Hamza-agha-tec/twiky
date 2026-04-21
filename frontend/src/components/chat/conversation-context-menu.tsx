@@ -5,7 +5,6 @@ import {
   Archive,
   Bell,
   BellOff,
-  Pencil,
   Pin,
   PinOff,
   ShieldAlert,
@@ -28,7 +27,6 @@ interface ConversationContextMenuProps {
   onPin: () => void
   onBlock: () => void
   onDelete: () => void
-  onEditContact?: () => void
 }
 
 export function ConversationContextMenu({
@@ -45,7 +43,6 @@ export function ConversationContextMenu({
   onPin,
   onBlock,
   onDelete,
-  onEditContact,
 }: ConversationContextMenuProps) {
   const safeX = Math.min(x, window.innerWidth - 220)
   const safeY = Math.min(y, window.innerHeight - 340)
@@ -75,15 +72,12 @@ export function ConversationContextMenu({
   ]
 
   const dangerItems = [
-    ...(!isGroup && onEditContact
-      ? [{ icon: Pencil, label: 'Edit nickname', onClick: onEditContact }]
-      : []),
     ...(!isGroup
-      ? [{ icon: ShieldAlert, label: 'Block contact', onClick: onBlock }]
+      ? [{ icon: ShieldAlert, label: 'Block user', onClick: onBlock }]
       : []),
     {
       icon: Trash2,
-      label: isGroup ? 'Delete channel' : 'Delete conversation',
+      label: isGroup ? 'Delete channel' : 'Delete chat',
       onClick: onDelete,
     },
   ]

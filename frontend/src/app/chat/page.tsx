@@ -13,7 +13,7 @@ import {
   ChannelsPanel,
   getMockChannel,
   getMockGroup,
-  MOCK_WORKSPACE_CHANNELS,
+  type MockChannelGroup,
   type WorkspaceChannel,
 } from '@/components/chat/channels-panel'
 import { ChatWindow } from '@/components/chat/chat-window'
@@ -30,9 +30,10 @@ import {
   WorkspaceNavTarget,
   WorkspaceSidebar,
 } from '@/components/chat/workspace-sidebar'
-import { type ChatMessage, useMessages } from '@/hooks/use-messaging'
-import { useGlobalSocket, useSocket } from '@/hooks/use-socket'
+import { useChannels, useCreateChannel } from '@/hooks/use-channels'
+import { type ChatMessage } from '@/hooks/use-messaging'
 import { useProfile } from '@/hooks/use-user'
+import type { BackendChannel } from '@/lib/channel-api'
 import { type Chat } from '@/lib/mock-data'
 
 type ChatSurface =
@@ -50,9 +51,9 @@ type PersistedChatState = {
   activeView: ActiveView
   channelTab: MainAreaTab
   settingsSection: string
+  channelGroupsById: Record<string, MockChannelGroup[]>
   syntheticDirectChats: Record<string, FeedDirectConversationTarget>
   syntheticDirectMessages: Record<string, ChatMessage[]>
-  workspaceChannels: WorkspaceChannel[]
   workspaceCollapsed: boolean
   workspaceMode: WorkspaceMode
 }
@@ -103,6 +104,13 @@ function readPersistedChatState(): Partial<PersistedChatState> {
     if (isOneOf(parsed.activeSurface, CHAT_SURFACES)) next.activeSurface = parsed.activeSurface
     if (isOneOf(parsed.activeView, ACTIVE_VIEWS)) next.activeView = parsed.activeView
     if (isOneOf(parsed.channelTab, MAIN_AREA_TABS)) next.channelTab = parsed.channelTab
+    if (
+      parsed.channelGroupsById &&
+      typeof parsed.channelGroupsById === 'object' &&
+      !Array.isArray(parsed.channelGroupsById)
+    ) {
+      next.channelGroupsById = parsed.channelGroupsById as Record<string, MockChannelGroup[]>
+    }
     if (typeof parsed.settingsSection === 'string') next.settingsSection = parsed.settingsSection
     if (
       parsed.syntheticDirectChats &&
@@ -118,14 +126,18 @@ function readPersistedChatState(): Partial<PersistedChatState> {
     ) {
       next.syntheticDirectMessages = parsed.syntheticDirectMessages as Record<string, ChatMessage[]>
     }
-    if (Array.isArray(parsed.workspaceChannels)) {
-      next.workspaceChannels = parsed.workspaceChannels as WorkspaceChannel[]
-    }
     if (typeof parsed.workspaceCollapsed === 'boolean') {
       next.workspaceCollapsed = parsed.workspaceCollapsed
     }
     if (isOneOf(parsed.workspaceMode, WORKSPACE_MODES)) {
       next.workspaceMode = parsed.workspaceMode
+    }
+
+    if (
+      next.activeDirectChat &&
+      !next.syntheticDirectChats?.[next.activeDirectChat]
+    ) {
+      next.activeDirectChat = null
     }
 
     return next
@@ -143,6 +155,31 @@ function createUniqueId(base: string, existingIds: string[]) {
   let suffix = 2
   while (existingIds.includes(nextId)) { nextId = `${base}-${suffix}`; suffix++ }
   return nextId
+}
+
+function getChannelRoleLabel(role?: string | null) {
+  if (!role) return 'Member'
+  return role.charAt(0).toUpperCase() + role.slice(1).toLowerCase()
+}
+
+function toWorkspaceChannel(
+  channel: BackendChannel,
+  index: number,
+  groupsByChannel: Record<string, MockChannelGroup[]>,
+): WorkspaceChannel {
+  const base = buildWorkspaceChannel({
+    id: channel.id,
+    label: channel.name,
+    description: channel.description ?? undefined,
+    index,
+  })
+
+  return {
+    ...base,
+    avatarUrl: channel.avatar_url ?? undefined,
+    groups: groupsByChannel[channel.id] ?? base.groups,
+    membersLabel: getChannelRoleLabel(channel.role),
+  }
 }
 
 const STORE_ITEMS = [
@@ -226,46 +263,32 @@ export default function ChatPage() {
   const [syntheticDirectMessages, setSyntheticDirectMessages] = useState<
     Record<string, ChatMessage[]>
   >({})
-  const [workspaceChannels, setWorkspaceChannels] = useState(MOCK_WORKSPACE_CHANNELS)
-  const [activeChannelId, setActiveChannelId] = useState(MOCK_WORKSPACE_CHANNELS[0].id)
-  const [activeGroupId, setActiveGroupId] = useState(MOCK_WORKSPACE_CHANNELS[0].groups[0].id)
+  const [channelGroupsById, setChannelGroupsById] = useState<Record<string, MockChannelGroup[]>>({})
+  const [activeChannelId, setActiveChannelId] = useState('')
+  const [activeGroupId, setActiveGroupId] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
-  const [showContactInfo, setShowContactInfo] = useState(false)
+  const [showDirectProfile, setShowDirectProfile] = useState(false)
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
   const [channelAssets, setChannelAssets] = useState<Record<string, { avatar: string | null; banner: string | null }>>(() => {
-    try {
-      const result: Record<string, { avatar: string | null; banner: string | null }> = {}
-      for (const ch of MOCK_WORKSPACE_CHANNELS) {
-        const avatar = localStorage.getItem(`twiky-ch-avatar-${ch.id}`)
-        const banner = localStorage.getItem(`twiky-ch-banner-${ch.id}`)
-        if (avatar || banner) result[ch.id] = { avatar, banner }
-      }
-      return result
-    } catch { return {} }
+    return {}
   })
 
   const { data: profile } = useProfile()
+  const { data: backendChannels = [] } = useChannels()
+  const createChannel = useCreateChannel()
   const activeSyntheticChat = activeDirectChat ? (syntheticDirectChats[activeDirectChat] ?? null) : null
-  const { data: messages = [] } = useMessages(activeSyntheticChat ? null : activeDirectChat)
+
+  const workspaceChannels = useMemo(
+    () =>
+      backendChannels.map((channel, index) =>
+        toWorkspaceChannel(channel, index, channelGroupsById),
+      ),
+    [backendChannels, channelGroupsById],
+  )
 
   function handleChannelAssetSave(channelId: string, avatar: string | null, banner: string | null) {
     setChannelAssets((prev) => ({ ...prev, [channelId]: { avatar, banner } }))
   }
-
-  const handleNewMessage = useCallback(
-    (conversationId: string) => {
-      setUnreadCounts((prev) => {
-        if (conversationId === activeDirectChat) return prev
-        return { ...prev, [conversationId]: (prev[conversationId] ?? 0) + 1 }
-      })
-    },
-    [activeDirectChat],
-  )
-
-  const { sendMessage, sendTyping, otherIsTyping, reactToMessage, editMessage, deleteMessage } =
-    useSocket(activeSyntheticChat ? null : activeDirectChat)
-
-  useGlobalSocket(handleNewMessage)
 
   const activeChannel = useMemo(
     () => getMockChannel(activeChannelId, workspaceChannels),
@@ -278,16 +301,32 @@ export default function ChatPage() {
   )
 
   useEffect(() => {
+    if (!workspaceChannels.length) return
+
+    const channel = workspaceChannels.find((item) => item.id === activeChannelId)
+    if (!channel) {
+      const firstChannel = workspaceChannels[0]
+      setActiveChannelId(firstChannel.id)
+      setActiveGroupId(firstChannel.groups[0]?.id ?? '')
+      return
+    }
+
+    if (!channel.groups.some((group) => group.id === activeGroupId)) {
+      setActiveGroupId(channel.groups[0]?.id ?? '')
+    }
+  }, [activeChannelId, activeGroupId, workspaceChannels])
+
+  useEffect(() => {
     const persisted = readPersistedChatState()
 
     if (persisted.activeDirectChat !== undefined) setActiveDirectChat(persisted.activeDirectChat)
     if (persisted.activeView) setActiveView(persisted.activeView)
     if (persisted.settingsSection) setSettingsSection(persisted.settingsSection)
     if (persisted.activeSurface) setActiveSurface(persisted.activeSurface)
+    if (persisted.channelGroupsById) setChannelGroupsById(persisted.channelGroupsById)
     if (persisted.syntheticDirectChats) setSyntheticDirectChats(persisted.syntheticDirectChats)
     if (persisted.syntheticDirectMessages) setSyntheticDirectMessages(persisted.syntheticDirectMessages)
     if (persisted.workspaceMode) setWorkspaceMode(persisted.workspaceMode)
-    if (persisted.workspaceChannels?.length) setWorkspaceChannels(persisted.workspaceChannels)
     if (persisted.workspaceCollapsed !== undefined) setWorkspaceCollapsed(persisted.workspaceCollapsed)
     if (persisted.channelTab) setChannelTab(persisted.channelTab)
     if (persisted.activeChannelId) setActiveChannelId(persisted.activeChannelId)
@@ -306,11 +345,11 @@ export default function ChatPage() {
         activeGroupId: activeGroup?.id ?? activeGroupId,
         activeSurface,
         activeView,
+        channelGroupsById,
         channelTab,
         settingsSection,
         syntheticDirectChats,
         syntheticDirectMessages,
-        workspaceChannels,
         workspaceCollapsed,
         workspaceMode,
       }
@@ -325,12 +364,12 @@ export default function ChatPage() {
     activeGroupId,
     activeSurface,
     activeView,
+    channelGroupsById,
     channelTab,
     settingsSection,
     syntheticDirectChats,
     syntheticDirectMessages,
     viewStateReady,
-    workspaceChannels,
     workspaceCollapsed,
     workspaceMode,
   ])
@@ -406,7 +445,7 @@ export default function ChatPage() {
     setActiveSurface('direct')
     setWorkspaceMode('direct')
     setActiveView('chat')
-    setShowContactInfo(false)
+    setShowDirectProfile(false)
     setUnreadCounts((prev) => ({ ...prev, [conversationId]: 0 }))
   }, [])
 
@@ -459,7 +498,7 @@ export default function ChatPage() {
     ? (syntheticDirectMessages[activeSyntheticChat.id] ??
       activeSyntheticChat.initialMessages ??
       [])
-    : messages
+    : []
 
   function openChannelSurface(channelId: string, groupId?: string) {
     const channel = getMockChannel(channelId, workspaceChannels)
@@ -470,43 +509,50 @@ export default function ChatPage() {
     setActiveSurface('channel')
     setActiveView('chat')
     setChannelTab('feed')
-    setShowContactInfo(false)
+    setShowDirectProfile(false)
   }
 
   function handleModeChange(mode: WorkspaceMode) {
     setWorkspaceMode(mode)
     setActiveView('chat')
-    setShowContactInfo(false)
-    if (mode === 'channels') openChannelSurface(activeChannelId)
-    else setActiveSurface('direct')
+    setShowDirectProfile(false)
+    if (mode === 'channels') {
+      const nextChannelId = activeChannelId || workspaceChannels[0]?.id
+      if (nextChannelId) openChannelSurface(nextChannelId)
+    } else setActiveSurface('direct')
   }
 
   function handleNavItem(tab: WorkspaceNavTarget) {
     setActiveView('chat')
-    setShowContactInfo(false)
+    setShowDirectProfile(false)
     if (tab === 'notes') setActiveSurface('personal-notes')
     if (tab === 'tasks') setActiveSurface('personal-tasks')
     if (tab === 'goals') setActiveSurface('personal-goals')
   }
 
   function handleCreateChannel(values: { description: string; name: string }) {
-    const existingIds = workspaceChannels.map((c) => c.id)
-    const channelId = createUniqueId(toSlug(values.name), existingIds)
-    const nextChannel = buildWorkspaceChannel({ id: channelId, label: values.name, description: values.description, index: workspaceChannels.length })
-    setWorkspaceChannels((prev) => [...prev, nextChannel])
-    setActiveChannelId(nextChannel.id)
-    setActiveGroupId(nextChannel.groups[0].id)
-    setWorkspaceMode('channels')
-    setActiveSurface('channel')
-    setActiveView('chat')
-    setChannelTab('feed')
-    setWorkspaceCollapsed(false)
-    setShowContactInfo(false)
+    createChannel.mutate(
+      { name: values.name, description: values.description || undefined },
+      {
+        onSuccess: (channel) => {
+          const nextChannel = toWorkspaceChannel(channel, workspaceChannels.length, channelGroupsById)
+          setActiveChannelId(nextChannel.id)
+          setActiveGroupId(nextChannel.groups[0]?.id ?? '')
+          setWorkspaceMode('channels')
+          setActiveSurface('channel')
+          setActiveView('chat')
+          setChannelTab('feed')
+          setWorkspaceCollapsed(false)
+          setShowDirectProfile(false)
+        },
+      },
+    )
   }
 
   function handleCreateGroup(values: { description: string; name: string }) {
     if (!activeChannel) return
-    const existingGroupIds = activeChannel.groups.map((g) => g.id)
+    const currentGroups = channelGroupsById[activeChannel.id] ?? activeChannel.groups
+    const existingGroupIds = currentGroups.map((g) => g.id)
     const baseGroupId = `${activeChannel.id}-${toSlug(values.name)}`
     const uniqueGroupId = createUniqueId(baseGroupId, existingGroupIds)
     const groupLabel = uniqueGroupId.replace(`${activeChannel.id}-`, '')
@@ -518,13 +564,10 @@ export default function ChatPage() {
       membersLabel: activeChannel.membersLabel,
     })
     const normalizedGroup = { ...nextGroup, id: uniqueGroupId }
-    setWorkspaceChannels((prev) =>
-      prev.map((channel) =>
-        channel.id === activeChannel.id
-          ? { ...channel, groups: [...channel.groups, normalizedGroup] }
-          : channel,
-      ),
-    )
+    setChannelGroupsById((prev) => ({
+      ...prev,
+      [activeChannel.id]: [...currentGroups, normalizedGroup],
+    }))
     setActiveGroupId(normalizedGroup.id)
     setActiveSurface('channel')
     setChannelTab('feed')
@@ -546,27 +589,11 @@ export default function ChatPage() {
         }
         messages={activeDirectMessages}
         onSendMessage={(content, type, replyToId, fileUrl) => {
-          if (activeSyntheticChat) {
-            handleSyntheticSendMessage(activeSyntheticChat.id, content, type, replyToId, fileUrl)
-            return
-          }
-
           if (!activeDirectChat) return
-          sendMessage({ conversationId: activeDirectChat, content, type, replyToId, fileUrl })
+          handleSyntheticSendMessage(activeDirectChat, content, type, replyToId, fileUrl)
         }}
-        onTyping={
-          activeSyntheticChat
-            ? undefined
-            : (isTyping) => {
-                if (!activeDirectChat) return
-                sendTyping(activeDirectChat, isTyping)
-              }
-        }
-        otherIsTyping={activeSyntheticChat ? false : otherIsTyping}
-        onReact={activeSyntheticChat ? undefined : reactToMessage}
-        onEdit={activeSyntheticChat ? undefined : editMessage}
-        onDelete={activeSyntheticChat ? undefined : deleteMessage}
-        onProfileClick={() => setShowContactInfo((v) => !v)}
+        otherIsTyping={false}
+        onProfileClick={() => setShowDirectProfile((v) => !v)}
       />
     ) : (
     <div className="flex flex-1 items-center justify-center bg-sidebar p-6">
@@ -576,7 +603,7 @@ export default function ChatPage() {
         </div>
         <h2 className="text-[15px] font-semibold text-foreground">Select a direct message</h2>
         <p className="mt-2 text-[12px] leading-6 text-muted-foreground">
-          Open a contact from the left sidebar to start chatting.
+          Open a user from a channel feed to start a direct chat.
         </p>
       </div>
     </div>
@@ -675,7 +702,7 @@ export default function ChatPage() {
               setActiveSurface('channel')
               setActiveView('chat')
               setChannelTab('feed')
-              setShowContactInfo(false)
+              setShowDirectProfile(false)
             }}
             visible={activeSurface === 'channel'}
           />
@@ -687,11 +714,11 @@ export default function ChatPage() {
                 <div className="flex min-w-0 flex-1 overflow-hidden bg-background">
                   {directFeedContent}
                   <FeedProfileSidebarDock
-                    open={showContactInfo && !!activeDirectChat}
+                    open={showDirectProfile && !!activeDirectChat}
                     width={360}
-                    onBack={() => setShowContactInfo(false)}
+                    onBack={() => setShowDirectProfile(false)}
                   >
-                    {showContactInfo && activeDirectChat ? (
+                    {showDirectProfile && activeDirectChat ? (
                       <DirectProfileSidebar
                         activeChat={activeDirectChat}
                         chatOverride={activeSyntheticChat
@@ -702,7 +729,7 @@ export default function ChatPage() {
                               subtitle: activeSyntheticChat.status,
                             }
                           : undefined}
-                        onClose={() => setShowContactInfo(false)}
+                        onClose={() => setShowDirectProfile(false)}
                       />
                     ) : null}
                   </FeedProfileSidebarDock>

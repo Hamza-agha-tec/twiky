@@ -5,8 +5,6 @@ import {
   buildStandaloneFeedMemberProfile,
   type FeedPost,
 } from '@/components/chat/channel-feed'
-import { getConvDisplayName, getConversationAvatar, useConversations } from '@/hooks/use-messaging'
-import { useContacts, useProfile } from '@/hooks/use-user'
 import { getMockUserAvatar } from '@/lib/mock-users'
 
 interface DirectProfileSidebarProps {
@@ -21,18 +19,8 @@ interface DirectProfileSidebarProps {
 }
 
 export function DirectProfileSidebar({ activeChat, chatOverride, onClose }: DirectProfileSidebarProps) {
-  const { data: profile } = useProfile()
-  const { data: contacts = [] } = useContacts()
-  const { data: conversations = [] } = useConversations()
-
-  const conv = conversations.find((conversation) => conversation.id === activeChat)
-  const myId = profile?.id ?? ''
-
-  const name = conv
-    ? getConvDisplayName(conv, myId, contacts)
-    : chatOverride?.name ?? 'Direct conversation'
+  const name = chatOverride?.name ?? 'Direct chat'
   const avatar =
-    (conv ? getConversationAvatar(conv, myId, contacts) : null) ??
     chatOverride?.avatarUrl ??
     getMockUserAvatar(name)
   const memberProfile = buildStandaloneFeedMemberProfile({
@@ -40,12 +28,12 @@ export function DirectProfileSidebar({ activeChat, chatOverride, onClose }: Dire
     handle: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
     name,
     role: 'Member',
-    status: chatOverride?.subtitle ?? (chatOverride?.isOnline ? 'Online now' : 'Direct conversation'),
+    status: chatOverride?.subtitle ?? (chatOverride?.isOnline ? 'Online now' : 'Direct chat'),
   })
   const directPosts: FeedPost[] = [
     {
       author: name,
-      body: chatOverride?.subtitle ?? 'Direct conversation active.',
+      body: chatOverride?.subtitle ?? 'Direct chat active.',
       id: `${activeChat}-profile`,
       reactions: [],
       replyCount: 0,
@@ -56,7 +44,7 @@ export function DirectProfileSidebar({ activeChat, chatOverride, onClose }: Dire
 
   return (
     <FeedMemberProfileView
-      currentGroupLabel="Direct conversation"
+      currentGroupLabel="Direct chat"
       isOwn={false}
       memberProfile={memberProfile}
       messagePending={false}

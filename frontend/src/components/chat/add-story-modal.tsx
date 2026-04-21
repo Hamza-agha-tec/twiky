@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
-import { ArrowLeft, Eye, Globe2, Lock, TimerReset, UserPlus2 } from 'lucide-react';
+import { ArrowLeft, Eye, Globe2, Lock, TimerReset, Users } from 'lucide-react';
 
 export const STORY_THEMES = [
   {
@@ -31,7 +31,7 @@ export const STORY_THEMES = [
 ] as const;
 
 const STORY_AUDIENCES = [
-  { id: 'contacts', label: 'Contacts', icon: UserPlus2 },
+  { id: 'followers', label: 'Followers', icon: Users },
   { id: 'close-friends', label: 'Close Friends', icon: Lock },
   { id: 'everyone', label: 'Everyone', icon: Globe2 },
 ] as const;
@@ -79,13 +79,13 @@ export function AddStoryScreen({
 }: AddStoryScreenProps) {
   const [caption, setCaption] = useState('');
   const [themeId, setThemeId] = useState<StoryThemeId>('sky');
-  const [audience, setAudience] = useState<StoryAudience>('contacts');
+  const [audience, setAudience] = useState<StoryAudience>('followers');
   const [durationHours, setDurationHours] = useState<StoryDuration>(24);
 
   useEffect(() => {
     setCaption('');
     setThemeId('sky');
-    setAudience('contacts');
+    setAudience('followers');
     setDurationHours(24);
   }, []);
 
@@ -157,7 +157,7 @@ export function AddStoryScreen({
                   <div className="flex items-center justify-between rounded-full bg-black/20 px-2.5 py-1.5 text-[10px] text-white/80 backdrop-blur-sm lg:px-3 lg:py-2 lg:text-xs">
                     <span className="flex items-center gap-1.5">
                       <Eye className="h-3 w-3 lg:h-3.5 lg:w-3.5" />
-                      {audience === 'close-friends' ? 'Close Friends' : audience === 'everyone' ? 'Everyone' : 'Contacts'}
+                      {audience === 'close-friends' ? 'Close Friends' : audience === 'everyone' ? 'Everyone' : 'Followers'}
                     </span>
                     <span>{durationHours}h</span>
                   </div>
