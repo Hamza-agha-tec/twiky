@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, NotFoundException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.module';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { UpdateChannelDto } from './dto/update-channel.dto';
@@ -169,5 +169,28 @@ export class ChannelsService {
 
         if (error) throw new Error(`Failed to kick member: ${error.message}`);
         return { success: true };
+    }
+
+    async joinChannel(userId: string, channelId: string) {
+        const channel = await this.getChannelDetails(channelId);
+        
+        if (channel.access_type === 'PRIVATE') {
+            throw new ForbiddenException("This channel is private. You need an invite to join.");
+        }
+
+        // Check if already a member
+        const { data: existingMember } = await this.supabaseService
+            .getClient()
+            .from('channel_members')
+            .select('role')
+            .eq('channel_id', channelId)
+            .eq('user_id', userId)
+            .maybeSingle();
+
+        if (existingMember) {
+            return { message: "You are already a member of this channel" };
+        }
+
+        return this.addMember(channelId, { user_id: userId, role: 'MEMBER' });
     }
 }
