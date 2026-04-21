@@ -12,6 +12,9 @@ import { PostsModule } from './posts/posts.module';
 import { ChannelsModule } from './channels/channels.module';
 import { GroupsModule } from './groups/groups.module';
 import { CollaborationModule } from './collaboration/collaboration.module';
+import { StoriesModule } from './stories/stories.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { SpotifyModule } from './spotify/spotify.module';
 import { PassportModule } from '@nestjs/passport';
 import { SupabaseStrategy } from './auth/strategies/supabase.strategy';
 
@@ -27,6 +30,9 @@ import { SupabaseStrategy } from './auth/strategies/supabase.strategy';
     ChannelsModule,
     GroupsModule,
     CollaborationModule,
+    StoriesModule,
+    NotificationsModule,
+    SpotifyModule,
   ],
   controllers: [AppController, AuthController],
   providers: [AppService, AuthService, SupabaseStrategy],
