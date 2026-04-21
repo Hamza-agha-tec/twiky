@@ -39,6 +39,8 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { useUpdateChannel } from '@/hooks/use-channels'
+import { useAddGroupMember, useGroupMembers, useDeleteGroup } from '@/hooks/use-groups'
+import { useProfile, useUserFollowers } from '@/hooks/use-user'
 
 export interface MockChannelGroup {
   id: string
@@ -338,11 +340,13 @@ function ChannelSettingsSheet({
   open,
   onOpenChange,
   onSave,
+  activeGroupId,
 }: {
   channel: WorkspaceChannel
   open: boolean
   onOpenChange: (open: boolean) => void
   onSave?: (avatarUrl: string | null, bannerUrl: string | null) => void
+  activeGroupId?: string
 }) {
   const [name, setName] = useState(channel.label)
   const [description, setDescription] = useState(channel.description)
@@ -500,26 +504,6 @@ function ChannelSettingsSheet({
             </div>
           </div>
 
-          {/* Members */}
-          <div className="p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                Members
-              </p>
-              <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[10px]">
-                {channel.membersLabel}
-              </Badge>
-            </div>
-            <button className="flex w-full items-center gap-2.5 rounded-2xl border border-border px-3 py-2.5 transition-colors hover:bg-accent">
-              <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-primary/10">
-                <Users className="h-3.5 w-3.5 text-primary" />
-              </div>
-              <div className="text-left">
-                <p className="text-[12px] font-medium text-foreground">Manage members</p>
-                <p className="text-[11px] text-muted-foreground">Invite, remove, and set roles</p>
-              </div>
-            </button>
-          </div>
 
           {/* Notifications */}
           <div className="p-4 space-y-3">
@@ -607,10 +591,14 @@ function GroupSettingsSheet({
   group,
   open,
   onOpenChange,
+  channelId,
+  onDeleted,
 }: {
   group: MockChannelGroup
   open: boolean
   onOpenChange: (open: boolean) => void
+  channelId?: string
+  onDeleted?: () => void
 }) {
   const [name, setName] = useState(group.label)
   const [description, setDescription] = useState(group.description)
@@ -618,6 +606,13 @@ function GroupSettingsSheet({
   const [notifications, setNotifications] = useState(true)
   const [mentionsOnly, setMentionsOnly] = useState(false)
   const [slowMode, setSlowMode] = useState(false)
+  const [addMemberError, setAddMemberError] = useState<string | null>(null)
+  const addGroupMember = useAddGroupMember(group.id)
+  const deleteGroup = useDeleteGroup(channelId ?? '')
+  const { data: profile } = useProfile()
+  const { data: followers = [] } = useUserFollowers(profile?.id)
+  const { data: existingMembers = [] } = useGroupMembers(group.id)
+  const existingMemberIds = new Set(existingMembers.filter((m) => m.user).map((m) => m.user.id))
 
   useEffect(() => {
     setName(group.label)
@@ -723,32 +718,66 @@ function GroupSettingsSheet({
             </div>
           </div>
 
+          {/* Add Members */}
+          <div className="space-y-3 p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              Add Members
+            </p>
+            {addMemberError ? <p className="text-[11px] text-destructive">{addMemberError}</p> : null}
+            <div className="space-y-1 max-h-52 overflow-y-auto">
+              {followers.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground py-1">No followers to add</p>
+              ) : followers.map((f) => {
+                const user = f.users
+                const alreadyMember = existingMemberIds.has(user.id)
+                return (
+                  <div key={user.id} className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 hover:bg-accent">
+                    <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
+                      {user.username?.[0]?.toUpperCase() ?? '?'}
+                    </div>
+                    <p className="flex-1 truncate text-[12px] text-foreground">@{user.username}</p>
+                    <button
+                      disabled={alreadyMember || addGroupMember.isPending}
+                      onClick={() => {
+                        setAddMemberError(null)
+                        addGroupMember.mutate(
+                          { user_id: user.id },
+                          { onError: (e) => setAddMemberError(e instanceof Error ? e.message : 'Failed') },
+                        )
+                      }}
+                      className="rounded-lg border border-border px-2 py-0.5 text-[10px] font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-40"
+                    >
+                      {alreadyMember ? 'Added' : 'Add'}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
           {/* Danger */}
           <div className="space-y-3 p-4">
             <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-destructive">
               Danger zone
             </p>
-            <div className="space-y-2">
-              <button className="flex w-full items-center gap-2.5 rounded-2xl border border-border px-3 py-2.5 text-left transition-colors hover:bg-accent">
-                <Archive className="h-4 w-4 text-muted-foreground" />
-                <div>
-                  <p className="text-[12px] font-medium text-foreground">Archive group</p>
-                  <p className="text-[11px] text-muted-foreground">Read-only, stays in channel</p>
-                </div>
-              </button>
-              <button className="flex w-full items-center gap-2.5 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-left transition-colors hover:bg-destructive/10">
-                <Trash2 className="h-4 w-4 text-destructive" />
-                <div>
-                  <p className="text-[12px] font-medium text-destructive">Delete group</p>
-                  <p className="text-[11px] text-muted-foreground">Remove group and all messages</p>
-                </div>
-              </button>
-            </div>
+            <button
+              disabled={deleteGroup.isPending}
+              onClick={() => deleteGroup.mutate(group.id, { onSuccess: () => { onOpenChange(false); onDeleted?.() } })}
+              className="flex w-full items-center gap-2.5 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-left transition-colors hover:bg-destructive/10 disabled:opacity-50"
+            >
+              <Trash2 className="h-4 w-4 text-destructive" />
+              <div>
+                <p className="text-[12px] font-medium text-destructive">
+                  {deleteGroup.isPending ? 'Deleting…' : 'Delete group'}
+                </p>
+                <p className="text-[11px] text-muted-foreground">Remove group and all messages</p>
+              </div>
+            </button>
           </div>
 
           <div className="p-4">
             <Button className="w-full rounded-xl text-[12px]" onClick={() => onOpenChange(false)}>
-              Save changes
+              Done
             </Button>
           </div>
         </div>
@@ -942,6 +971,7 @@ export function ChannelsPanel({
         open={channelSettingsOpen}
         onOpenChange={setChannelSettingsOpen}
         onSave={(avatarUrl, bannerUrl) => onAssetSave?.(channel.id, avatarUrl, bannerUrl)}
+        activeGroupId={activeGroup}
       />
 
       {groupSettingsTarget ? (
@@ -950,6 +980,8 @@ export function ChannelsPanel({
           group={groupSettingsTarget}
           open={!!groupSettingsTarget}
           onOpenChange={(open) => { if (!open) setGroupSettingsTarget(null) }}
+          channelId={channel.id}
+          onDeleted={() => setGroupSettingsTarget(null)}
         />
       ) : null}
     </>

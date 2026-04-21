@@ -40,7 +40,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
 import { type ChatMessage } from '@/hooks/use-messaging'
-import { useProfile } from '@/hooks/use-user'
+import { useProfile, useUserById, useUserFollowers, useUserFollowing } from '@/hooks/use-user'
 import { getMockUserAvatar, getMockUserBanner } from '@/lib/mock-users'
 import { cn } from '@/lib/utils'
 
@@ -59,6 +59,7 @@ interface FeedReaction {
 export interface FeedPost {
   id: string
   author: string
+  authorId?: string
   role: string
   time: string
   body: string
@@ -73,6 +74,7 @@ export interface FeedPost {
 }
 
 export interface FeedMemberProfile {
+  id?: string
   accent: string
   avatarUrl: string | null
   bio: string
@@ -200,7 +202,7 @@ function normalizePersonName(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
-function buildFeedMemberProfile(post: FeedPost, avatarUrl: string | null, handle?: string | null): FeedMemberProfile {
+function buildFeedMemberProfile(post: FeedPost, avatarUrl: string | null, handle?: string | null, id?: string): FeedMemberProfile {
   const defaults = FEED_MEMBER_PROFILES[post.author] ?? {
     accent: 'from-slate-500 via-slate-700 to-slate-900',
     bio: `${post.author} is active in ${post.role.toLowerCase()} work across this channel feed.`,
@@ -215,6 +217,7 @@ function buildFeedMemberProfile(post: FeedPost, avatarUrl: string | null, handle
 
   return {
     ...defaults,
+    id,
     avatarUrl,
     handle: handle ?? defaults.handle,
     name: post.author,
@@ -223,12 +226,14 @@ function buildFeedMemberProfile(post: FeedPost, avatarUrl: string | null, handle
 }
 
 export function buildStandaloneFeedMemberProfile({
+  id,
   avatarUrl,
   handle,
   name,
   role = 'Member',
   status,
 }: {
+  id?: string
   avatarUrl: string | null
   handle?: string | null
   name: string
@@ -249,6 +254,7 @@ export function buildStandaloneFeedMemberProfile({
 
   return {
     ...defaults,
+    id,
     avatarUrl,
     handle: handle ?? defaults.handle,
     name,
@@ -470,12 +476,28 @@ function MessageRow({
 }) {
   const [profileOpen, setProfileOpen] = useState(false)
   const [isFollowing, setIsFollowing] = useState(false)
+
+  const { data: realUser } = useUserById(memberProfile.id)
+  const { data: followersData } = useUserFollowers(memberProfile.id)
+  const { data: followingData } = useUserFollowing(memberProfile.id)
+
+  const resolvedProfile: FeedMemberProfile = {
+    ...memberProfile,
+    name: realUser?.username ?? memberProfile.name,
+    handle: realUser?.username ?? memberProfile.handle,
+    bio: realUser?.bio ?? memberProfile.bio,
+    status: realUser?.status ?? memberProfile.status,
+    avatarUrl: realUser?.avatar_url ?? memberProfile.avatarUrl,
+    followers: followersData?.length ?? memberProfile.followers,
+    following: followingData?.length ?? memberProfile.following,
+  }
+
   const roleColor = ROLE_COLORS[post.role] ?? 'text-primary'
   const initial = post.author[0].toUpperCase()
-  const fallbackAvatar = createMockProfileAvatar(memberProfile)
+  const fallbackAvatar = createMockProfileAvatar(resolvedProfile)
   const displayAvatar = post.isOwn
-    ? (myAvatarUrl ?? memberProfile.avatarUrl ?? fallbackAvatar)
-    : (authorAvatarUrl ?? memberProfile.avatarUrl ?? fallbackAvatar)
+    ? (myAvatarUrl ?? resolvedProfile.avatarUrl ?? fallbackAvatar)
+    : (authorAvatarUrl ?? resolvedProfile.avatarUrl ?? fallbackAvatar)
 
   function handleMessageClick() {
     onMessageAuthor()
@@ -625,7 +647,7 @@ function MessageRow({
           className="w-[320px] overflow-hidden rounded-2xl border border-border/60 p-0 shadow-2xl"
         >
           {/* Gradient banner */}
-          <div className={cn('h-[72px] w-full bg-gradient-to-r', memberProfile.accent)} />
+          <div className={cn('h-[72px] w-full bg-gradient-to-r', resolvedProfile.accent)} />
 
           <div className="bg-popover px-4 pb-4">
             {/* Avatar row */}
@@ -675,8 +697,8 @@ function MessageRow({
             </div>
 
             {/* Identity */}
-            <p className="text-[19px] font-black leading-none text-foreground">{memberProfile.name}</p>
-            <p className="mt-1 text-[12px] text-muted-foreground">@{memberProfile.handle}</p>
+            <p className="text-[19px] font-black leading-none text-foreground">{resolvedProfile.name}</p>
+            <p className="mt-1 text-[12px] text-muted-foreground">@{resolvedProfile.handle}</p>
 
             {/* Inner content card */}
             <div className="mt-3 rounded-lg bg-muted/50 px-3 py-3 space-y-3 text-[13px]">
@@ -684,7 +706,7 @@ function MessageRow({
               {/* Status */}
               <div className="flex items-center gap-2 text-foreground/80">
                 <span className="h-[8px] w-[8px] flex-shrink-0 rounded-full bg-emerald-500" />
-                {memberProfile.status}
+                {resolvedProfile.status}
               </div>
 
               {/* Stats */}
@@ -693,15 +715,15 @@ function MessageRow({
                   <div className="h-px bg-border/40" />
                   <div className="flex items-center gap-5">
                     <div>
-                      <p className="text-[15px] font-bold text-foreground">{formatCount(memberProfile.followers)}</p>
+                      <p className="text-[15px] font-bold text-foreground">{formatCount(resolvedProfile.followers)}</p>
                       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Followers</p>
                     </div>
                     <div>
-                      <p className="text-[15px] font-bold text-foreground">{formatCount(memberProfile.following)}</p>
+                      <p className="text-[15px] font-bold text-foreground">{formatCount(resolvedProfile.following)}</p>
                       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Following</p>
                     </div>
                     <div>
-                      <p className="text-[15px] font-bold text-foreground">{formatCount(memberProfile.posts)}</p>
+                      <p className="text-[15px] font-bold text-foreground">{formatCount(resolvedProfile.posts)}</p>
                       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Posts</p>
                     </div>
                   </div>
@@ -713,7 +735,7 @@ function MessageRow({
               {/* About Me */}
               <div>
                 <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">About Me</p>
-                <p className="text-[12px] leading-[1.65] text-foreground/80">{memberProfile.bio}</p>
+                <p className="text-[12px] leading-[1.65] text-foreground/80">{resolvedProfile.bio}</p>
               </div>
 
               <div className="h-px bg-border/40" />
@@ -725,12 +747,14 @@ function MessageRow({
                   roleColor,
                 )}>
                   <span className="h-2 w-2 rounded-full bg-current" />
-                  {memberProfile.role}
+                  {resolvedProfile.role}
                 </span>
-                <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                  <MapPin className="h-3 w-3" />
-                  {memberProfile.location}
-                </span>
+                {resolvedProfile.location ? (
+                  <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                    <MapPin className="h-3 w-3" />
+                    {resolvedProfile.location}
+                  </span>
+                ) : null}
               </div>
             </div>
 
@@ -790,26 +814,42 @@ export function FeedMemberProfileView({
 }) {
   const [activeTab, setActiveTab] = useState<'activity' | 'articles' | 'projects' | 'saved'>('activity')
   const [isFollowing, setIsFollowing] = useState(false)
-  const bannerImage = createMockProfileBanner(memberProfile)
-  const avatarImage = memberProfile.avatarUrl ?? createMockProfileAvatar(memberProfile)
+
+  const { data: realUser } = useUserById(memberProfile.id)
+  const { data: followersData } = useUserFollowers(memberProfile.id)
+  const { data: followingData } = useUserFollowing(memberProfile.id)
+
+  const resolvedProfile: FeedMemberProfile = {
+    ...memberProfile,
+    name: realUser?.username ?? memberProfile.name,
+    handle: realUser?.username ?? memberProfile.handle,
+    bio: realUser?.bio ?? memberProfile.bio,
+    status: realUser?.status ?? memberProfile.status,
+    avatarUrl: realUser?.avatar_url ?? memberProfile.avatarUrl,
+    followers: followersData?.length ?? memberProfile.followers,
+    following: followingData?.length ?? memberProfile.following,
+  }
+
+  const bannerImage = createMockProfileBanner(resolvedProfile)
+  const avatarImage = resolvedProfile.avatarUrl ?? createMockProfileAvatar(resolvedProfile)
 
   const allFeedPosts = Object.values(FEED_BY_GROUP).flat()
-  const memberPosts = allFeedPosts.filter((p) => p.author === memberProfile.name)
+  const memberPosts = allFeedPosts.filter((p) => p.author === resolvedProfile.name)
   const featuredPosts = memberPosts.length > 0
     ? memberPosts.slice(0, 3)
     : posts.length > 0 ? posts.slice(0, 3) : allFeedPosts.slice(0, 2)
 
-  const projectTitle = memberProfile.focus.split(',')[0]?.trim() ?? memberProfile.focus
-  const projectBody = memberProfile.bio.split('.')[0]?.trim() ?? memberProfile.focus
+  const projectTitle = resolvedProfile.focus.split(',')[0]?.trim() ?? resolvedProfile.focus
+  const projectBody = resolvedProfile.bio.split('.')[0]?.trim() ?? resolvedProfile.focus
 
-  const roleColor = ROLE_COLORS[memberProfile.role] ?? 'text-primary'
+  const roleColor = ROLE_COLORS[resolvedProfile.role] ?? 'text-primary'
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto bg-sidebar text-foreground">
       {/* Banner */}
       <div className="relative h-[118px] flex-shrink-0 overflow-hidden">
         <img src={bannerImage} alt="" className="h-full w-full object-cover" />
-        <div className={cn('absolute inset-0 bg-gradient-to-br opacity-45', memberProfile.accent)} />
+        <div className={cn('absolute inset-0 bg-gradient-to-br opacity-45', resolvedProfile.accent)} />
         <div className="absolute inset-0 bg-gradient-to-b from-black/10 to-black/70" />
         <button
           type="button"
@@ -831,9 +871,9 @@ export function FeedMemberProfileView({
         <div className="-mt-9 mb-2.5 flex items-end justify-between">
           <div className="relative">
             <Avatar className="h-[68px] w-[68px] overflow-hidden rounded-full border-[3px] border-sidebar bg-muted shadow-xl">
-              <AvatarImage src={avatarImage} alt={memberProfile.name} className="h-full w-full rounded-full object-cover" />
+              <AvatarImage src={avatarImage} alt={resolvedProfile.name} className="h-full w-full rounded-full object-cover" />
               <AvatarFallback className="rounded-full bg-muted text-[18px] font-bold text-foreground">
-                {memberProfile.name[0]?.toUpperCase() ?? 'U'}
+                {resolvedProfile.name[0]?.toUpperCase() ?? 'U'}
               </AvatarFallback>
             </Avatar>
             <span className="absolute bottom-0.5 right-0.5 h-[12px] w-[12px] rounded-full border-2 border-sidebar bg-emerald-400" />
@@ -869,22 +909,22 @@ export function FeedMemberProfileView({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-[19px] font-black leading-none tracking-tight text-foreground">{memberProfile.name}</h1>
+          <h1 className="text-[19px] font-black leading-none tracking-tight text-foreground">{resolvedProfile.name}</h1>
           <span className={cn(
             'rounded-md border border-current/30 bg-muted/50 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.1em]',
             roleColor,
           )}>
-            {memberProfile.role}
+            {resolvedProfile.role}
           </span>
         </div>
-        <p className="mt-0.5 text-[11px] text-muted-foreground">@{memberProfile.handle}</p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">@{resolvedProfile.handle}</p>
         <div className="mt-2 flex items-center gap-3.5 text-[11px]">
           <p>
-            <span className="font-bold text-foreground">{formatCompactCount(memberProfile.followers)}</span>
+            <span className="font-bold text-foreground">{formatCompactCount(resolvedProfile.followers)}</span>
             {' '}<span className="text-muted-foreground">Followers</span>
           </p>
           <p>
-            <span className="font-bold text-foreground">{formatCompactCount(memberProfile.following)}</span>
+            <span className="font-bold text-foreground">{formatCompactCount(resolvedProfile.following)}</span>
             {' '}<span className="text-muted-foreground">Following</span>
           </p>
         </div>
@@ -906,18 +946,20 @@ export function FeedMemberProfileView({
         transition={{ delay: 0.14, duration: 0.28, ease: 'easeOut' }}
       >
         <p className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">About</p>
-        <p className="text-[11.5px] leading-[1.65] text-foreground">{memberProfile.bio}</p>
+        <p className="text-[11.5px] leading-[1.65] text-foreground">{resolvedProfile.bio}</p>
         <div className="mt-2.5 space-y-1.5 text-[11px] text-muted-foreground">
-          <div className="flex items-center gap-1.5">
-            <MapPin className="h-3 w-3 flex-shrink-0" />
-            <span>Based in {memberProfile.location}</span>
-          </div>
+          {resolvedProfile.location ? (
+            <div className="flex items-center gap-1.5">
+              <MapPin className="h-3 w-3 flex-shrink-0" />
+              <span>Based in {resolvedProfile.location}</span>
+            </div>
+          ) : null}
           <div className="flex min-w-0 items-center gap-1.5">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0">
               <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
               <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
             </svg>
-            <span className="truncate text-primary/80">twiky.studio/{memberProfile.handle}</span>
+            <span className="truncate text-primary/80">twiky.studio/{resolvedProfile.handle}</span>
           </div>
         </div>
       </motion.div>
@@ -988,14 +1030,14 @@ export function FeedMemberProfileView({
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex min-w-0 items-center gap-2">
                         <Avatar className="h-6 w-6 flex-shrink-0 rounded-full border border-border bg-muted">
-                          <AvatarImage src={avatarImage} alt={memberProfile.name} className="h-full w-full rounded-full object-cover" />
+                          <AvatarImage src={avatarImage} alt={resolvedProfile.name} className="h-full w-full rounded-full object-cover" />
                           <AvatarFallback className="rounded-full bg-muted text-[9px] font-bold text-foreground">
-                            {memberProfile.name[0]?.toUpperCase() ?? 'U'}
+                            {resolvedProfile.name[0]?.toUpperCase() ?? 'U'}
                           </AvatarFallback>
                         </Avatar>
                         <div className="min-w-0">
                           <p className="text-[11px] font-semibold leading-none text-foreground">
-                            {memberProfile.name}{' '}
+                            {resolvedProfile.name}{' '}
                             <span className="font-normal text-muted-foreground">posted an update</span>
                           </p>
                           <p className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
@@ -1018,8 +1060,8 @@ export function FeedMemberProfileView({
                     </div>
                   ) : (
                     <div className="mx-2.5 mb-2 overflow-hidden rounded-[8px]">
-                      <div className={cn('flex h-[72px] items-end bg-gradient-to-br p-2.5 opacity-80', memberProfile.accent)}>
-                        <p className="text-[11px] font-black leading-snug text-white line-clamp-2">{memberProfile.focus}</p>
+                      <div className={cn('flex h-[72px] items-end bg-gradient-to-br p-2.5 opacity-80', resolvedProfile.accent)}>
+                        <p className="text-[11px] font-black leading-snug text-white line-clamp-2">{resolvedProfile.focus}</p>
                       </div>
                     </div>
                   )}
@@ -1077,9 +1119,9 @@ export function FeedMemberProfileView({
             </p>
             <p className="mt-1.5 text-[11px] leading-[1.75] text-muted-foreground">
               {activeTab === 'projects'
-                ? memberProfile.focus
+                ? resolvedProfile.focus
                 : activeTab === 'articles'
-                  ? memberProfile.bio
+                  ? resolvedProfile.bio
                   : 'Pinned references and useful items will appear here.'}
             </p>
           </motion.div>
@@ -1367,7 +1409,7 @@ export function ChannelFeed({
     if (post.isOwn) {
       return {
         canMessage: false,
-        profile: buildFeedMemberProfile(post, myAvatarUrl ?? profile?.avatar_url ?? null, profile?.username ?? 'you'),
+        profile: buildFeedMemberProfile(post, myAvatarUrl ?? profile?.avatar_url ?? null, profile?.username ?? 'you', profile?.id),
       }
     }
 
@@ -1376,6 +1418,8 @@ export function ChannelFeed({
       profile: buildFeedMemberProfile(
         post,
         createMockProfileAvatar(buildFeedMemberProfile(post, null)),
+        undefined,
+        post.authorId,
       ),
     }
   }

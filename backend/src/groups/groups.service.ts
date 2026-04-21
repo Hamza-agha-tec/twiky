@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, NotFoundException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.module';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { AddGroupMemberDto } from './dto/add-group-member.dto';
@@ -64,6 +64,39 @@ export class GroupsService {
             joined_at: m.joined_at,
             user: m.users
         }));
+    }
+
+    async deleteGroup(groupId: string, userId: string) {
+        const { data: group, error: groupError } = await this.supabaseService
+            .getClient()
+            .from('groups')
+            .select('channel_id, is_general')
+            .eq('id', groupId)
+            .single();
+
+        if (groupError || !group) throw new NotFoundException('Group not found');
+        if (group.is_general) throw new ForbiddenException('Cannot delete the general group');
+
+        const { data: member } = await this.supabaseService
+            .getClient()
+            .from('channel_members')
+            .select('role')
+            .eq('channel_id', group.channel_id)
+            .eq('user_id', userId)
+            .single();
+
+        if (!member || (member.role !== 'OWNER' && member.role !== 'ADMIN')) {
+            throw new UnauthorizedException('Only channel Admins or Owners can delete groups');
+        }
+
+        const { error } = await this.supabaseService
+            .getClient()
+            .from('groups')
+            .delete()
+            .eq('id', groupId);
+
+        if (error) throw new Error(`Failed to delete group: ${error.message}`);
+        return { success: true };
     }
 
     async addMemberToGroup(groupId: string, addGroupMemberDto: AddGroupMemberDto) {

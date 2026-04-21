@@ -81,6 +81,7 @@ async function authedFetch<T = unknown>(path: string, init: RequestInit = {}): P
 
 export const userApi = {
   getProfile: () => authedFetch<UserProfile>('/users/profile'),
+  getUserById: (id: string) => authedFetch<UserProfile>(`/users/${id}`),
   updateProfile: (data: UpdateProfileInput) =>
     authedFetch<UserProfile>('/users/profile', { method: 'PATCH', body: JSON.stringify(data) }),
   getSettings: () => authedFetch('/users/settings'),

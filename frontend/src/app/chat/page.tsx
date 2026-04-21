@@ -31,6 +31,11 @@ import {
   WorkspaceSidebar,
 } from '@/components/chat/workspace-sidebar'
 import { useChannels, useCreateChannel } from '@/hooks/use-channels'
+import { useChannelGroups, useCreateGroup, useGroupMessages, backendGroupToMock } from '@/hooks/use-groups'
+import { groupsApi, type GroupMessage } from '@/lib/groups-api'
+import { useQueryClient } from '@tanstack/react-query'
+import { GROUP_KEYS } from '@/hooks/use-groups'
+import type { FeedPost } from '@/components/chat/channel-feed'
 import { type ChatMessage } from '@/hooks/use-messaging'
 import { useProfile } from '@/hooks/use-user'
 import type { BackendChannel } from '@/lib/channel-api'
@@ -273,9 +278,27 @@ export default function ChatPage() {
     return {}
   })
 
+  const queryClient = useQueryClient()
   const { data: profile } = useProfile()
   const { data: backendChannels = [] } = useChannels()
   const createChannel = useCreateChannel()
+  const { data: backendGroups = [] } = useChannelGroups(activeChannelId || undefined)
+  const createGroup = useCreateGroup(activeChannelId)
+  const isRealGroupId = /^[0-9a-f-]{36}$/i.test(activeGroupId)
+  const { data: rawMessages } = useGroupMessages(isRealGroupId ? activeGroupId : undefined)
+
+  const groupPosts: FeedPost[] = (rawMessages ?? []).map((msg: GroupMessage) => ({
+    id: msg.id,
+    author: msg.sender?.username ?? 'Unknown',
+    authorId: msg.sender_id,
+    role: 'Member',
+    time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    body: msg.content,
+    isOwn: msg.sender_id === profile?.id,
+    imageUrl: msg.file_url ?? undefined,
+    reactions: [],
+    replyCount: 0,
+  }))
   const activeSyntheticChat = activeDirectChat ? (syntheticDirectChats[activeDirectChat] ?? null) : null
 
   const workspaceChannels = useMemo(
@@ -285,6 +308,15 @@ export default function ChatPage() {
       ),
     [backendChannels, channelGroupsById],
   )
+
+  // Sync real backend groups into channelGroupsById when they load
+  useEffect(() => {
+    if (!activeChannelId || backendGroups.length === 0) return;
+    setChannelGroupsById((prev) => ({
+      ...prev,
+      [activeChannelId]: backendGroups.map(backendGroupToMock),
+    }));
+  }, [activeChannelId, backendGroups]);
 
   function handleChannelAssetSave(channelId: string, avatar: string | null, banner: string | null) {
     setChannelAssets((prev) => ({ ...prev, [channelId]: { avatar, banner } }))
@@ -551,26 +583,21 @@ export default function ChatPage() {
 
   function handleCreateGroup(values: { description: string; name: string }) {
     if (!activeChannel) return
-    const currentGroups = channelGroupsById[activeChannel.id] ?? activeChannel.groups
-    const existingGroupIds = currentGroups.map((g) => g.id)
-    const baseGroupId = `${activeChannel.id}-${toSlug(values.name)}`
-    const uniqueGroupId = createUniqueId(baseGroupId, existingGroupIds)
-    const groupLabel = uniqueGroupId.replace(`${activeChannel.id}-`, '')
-    const nextGroup = buildChannelGroup({
-      channelId: activeChannel.id,
-      channelLabel: activeChannel.label,
-      label: groupLabel.replace(/-/g, ' '),
-      description: values.description,
-      membersLabel: activeChannel.membersLabel,
-    })
-    const normalizedGroup = { ...nextGroup, id: uniqueGroupId }
-    setChannelGroupsById((prev) => ({
-      ...prev,
-      [activeChannel.id]: [...currentGroups, normalizedGroup],
-    }))
-    setActiveGroupId(normalizedGroup.id)
-    setActiveSurface('channel')
-    setChannelTab('feed')
+    createGroup.mutate(
+      { name: values.name, description: values.description || undefined },
+      {
+        onSuccess: (group) => {
+          const newGroup = backendGroupToMock(group)
+          setChannelGroupsById((prev) => ({
+            ...prev,
+            [activeChannel.id]: [...(prev[activeChannel.id] ?? activeChannel.groups), newGroup],
+          }))
+          setActiveGroupId(newGroup.id)
+          setActiveSurface('channel')
+          setChannelTab('feed')
+        },
+      },
+    )
   }
 
   const directFeedContent = activeDirectChat ? (
@@ -646,6 +673,12 @@ export default function ChatPage() {
           group={activeGroup}
           myAvatarUrl={userAvatar}
           onOpenDirectConversation={openDirectChat}
+          postsOverride={isRealGroupId ? groupPosts : undefined}
+          onSendPost={async ({ content, fileUrl, replyToId }) => {
+            if (!isRealGroupId) return
+            await groupsApi.sendGroupMessage(activeGroup.id, { content, fileUrl, replyToId: replyToId ?? null })
+            queryClient.invalidateQueries({ queryKey: GROUP_KEYS.messages(activeGroup.id) })
+          }}
         />
       </MainArea>
     ) : null

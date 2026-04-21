@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Body, UseGuards, Request } from '@nestjs/common';
 import { GroupsService } from './groups.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateGroupDto } from './dto/create-group.dto';
@@ -26,6 +26,11 @@ export class GroupsController {
     @Get('groups/:groupId/members')
     async getGroupMembers(@Param('groupId') groupId: string) {
         return this.groupsService.getGroupMembers(groupId);
+    }
+
+    @Delete('groups/:groupId')
+    async deleteGroup(@Request() req: any, @Param('groupId') groupId: string) {
+        return this.groupsService.deleteGroup(groupId, req.user.userId);
     }
 
     @Post('groups/:groupId/members')

@@ -11,6 +11,7 @@ import {
 
 export const USER_KEYS = {
   profile: ['user', 'profile'] as const,
+  byId: (id: string) => ['user', 'by-id', id] as const,
   settings: ['user', 'settings'] as const,
   followers: (userId: string) => ['user', userId, 'followers'] as const,
   following: (userId: string) => ['user', userId, 'following'] as const,
@@ -21,6 +22,14 @@ export function useProfile() {
   return useQuery<UserProfile>({
     queryKey: USER_KEYS.profile,
     queryFn: userApi.getProfile,
+  });
+}
+
+export function useUserById(id?: string) {
+  return useQuery<UserProfile>({
+    queryKey: id ? USER_KEYS.byId(id) : ['user', 'by-id', 'missing'],
+    queryFn: () => userApi.getUserById(id!),
+    enabled: Boolean(id),
   });
 }
 
