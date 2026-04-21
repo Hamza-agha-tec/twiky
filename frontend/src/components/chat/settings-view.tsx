@@ -12,14 +12,12 @@ import {
   Download,
   Eye,
   Fingerprint,
-  Github,
   Globe,
   HardDrive,
   ImageIcon,
   Languages,
   Link2,
   LogOut,
-  MapPin,
   Monitor,
   NotebookPen,
   Palette,
@@ -28,7 +26,6 @@ import {
   Smartphone,
   Sparkles,
   Trash2,
-  Twitter,
   Upload,
   UserRound,
   UserRoundCog,
@@ -279,22 +276,22 @@ function ProfileSection({
   const updateProfile = useUpdateProfile()
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const initialUsername = profile?.username ?? ''
-  const [displayName, setDisplayName] = useState(initialUsername || 'Your Name')
+  const [displayName, setDisplayName] = useState(profile?.full_name ?? initialUsername ?? 'Your Name')
   const [username, setUsername] = useState(initialUsername)
-  const [pronouns, setPronouns] = useState('')
-  const [location, setLocation] = useState('')
   const [bio, setBio] = useState(profile?.bio ?? '')
   const [status, setStatus] = useState(profile?.status ?? '')
   const [statusEmoji, setStatusEmoji] = useState('🟢')
-  const [twitter, setTwitter] = useState('')
-  const [github, setGithub] = useState('')
-  const [website, setWebsite] = useState('')
+  const [xUrl, setXUrl] = useState(profile?.x_url ?? '')
+  const [websiteUrl, setWebsiteUrl] = useState(profile?.website_url ?? '')
 
   async function handleSaveProfile() {
     setSaveMessage(null)
     await updateProfile.mutateAsync({
       bio: bio.trim() || null,
+      full_name: displayName.trim() || null,
       status: status.trim() || null,
+      website_url: websiteUrl.trim() || null,
+      x_url: xUrl.trim() || null,
       username: username.trim() || undefined,
     })
     setSaveMessage('Saved')
@@ -417,13 +414,7 @@ function ProfileSection({
                 {status ? <span className="text-[13px]">{statusEmoji}</span> : null}
               </div>
               <p className="text-[12px] text-muted-foreground">@{username}</p>
-              {pronouns ? <p className="mt-0.5 text-[11px] text-muted-foreground">{pronouns}</p> : null}
               {bio ? <p className="mt-1.5 text-[12px] leading-[1.5] text-foreground">{bio}</p> : null}
-              {location ? (
-                <p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
-                  <MapPin className="h-3 w-3" />{location}
-                </p>
-              ) : null}
             </div>
             <div className="flex flex-shrink-0 items-center gap-4">
               {[
@@ -439,11 +430,10 @@ function ProfileSection({
             </div>
           </div>
 
-          {(twitter || github || website) ? (
+          {(xUrl || websiteUrl) ? (
             <div className="mt-2.5 flex flex-wrap gap-1.5">
-              {twitter ? <span className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground"><Twitter className="h-2.5 w-2.5" />{twitter}</span> : null}
-              {github ? <span className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground"><Github className="h-2.5 w-2.5" />{github}</span> : null}
-              {website ? <span className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground"><Link2 className="h-2.5 w-2.5" />{website}</span> : null}
+              {xUrl ? <span className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground">X {xUrl}</span> : null}
+              {websiteUrl ? <span className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground"><Link2 className="h-2.5 w-2.5" />{websiteUrl}</span> : null}
             </div>
           ) : null}
         </div>
@@ -472,24 +462,6 @@ function ProfileSection({
                   className="flex-1 bg-transparent px-1 text-[13px] focus:outline-none"
                 />
               </div>
-            </div>
-            <div>
-              <Label className="mb-1.5 block text-[11px] text-muted-foreground">Pronouns (optional)</Label>
-              <input
-                value={pronouns}
-                onChange={(e) => setPronouns(e.target.value)}
-                placeholder="they/them"
-                className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-            </div>
-            <div>
-              <Label className="mb-1.5 block text-[11px] text-muted-foreground">Location</Label>
-              <input
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="City, Country"
-                className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary"
-              />
             </div>
           </div>
           <div>
@@ -550,24 +522,27 @@ function ProfileSection({
       </SectionBlock>
 
       <SectionBlock title="Social Links">
-        <SettingRow title="Twitter / X" description="Link to your Twitter profile.">
+        <SettingRow title="X" description="Link to your X profile.">
           <div className="flex h-9 w-48 items-center gap-2 overflow-hidden rounded-xl border border-border bg-background px-3">
-            <Twitter className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
-            <input value={twitter} onChange={(e) => setTwitter(e.target.value)} placeholder="username" className="flex-1 bg-transparent text-[12px] focus:outline-none" />
+            <span className="text-[11px] font-bold text-muted-foreground">X</span>
+            <input value={xUrl} onChange={(e) => setXUrl(e.target.value)} placeholder="https://x.com/username" className="flex-1 bg-transparent text-[12px] focus:outline-none" />
           </div>
         </SettingRow>
-        <SettingRow title="GitHub" description="Link to your GitHub profile.">
-          <div className="flex h-9 w-48 items-center gap-2 overflow-hidden rounded-xl border border-border bg-background px-3">
-            <Github className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
-            <input value={github} onChange={(e) => setGithub(e.target.value)} placeholder="username" className="flex-1 bg-transparent text-[12px] focus:outline-none" />
-          </div>
-        </SettingRow>
-        <SettingRow title="Website" description="Your personal website.">
+        <SettingRow title="Website URL" description="Your personal website.">
           <div className="flex h-9 w-48 items-center gap-2 overflow-hidden rounded-xl border border-border bg-background px-3">
             <Link2 className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
-            <input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://..." className="flex-1 bg-transparent text-[12px] focus:outline-none" />
+            <input value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} placeholder="https://..." className="flex-1 bg-transparent text-[12px] focus:outline-none" />
           </div>
         </SettingRow>
+        <div className="flex justify-end py-2">
+          <Button
+            className="h-8 rounded-xl text-[12px]"
+            disabled={!username.trim() || updateProfile.isPending}
+            onClick={handleSaveProfile}
+          >
+            {updateProfile.isPending ? 'Saving...' : 'Save links'}
+          </Button>
+        </div>
       </SectionBlock>
 
       <SectionBlock title="Recent Posts">
@@ -981,22 +956,13 @@ const CONNECTED_APPS = [
     ),
   },
   {
-    id: 'github',
-    name: 'GitHub',
-    description: 'Link your repos and show commit activity.',
-    color: '#24292f',
-    bg: 'bg-foreground/5',
-    border: 'border-border',
-    icon: <Github className="h-6 w-6 text-foreground" />,
-  },
-  {
-    id: 'twitter',
-    name: 'Twitter / X',
+    id: 'x',
+    name: 'X',
     description: 'Cross-post updates and link your profile.',
-    color: '#1d9bf0',
-    bg: 'bg-[#1d9bf0]/10',
-    border: 'border-[#1d9bf0]/20',
-    icon: <Twitter className="h-6 w-6 text-[#1d9bf0]" />,
+    color: '#0ea5e9',
+    bg: 'bg-sky-500/10',
+    border: 'border-sky-500/20',
+    icon: <AtSign className="h-6 w-6 text-sky-500" />,
   },
   {
     id: 'phone',

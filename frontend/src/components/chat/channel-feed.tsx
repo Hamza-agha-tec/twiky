@@ -15,7 +15,6 @@ import {
   Bookmark,
   Heart,
   ImagePlus,
-  MapPin,
   MessageSquare,
   MessageCircle,
   MoreHorizontal,
@@ -88,6 +87,8 @@ export interface FeedMemberProfile {
   posts: number
   role: string
   status: string
+  websiteUrl?: string | null
+  xUrl?: string | null
 }
 
 export interface FeedDirectConversationTarget {
@@ -196,7 +197,30 @@ const ROLE_COLORS: Record<string, string> = {
   'Frontend':       'text-cyan-500',
   'Game Design':    'text-orange-400',
   'Voice':          'text-teal-500',
+  'Admin':          'text-amber-500',
   'Member':         'text-primary',
+}
+
+function RoleBadge({ role, variant = 'feed' }: { role: string; variant?: 'feed' | 'profile' }) {
+  const isAdmin = role.toLowerCase() === 'admin'
+  const baseClass = variant === 'profile'
+    ? 'inline-flex items-center rounded-md px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.12em]'
+    : 'inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]'
+
+  return (
+    <span
+      className={cn(
+        baseClass,
+        isAdmin
+          ? 'border border-sky-400/30 bg-[linear-gradient(135deg,rgba(14,165,233,0.16),rgba(16,185,129,0.14),rgba(244,63,94,0.10))] text-sky-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_4px_14px_rgba(14,165,233,0.12)] backdrop-blur dark:border-cyan-300/25 dark:text-cyan-100'
+          : variant === 'profile'
+            ? 'border border-current/30 bg-muted/50 text-muted-foreground'
+            : 'bg-muted text-muted-foreground',
+      )}
+    >
+      {role}
+    </span>
+  )
 }
 
 function normalizePersonName(value: string) {
@@ -223,6 +247,8 @@ function buildFeedMemberProfile(post: FeedPost, avatarUrl: string | null, handle
     handle: handle ?? defaults.handle,
     name: post.author,
     role: post.role,
+    websiteUrl: null,
+    xUrl: null,
   }
 }
 
@@ -261,7 +287,20 @@ export function buildStandaloneFeedMemberProfile({
     name,
     role,
     status: status ?? defaults.status,
+    websiteUrl: null,
+    xUrl: null,
   }
+}
+
+function normalizeExternalUrl(value?: string | null) {
+  const trimmed = value?.trim()
+  if (!trimmed) return null
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  return `https://${trimmed}`
+}
+
+function displayExternalUrl(value: string) {
+  return value.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '')
 }
 
 function escapeSvgText(value: string) {
@@ -489,6 +528,8 @@ function MessageRow({
     bio: realUser?.bio ?? memberProfile.bio,
     status: realUser?.status ?? memberProfile.status,
     avatarUrl: realUser?.avatar_url ?? memberProfile.avatarUrl,
+    websiteUrl: realUser?.website_url ?? memberProfile.websiteUrl,
+    xUrl: realUser?.x_url ?? memberProfile.xUrl,
     followers: followersData?.length ?? memberProfile.followers,
     following: followingData?.length ?? memberProfile.following,
   }
@@ -540,9 +581,7 @@ function MessageRow({
                 >
                   {post.author}
                 </button>
-                <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.07em] text-muted-foreground">
-                  {post.role}
-                </span>
+                <RoleBadge role={post.role} />
                 <span className="text-[11px] text-muted-foreground">{post.time}</span>
                 {post.pinned ? <Pin className="h-3 w-3 text-primary" /> : null}
               </div>
@@ -741,8 +780,8 @@ function MessageRow({
 
               <div className="h-px bg-border/40" />
 
-              {/* Role + Location */}
-              <div className="flex items-center justify-between">
+              {/* Role */}
+              <div className="flex items-center">
                 <span className={cn(
                   'inline-flex items-center gap-1.5 rounded-[5px] bg-background/70 px-2 py-1 text-[11px] font-semibold',
                   roleColor,
@@ -750,12 +789,6 @@ function MessageRow({
                   <span className="h-2 w-2 rounded-full bg-current" />
                   {resolvedProfile.role}
                 </span>
-                {resolvedProfile.location ? (
-                  <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                    <MapPin className="h-3 w-3" />
-                    {resolvedProfile.location}
-                  </span>
-                ) : null}
               </div>
             </div>
 
@@ -850,6 +883,8 @@ export function FeedMemberProfileView({
     bio: realUser?.bio ?? memberProfile.bio,
     status: realUser?.status ?? memberProfile.status,
     avatarUrl: realUser?.avatar_url ?? memberProfile.avatarUrl,
+    websiteUrl: realUser?.website_url ?? memberProfile.websiteUrl,
+    xUrl: realUser?.x_url ?? memberProfile.xUrl,
     followers: followersData?.length ?? memberProfile.followers,
     following: followingData?.length ?? memberProfile.following,
     posts: memberProfile.id ? backendPosts.length : memberProfile.posts,
@@ -884,9 +919,10 @@ export function FeedMemberProfileView({
   const projectBody = resolvedProfile.bio.split('.')[0]?.trim() ?? resolvedProfile.focus
 
   const roleColor = ROLE_COLORS[resolvedProfile.role] ?? 'text-primary'
+  const websiteHref = normalizeExternalUrl(resolvedProfile.websiteUrl)
 
   return (
-    <div className="flex flex-1 flex-col overflow-y-auto bg-sidebar text-foreground">
+    <div className="flex flex-1 flex-col overflow-y-auto bg-background text-foreground">
       {/* Banner */}
       <div className="relative h-[118px] flex-shrink-0 overflow-hidden">
         <img src={bannerImage} alt="" className="h-full w-full object-cover" />
@@ -951,12 +987,7 @@ export function FeedMemberProfileView({
 
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-[19px] font-black leading-none tracking-tight text-foreground">{resolvedProfile.name}</h1>
-          <span className={cn(
-            'rounded-md border border-current/30 bg-muted/50 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.1em]',
-            roleColor,
-          )}>
-            {resolvedProfile.role}
-          </span>
+          <RoleBadge role={resolvedProfile.role} variant="profile" />
         </div>
         <p className="mt-0.5 text-[11px] text-muted-foreground">@{resolvedProfile.handle}</p>
         <div className="mt-2 flex items-center gap-3.5 text-[11px]">
@@ -989,19 +1020,20 @@ export function FeedMemberProfileView({
         <p className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">About</p>
         <p className="text-[11.5px] leading-[1.65] text-foreground">{resolvedProfile.bio}</p>
         <div className="mt-2.5 space-y-1.5 text-[11px] text-muted-foreground">
-          {resolvedProfile.location ? (
-            <div className="flex items-center gap-1.5">
-              <MapPin className="h-3 w-3 flex-shrink-0" />
-              <span>Based in {resolvedProfile.location}</span>
-            </div>
+          {websiteHref ? (
+            <a
+              href={websiteHref}
+              target="_blank"
+              rel="noreferrer"
+              className="flex min-w-0 items-center gap-1.5 text-primary/80 transition-colors hover:text-primary"
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+              </svg>
+              <span className="truncate">{displayExternalUrl(websiteHref)}</span>
+            </a>
           ) : null}
-          <div className="flex min-w-0 items-center gap-1.5">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0">
-              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-            </svg>
-            <span className="truncate text-primary/80">twiky.studio/{resolvedProfile.handle}</span>
-          </div>
         </div>
       </motion.div>
 
@@ -1231,9 +1263,7 @@ function FeedProfileRow({
             >
               {post.author}
             </button>
-            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.07em] text-muted-foreground">
-              {post.role}
-            </span>
+            <RoleBadge role={post.role} />
             <span className="text-[11px] text-muted-foreground">{post.time}</span>
             {post.pinned ? <Pin className="h-3 w-3 text-primary" /> : null}
           </div>

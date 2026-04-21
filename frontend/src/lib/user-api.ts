@@ -12,6 +12,9 @@ export interface UserProfile {
   status: string | null;
   last_seen_at: string | null;
   banner: string | null;
+  full_name: string | null;
+  x_url: string | null;
+  website_url: string | null;
 }
 
 export interface UserSummary {
@@ -41,7 +44,7 @@ export interface UserPost {
 }
 
 export type UpdateProfileInput = Partial<
-  Pick<UserProfile, 'username' | 'avatar_url' | 'phone_number' | 'bio' | 'status'>
+  Pick<UserProfile, 'username' | 'avatar_url' | 'phone_number' | 'bio' | 'status' | 'full_name' | 'x_url' | 'website_url'>
 >;
 
 async function getToken(): Promise<string> {
