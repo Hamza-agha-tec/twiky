@@ -21,6 +21,11 @@ class SpotifyApiError extends Error {
   }
 }
 
+interface NowPlayingCache {
+  data: any;
+  fetchedAt: number;
+}
+
 @Injectable()
 export class SpotifyService {
   private readonly logger = new Logger(SpotifyService.name);
@@ -28,6 +33,13 @@ export class SpotifyService {
   private readonly clientSecret: string;
   private readonly redirectUri: string;
   private readonly frontendUrl: string;
+  // userId → cached now-playing result
+  private readonly nowPlayingCache = new Map<string, NowPlayingCache>();
+  // userId → active poll interval
+  private readonly pollIntervals = new Map<string, NodeJS.Timeout>();
+  // userId → change callback
+  private readonly changeCallbacks = new Map<string, (data: any) => void>();
+  private readonly POLL_INTERVAL = 15_000;
 
   constructor(
     private readonly configService: ConfigService,
@@ -45,6 +57,87 @@ export class SpotifyService {
       );
     }
   }
+
+  // ── background polling ────────────────────────────────────────────────────
+
+  getCachedNowPlaying(userId: string): any | null {
+    return this.nowPlayingCache.get(userId)?.data ?? null;
+  }
+
+  startWatching(userId: string, onChange: (data: any) => void) {
+    this.changeCallbacks.set(userId, onChange);
+    if (this.pollIntervals.has(userId)) return; // already polling
+
+    const tick = async () => {
+      const result = await this.fetchNowPlayingRaw(userId);
+      if (!result) return;
+      const cached = this.nowPlayingCache.get(userId);
+      const trackId = (result.track as any)?.spotify_url;
+      const prevTrackId = cached ? (cached.data?.track as any)?.spotify_url : undefined;
+      const changed = result.is_playing !== cached?.data?.is_playing || trackId !== prevTrackId;
+      this.nowPlayingCache.set(userId, { data: result, fetchedAt: Date.now() });
+      if (changed) {
+        this.changeCallbacks.get(userId)?.(result);
+      }
+    };
+
+    tick(); // immediate first fetch
+    this.pollIntervals.set(userId, setInterval(tick, this.POLL_INTERVAL));
+  }
+
+  stopWatching(userId: string) {
+    this.changeCallbacks.delete(userId);
+    const interval = this.pollIntervals.get(userId);
+    if (interval) {
+      clearInterval(interval);
+      this.pollIntervals.delete(userId);
+    }
+  }
+
+  private async fetchNowPlayingRaw(userId: string): Promise<any | null> {
+    try {
+      const { data: connection, error } = await this.supabaseService
+        .getClient()
+        .from('spotify_connections')
+        .select('access_token, refresh_token, expires_at')
+        .eq('user_id', userId)
+        .single();
+
+      if (error || !connection) return { is_playing: false, message: 'Spotify not connected' };
+
+      let accessToken = connection.access_token;
+      if (new Date(connection.expires_at) <= new Date()) {
+        accessToken = await this.refreshAccessToken(userId, connection.refresh_token);
+      }
+
+      const response = await this.spotifyGetWithRefresh(
+        userId,
+        accessToken,
+        connection.refresh_token,
+        'https://api.spotify.com/v1/me/player/currently-playing',
+      );
+
+      if (response.status === 204 || !response.data?.item) return { is_playing: false };
+
+      const track = response.data.item;
+      return {
+        is_playing: response.data.is_playing,
+        track: {
+          name: track.name,
+          artist: track.artists?.map((a: any) => a.name).join(', '),
+          album: track.album?.name,
+          album_art: track.album?.images?.[0]?.url,
+          spotify_url: track.external_urls?.spotify,
+          progress_ms: response.data.progress_ms,
+          duration_ms: track.duration_ms,
+        },
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  // ── public API ────────────────────────────────────────────────────────────
 
   getAuthUrl(state?: string) {
     if (!this.clientId || !this.redirectUri) {
@@ -81,7 +174,7 @@ export class SpotifyService {
     }
     try {
       const response = await firstValueFrom(
-        this.httpService.post(
+        this.httpService.post<any>(
           'https://accounts.spotify.com/api/token',
           new URLSearchParams({
             grant_type: 'authorization_code',
@@ -121,65 +214,17 @@ export class SpotifyService {
   }
 
   async getNowPlaying(targetUserId: string, viewerUserId: string) {
-    // 1. Verify mutual followers if viewer is not the owner
     if (targetUserId !== viewerUserId) {
       const isMutual = await this.checkMutualFollowers(targetUserId, viewerUserId);
-      if (!isMutual) {
-        throw new ForbiddenException('You must be mutual followers to see Spotify status');
-      }
+      if (!isMutual) throw new ForbiddenException('You must be mutual followers to see Spotify status');
     }
-
-    // 2. Get tokens
-    const { data: connection, error } = await this.supabaseService
-      .getClient()
-      .from('spotify_connections')
-      .select('*')
-      .eq('user_id', targetUserId)
-      .single();
-
-    if (error || !connection) {
-      return { is_playing: false, message: 'Spotify not connected' };
-    }
-
-    // 3. Refresh token if expired
-    let accessToken = connection.access_token;
-    if (new Date(connection.expires_at) <= new Date()) {
-      accessToken = await this.refreshAccessToken(targetUserId, connection.refresh_token);
-    }
-
-    try {
-      // 4. Fetch Now Playing from Spotify (retry once on 401 by refreshing token)
-      const response = await this.spotifyGetWithRefresh(
-        targetUserId,
-        accessToken,
-        connection.refresh_token,
-        'https://api.spotify.com/v1/me/player/currently-playing',
-      );
-
-      if (response.status === 204 || !response.data || !response.data.item) {
-        return { is_playing: false };
-      }
-
-      const track = response.data.item;
-      return {
-        is_playing: response.data.is_playing,
-        track: {
-          name: track.name,
-          artist: track.artists?.map((a: any) => a.name).join(', '),
-          album: track.album?.name,
-          album_art: track.album?.images?.[0]?.url,
-          spotify_url: track.external_urls?.spotify,
-          progress_ms: response.data.progress_ms,
-          duration_ms: track.duration_ms,
-        },
-      };
-    } catch (error) {
-      const err = error as AxiosLikeError;
-      this.logger.error(
-        `Failed to fetch Spotify status: ${err.response?.status ?? 'unknown'} ${JSON.stringify(err.response?.data ?? err.message)}`,
-      );
-      return { is_playing: false };
-    }
+    // Return cached data immediately — background polling keeps it fresh
+    const cached = this.getCachedNowPlaying(targetUserId);
+    if (cached) return cached;
+    // Cold start: fetch once, store in cache
+    const result = await this.fetchNowPlayingRaw(targetUserId);
+    if (result) this.nowPlayingCache.set(targetUserId, { data: result, fetchedAt: Date.now() });
+    return result ?? { is_playing: false };
   }
 
   async getDetailedProfile(targetUserId: string, viewerUserId: string) {
@@ -248,7 +293,9 @@ export class SpotifyService {
         ),
       ]);
 
-      const [topTracksRes, recentTracksRes, playlistsRes] = optionalResults.map((r) => (r.status === 'fulfilled' ? r.value : null));
+      const [topTracksRes, recentTracksRes, playlistsRes] = optionalResults.map(
+        (r) => (r.status === 'fulfilled' ? r.value : null) as { status: number; data: any } | null,
+      );
 
       const optionalErrors = optionalResults
         .filter((r) => r.status === 'rejected')
@@ -359,7 +406,7 @@ export class SpotifyService {
   private async refreshAccessToken(userId: string, refreshToken: string) {
     try {
       const response = await firstValueFrom(
-        this.httpService.post(
+        this.httpService.post<any>(
           'https://accounts.spotify.com/api/token',
           new URLSearchParams({
             grant_type: 'refresh_token',
@@ -401,10 +448,10 @@ export class SpotifyService {
     accessToken: string,
     refreshToken: string,
     url: string,
-  ) {
+  ): Promise<{ status: number; data: any }> {
     try {
       return await firstValueFrom(
-        this.httpService.get(url, {
+        this.httpService.get<any>(url, {
           headers: { Authorization: `Bearer ${accessToken}` },
         }),
       );
@@ -420,7 +467,7 @@ export class SpotifyService {
       const newAccessToken = await this.refreshAccessToken(userId, refreshToken);
       try {
         return await firstValueFrom(
-          this.httpService.get(url, {
+          this.httpService.get<any>(url, {
             headers: { Authorization: `Bearer ${newAccessToken}` },
           }),
         );

@@ -10,6 +10,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { MessagingService } from '../messaging.service';
+import { SpotifyService } from '../../spotify/spotify.service';
 import { ConfigService } from '@nestjs/config';
 import { SocketAuthMiddleware } from '../middlewares/ws-auth.middleware';
 import { Logger } from '@nestjs/common';
@@ -25,9 +26,12 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
 
   private readonly logger = new Logger(ChatGateway.name);
   private onlineUsers = new Map<string, Set<string>>();
+  // targetUserId → Set of watcher socketIds
+  private spotifyWatchers = new Map<string, Set<string>>();
 
   constructor(
     private readonly messagingService: MessagingService,
+    private readonly spotifyService: SpotifyService,
     private readonly configService: ConfigService,
   ) { }
 
@@ -63,12 +67,73 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
         this.server.emit('userStatusChange', { userId, status: 'offline' });
       }
     }
+
+    // Clean up any Spotify subscriptions this socket had
+    for (const [targetUserId, watchers] of this.spotifyWatchers) {
+      if (watchers.has(client.id)) {
+        this.removeSpotifyWatcher(targetUserId, client.id);
+      }
+    }
+
     this.logger.log(`User ${userId ?? 'unknown'} disconnected [${client.id}]`);
+  }
+
+  private removeSpotifyWatcher(targetUserId: string, socketId: string) {
+    const watchers = this.spotifyWatchers.get(targetUserId);
+    if (!watchers) return;
+    watchers.delete(socketId);
+    if (watchers.size === 0) {
+      this.spotifyWatchers.delete(targetUserId);
+      this.spotifyService.stopWatching(targetUserId);
+    }
   }
 
   @SubscribeMessage('getOnlineUsers')
   handleGetOnlineUsers() {
     return Array.from(this.onlineUsers.keys());
+  }
+
+  // ==========================================
+  // SPOTIFY NOW PLAYING
+  // ==========================================
+
+  @SubscribeMessage('subscribeSpotifyStatus')
+  handleSubscribeSpotify(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() targetUserId: string,
+  ) {
+    const viewerUserId = client.data.user?.userId;
+    if (!viewerUserId || !targetUserId) return;
+
+    client.join(`spotify_${targetUserId}`);
+
+    if (!this.spotifyWatchers.has(targetUserId)) {
+      this.spotifyWatchers.set(targetUserId, new Set());
+    }
+    this.spotifyWatchers.get(targetUserId)!.add(client.id);
+
+    // Emit cached data instantly (no await)
+    const cached = this.spotifyService.getCachedNowPlaying(targetUserId);
+    if (cached) {
+      client.emit('spotifyNowPlaying', { userId: targetUserId, ...cached });
+    }
+
+    // Start background polling — emits via socket only when track changes
+    this.spotifyService.startWatching(targetUserId, (data) => {
+      this.server.to(`spotify_${targetUserId}`).emit('spotifyNowPlaying', { userId: targetUserId, ...data });
+    });
+
+    return { status: 'subscribed', targetUserId };
+  }
+
+  @SubscribeMessage('unsubscribeSpotifyStatus')
+  handleUnsubscribeSpotify(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() targetUserId: string,
+  ) {
+    client.leave(`spotify_${targetUserId}`);
+    this.removeSpotifyWatcher(targetUserId, client.id);
+    return { status: 'unsubscribed', targetUserId };
   }
 
   // ==========================================

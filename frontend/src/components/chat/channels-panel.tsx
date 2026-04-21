@@ -38,6 +38,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+import { useUpdateChannel } from '@/hooks/use-channels'
 
 export interface MockChannelGroup {
   id: string
@@ -348,6 +349,8 @@ function ChannelSettingsSheet({
   const [visibility, setVisibility] = useState<'public' | 'private'>('public')
   const [notifications, setNotifications] = useState(true)
   const [muteAll, setMuteAll] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const updateChannel = useUpdateChannel()
   const [bannerUrl, setBannerUrl] = useState<string | null>(
     readChAsset(channel.id, 'banner') ?? channel.bannerUrl ?? null,
   )
@@ -363,6 +366,7 @@ function ChannelSettingsSheet({
     setVisibility('public')
     setNotifications(true)
     setMuteAll(false)
+    setSaveError(null)
     setBannerUrl(readChAsset(channel.id, 'banner') ?? channel.bannerUrl ?? null)
     setAvatarUrl(readChAsset(channel.id, 'avatar') ?? channel.avatarUrl ?? null)
   }, [channel.avatarUrl, channel.bannerUrl, channel.description, channel.id, channel.label])
@@ -563,17 +567,34 @@ function ChannelSettingsSheet({
           </div>
 
           {/* Save */}
-          <div className="p-4">
+          <div className="p-4 space-y-2">
+            {saveError ? (
+              <p className="text-[11px] text-destructive">{saveError}</p>
+            ) : null}
             <Button
               className="w-full rounded-xl text-[12px]"
-              onClick={() => {
-                writeChAsset(channel.id, 'avatar', avatarUrl)
-                writeChAsset(channel.id, 'banner', bannerUrl)
-                onSave?.(avatarUrl, bannerUrl)
-                onOpenChange(false)
+              disabled={updateChannel.isPending}
+              onClick={async () => {
+                setSaveError(null)
+                try {
+                  await updateChannel.mutateAsync({
+                    id: channel.id,
+                    data: {
+                      name: name.trim() || channel.label,
+                      description: description.trim() || undefined,
+                      access_type: visibility === 'private' ? 'PRIVATE' : 'PUBLIC',
+                    },
+                  })
+                  writeChAsset(channel.id, 'avatar', avatarUrl)
+                  writeChAsset(channel.id, 'banner', bannerUrl)
+                  onSave?.(avatarUrl, bannerUrl)
+                  onOpenChange(false)
+                } catch (err) {
+                  setSaveError(err instanceof Error ? err.message : 'Failed to save')
+                }
               }}
             >
-              Save changes
+              {updateChannel.isPending ? 'Saving…' : 'Save changes'}
             </Button>
           </div>
         </div>

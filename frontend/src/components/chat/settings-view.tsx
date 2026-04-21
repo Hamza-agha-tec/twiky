@@ -60,6 +60,7 @@ import {
   useUserFollowing,
   useUserPosts,
 } from '@/hooks/use-user'
+import { useSpotifyAuthUrl, useSpotifyNowPlaying } from '@/hooks/use-spotify'
 import type { UserPost, UserProfile } from '@/lib/user-api'
 import { cn } from '@/lib/utils'
 
@@ -1013,18 +1014,38 @@ const CONNECTED_APPS = [
   },
 ] as const
 
-function SpotifyNowPlaying() {
+function SpotifyNowPlaying({ userId }: { userId?: string }) {
+  const { data } = useSpotifyNowPlaying(userId)
+
+  if (!data?.is_playing || !data.track) {
+    return (
+      <div className="flex items-center gap-3 rounded-2xl border border-[#1DB954]/20 bg-[#1DB954]/5 p-3">
+        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#1DB954]/15">
+          <svg viewBox="0 0 24 24" className="h-5 w-5 fill-[#1DB954]/50">
+            <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
+          </svg>
+        </div>
+        <p className="text-[12px] text-muted-foreground">Not playing anything right now</p>
+      </div>
+    )
+  }
+
+  const { track } = data
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-[#1DB954]/30 bg-[#1DB954]/8 p-3">
-      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#1DB954]/20">
-        <svg viewBox="0 0 24 24" className="h-5 w-5 fill-[#1DB954]">
-          <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
-        </svg>
-      </div>
+      {track.album_art ? (
+        <img src={track.album_art} alt={track.album} className="h-10 w-10 flex-shrink-0 rounded-xl object-cover" />
+      ) : (
+        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#1DB954]/20">
+          <svg viewBox="0 0 24 24" className="h-5 w-5 fill-[#1DB954]">
+            <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
+          </svg>
+        </div>
+      )}
       <div className="min-w-0 flex-1">
         <p className="text-[11px] font-bold uppercase tracking-wider text-[#1DB954]">Now Playing</p>
-        <p className="truncate text-[12px] font-semibold text-foreground">Blinding Lights</p>
-        <p className="truncate text-[11px] text-muted-foreground">The Weeknd</p>
+        <p className="truncate text-[12px] font-semibold text-foreground">{track.name}</p>
+        <p className="truncate text-[11px] text-muted-foreground">{track.artist}</p>
       </div>
       <div className="flex flex-shrink-0 items-center gap-0.5">
         {[3, 5, 4, 6, 3, 5].map((h, i) => (
@@ -1042,8 +1063,23 @@ function SpotifyNowPlaying() {
   )
 }
 
-function ConnectionsSection() {
-  const [connected, setConnected] = useState<Set<string>>(new Set(['spotify']))
+function ConnectionsSection({ profile }: { profile?: UserProfile }) {
+  const [otherConnected, setOtherConnected] = useState<Set<string>>(new Set())
+  const getAuthUrl = useSpotifyAuthUrl()
+  const { data: nowPlaying } = useSpotifyNowPlaying(profile?.id)
+  const [spotifyError, setSpotifyError] = useState<string | null>(null)
+
+  const isSpotifyConnected = nowPlaying !== undefined && nowPlaying.message !== 'Spotify not connected'
+
+  async function handleConnectSpotify() {
+    setSpotifyError(null)
+    try {
+      const { url } = await getAuthUrl.mutateAsync()
+      window.location.href = url
+    } catch (err) {
+      setSpotifyError(err instanceof Error ? err.message : 'Failed to start Spotify connection')
+    }
+  }
 
   return (
     <>
@@ -1063,7 +1099,7 @@ function ConnectionsSection() {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <p className="text-[14px] font-bold text-foreground">Spotify</p>
-              {connected.has('spotify') ? (
+              {isSpotifyConnected ? (
                 <Badge className="rounded-full border-[#1DB954]/30 bg-[#1DB954]/15 px-2 py-0.5 text-[10px] font-semibold text-[#1DB954] hover:bg-[#1DB954]/15">
                   Connected
                 </Badge>
@@ -1072,33 +1108,32 @@ function ConnectionsSection() {
             <p className="mt-0.5 text-[12px] text-muted-foreground">
               Share what you're listening to in your status and profile.
             </p>
-            {connected.has('spotify') ? (
+            {isSpotifyConnected ? (
               <div className="mt-3">
-                <SpotifyNowPlaying />
+                <SpotifyNowPlaying userId={profile?.id} />
               </div>
             ) : null}
+            {spotifyError ? (
+              <p className="mt-2 text-[11px] text-destructive">{spotifyError}</p>
+            ) : null}
             <div className="mt-3 flex gap-2">
-              {connected.has('spotify') ? (
-                <>
-                  <Button size="sm" className="h-8 rounded-xl bg-[#1DB954] text-[11px] font-semibold text-black hover:bg-[#1DB954]/90">
-                    Open Spotify
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 rounded-xl text-[11px] text-destructive border-destructive/30 hover:bg-destructive/10"
-                    onClick={() => setConnected((s) => { const n = new Set(s); n.delete('spotify'); return n })}
-                  >
-                    Disconnect
-                  </Button>
-                </>
+              {isSpotifyConnected ? (
+                <Button
+                  size="sm"
+                  className="h-8 rounded-xl bg-[#1DB954] text-[11px] font-semibold text-black hover:bg-[#1DB954]/90"
+                  onClick={handleConnectSpotify}
+                  disabled={getAuthUrl.isPending}
+                >
+                  Reconnect
+                </Button>
               ) : (
                 <Button
                   size="sm"
                   className="h-8 rounded-xl bg-[#1DB954] text-[11px] font-semibold text-black hover:bg-[#1DB954]/90"
-                  onClick={() => setConnected((s) => new Set([...s, 'spotify']))}
+                  onClick={handleConnectSpotify}
+                  disabled={getAuthUrl.isPending}
                 >
-                  Connect Spotify
+                  {getAuthUrl.isPending ? 'Redirecting…' : 'Connect Spotify'}
                 </Button>
               )}
             </div>
@@ -1109,7 +1144,7 @@ function ConnectionsSection() {
       {/* Other apps */}
       <SectionBlock title="More Integrations">
         {CONNECTED_APPS.filter((a) => a.id !== 'spotify').map((app) => {
-          const isConnected = connected.has(app.id)
+          const isConnected = otherConnected.has(app.id)
           return (
             <div key={app.id} className="flex items-center gap-3 py-3">
               <div className={cn('flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border', app.bg, app.border)}>
@@ -1128,13 +1163,13 @@ function ConnectionsSection() {
               </div>
               <Button
                 size="sm"
-                variant={isConnected ? 'outline' : 'outline'}
+                variant="outline"
                 className={cn(
                   'h-8 flex-shrink-0 rounded-xl text-[11px]',
                   isConnected && 'border-destructive/30 text-destructive hover:bg-destructive/10',
                 )}
                 onClick={() =>
-                  setConnected((s) => {
+                  setOtherConnected((s) => {
                     const n = new Set(s)
                     isConnected ? n.delete(app.id) : n.add(app.id)
                     return n
@@ -1212,7 +1247,7 @@ export function SettingsView({ initialSection, onAvatarChange, avatarUrl: avatar
       case 'security':      return <SecuritySection />
       case 'storage':       return <StorageSection />
       case 'nitro':         return <NitroSection />
-      case 'connections':   return <ConnectionsSection />
+      case 'connections':   return <ConnectionsSection profile={profile} />
       case 'about':         return <AboutSection />
     }
   }
