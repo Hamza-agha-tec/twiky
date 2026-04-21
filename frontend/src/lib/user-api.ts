@@ -1,6 +1,48 @@
 import { createClient } from '@/utils/supabase/client';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3500';
+
+export interface UserProfile {
+  id: string;
+  username: string | null;
+  avatar_url: string | null;
+  created_at: string;
+  phone_number: string | null;
+  bio: string | null;
+  status: string | null;
+  last_seen_at: string | null;
+  banner: string | null;
+}
+
+export interface UserSummary {
+  id: string;
+  bio: string | null;
+  username: string | null;
+  avatar_url: string | null;
+}
+
+export interface FollowerRecord {
+  follower_id: string;
+  users: UserSummary;
+}
+
+export interface FollowingRecord {
+  following_id: string;
+  users: UserSummary;
+}
+
+export interface UserPost {
+  id: string;
+  user_id: string;
+  caption: string | null;
+  media_urls: string[] | null;
+  created_at: string;
+  users: Pick<UserSummary, 'id' | 'username' | 'avatar_url'>;
+}
+
+export type UpdateProfileInput = Partial<
+  Pick<UserProfile, 'username' | 'avatar_url' | 'phone_number' | 'bio' | 'status'>
+>;
 
 async function getToken(): Promise<string> {
   const supabase = createClient();
@@ -14,13 +56,13 @@ function humanizeError(status: number, message?: string): string {
   if (status === 401 || status === 403)
     return 'You need to be logged in to do that.';
   if (status === 409)
-    return 'This contact already exists.';
+    return 'This item already exists.';
   if (status >= 500)
     return 'Something went wrong on our end. Please try again.';
   return message ?? 'Something went wrong. Please try again.';
 }
 
-async function authedFetch(path: string, init: RequestInit = {}) {
+async function authedFetch<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
   const token = await getToken();
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -38,17 +80,16 @@ async function authedFetch(path: string, init: RequestInit = {}) {
 }
 
 export const userApi = {
-  getProfile: () => authedFetch('/users/profile'),
-  updateProfile: (data: { username?: string; phone_number?: string }) =>
-    authedFetch('/users/profile', { method: 'PATCH', body: JSON.stringify(data) }),
+  getProfile: () => authedFetch<UserProfile>('/users/profile'),
+  updateProfile: (data: UpdateProfileInput) =>
+    authedFetch<UserProfile>('/users/profile', { method: 'PATCH', body: JSON.stringify(data) }),
   getSettings: () => authedFetch('/users/settings'),
   updateSettings: (data: { theme?: string; notifications_enabled?: boolean }) =>
     authedFetch('/users/settings', { method: 'PATCH', body: JSON.stringify(data) }),
-  getContacts: () => authedFetch('/contacts'),
-  addContact: (data: { nickname: string; phoneNumber: string }) =>
-    authedFetch('/contacts', { method: 'POST', body: JSON.stringify(data) }),
-  updateContact: ({ id, ...data }: { id: string; nickname?: string }) =>
-    authedFetch(`/contacts/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  deleteContact: (id: string) =>
-    authedFetch(`/contacts/${id}`, { method: 'DELETE' }),
+  getFollowers: (userId: string) =>
+    authedFetch<FollowerRecord[]>(`/users/${userId}/followers`),
+  getFollowing: (userId: string) =>
+    authedFetch<FollowingRecord[]>(`/users/${userId}/following`),
+  getUserPosts: (userId: string) =>
+    authedFetch<UserPost[]>(`/posts/users/${userId}`),
 };

@@ -106,7 +106,9 @@ function convergeAndRevive(px: number, py: number, container: HTMLDivElement, ro
         duration: 0.55 + i * 0.04,
         ease: 'power3.in',
         delay: i * 0.04,
-        onStart: () => gsap.to(el, { opacity: 1, duration: 0.15 }),
+        onStart: () => {
+          gsap.to(el, { opacity: 1, duration: 0.15 });
+        },
         onComplete: () => {
           el.remove();
           arrived++;

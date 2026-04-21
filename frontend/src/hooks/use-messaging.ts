@@ -54,53 +54,6 @@ export interface ChatMessage {
   };
 }
 
-/** For a DM, returns the other participant's user object. For groups, returns null. */
-export function getDmContact(conv: Conversation, myId: string) {
-  if (conv.is_group) return null;
-  return conv.participants?.find((p) => p.user.id !== myId)?.user ?? null;
-}
-
-export function getConvDisplayName(
-  conv: Conversation,
-  myId: string,
-  contacts?: { id: string; nickname: string | null; username: string | null }[],
-): string {
-  if (conv.is_group) return conv.name ?? 'Group';
-  const participant = getDmContact(conv, myId);
-  if (!participant) return conv.name ?? 'Unknown';
-  const contact = contacts?.find((c) => c.id === participant.id);
-  return contact?.nickname || contact?.username || participant.username || 'Unknown';
-}
-
-export function getConversationAvatar(
-  conv: Conversation,
-  myId: string,
-  contacts?: { id: string; avatar_url: string | null }[],
-): string | null {
-  if (conv.is_group) return conv.avatar_url ?? null;
-
-  const participant = getDmContact(conv, myId);
-  if (!participant) return null;
-
-  const contact = contacts?.find((c) => c.id === participant.id);
-  return contact?.avatar_url ?? participant.avatar_url ?? null;
-}
-
-export function useConversations() {
-  return useQuery<Conversation[]>({
-    queryKey: MESSAGING_KEYS.conversations,
-    queryFn: messagingApi.getConversations,
-  });
-}
-
-export function useCreateConversation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: messagingApi.createConversation,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: MESSAGING_KEYS.conversations }),
-  });
-}
-
 export function useMessages(conversationId: string | null) {
   return useQuery<ChatMessage[]>({
     queryKey: MESSAGING_KEYS.messages(conversationId ?? ''),
