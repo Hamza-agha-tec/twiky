@@ -40,7 +40,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
 import { type ChatMessage } from '@/hooks/use-messaging'
-import { useProfile, useUserById, useUserFollowers, useUserFollowing } from '@/hooks/use-user'
+import { useProfile, useUserById, useUserFollowers, useUserFollowing, useUserPosts } from '@/hooks/use-user'
 import { getMockUserAvatar, getMockUserBanner } from '@/lib/mock-users'
 import { cn } from '@/lib/utils'
 
@@ -793,6 +793,24 @@ function formatProfileTime(value: string) {
   return upper
 }
 
+function formatUserPostTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'RECENTLY'
+
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMinutes = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMinutes / 60)
+  const diffDays = Math.floor(diffHours / 24)
+
+  if (diffMinutes < 1) return 'JUST NOW'
+  if (diffMinutes < 60) return `${diffMinutes}M AGO`
+  if (diffHours < 24) return `${diffHours}H AGO`
+  if (diffDays < 7) return `${diffDays}D AGO`
+
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }).toUpperCase()
+}
+
 export function FeedMemberProfileView({
   currentGroupLabel,
   isOwn,
@@ -812,12 +830,17 @@ export function FeedMemberProfileView({
   posts: FeedPost[]
   showMessageAction?: boolean
 }) {
-  const [activeTab, setActiveTab] = useState<'activity' | 'articles' | 'projects' | 'saved'>('activity')
+  const [activeTab, setActiveTab] = useState<'posts' | 'articles' | 'projects' | 'saved'>('posts')
   const [isFollowing, setIsFollowing] = useState(false)
 
   const { data: realUser } = useUserById(memberProfile.id)
   const { data: followersData } = useUserFollowers(memberProfile.id)
   const { data: followingData } = useUserFollowing(memberProfile.id)
+  const {
+    data: backendPosts = [],
+    isError: backendPostsError,
+    isLoading: backendPostsLoading,
+  } = useUserPosts(memberProfile.id)
 
   const resolvedProfile: FeedMemberProfile = {
     ...memberProfile,
@@ -828,6 +851,7 @@ export function FeedMemberProfileView({
     avatarUrl: realUser?.avatar_url ?? memberProfile.avatarUrl,
     followers: followersData?.length ?? memberProfile.followers,
     following: followingData?.length ?? memberProfile.following,
+    posts: memberProfile.id ? backendPosts.length : memberProfile.posts,
   }
 
   const bannerImage = createMockProfileBanner(resolvedProfile)
@@ -835,9 +859,25 @@ export function FeedMemberProfileView({
 
   const allFeedPosts = Object.values(FEED_BY_GROUP).flat()
   const memberPosts = allFeedPosts.filter((p) => p.author === resolvedProfile.name)
-  const featuredPosts = memberPosts.length > 0
+  const fallbackPosts = memberPosts.length > 0
     ? memberPosts.slice(0, 3)
     : posts.length > 0 ? posts.slice(0, 3) : allFeedPosts.slice(0, 2)
+  const profilePosts = memberProfile.id
+    ? backendPosts.map((post) => ({
+        id: post.id,
+        author: post.users?.username ?? resolvedProfile.name,
+        authorId: post.user_id,
+        body: post.caption ?? '',
+        imageUrl: post.media_urls?.[0],
+        media: post.media_urls?.[0]
+          ? [{ alt: 'Post media', label: 'Post media', src: post.media_urls[0] }]
+          : undefined,
+        reactions: [],
+        replyCount: 0,
+        role: resolvedProfile.role,
+        time: formatUserPostTime(post.created_at),
+      }))
+    : fallbackPosts
 
   const projectTitle = resolvedProfile.focus.split(',')[0]?.trim() ?? resolvedProfile.focus
   const projectBody = resolvedProfile.bio.split('.')[0]?.trim() ?? resolvedProfile.focus
@@ -975,7 +1015,7 @@ export function FeedMemberProfileView({
       >
         <div className="flex items-center gap-0.5 rounded-xl border border-border bg-card p-1">
           {([
-            { id: 'activity' as const, label: 'Activity' },
+            { id: 'posts' as const, label: 'Posts' },
             { id: 'projects' as const, label: 'Projects' },
             { id: 'articles' as const, label: 'Articles' },
             { id: 'saved' as const, label: 'Saved' },
@@ -1003,16 +1043,28 @@ export function FeedMemberProfileView({
       {/* Tab content */}
       <div className="flex-1 px-4 pb-4">
         <AnimatePresence mode="wait">
-        {activeTab === 'activity' ? (
+        {activeTab === 'posts' ? (
           <motion.div
-            key="activity"
+            key="posts"
             className="space-y-2"
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.22, ease: 'easeOut' }}
           >
-            {featuredPosts.map((post, idx) => {
+            {backendPostsLoading ? (
+              <div className="rounded-xl border border-border bg-card p-3 text-[11px] text-muted-foreground">
+                Loading posts...
+              </div>
+            ) : backendPostsError ? (
+              <div className="rounded-xl border border-border bg-card p-3 text-[11px] text-muted-foreground">
+                Posts could not be loaded.
+              </div>
+            ) : profilePosts.length === 0 ? (
+              <div className="rounded-xl border border-border bg-card p-3 text-[11px] text-muted-foreground">
+                No posts yet.
+              </div>
+            ) : profilePosts.map((post, idx) => {
               const reactionsCount = post.reactions.reduce((t, r) => t + r.count, 0)
               const shareCount = Math.max(1, Math.round((reactionsCount + post.replyCount) / 3))
               const mediaSource = post.media?.[0]?.src ?? post.imageUrl
@@ -1038,7 +1090,7 @@ export function FeedMemberProfileView({
                         <div className="min-w-0">
                           <p className="text-[11px] font-semibold leading-none text-foreground">
                             {resolvedProfile.name}{' '}
-                            <span className="font-normal text-muted-foreground">posted an update</span>
+                            <span className="font-normal text-muted-foreground">posted</span>
                           </p>
                           <p className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                             {formatProfileTime(post.time)}
@@ -1055,16 +1107,16 @@ export function FeedMemberProfileView({
                   {mediaSource ? (
                     <div className="mx-2.5 mb-2 overflow-hidden rounded-[8px] border border-border">
                       <div className="relative h-[84px] w-full">
-                        <Image src={mediaSource} alt={post.media?.[0]?.alt ?? 'Activity'} fill unoptimized sizes="340px" className="object-cover" />
+                        <Image src={mediaSource} alt={post.media?.[0]?.alt ?? 'Post media'} fill unoptimized sizes="340px" className="object-cover" />
                       </div>
                     </div>
-                  ) : (
+                  ) : !memberProfile.id ? (
                     <div className="mx-2.5 mb-2 overflow-hidden rounded-[8px]">
                       <div className={cn('flex h-[72px] items-end bg-gradient-to-br p-2.5 opacity-80', resolvedProfile.accent)}>
                         <p className="text-[11px] font-black leading-snug text-white line-clamp-2">{resolvedProfile.focus}</p>
                       </div>
                     </div>
-                  )}
+                  ) : null}
 
                   <div className="flex items-center gap-3 border-t border-border px-2.5 py-1.5 text-[10px] text-muted-foreground">
                     <button type="button" className="inline-flex items-center gap-1 transition-colors hover:text-foreground">
@@ -1083,27 +1135,6 @@ export function FeedMemberProfileView({
                 </motion.article>
               )
             })}
-
-            <motion.article
-              className="overflow-hidden rounded-xl border border-border bg-card p-2.5 transition-colors hover:border-border/60"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: featuredPosts.length * 0.07, duration: 0.22, ease: 'easeOut' }}
-              whileHover={{ scale: 1.012 }}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <span className="inline-block rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.1em] text-primary">
-                    New Project
-                  </span>
-                  <p className="mt-1.5 text-[12px] font-bold leading-snug text-foreground">{projectTitle}</p>
-                  <p className="mt-0.5 text-[10.5px] leading-[1.6] text-muted-foreground">
-                    {projectBody}. Compact information hierarchies.
-                  </p>
-                </div>
-                <span className="flex-shrink-0 text-[9px] text-muted-foreground">Yesterday</span>
-              </div>
-            </motion.article>
           </motion.div>
         ) : (
           <motion.div
@@ -1509,7 +1540,7 @@ export function ChannelFeed({
       await onSendPost({
         content: body,
         fileUrl: draftAttachment?.src,
-        replyToId: undefined,
+        replyToId: replyingTo?.id,
       })
       setDraft('')
       setDraftImage(undefined)
@@ -1534,7 +1565,17 @@ export function ChannelFeed({
         : undefined,
     }
 
-    updatePosts((current) => [...current, post])
+    updatePosts((current) => {
+      const nextCurrent = replyingTo
+        ? current.map((item) =>
+            item.id === replyingTo.id
+              ? { ...item, replyCount: item.replyCount + 1 }
+              : item,
+          )
+        : current
+
+      return [...nextCurrent, post]
+    })
     setDraft('')
     setDraftImage(undefined)
     setAttachment(undefined)

@@ -287,18 +287,36 @@ export default function ChatPage() {
   const isRealGroupId = /^[0-9a-f-]{36}$/i.test(activeGroupId)
   const { data: rawMessages } = useGroupMessages(isRealGroupId ? activeGroupId : undefined)
 
-  const groupPosts: FeedPost[] = (rawMessages ?? []).map((msg: GroupMessage) => ({
-    id: msg.id,
-    author: msg.sender?.username ?? 'Unknown',
-    authorId: msg.sender_id,
-    role: 'Member',
-    time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    body: msg.content,
-    isOwn: msg.sender_id === profile?.id,
-    imageUrl: msg.file_url ?? undefined,
-    reactions: [],
-    replyCount: 0,
-  }))
+  const groupMessageById = new Map((rawMessages ?? []).map((msg) => [msg.id, msg]))
+  const groupReplyCounts = (rawMessages ?? []).reduce((counts, msg) => {
+    if (!msg.reply_to_id) return counts
+    counts.set(msg.reply_to_id, (counts.get(msg.reply_to_id) ?? 0) + 1)
+    return counts
+  }, new Map<string, number>())
+  const groupPosts: FeedPost[] = (rawMessages ?? []).map((msg: GroupMessage) => {
+    const replySource = msg.reply_to_id ? groupMessageById.get(msg.reply_to_id) : null
+    const replyBody = replySource?.content?.trim()
+      || (replySource?.file_url ? 'Attachment' : '')
+
+    return {
+      id: msg.id,
+      author: msg.sender?.username ?? 'Unknown',
+      authorId: msg.sender_id,
+      role: 'Member',
+      time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      body: msg.content,
+      isOwn: msg.sender_id === profile?.id,
+      imageUrl: msg.file_url ?? undefined,
+      reactions: [],
+      replyCount: groupReplyCounts.get(msg.id) ?? 0,
+      replyTo: replySource
+        ? {
+            author: replySource.sender?.username ?? 'Unknown',
+            body: replyBody.slice(0, 60) + (replyBody.length > 60 ? '...' : ''),
+          }
+        : undefined,
+    }
+  })
   const activeSyntheticChat = activeDirectChat ? (syntheticDirectChats[activeDirectChat] ?? null) : null
 
   const workspaceChannels = useMemo(
