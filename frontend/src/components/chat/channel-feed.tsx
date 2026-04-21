@@ -60,6 +60,7 @@ export interface FeedPost {
   id: string
   author: string
   authorId?: string
+  authorAvatarUrl?: string | null
   role: string
   time: string
   body: string
@@ -496,7 +497,7 @@ function MessageRow({
   const initial = post.author[0].toUpperCase()
   const fallbackAvatar = createMockProfileAvatar(resolvedProfile)
   const displayAvatar = post.isOwn
-    ? (myAvatarUrl ?? resolvedProfile.avatarUrl ?? fallbackAvatar)
+    ? (authorAvatarUrl ?? myAvatarUrl ?? resolvedProfile.avatarUrl ?? fallbackAvatar)
     : (authorAvatarUrl ?? resolvedProfile.avatarUrl ?? fallbackAvatar)
 
   function handleMessageClick() {
@@ -1191,7 +1192,7 @@ function FeedProfileRow({
   const roleColor = ROLE_COLORS[post.role] ?? 'text-primary'
   const fallbackAvatar = createMockProfileAvatar(memberProfile)
   const displayAvatar = post.isOwn
-    ? (myAvatarUrl ?? memberProfile.avatarUrl ?? fallbackAvatar)
+    ? (authorAvatarUrl ?? myAvatarUrl ?? memberProfile.avatarUrl ?? fallbackAvatar)
     : (authorAvatarUrl ?? memberProfile.avatarUrl ?? fallbackAvatar)
 
   return (
@@ -1440,7 +1441,12 @@ export function ChannelFeed({
     if (post.isOwn) {
       return {
         canMessage: false,
-        profile: buildFeedMemberProfile(post, myAvatarUrl ?? profile?.avatar_url ?? null, profile?.username ?? 'you', profile?.id),
+        profile: buildFeedMemberProfile(
+          post,
+          post.authorAvatarUrl ?? myAvatarUrl ?? profile?.avatar_url ?? null,
+          profile?.username ?? 'you',
+          profile?.id,
+        ),
       }
     }
 
@@ -1448,7 +1454,7 @@ export function ChannelFeed({
       canMessage: true,
       profile: buildFeedMemberProfile(
         post,
-        createMockProfileAvatar(buildFeedMemberProfile(post, null)),
+        post.authorAvatarUrl ?? createMockProfileAvatar(buildFeedMemberProfile(post, null)),
         undefined,
         post.authorId,
       ),

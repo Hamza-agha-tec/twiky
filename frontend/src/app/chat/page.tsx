@@ -302,6 +302,7 @@ export default function ChatPage() {
       id: msg.id,
       author: msg.sender?.username ?? 'Unknown',
       authorId: msg.sender_id,
+      authorAvatarUrl: msg.sender?.avatar_url ?? null,
       role: 'Member',
       time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       body: msg.content,

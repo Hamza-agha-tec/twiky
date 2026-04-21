@@ -11,9 +11,9 @@ import {
   Lock,
   MoreHorizontal,
   Plus,
+  Search,
   Trash2,
   Upload,
-  Users,
   Volume2,
 } from 'lucide-react'
 import { CreateEntityDialog } from '@/components/chat/create-entity-dialog'
@@ -607,12 +607,17 @@ function GroupSettingsSheet({
   const [mentionsOnly, setMentionsOnly] = useState(false)
   const [slowMode, setSlowMode] = useState(false)
   const [addMemberError, setAddMemberError] = useState<string | null>(null)
+  const [memberSearch, setMemberSearch] = useState('')
   const addGroupMember = useAddGroupMember(group.id)
   const deleteGroup = useDeleteGroup(channelId ?? '')
   const { data: profile } = useProfile()
   const { data: followers = [] } = useUserFollowers(profile?.id)
   const { data: existingMembers = [] } = useGroupMembers(group.id)
   const existingMemberIds = new Set(existingMembers.filter((m) => m.user).map((m) => m.user.id))
+  const memberSearchQuery = memberSearch.trim().toLowerCase()
+  const searchedFollowers = memberSearchQuery
+    ? followers.filter((f) => f.users.username?.toLowerCase().includes(memberSearchQuery))
+    : []
 
   useEffect(() => {
     setName(group.label)
@@ -621,6 +626,8 @@ function GroupSettingsSheet({
     setNotifications(true)
     setMentionsOnly(false)
     setSlowMode(false)
+    setMemberSearch('')
+    setAddMemberError(null)
   }, [group.description, group.id, group.kind, group.label])
 
   return (
@@ -724,16 +731,36 @@ function GroupSettingsSheet({
               Add Members
             </p>
             {addMemberError ? <p className="text-[11px] text-destructive">{addMemberError}</p> : null}
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={memberSearch}
+                onChange={(e) => {
+                  setMemberSearch(e.target.value)
+                  setAddMemberError(null)
+                }}
+                placeholder="Search followers"
+                className="h-9 rounded-xl pl-8 text-[12px]"
+              />
+            </div>
             <div className="space-y-1 max-h-52 overflow-y-auto">
-              {followers.length === 0 ? (
-                <p className="text-[11px] text-muted-foreground py-1">No followers to add</p>
-              ) : followers.map((f) => {
+              {!memberSearchQuery ? (
+                <p className="py-1 text-[11px] text-muted-foreground">Search to find followers to add</p>
+              ) : followers.length === 0 ? (
+                <p className="py-1 text-[11px] text-muted-foreground">No followers to add</p>
+              ) : searchedFollowers.length === 0 ? (
+                <p className="py-1 text-[11px] text-muted-foreground">No matching followers</p>
+              ) : searchedFollowers.map((f) => {
                 const user = f.users
                 const alreadyMember = existingMemberIds.has(user.id)
                 return (
                   <div key={user.id} className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 hover:bg-accent">
                     <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
-                      {user.username?.[0]?.toUpperCase() ?? '?'}
+                      {user.avatar_url ? (
+                        <img src={user.avatar_url} alt={user.username ?? 'User'} className="h-full w-full rounded-full object-cover" />
+                      ) : (
+                        user.username?.[0]?.toUpperCase() ?? '?'
+                      )}
                     </div>
                     <p className="flex-1 truncate text-[12px] text-foreground">@{user.username}</p>
                     <button
