@@ -60,6 +60,11 @@ export class UsersController {
         return this.usersService.getFollowing(id);
     }
 
+    @Get("username/:username")
+    async getUserByUsername(@Param("username") username: string) {
+        return this.usersService.getUserByUsername(username);
+    }
+
     @Get(":id")
     getUserById(@Param("id") id: string) {
         return this.usersService.getUserById(id);

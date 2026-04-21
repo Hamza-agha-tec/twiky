@@ -2,10 +2,14 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { SupabaseService } from '../supabase/supabase.module';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class UsersService {
-    constructor(private readonly supabaseService: SupabaseService) { }
+    constructor(
+        private readonly supabaseService: SupabaseService,
+        private readonly notificationsService: NotificationsService
+    ) { }
 
     async getUserById(id: string) {
         const { data, error } = await this.supabaseService
@@ -13,6 +17,21 @@ export class UsersService {
             .from('users')
             .select('*')
             .eq('id', id)
+            .single();
+
+        if (error || !data) {
+            throw new NotFoundException('User not found');
+        }
+
+        return data;
+    }
+
+    async getUserByUsername(username: string) {
+        const { data, error } = await this.supabaseService
+            .getClient()
+            .from('users')
+            .select('*')
+            .eq('username', username)
             .single();
 
         if (error || !data) {
@@ -79,6 +98,10 @@ export class UsersService {
             .single();
 
         if (error) throw new Error(`Failed to follow user: ${error.message}`);
+
+        // Trigger Notification
+        await this.notificationsService.notify(followingId, followerId, 'FOLLOW', followerId, 'user');
+
         return data;
     }
 

@@ -49,4 +49,9 @@ export class ChannelsController {
     async kickMember(@Request() req: any, @Param("id") channelId: string, @Param("userId") targetUserId: string) {
         return this.channelsService.kickMember(channelId, req.user.userId, targetUserId);
     }
+
+    @Post(":id/join")
+    async joinChannel(@Request() req: any, @Param("id") channelId: string) {
+        return this.channelsService.joinChannel(req.user.userId, channelId);
+    }
 }

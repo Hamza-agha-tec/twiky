@@ -2,10 +2,14 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.module';
 import { CreatePostDto } from './dto/create-post.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class PostsService {
-    constructor(private readonly supabaseService: SupabaseService) { }
+    constructor(
+        private readonly supabaseService: SupabaseService,
+        private readonly notificationsService: NotificationsService
+    ) { }
 
     async createPost(userId: string, createPostDto: CreatePostDto) {
         const { data, error } = await this.supabaseService
@@ -40,6 +44,11 @@ export class PostsService {
             .single();
 
         if (error) throw new Error(`Failed to add comment: ${error.message}`);
+
+        // Trigger Notification
+        const post = await this.getPostById(postId);
+        await this.notificationsService.notify(post.user_id, userId, 'COMMENT', postId, 'post');
+
         return data;
     }
 
@@ -52,6 +61,22 @@ export class PostsService {
             .single();
 
         if (error) throw new Error(`Failed to like post: ${error.message}`);
+
+        // Trigger Notification (Grouped)
+        const post = await this.getPostById(postId);
+        await this.notificationsService.notify(post.user_id, userId, 'LIKE', postId, 'post');
+
+        return data;
+    }
+
+    private async getPostById(postId: string) {
+        const { data, error } = await this.supabaseService
+            .getClient()
+            .from('user_posts')
+            .select('*')
+            .eq('id', postId)
+            .single();
+        if (error || !data) throw new NotFoundException('Post not found');
         return data;
     }
 

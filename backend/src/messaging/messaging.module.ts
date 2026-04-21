@@ -9,6 +9,6 @@ import { SupabaseModule } from '../supabase/supabase.module';
   imports: [SupabaseModule],
   controllers: [DirectMessagingController, GroupMessagingController],
   providers: [MessagingService, ChatGateway],
-  exports: [MessagingService],
+  exports: [MessagingService, ChatGateway],
 })
 export class MessagingModule {}
