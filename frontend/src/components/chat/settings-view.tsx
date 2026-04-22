@@ -12,14 +12,12 @@ import {
   Download,
   Eye,
   Fingerprint,
-  Github,
   Globe,
   HardDrive,
   ImageIcon,
   Languages,
   Link2,
   LogOut,
-  MapPin,
   Monitor,
   NotebookPen,
   Palette,
@@ -28,7 +26,6 @@ import {
   Smartphone,
   Sparkles,
   Trash2,
-  Twitter,
   Upload,
   UserRound,
   UserRoundCog,
@@ -127,7 +124,7 @@ function SettingRow({ title, description, children, badge }: {
   title: string; description?: string; children: ReactNode; badge?: string
 }) {
   return (
-    <div className="group flex items-center justify-between gap-4 rounded-lg px-3 py-2.5 transition-colors hover:bg-accent/40 -mx-3">
+    <div className="group flex items-center justify-between gap-4 py-2.5 transition-colors hover:bg-accent/30 px-1 rounded-lg">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="text-[13px] font-medium text-foreground">{title}</p>
@@ -152,15 +149,15 @@ function SectionHeader({ title, description }: { title: string; description?: st
 function SectionBlock({ title, children, delay = 0 }: { title?: string; children: ReactNode; delay?: number }) {
   return (
     <motion.div
-      className="mb-5"
+      className="mb-6"
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.24, ease: 'easeOut' }}
     >
       {title ? (
-        <p className="mb-2 px-1 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/70">{title}</p>
+        <p className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">{title}</p>
       ) : null}
-      <div className="overflow-hidden rounded-xl border border-border/60 bg-card px-3 py-1 shadow-sm dark:border-white/[0.07]">
+      <div className="divide-y divide-border/40">
         {children}
       </div>
     </motion.div>
@@ -239,17 +236,15 @@ function AccountSection({ profile }: { profile?: UserProfile }) {
           </Button>
         </SettingRow>
         <div className="py-3">
-          <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-4">
-            <p className="text-[13px] font-semibold text-foreground">Danger Zone</p>
-            <p className="mt-1 text-[12px] text-muted-foreground">These actions are permanent and cannot be undone.</p>
-            <div className="mt-3 flex gap-2">
-              <Button variant="outline" size="sm" className="h-8 rounded-xl border-amber-500/30 text-[11px] text-amber-600 hover:bg-amber-500/10">
-                <Archive className="mr-1.5 h-3.5 w-3.5" />Deactivate
-              </Button>
-              <Button variant="outline" size="sm" className="h-8 rounded-xl border-destructive/30 text-[11px] text-destructive hover:bg-destructive/10">
-                <Trash2 className="mr-1.5 h-3.5 w-3.5" />Delete Account
-              </Button>
-            </div>
+          <p className="text-[13px] font-semibold text-foreground">Danger Zone</p>
+          <p className="mt-1 text-[12px] text-muted-foreground">These actions are permanent and cannot be undone.</p>
+          <div className="mt-3 flex gap-2">
+            <Button variant="outline" size="sm" className="h-8 rounded-xl border-amber-500/30 text-[11px] text-amber-600 hover:bg-amber-500/10">
+              <Archive className="mr-1.5 h-3.5 w-3.5" />Deactivate
+            </Button>
+            <Button variant="outline" size="sm" className="h-8 rounded-xl border-destructive/30 text-[11px] text-destructive hover:bg-destructive/10">
+              <Trash2 className="mr-1.5 h-3.5 w-3.5" />Delete Account
+            </Button>
           </div>
         </div>
       </SectionBlock>
@@ -291,14 +286,14 @@ function ProfileSection({
   const [bio, setBio] = useState(profile?.bio ?? '')
   const [status, setStatus] = useState(profile?.status ?? '')
   const [statusEmoji, setStatusEmoji] = useState('🟢')
-  const [twitter, setTwitter] = useState('')
-  const [github, setGithub] = useState('')
-  const [website, setWebsite] = useState('')
+  const [xUrl, setXUrl] = useState(profile?.x_url ?? '')
+  const [websiteUrl, setWebsiteUrl] = useState(profile?.website_url ?? '')
 
   async function handleSaveProfile() {
     setSaveMessage(null)
     await updateProfile.mutateAsync({
       bio: bio.trim() || null,
+      full_name: displayName.trim() || null,
       status: status.trim() || null,
       username: username.trim() || undefined
     })
@@ -377,8 +372,8 @@ function ProfileSection({
     <>
       <SectionHeader title="Profile" description="Customize how you appear to others in Twiky." />
 
-      {/* Preview card */}
-      <div className="mb-6 overflow-visible rounded-2xl border border-border bg-card shadow-sm">
+      {/* Profile preview */}
+      <div className="mb-6 overflow-visible">
         {/* Banner */}
         <div
           className={cn(
@@ -481,57 +476,26 @@ function ProfileSection({
                 {status ? <span className="text-[13px]">{statusEmoji}</span> : null}
               </div>
               <p className="text-[12px] text-muted-foreground">@{username}</p>
-              {pronouns ? <p className="mt-0.5 text-[11px] text-muted-foreground">{pronouns}</p> : null}
               {bio ? <p className="mt-1.5 text-[12px] leading-[1.5] text-foreground">{bio}</p> : null}
-              {location ? (
-                <p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
-                  <MapPin className="h-3 w-3" />{location}
-                </p>
-              ) : null}
             </div>
-            {status ? (
-              <div className="flex-shrink-0 rounded-xl border border-border bg-background px-2.5 py-1">
-                <p className="text-[11px] text-muted-foreground">{statusEmoji} {status}</p>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="mt-3 rounded-xl border border-border/80 bg-muted/30 p-3">
-            <div className="flex items-center justify-between text-[11px]">
-              <p className="font-semibold text-foreground">Profile completeness</p>
-              <p className="font-semibold text-primary">{completion}%</p>
-            </div>
-            <Progress value={completion} className="mt-2 h-1.5" />
-            <p className="mt-2 text-[11px] text-muted-foreground">
-              {completion >= 80
-                ? 'Great profile. People can quickly understand who you are.'
-                : 'Add bio, location, and one social link to improve discoverability.'}
-            </p>
-          </div>
-
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            {[
-              { label: 'Followers', value: followersCount, icon: Users },
-              { label: 'Following', value: followingCount, icon: UserRoundCog },
-              { label: 'Posts', value: posts.length, icon: ImageIcon },
-            ].map(({ label, value, icon: Icon }) => (
-              <div key={label} className="rounded-xl border border-border bg-background px-2.5 py-2">
-                <div className="flex items-center gap-1.5 text-muted-foreground">
-                  <Icon className="h-3 w-3" />
-                  <span className="text-[10px] font-medium">{label}</span>
+            <div className="flex flex-shrink-0 items-center gap-4">
+              {[
+                { label: 'Followers', value: followersCount },
+                { label: 'Following', value: followingCount },
+                { label: 'Posts', value: posts.length },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex items-baseline gap-1">
+                  <span className="text-[14px] font-bold text-foreground">{profileLoading ? '-' : value}</span>
+                  <span className="text-[11px] text-muted-foreground">{label}</span>
                 </div>
-                <p className="mt-1 text-[15px] font-bold text-foreground">
-                  {profileLoading ? '-' : value}
-                </p>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
 
-          {(twitter || github || website) ? (
+          {(xUrl || websiteUrl) ? (
             <div className="mt-2.5 flex flex-wrap gap-1.5">
-              {twitter ? <span className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground"><Twitter className="h-2.5 w-2.5" />{twitter}</span> : null}
-              {github ? <span className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground"><Github className="h-2.5 w-2.5" />{github}</span> : null}
-              {website ? <span className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground"><Link2 className="h-2.5 w-2.5" />{website}</span> : null}
+              {xUrl ? <span className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground">X {xUrl}</span> : null}
+              {websiteUrl ? <span className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground"><Link2 className="h-2.5 w-2.5" />{websiteUrl}</span> : null}
             </div>
           ) : null}
         </div>
@@ -561,24 +525,6 @@ function ProfileSection({
                 />
               </div>
             </div>
-            <div>
-              <Label className="mb-1.5 block text-[11px] text-muted-foreground">Pronouns (optional)</Label>
-              <input
-                value={pronouns}
-                onChange={(e) => setPronouns(e.target.value)}
-                placeholder="they/them"
-                className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-            </div>
-            <div>
-              <Label className="mb-1.5 block text-[11px] text-muted-foreground">Location</Label>
-              <input
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="City, Country"
-                className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-            </div>
           </div>
           <div>
             <Label className="mb-1.5 block text-[11px] text-muted-foreground">About me</Label>
@@ -591,11 +537,9 @@ function ProfileSection({
             />
             <p className="mt-1 text-right text-[10px] text-muted-foreground">{bio.length}/190</p>
           </div>
-          <div className="rounded-xl border border-border/80 bg-muted/25 px-3 py-2.5">
-            <p className="text-[11px] text-muted-foreground">
-              Tip: profiles with a clear bio and one social link get more profile visits.
-            </p>
-          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Tip: profiles with a clear bio and one social link get more profile visits.
+          </p>
           <div className="flex items-center justify-end gap-2">
             {updateProfile.isError ? (
               <span className="text-[11px] text-destructive">
@@ -606,13 +550,6 @@ function ProfileSection({
                 {saveMessage}
               </span>
             ) : null}
-            <Button
-              className="h-9 rounded-xl text-[12px]"
-              disabled={!username.trim() || updateProfile.isPending}
-              onClick={handleSaveProfile}
-            >
-              {updateProfile.isPending ? 'Saving...' : 'Save profile'}
-            </Button>
           </div>
         </div>
       </SectionBlock>
@@ -640,24 +577,27 @@ function ProfileSection({
       </SectionBlock>
 
       <SectionBlock title="Social Links">
-        <SettingRow title="Twitter / X" description="Link to your Twitter profile.">
+        <SettingRow title="X" description="Link to your X profile.">
           <div className="flex h-9 w-48 items-center gap-2 overflow-hidden rounded-xl border border-border bg-background px-3">
-            <Twitter className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
-            <input value={twitter} onChange={(e) => setTwitter(e.target.value)} placeholder="username" className="flex-1 bg-transparent text-[12px] focus:outline-none" />
+            <span className="text-[11px] font-bold text-muted-foreground">X</span>
+            <input value={xUrl} onChange={(e) => setXUrl(e.target.value)} placeholder="https://x.com/username" className="flex-1 bg-transparent text-[12px] focus:outline-none" />
           </div>
         </SettingRow>
-        <SettingRow title="GitHub" description="Link to your GitHub profile.">
-          <div className="flex h-9 w-48 items-center gap-2 overflow-hidden rounded-xl border border-border bg-background px-3">
-            <Github className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
-            <input value={github} onChange={(e) => setGithub(e.target.value)} placeholder="username" className="flex-1 bg-transparent text-[12px] focus:outline-none" />
-          </div>
-        </SettingRow>
-        <SettingRow title="Website" description="Your personal website.">
+        <SettingRow title="Website URL" description="Your personal website.">
           <div className="flex h-9 w-48 items-center gap-2 overflow-hidden rounded-xl border border-border bg-background px-3">
             <Link2 className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
-            <input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://..." className="flex-1 bg-transparent text-[12px] focus:outline-none" />
+            <input value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} placeholder="https://..." className="flex-1 bg-transparent text-[12px] focus:outline-none" />
           </div>
         </SettingRow>
+        <div className="flex justify-end py-2">
+          <Button
+            className="h-8 rounded-xl text-[12px]"
+            disabled={!username.trim() || updateProfile.isPending}
+            onClick={handleSaveProfile}
+          >
+            {updateProfile.isPending ? 'Saving...' : 'Save profile'}
+          </Button>
+        </div>
       </SectionBlock>
 
       <SectionBlock title="Recent Posts">
@@ -667,7 +607,7 @@ function ProfileSection({
               const firstMediaUrl = post.media_urls?.[0] ?? null
 
               return (
-                <div key={post.id} className="flex gap-3 rounded-xl border border-border/70 bg-background p-3">
+                <div key={post.id} className="flex gap-3 py-2">
                   <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
                     {firstMediaUrl ? (
                       <img src={firstMediaUrl} alt="" className="h-full w-full object-cover" />
@@ -693,6 +633,47 @@ function ProfileSection({
           )}
         </div>
       </SectionBlock>
+
+      <SectionBlock title="Pixel Room">
+        <div className="py-2">
+          <div className="relative overflow-hidden rounded-2xl">
+            <img
+              src={(() => {
+                const artwork = `<rect width='800' height='560' rx='38' fill='#0B1422'/><rect y='320' width='800' height='240' fill='#20384A'/><rect x='90' y='96' width='146' height='126' fill='#2D4B79'/><rect x='112' y='118' width='104' height='80' fill='#9EE6FF'/><rect x='298' y='84' width='118' height='92' fill='#F3B949'/><rect x='318' y='102' width='78' height='40' fill='#FFF0BF'/><rect x='112' y='372' width='264' height='88' fill='#4B6CB7'/><rect x='520' y='112' width='132' height='152' fill='#252F45'/><rect x='548' y='136' width='84' height='48' fill='#FFD369'/>`
+                const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 560' fill='none'>${artwork}</svg>`
+                return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
+              })()}
+              alt="Pixel Room"
+              className="h-44 w-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+            <div className="absolute bottom-3 left-4 right-4 flex items-end justify-between">
+              <div>
+                <p className="text-[13px] font-bold text-white">Your Room</p>
+                <p className="text-[11px] text-white/70">Pixel World · coming soon</p>
+              </div>
+              <span className="rounded-full bg-white/15 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur-sm">
+                Preview
+              </span>
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            {[
+              { label: 'Furniture', value: '—' },
+              { label: 'Visitors', value: '—' },
+              { label: 'Style', value: '—' },
+            ].map(({ label, value }) => (
+              <div key={label} className="text-center">
+                <p className="text-[15px] font-bold text-muted-foreground">{value}</p>
+                <p className="text-[10px] text-muted-foreground">{label}</p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-[11px] text-muted-foreground">
+            Your pixel room will be customizable once Pixel World launches. Visitors can drop by and leave messages.
+          </p>
+        </div>
+      </SectionBlock>
     </>
   )
 }
@@ -711,7 +692,7 @@ function PrivacySection() {
   return (
     <>
       <SectionHeader title="Privacy & Safety" description="Control your visibility and what others see." />
-      <div className="mb-6 rounded-2xl border border-border bg-card p-4">
+      <div className="mb-6">
         <div className="flex items-center justify-between text-[12px]">
           <span className="font-semibold text-foreground">Privacy score</span>
           <span className={cn('font-bold', score >= 75 ? 'text-emerald-500' : score >= 50 ? 'text-amber-500' : 'text-destructive')}>{score}%</span>
@@ -856,7 +837,7 @@ function AppearanceSection() {
             })}
           </div>
 
-          <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2.5">
+          <div className="flex items-center gap-3 py-1">
             <div
               className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-[11px] font-bold text-white"
               style={{ backgroundColor: COLOR_PRESETS.find((p) => p.name === selectedColor)?.preview }}
@@ -957,10 +938,10 @@ function SecuritySection() {
     <>
       <SectionHeader title="Security" description="Protect your account and manage sessions." />
       <SectionBlock title="Two-Factor Authentication">
-        <div className={cn('flex items-center justify-between rounded-2xl border p-4 my-2', twoFactor ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-amber-500/30 bg-amber-500/5')}>
+        <div className="flex items-center justify-between py-2.5 px-1">
           <div>
-            <p className="text-[13px] font-semibold text-foreground">2FA is {twoFactor ? 'active' : 'not enabled'}</p>
-            <p className="mt-0.5 text-[12px] text-muted-foreground">{twoFactor ? 'Your account is protected.' : 'Strongly recommended.'}</p>
+            <p className="text-[13px] font-medium text-foreground">2FA is {twoFactor ? 'active' : 'not enabled'}</p>
+            <p className="mt-0.5 text-[11.5px] text-muted-foreground">{twoFactor ? 'Your account is protected.' : 'Strongly recommended.'}</p>
           </div>
           <Switch checked={twoFactor} onCheckedChange={setTwoFactor} />
         </div>
@@ -981,10 +962,10 @@ function StorageSection() {
   return (
     <>
       <SectionHeader title="Storage" description="Manage cached data and local files." />
-      <div className="mb-6 grid grid-cols-2 gap-3">
+      <div className="mb-6 grid grid-cols-2 gap-6">
         {[{ label: 'App cache', value: '124 MB', icon: Database }, { label: 'Media stored', value: '843 MB', icon: HardDrive }].map(({ label, value, icon: Icon }) => (
-          <div key={label} className="rounded-2xl border border-border bg-card p-4">
-            <Icon className="h-5 w-5 text-primary" />
+          <div key={label}>
+            <Icon className="h-5 w-5 text-muted-foreground" />
             <p className="mt-2 text-[22px] font-bold text-foreground">{value}</p>
             <p className="text-[11px] text-muted-foreground">{label}</p>
           </div>
@@ -1005,7 +986,7 @@ function NitroSection() {
   return (
     <>
       <SectionHeader title="Twiky Premium" />
-      <div className="rounded-2xl border border-border bg-gradient-to-br from-primary/5 via-primary/10 to-background p-8 text-center">
+      <div className="py-8 text-center">
         <Sparkles className="mx-auto h-10 w-10 text-primary" />
         <p className="mt-4 text-[16px] font-bold text-foreground">Coming Soon</p>
         <p className="mt-2 text-[13px] text-muted-foreground">Enhanced uploads, custom themes, priority support, and more.</p>
@@ -1030,22 +1011,13 @@ const CONNECTED_APPS = [
     ),
   },
   {
-    id: 'github',
-    name: 'GitHub',
-    description: 'Link your repos and show commit activity.',
-    color: '#24292f',
-    bg: 'bg-foreground/5',
-    border: 'border-border',
-    icon: <Github className="h-6 w-6 text-foreground" />,
-  },
-  {
-    id: 'twitter',
-    name: 'Twitter / X',
+    id: 'x',
+    name: 'X',
     description: 'Cross-post updates and link your profile.',
-    color: '#1d9bf0',
-    bg: 'bg-[#1d9bf0]/10',
-    border: 'border-[#1d9bf0]/20',
-    icon: <Twitter className="h-6 w-6 text-[#1d9bf0]" />,
+    color: '#0ea5e9',
+    bg: 'bg-sky-500/10',
+    border: 'border-sky-500/20',
+    icon: <AtSign className="h-6 w-6 text-sky-500" />,
   },
   {
     id: 'phone',
@@ -1142,8 +1114,8 @@ function ConnectionsSection({ profile }: { profile?: UserProfile }) {
       />
 
       {/* Spotify — featured */}
-      <div className="mb-6 overflow-hidden rounded-2xl border border-[#1DB954]/25 bg-[#1DB954]/5">
-        <div className="flex items-start gap-4 p-4">
+      <div className="mb-6">
+        <div className="flex items-start gap-4">
           <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-[#1DB954]/15">
             <svg viewBox="0 0 24 24" className="h-7 w-7 fill-[#1DB954]">
               <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
@@ -1386,7 +1358,7 @@ export function SettingsView({ initialSection, onAvatarChange, avatarUrl: avatar
       </nav>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto bg-background px-8 py-7">
+      <div className="relative flex-1 overflow-y-auto bg-background px-8 py-7">
         <div className="mx-auto max-w-[640px]">
           <AnimatePresence mode="wait">
             <motion.div

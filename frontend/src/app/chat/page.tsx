@@ -31,7 +31,7 @@ import {
   WorkspaceSidebar,
 } from '@/components/chat/workspace-sidebar'
 import { useChannels, useCreateChannel } from '@/hooks/use-channels'
-import { useChannelGroups, useCreateGroup, useGroupMessages, backendGroupToMock } from '@/hooks/use-groups'
+import { useChannelGroups, useCreateGroup, useGroupMembers, useGroupMessages, backendGroupToMock } from '@/hooks/use-groups'
 import { groupsApi, type GroupMessage } from '@/lib/groups-api'
 import { useQueryClient } from '@tanstack/react-query'
 import { GROUP_KEYS } from '@/hooks/use-groups'
@@ -285,8 +285,14 @@ export default function ChatPage() {
   const createGroup = useCreateGroup(activeChannelId)
   const isRealGroupId = /^[0-9a-f-]{36}$/i.test(activeGroupId)
   const { data: rawMessages } = useGroupMessages(isRealGroupId ? activeGroupId : undefined)
+  const { data: activeGroupMembers = [] } = useGroupMembers(isRealGroupId ? activeGroupId : undefined)
 
   const groupMessageById = new Map((rawMessages ?? []).map((msg) => [msg.id, msg]))
+  const groupMemberRoleByUserId = new Map(
+    activeGroupMembers
+      .filter((member) => member.user)
+      .map((member) => [member.user.id, getChannelRoleLabel(member.role)]),
+  )
   const groupReplyCounts = (rawMessages ?? []).reduce((counts, msg) => {
     if (!msg.reply_to_id) return counts
     counts.set(msg.reply_to_id, (counts.get(msg.reply_to_id) ?? 0) + 1)
@@ -301,7 +307,8 @@ export default function ChatPage() {
       id: msg.id,
       author: msg.sender?.username ?? 'Unknown',
       authorId: msg.sender_id,
-      role: 'Member',
+      authorAvatarUrl: msg.sender?.avatar_url ?? null,
+      role: groupMemberRoleByUserId.get(msg.sender_id) ?? 'Member',
       time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       body: msg.content,
       isOwn: msg.sender_id === profile?.id,

@@ -1,7 +1,7 @@
 'use client'
 
 import { FormEvent, useRef, useState } from 'react'
-import { Hash, ImagePlus, MessagesSquare, Upload } from 'lucide-react'
+import { Hash, ImagePlus, MessagesSquare, UserCircle2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -34,13 +34,6 @@ interface CreateEntityDialogProps {
   title: string
 }
 
-const CHANNEL_TONES = [
-  'from-sky-500 via-cyan-500 to-blue-600',
-  'from-emerald-500 via-teal-500 to-cyan-600',
-  'from-orange-500 via-amber-500 to-yellow-500',
-  'from-fuchsia-500 via-violet-500 to-indigo-600',
-]
-
 export function CreateEntityDialog({
   contextLabel,
   defaultDescription = '',
@@ -61,7 +54,6 @@ export function CreateEntityDialog({
   const [details, setDetails] = useState(defaultDescription)
   const [bannerUrl, setBannerUrl] = useState<string | null>(null)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
-  const [selectedTone, setSelectedTone] = useState(0)
 
   const bannerRef = useRef<HTMLInputElement>(null)
   const avatarRef = useRef<HTMLInputElement>(null)
@@ -80,7 +72,6 @@ export function CreateEntityDialog({
     setDetails(defaultDescription)
     setBannerUrl(null)
     setAvatarUrl(null)
-    setSelectedTone(0)
     onOpenChange(nextOpen)
   }
 
@@ -119,63 +110,58 @@ export function CreateEntityDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-3 px-3 py-3">
-          {/* Channel: banner + avatar */}
+          {/* Channel: avatar + banner as separate upload zones */}
           {entityKind === 'channel' ? (
-            <div className="space-y-2">
-              {/* Banner */}
-              <div
-                className="relative h-20 w-full cursor-pointer overflow-hidden rounded-2xl border border-border"
-                onClick={() => bannerRef.current?.click()}
-              >
-                {bannerUrl ? (
-                  <img src={bannerUrl} alt="Banner" className="h-full w-full object-cover" />
-                ) : (
-                  <div className={cn('h-full w-full bg-gradient-to-br opacity-50', CHANNEL_TONES[selectedTone])} />
-                )}
-                <div className="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/25 opacity-0 transition-opacity hover:opacity-100">
-                  <ImagePlus className="h-4 w-4 text-white" />
-                  <span className="text-[11px] font-medium text-white">Upload banner</span>
-                </div>
-                <input ref={bannerRef} type="file" accept="image/*" className="hidden" onChange={handleBannerChange} />
-
-                {/* Avatar overlaid on banner */}
-                <div
-                  className="absolute bottom-2 left-3 cursor-pointer"
-                  onClick={(e) => { e.stopPropagation(); avatarRef.current?.click() }}
+            <div className="flex gap-2">
+              {/* Avatar upload */}
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-[10px] text-muted-foreground">Avatar</span>
+                <button
+                  type="button"
+                  onClick={() => avatarRef.current?.click()}
+                  className="group relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl border border-dashed border-border bg-muted/40 transition-colors hover:bg-muted/70"
                 >
-                  <div className={cn(
-                    'flex h-10 w-10 items-center justify-center rounded-xl text-[11px] font-bold text-white shadow-lg ring-2 ring-background',
-                    avatarUrl ? '' : cn('bg-gradient-to-br', CHANNEL_TONES[selectedTone]),
-                  )}>
-                    {avatarUrl ? (
-                      <img src={avatarUrl} alt="Avatar" className="h-full w-full rounded-xl object-cover" />
-                    ) : previewMonogram}
-                  </div>
-                  <div className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary">
-                    <Upload className="h-2.5 w-2.5 text-white" />
-                  </div>
-                </div>
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt="Avatar" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                      <UserCircle2 className="h-5 w-5" />
+                      <span className="text-[9px]">Upload</span>
+                    </div>
+                  )}
+                  {avatarUrl && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+                      <UserCircle2 className="h-4 w-4 text-white" />
+                    </div>
+                  )}
+                </button>
                 <input ref={avatarRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
               </div>
 
-              {/* Color palette (only if no custom images) */}
-              {!bannerUrl && !avatarUrl ? (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-muted-foreground">Color</span>
-                  {CHANNEL_TONES.map((tone, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => setSelectedTone(i)}
-                      className={cn(
-                        'h-5 w-5 rounded-full bg-gradient-to-br transition-transform hover:scale-110',
-                        tone,
-                        selectedTone === i && 'ring-2 ring-primary ring-offset-1',
-                      )}
-                    />
-                  ))}
-                </div>
-              ) : null}
+              {/* Banner upload */}
+              <div className="flex flex-1 flex-col gap-1">
+                <span className="text-[10px] text-muted-foreground">Banner</span>
+                <button
+                  type="button"
+                  onClick={() => bannerRef.current?.click()}
+                  className="group relative flex h-16 w-full items-center justify-center overflow-hidden rounded-xl border border-dashed border-border bg-muted/40 transition-colors hover:bg-muted/70"
+                >
+                  {bannerUrl ? (
+                    <img src={bannerUrl} alt="Banner" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                      <ImagePlus className="h-5 w-5" />
+                      <span className="text-[9px]">Upload</span>
+                    </div>
+                  )}
+                  {bannerUrl && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+                      <ImagePlus className="h-4 w-4 text-white" />
+                    </div>
+                  )}
+                </button>
+                <input ref={bannerRef} type="file" accept="image/*" className="hidden" onChange={handleBannerChange} />
+              </div>
             </div>
           ) : (
             /* Group: keep existing preview */
@@ -207,7 +193,7 @@ export function CreateEntityDialog({
             </div>
           )}
 
-          {/* Channel info banner (below images) */}
+          {/* Channel info hint */}
           {entityKind === 'channel' ? (
             <div className="flex items-center gap-2 rounded-xl border border-border bg-background px-2 py-1.5">
               <MessagesSquare className="h-3.5 w-3.5 text-primary" />

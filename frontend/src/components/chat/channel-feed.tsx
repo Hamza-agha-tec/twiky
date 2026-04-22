@@ -16,7 +16,6 @@ import {
   Bookmark,
   Heart,
   ImagePlus,
-  MapPin,
   MessageSquare,
   MessageCircle,
   MoreHorizontal,
@@ -73,6 +72,7 @@ export interface FeedPost {
   id: string
   author: string
   authorId?: string
+  authorAvatarUrl?: string | null
   role: string
   time: string
   body: string
@@ -100,6 +100,8 @@ export interface FeedMemberProfile {
   posts: number
   role: string
   status: string
+  websiteUrl?: string | null
+  xUrl?: string | null
 }
 
 export interface FeedDirectConversationTarget {
@@ -208,7 +210,30 @@ const ROLE_COLORS: Record<string, string> = {
   'Frontend':       'text-cyan-500',
   'Game Design':    'text-orange-400',
   'Voice':          'text-teal-500',
+  'Admin':          'text-amber-500',
   'Member':         'text-primary',
+}
+
+function RoleBadge({ role, variant = 'feed' }: { role: string; variant?: 'feed' | 'profile' }) {
+  const isAdmin = role.toLowerCase() === 'admin'
+  const baseClass = variant === 'profile'
+    ? 'inline-flex items-center rounded-md px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.12em]'
+    : 'inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]'
+
+  return (
+    <span
+      className={cn(
+        baseClass,
+        isAdmin
+          ? 'border border-sky-400/30 bg-[linear-gradient(135deg,rgba(14,165,233,0.16),rgba(16,185,129,0.14),rgba(244,63,94,0.10))] text-sky-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_4px_14px_rgba(14,165,233,0.12)] backdrop-blur dark:border-cyan-300/25 dark:text-cyan-100'
+          : variant === 'profile'
+            ? 'border border-current/30 bg-muted/50 text-muted-foreground'
+            : 'bg-muted text-muted-foreground',
+      )}
+    >
+      {role}
+    </span>
+  )
 }
 
 function normalizePersonName(value: string) {
@@ -235,6 +260,8 @@ function buildFeedMemberProfile(post: FeedPost, avatarUrl: string | null, handle
     handle: handle ?? defaults.handle,
     name: post.author,
     role: post.role,
+    websiteUrl: null,
+    xUrl: null,
   }
 }
 
@@ -273,8 +300,29 @@ export function buildStandaloneFeedMemberProfile({
     name,
     role,
     status: status ?? defaults.status,
+    websiteUrl: null,
+    xUrl: null,
   }
 }
+
+function normalizeExternalUrl(value?: string | null) {
+  const trimmed = value?.trim()
+  if (!trimmed) return null
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  return `https://${trimmed}`
+}
+
+function displayExternalUrl(value: string) {
+  return value.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '')
+}
+
+function createPixelRoomPreview() {
+  const artwork = `<rect width='800' height='560' rx='38' fill='#0B1422'/><rect y='320' width='800' height='240' fill='#20384A'/><rect x='90' y='96' width='146' height='126' fill='#2D4B79'/><rect x='112' y='118' width='104' height='80' fill='#9EE6FF'/><rect x='298' y='84' width='118' height='92' fill='#F3B949'/><rect x='318' y='102' width='78' height='40' fill='#FFF0BF'/><rect x='112' y='372' width='264' height='88' fill='#4B6CB7'/><rect x='520' y='112' width='132' height='152' fill='#252F45'/><rect x='548' y='136' width='84' height='48' fill='#FFD369'/>`
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 560' fill='none'>${artwork}</svg>`
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
+}
+
+const PIXEL_ROOM_PREVIEW_SRC = createPixelRoomPreview()
 
 function escapeSvgText(value: string) {
   return value
@@ -501,6 +549,8 @@ function MessageRow({
     bio: realUser?.bio ?? memberProfile.bio,
     status: realUser?.status ?? memberProfile.status,
     avatarUrl: realUser?.avatar_url ?? memberProfile.avatarUrl,
+    websiteUrl: realUser?.website_url ?? memberProfile.websiteUrl,
+    xUrl: realUser?.x_url ?? memberProfile.xUrl,
     followers: followersData?.length ?? memberProfile.followers,
     following: followingData?.length ?? memberProfile.following,
   }
@@ -509,7 +559,7 @@ function MessageRow({
   const initial = post.author[0].toUpperCase()
   const fallbackAvatar = createMockProfileAvatar(resolvedProfile)
   const displayAvatar = post.isOwn
-    ? (myAvatarUrl ?? resolvedProfile.avatarUrl ?? fallbackAvatar)
+    ? (authorAvatarUrl ?? myAvatarUrl ?? resolvedProfile.avatarUrl ?? fallbackAvatar)
     : (authorAvatarUrl ?? resolvedProfile.avatarUrl ?? fallbackAvatar)
 
   function handleMessageClick() {
@@ -552,9 +602,7 @@ function MessageRow({
                 >
                   {post.author}
                 </button>
-                <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.07em] text-muted-foreground">
-                  {post.role}
-                </span>
+                <RoleBadge role={post.role} />
                 <span className="text-[11px] text-muted-foreground">{post.time}</span>
                 {post.pinned ? <Pin className="h-3 w-3 text-primary" /> : null}
               </div>
@@ -765,8 +813,8 @@ function MessageRow({
 
               <div className="h-px bg-border/40" />
 
-              {/* Role + Location */}
-              <div className="flex items-center justify-between">
+              {/* Role */}
+              <div className="flex items-center">
                 <span className={cn(
                   'inline-flex items-center gap-1.5 rounded-[5px] bg-background/70 px-2 py-1 text-[11px] font-semibold',
                   roleColor,
@@ -774,12 +822,6 @@ function MessageRow({
                   <span className="h-2 w-2 rounded-full bg-current" />
                   {resolvedProfile.role}
                 </span>
-                {resolvedProfile.location ? (
-                  <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                    <MapPin className="h-3 w-3" />
-                    {resolvedProfile.location}
-                  </span>
-                ) : null}
               </div>
             </div>
 
@@ -855,8 +897,9 @@ export function FeedMemberProfileView({
   posts: FeedPost[]
   showMessageAction?: boolean
 }) {
-  const [activeTab, setActiveTab] = useState<'posts' | 'articles' | 'projects' | 'saved'>('posts')
+  const [activeTab, setActiveTab] = useState<'posts' | 'articles' | 'pixel-room' | 'saved'>('posts')
   const [isFollowing, setIsFollowing] = useState(false)
+  const [pixelRoomLiked, setPixelRoomLiked] = useState(false)
 
   const { data: realUser } = useUserById(memberProfile.id)
   const { data: followersData } = useUserFollowers(memberProfile.id)
@@ -874,6 +917,8 @@ export function FeedMemberProfileView({
     bio: realUser?.bio ?? memberProfile.bio,
     status: realUser?.status ?? memberProfile.status,
     avatarUrl: realUser?.avatar_url ?? memberProfile.avatarUrl,
+    websiteUrl: realUser?.website_url ?? memberProfile.websiteUrl,
+    xUrl: realUser?.x_url ?? memberProfile.xUrl,
     followers: followersData?.length ?? memberProfile.followers,
     following: followingData?.length ?? memberProfile.following,
     posts: memberProfile.id ? backendPosts.length : memberProfile.posts,
@@ -904,13 +949,11 @@ export function FeedMemberProfileView({
       }))
     : fallbackPosts
 
-  const projectTitle = resolvedProfile.focus.split(',')[0]?.trim() ?? resolvedProfile.focus
-  const projectBody = resolvedProfile.bio.split('.')[0]?.trim() ?? resolvedProfile.focus
-
   const roleColor = ROLE_COLORS[resolvedProfile.role] ?? 'text-primary'
+  const websiteHref = normalizeExternalUrl(resolvedProfile.websiteUrl)
 
   return (
-    <div className="flex flex-1 flex-col overflow-y-auto bg-sidebar text-foreground">
+    <div className="flex flex-1 flex-col overflow-y-auto bg-background text-foreground">
       {/* Banner */}
       <div className="relative h-[118px] flex-shrink-0 overflow-hidden">
         <img src={bannerImage} alt="" className="h-full w-full object-cover" />
@@ -975,12 +1018,7 @@ export function FeedMemberProfileView({
 
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-[19px] font-black leading-none tracking-tight text-foreground">{resolvedProfile.name}</h1>
-          <span className={cn(
-            'rounded-md border border-current/30 bg-muted/50 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.1em]',
-            roleColor,
-          )}>
-            {resolvedProfile.role}
-          </span>
+          <RoleBadge role={resolvedProfile.role} variant="profile" />
         </div>
         <p className="mt-0.5 text-[11px] text-muted-foreground">@{resolvedProfile.handle}</p>
         <div className="mt-2 flex items-center gap-3.5 text-[11px]">
@@ -1013,19 +1051,20 @@ export function FeedMemberProfileView({
         <p className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">About</p>
         <p className="text-[11.5px] leading-[1.65] text-foreground">{resolvedProfile.bio}</p>
         <div className="mt-2.5 space-y-1.5 text-[11px] text-muted-foreground">
-          {resolvedProfile.location ? (
-            <div className="flex items-center gap-1.5">
-              <MapPin className="h-3 w-3 flex-shrink-0" />
-              <span>Based in {resolvedProfile.location}</span>
-            </div>
+          {websiteHref ? (
+            <a
+              href={websiteHref}
+              target="_blank"
+              rel="noreferrer"
+              className="flex min-w-0 items-center gap-1.5 text-primary/80 transition-colors hover:text-primary"
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+              </svg>
+              <span className="truncate">{displayExternalUrl(websiteHref)}</span>
+            </a>
           ) : null}
-          <div className="flex min-w-0 items-center gap-1.5">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0">
-              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-            </svg>
-            <span className="truncate text-primary/80">twiky.studio/{resolvedProfile.handle}</span>
-          </div>
         </div>
       </motion.div>
 
@@ -1041,7 +1080,7 @@ export function FeedMemberProfileView({
         <div className="flex items-center gap-0.5 rounded-xl border border-border bg-card p-1">
           {([
             { id: 'posts' as const, label: 'Posts' },
-            { id: 'projects' as const, label: 'Projects' },
+            { id: 'pixel-room' as const, label: 'Pixel Room' },
             { id: 'articles' as const, label: 'Articles' },
             { id: 'saved' as const, label: 'Saved' },
           ]).map((tab) => {
@@ -1161,6 +1200,68 @@ export function FeedMemberProfileView({
               )
             })}
           </motion.div>
+        ) : activeTab === 'pixel-room' ? (
+          <motion.div
+            key="pixel-room"
+            className="space-y-2.5"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+          >
+            <div className="relative overflow-hidden rounded-2xl border border-border bg-card">
+              <img
+                src={PIXEL_ROOM_PREVIEW_SRC}
+                alt={`${resolvedProfile.name}'s Pixel Room`}
+                className="h-32 w-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+              <div className="absolute bottom-2.5 left-3 right-3 flex items-end justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-[12px] font-bold text-white">{resolvedProfile.name}'s Room</p>
+                  <p className="text-[10px] text-white/70">Pixel World · preview</p>
+                </div>
+                <span className="rounded-full bg-white/15 px-2 py-0.5 text-[9px] font-semibold text-white backdrop-blur-sm">
+                  Open soon
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-1.5">
+              {[
+                { label: 'Furniture', value: '—' },
+                { label: 'Visitors', value: formatCompactCount(resolvedProfile.followers) },
+                { label: 'Style', value: 'Loft' },
+              ].map(({ label, value }) => (
+                <div key={label} className="rounded-lg border border-border bg-card/70 px-2 py-1.5 text-center">
+                  <p className="text-[12px] font-bold leading-none text-foreground">{value}</p>
+                  <p className="mt-0.5 text-[9px] text-muted-foreground">{label}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="h-8 flex-1 rounded-lg bg-primary px-3 text-[11px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                Enter Room
+              </button>
+              <button
+                type="button"
+                onClick={() => setPixelRoomLiked((liked) => !liked)}
+                aria-pressed={pixelRoomLiked}
+                className={cn(
+                  'flex h-8 w-9 items-center justify-center rounded-lg border transition-colors',
+                  pixelRoomLiked
+                    ? 'border-rose-400/30 bg-rose-500/10 text-rose-500'
+                    : 'border-border bg-card text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <Heart className={cn('h-3.5 w-3.5', pixelRoomLiked && 'fill-current')} />
+              </button>
+            </div>
+          </motion.div>
         ) : (
           <motion.div
             key={activeTab}
@@ -1171,12 +1272,10 @@ export function FeedMemberProfileView({
             transition={{ duration: 0.22, ease: 'easeOut' }}
           >
             <p className="text-[12px] font-semibold text-foreground">
-              {activeTab === 'projects' ? 'Projects' : activeTab === 'articles' ? 'Articles' : 'Saved'}
+              {activeTab === 'articles' ? 'Articles' : 'Saved'}
             </p>
             <p className="mt-1.5 text-[11px] leading-[1.75] text-muted-foreground">
-              {activeTab === 'projects'
-                ? resolvedProfile.focus
-                : activeTab === 'articles'
+              {activeTab === 'articles'
                   ? resolvedProfile.bio
                   : 'Pinned references and useful items will appear here.'}
             </p>
@@ -1216,7 +1315,7 @@ function FeedProfileRow({
   const roleColor = ROLE_COLORS[post.role] ?? 'text-primary'
   const fallbackAvatar = createMockProfileAvatar(memberProfile)
   const displayAvatar = post.isOwn
-    ? (myAvatarUrl ?? memberProfile.avatarUrl ?? fallbackAvatar)
+    ? (authorAvatarUrl ?? myAvatarUrl ?? memberProfile.avatarUrl ?? fallbackAvatar)
     : (authorAvatarUrl ?? memberProfile.avatarUrl ?? fallbackAvatar)
 
   return (
@@ -1255,9 +1354,7 @@ function FeedProfileRow({
             >
               {post.author}
             </button>
-            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.07em] text-muted-foreground">
-              {post.role}
-            </span>
+            <RoleBadge role={post.role} />
             <span className="text-[11px] text-muted-foreground">{post.time}</span>
             {post.pinned ? <Pin className="h-3 w-3 text-primary" /> : null}
           </div>
@@ -1491,7 +1588,12 @@ export function ChannelFeed({
     if (post.isOwn) {
       return {
         canMessage: false,
-        profile: buildFeedMemberProfile(post, myAvatarUrl ?? profile?.avatar_url ?? null, profile?.username ?? 'you', profile?.id),
+        profile: buildFeedMemberProfile(
+          post,
+          post.authorAvatarUrl ?? myAvatarUrl ?? profile?.avatar_url ?? null,
+          profile?.username ?? 'you',
+          profile?.id,
+        ),
       }
     }
 
@@ -1499,7 +1601,7 @@ export function ChannelFeed({
       canMessage: true,
       profile: buildFeedMemberProfile(
         post,
-        createMockProfileAvatar(buildFeedMemberProfile(post, null)),
+        post.authorAvatarUrl ?? createMockProfileAvatar(buildFeedMemberProfile(post, null)),
         undefined,
         post.authorId,
       ),
