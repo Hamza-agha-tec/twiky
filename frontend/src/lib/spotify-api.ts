@@ -74,6 +74,8 @@ export const spotifyApi = {
 
   connect: (code: string) => authedFetch<{ success: boolean }>(`/spotify/connect?code=${encodeURIComponent(code)}`),
 
+  disconnect: () => authedFetch<{ success: boolean }>('/spotify/disconnect', { method: 'DELETE' }),
+
   getNowPlaying: (userId: string) => authedFetch<SpotifyNowPlaying>(`/spotify/now-playing/${userId}`),
 
   getProfile: (userId: string) => authedFetch<SpotifyProfile>(`/spotify/profile/${userId}`),

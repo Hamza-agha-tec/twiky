@@ -59,7 +59,9 @@ export function useSpotifyNowPlaying(userId: string | undefined) {
     refetchInterval: false,
   });
 
-  return { data: socketData ?? restQuery.data, isLoading: restQuery.isLoading && !socketData };
+  const data = restQuery.data?.message === 'Spotify not connected' ? restQuery.data : socketData ?? restQuery.data;
+
+  return { data, isLoading: restQuery.isLoading && !socketData };
 }
 
 export function useSpotifyProfile(userId: string | undefined) {
@@ -82,5 +84,23 @@ export function useSpotifyConnect() {
 export function useSpotifyAuthUrl() {
   return useMutation({
     mutationFn: () => spotifyApi.getAuthUrl(),
+  });
+}
+
+export function useSpotifyDisconnect(userId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => spotifyApi.disconnect(),
+    onSuccess: () => {
+      if (userId) {
+        queryClient.setQueryData(SPOTIFY_KEYS.nowPlaying(userId), {
+          is_playing: false,
+          message: 'Spotify not connected',
+        });
+        queryClient.removeQueries({ queryKey: SPOTIFY_KEYS.profile(userId) });
+      }
+      queryClient.invalidateQueries({ queryKey: ['spotify'] });
+    },
   });
 }
