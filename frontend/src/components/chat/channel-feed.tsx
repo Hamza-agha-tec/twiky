@@ -924,7 +924,7 @@ export function FeedMemberProfileView({
     posts: memberProfile.id ? backendPosts.length : memberProfile.posts,
   }
 
-  const bannerImage = createMockProfileBanner(resolvedProfile)
+  const bannerImage = realUser?.banner ?? createMockProfileBanner(resolvedProfile)
   const avatarImage = resolvedProfile.avatarUrl ?? createMockProfileAvatar(resolvedProfile)
 
   const allFeedPosts = Object.values(FEED_BY_GROUP).flat()
@@ -957,7 +957,7 @@ export function FeedMemberProfileView({
       {/* Banner */}
       <div className="relative h-[118px] flex-shrink-0 overflow-hidden">
         <img src={bannerImage} alt="" className="h-full w-full object-cover" />
-        <div className={cn('absolute inset-0 bg-gradient-to-br opacity-45', resolvedProfile.accent)} />
+        {!realUser?.banner && <div className={cn('absolute inset-0 bg-gradient-to-br opacity-45', resolvedProfile.accent)} />}
         <div className="absolute inset-0 bg-gradient-to-b from-black/10 to-black/70" />
         <button
           type="button"

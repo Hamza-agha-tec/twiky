@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Copy, ImageIcon, Pin, PinOff, Reply, Trash2 } from 'lucide-react'
 
 interface FeedPostContextMenuProps {
+  canModerate?: boolean
   hasMedia?: boolean
   isOwn?: boolean
   isPinned?: boolean
@@ -26,6 +27,7 @@ function clamp(value: number, min: number, max: number) {
 }
 
 export function FeedPostContextMenu({
+  canModerate,
   hasMedia,
   isOwn,
   isPinned,
@@ -109,7 +111,7 @@ export function FeedPostContextMenu({
               className="flex w-full items-center gap-3 px-3 py-2.5 text-sm text-destructive transition-colors hover:bg-destructive/10"
             >
               <Trash2 className="h-4 w-4 flex-shrink-0" />
-              <span>{isOwn ? 'Delete post' : 'Hide locally'}</span>
+              <span>{isOwn || canModerate ? 'Delete post' : 'Hide locally'}</span>
             </button>
           </>
         ) : null}

@@ -358,15 +358,6 @@ function ProfileSection({
   const effectiveAvatarUrl = avatarUrl ?? profile?.avatar_url ?? null
   const effectiveBannerUrl = bannerUrl ?? profile?.banner ?? null
   const [selectedGradient, setSelectedGradient] = useState(0)
-  const completionChecks = [
-    fullname.trim().length > 0,
-    username.trim().length >= 3,
-    bio.trim().length >= 20,
-    location.trim().length > 0,
-    status.trim().length > 0,
-    twitter.trim().length > 0 || github.trim().length > 0 || website.trim().length > 0,
-  ]
-  const completion = Math.round((completionChecks.filter(Boolean).length / completionChecks.length) * 100)
 
   return (
     <>
