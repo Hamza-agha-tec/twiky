@@ -65,6 +65,7 @@ export interface WorkspaceChannel {
   avatarUrl?: string
   bannerUrl?: string
   access_type?: 'PUBLIC' | 'PRIVATE'
+  role?: 'OWNER' | 'ADMIN' | 'MEMBER' | string
 }
 
 interface BuildChannelGroupInput {
@@ -864,6 +865,7 @@ export function ChannelsPanel({
   const tone = getChannelTone(channel.id)
   const monogram = getChannelMonogram(channel.label)
   const displayAvatar = channelAvatarUrl ?? channel.avatarUrl ?? null
+  const canManage = channel.role === 'OWNER' || channel.role === 'ADMIN'
 
   return (
     <>
@@ -890,24 +892,26 @@ export function ChannelsPanel({
               <p className="truncate text-[12.5px] font-semibold">{channel.label}</p>
               <p className="truncate text-[10px] text-muted-foreground">{channel.membersLabel}</p>
             </div>
-            <div className="flex items-center gap-0.5">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 rounded-xl"
-                onClick={() => setShowCreateGroup(true)}
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 rounded-xl"
-                onClick={() => setChannelSettingsOpen(true)}
-              >
-                <MoreHorizontal className="h-3.5 w-3.5" />
-              </Button>
-            </div>
+            {canManage ? (
+              <div className="flex items-center gap-0.5">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 rounded-xl"
+                  onClick={() => setShowCreateGroup(true)}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 rounded-xl"
+                  onClick={() => setChannelSettingsOpen(true)}
+                >
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -970,7 +974,8 @@ export function ChannelsPanel({
                     </div>
                   </button>
 
-                  {/* Group 3-dot menu */}
+                  {/* Group 3-dot menu — admins/owners only */}
+                  {canManage ? (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button
@@ -1003,6 +1008,7 @@ export function ChannelsPanel({
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
+                  ) : null}
                 </motion.div>
               )
             })}

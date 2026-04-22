@@ -190,6 +190,7 @@ function toWorkspaceChannel(
     groups: groupsByChannel[channel.id] ?? base.groups,
     membersLabel: getChannelRoleLabel(channel.role),
     access_type: channel.access_type,
+    role: (channel.role as 'OWNER' | 'ADMIN' | 'MEMBER') ?? 'MEMBER',
   }
 }
 
