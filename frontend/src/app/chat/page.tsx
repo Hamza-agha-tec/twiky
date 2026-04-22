@@ -682,6 +682,7 @@ export default function ChatPage() {
       author: isSystem ? 'System' : (msg.sender?.username ?? 'Unknown'),
       authorId: msg.sender_id,
       authorAvatarUrl: isSystem ? null : (msg.sender?.avatar_url ?? null),
+      isSystem,
       role: isSystem ? 'Automation' : (groupMemberRoleByUserId.get(msg.sender_id) ?? 'Member'),
       time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       body: msg.content,

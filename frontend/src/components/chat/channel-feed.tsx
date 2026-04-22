@@ -73,6 +73,7 @@ export interface FeedPost {
   author: string
   authorId?: string
   authorAvatarUrl?: string | null
+  isSystem?: boolean
   role: string
   time: string
   body: string
@@ -84,6 +85,21 @@ export interface FeedPost {
   replyCount: number
   replyTo?: { author: string; body: string }
   tags?: string[]
+}
+
+function SystemFeedRow({ post }: { post: FeedPost }) {
+  return (
+    <div className="flex justify-center px-4 py-2">
+      <div className="max-w-[80%] rounded-full border border-border/70 bg-muted/45 px-3 py-1.5 text-center">
+        <p className="text-[12px] leading-5 text-muted-foreground">
+          {post.body}
+          <span className="ml-2 text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground/70">
+            {post.time}
+          </span>
+        </p>
+      </div>
+    </div>
+  )
 }
 
 export interface FeedMemberProfile {
@@ -1866,8 +1882,13 @@ export function ChannelFeed({
 
           {posts.map((post, index) => {
             const prevPost = index > 0 ? posts[index - 1] : null
-            const isGrouped = !!prevPost && prevPost.author === post.author
+            const isSystem = post.isSystem || (post.author === 'System' && post.role === 'Automation')
+            const isGrouped = !!prevPost && !isSystem && !prevPost.isSystem && prevPost.author === post.author
             const authorContext = getAuthorContext(post)
+
+            if (isSystem) {
+              return <SystemFeedRow key={post.id} post={post} />
+            }
 
             return (
               <FeedProfileRow
