@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Param, Body, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Body, UseGuards, Request, Patch } from '@nestjs/common';
 import { GroupsService } from './groups.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateGroupDto } from './dto/create-group.dto';
@@ -7,12 +7,12 @@ import { AddGroupMemberDto } from './dto/add-group-member.dto';
 @UseGuards(JwtAuthGuard)
 @Controller()
 export class GroupsController {
-    constructor(private readonly groupsService: GroupsService) {}
+    constructor(private readonly groupsService: GroupsService) { }
 
     @Post('channels/:channelId/groups')
     async createGroup(
-        @Request() req: any, 
-        @Param('channelId') channelId: string, 
+        @Request() req: any,
+        @Param('channelId') channelId: string,
         @Body() createGroupDto: CreateGroupDto
     ) {
         return this.groupsService.createGroup(channelId, req.user.userId, createGroupDto);
@@ -35,9 +35,28 @@ export class GroupsController {
 
     @Post('groups/:groupId/members')
     async addGroupMember(
-        @Param('groupId') groupId: string, 
+        @Request() req: any,
+        @Param('groupId') groupId: string,
         @Body() addGroupMemberDto: AddGroupMemberDto
     ) {
-        return this.groupsService.addMemberToGroup(groupId, addGroupMemberDto);
+        return this.groupsService.addMemberToGroup(groupId, req.user.userId, addGroupMemberDto);
+    }
+
+    @Patch('groups/:groupId/members')
+    async updateGroupMemberRole(
+        @Request() req: any,
+        @Param('groupId') groupId: string,
+        @Body() updateGroupMemberRoleDto: AddGroupMemberDto
+    ) {
+        return this.groupsService.updateGroupMemberRole(groupId, req.user.userId, updateGroupMemberRoleDto);
+    }
+
+    @Delete('groups/:groupId/members/:memberId')
+    async deleteGroupMember(
+        @Request() req: any,
+        @Param('groupId') groupId: string,
+        @Param('memberId') memberId: string
+    ) {
+        return this.groupsService.deleteGroupMember(groupId, req.user.userId, memberId);
     }
 }

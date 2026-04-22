@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Param, Query, Request, Res, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Delete, Get, Param, Query, Request, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { SpotifyService } from './spotify.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -46,6 +46,12 @@ export class SpotifyController {
       throw new BadRequestException('Missing Spotify authorization code');
     }
     return this.spotifyService.handleCallback(req.user.userId, code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('disconnect')
+  async disconnect(@Request() req: any) {
+    return this.spotifyService.disconnect(req.user.userId);
   }
 
   @UseGuards(JwtAuthGuard)
