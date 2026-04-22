@@ -484,7 +484,7 @@ export function WorkspaceSidebar({
                   >
                     <div
                       className={cn(
-                        'flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-[9px] font-bold text-white shadow-sm overflow-hidden',
+                        'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-[10px] font-bold text-white shadow-sm overflow-hidden',
                         getChannelTone(channel.id),
                         isActive && 'ring-2 ring-primary/20 ring-offset-1 ring-offset-sidebar',
                       )}
@@ -493,7 +493,7 @@ export function WorkspaceSidebar({
                         <img src={storedAvatar} alt={channel.label} className="block h-full w-full object-cover object-center" />
                       ) : getChannelMonogram(channel.label)}
                     </div>
-                    <span className="truncate text-[11px] font-medium text-foreground">
+                    <span className="truncate text-[12px] font-medium text-foreground">
                       {channel.label}
                     </span>
                     {channel.access_type === 'PRIVATE' ? (
@@ -547,7 +547,7 @@ export function WorkspaceSidebar({
                     key={channel.id}
                     onClick={() => onSelectChannel?.(channel.id)}
                     className={cn(
-                      'flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br text-[10px] font-bold text-white shadow-sm transition-transform hover:scale-[1.02] overflow-hidden',
+                      'flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br text-[10px] font-bold text-white shadow-sm transition-transform hover:scale-[1.02] overflow-hidden',
                       getChannelTone(channel.id),
                       isActive && 'ring-2 ring-primary/30 ring-offset-2 ring-offset-sidebar',
                     )}
