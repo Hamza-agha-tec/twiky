@@ -35,7 +35,7 @@ export interface BackendGroup {
 }
 
 export interface GroupMember {
-  role: 'ADMIN' | 'MEMBER';
+  role: 'OWNER' | 'ADMIN' | 'MEMBER';
   joined_at: string;
   user: {
     id: string;
@@ -69,7 +69,7 @@ export const groupsApi = {
   getGroupMembers: (groupId: string) =>
     authedFetch<GroupMember[]>(`/groups/${groupId}/members`),
 
-  addGroupMember: (groupId: string, data: { user_id: string; role?: 'ADMIN' | 'MEMBER' }) =>
+  addGroupMember: (groupId: string, data: { user_id: string; role?: 'OWNER' | 'ADMIN' | 'MEMBER' }) =>
     authedFetch(`/groups/${groupId}/members`, {
       method: 'POST',
       body: JSON.stringify({ role: 'MEMBER', ...data }),
