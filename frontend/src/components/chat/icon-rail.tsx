@@ -1,13 +1,13 @@
 'use client'
 
-import { MessageSquareMore, Settings2, Store } from 'lucide-react'
+import { MessageSquareMore, Settings2, Store, UserPlus } from 'lucide-react'
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-export type ActiveView = 'chat' | 'settings' | 'store'
+export type ActiveView = 'chat' | 'settings' | 'store' | 'add-friends'
 
 interface IconRailProps {
   activeView: ActiveView
@@ -18,9 +18,10 @@ interface IconRailProps {
 }
 
 const NAV_ITEMS = [
-  { id: 'chat',     label: 'Chat',     icon: MessageSquareMore },
-  { id: 'store',    label: 'Store',    icon: Store },
-  { id: 'settings', label: 'Settings', icon: Settings2 },
+  { id: 'chat',         label: 'Chat',       icon: MessageSquareMore },
+  { id: 'add-friends',  label: 'Add Friends', icon: UserPlus },
+  { id: 'store',        label: 'Store',      icon: Store },
+  { id: 'settings',     label: 'Settings',   icon: Settings2 },
 ] as const satisfies ReadonlyArray<{ id: ActiveView; label: string; icon: typeof MessageSquareMore }>
 
 export function IconRail({

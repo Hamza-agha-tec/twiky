@@ -293,7 +293,7 @@ function ProfileSection({
     setSaveMessage(null)
     await updateProfile.mutateAsync({
       bio: bio.trim() || null,
-      full_name: displayName.trim() || null,
+      fullname: fullname.trim() || null,
       status: status.trim() || null,
       username: username.trim() || undefined
     })

@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BookUser, ListTodo, MessageSquare, Sparkles, Store, Target } from 'lucide-react'
+import { BookUser, ListTodo, MessageSquare, Search, Sparkles, Store, Target, UserPlus, Users, X } from 'lucide-react'
 
 import {
   ChannelFeed,
@@ -85,7 +85,7 @@ const CHAT_VIEW_STATE_KEY = 'twiky-chat-view-state'
 const CHAT_SURFACES = ['channel', 'direct', 'personal-goals', 'personal-notes', 'personal-tasks'] as const
 const WORKSPACE_MODES = ['direct', 'channels'] as const
 const MAIN_AREA_TABS = ['feed', 'notes', 'tasks', 'goals'] as const
-const ACTIVE_VIEWS = ['chat', 'settings', 'store'] as const
+const ACTIVE_VIEWS = ['chat', 'settings', 'store', 'add-friends'] as const
 
 function isOneOf<T extends readonly string[]>(value: unknown, options: T): value is T[number] {
   return typeof value === 'string' && options.includes(value as T[number])
@@ -196,6 +196,123 @@ const STORE_ITEMS = [
   { id: 'rooms', label: 'Room Templates', description: 'Backgrounds and layouts for your profile room', count: 18, tag: 'Coming soon', gradient: 'from-cyan-500 via-sky-500 to-blue-600' },
   { id: 'badges', label: 'Badges', description: 'Collectible profile badges to show off', count: 60, tag: 'Exclusive', gradient: 'from-amber-500 via-orange-500 to-rose-500' },
 ] as const
+
+const MOCK_FRIEND_RESULTS = [
+  { id: '1', username: 'alex_dev', displayName: 'Alex Dev', mutualFriends: 3, avatarColor: 'from-violet-500 to-purple-600' },
+  { id: '2', username: 'sara_design', displayName: 'Sara Design', mutualFriends: 1, avatarColor: 'from-pink-500 to-rose-600' },
+  { id: '3', username: 'john_builds', displayName: 'John Builds', mutualFriends: 7, avatarColor: 'from-emerald-500 to-teal-600' },
+  { id: '4', username: 'maya_codes', displayName: 'Maya Codes', mutualFriends: 0, avatarColor: 'from-orange-500 to-amber-600' },
+  { id: '5', username: 'carlos_ux', displayName: 'Carlos UX', mutualFriends: 2, avatarColor: 'from-sky-500 to-blue-600' },
+] as const
+
+function AddFriendsView() {
+  const [query, setQuery] = useState('')
+  const [sent, setSent] = useState<Set<string>>(new Set())
+
+  const filtered = query.trim()
+    ? MOCK_FRIEND_RESULTS.filter(
+        (u) =>
+          u.username.toLowerCase().includes(query.toLowerCase()) ||
+          u.displayName.toLowerCase().includes(query.toLowerCase()),
+      )
+    : []
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
+      {/* Header */}
+      <div className="relative overflow-hidden border-b border-border bg-gradient-to-br from-primary/10 via-background to-background px-8 py-10">
+        <div className="mx-auto max-w-2xl">
+          <div className="flex items-center gap-2 text-primary">
+            <UserPlus className="h-5 w-5" />
+            <span className="text-[11px] font-bold uppercase tracking-widest">Add Friends</span>
+          </div>
+          <h1 className="mt-2 text-[28px] font-black tracking-tight text-foreground">Find people on Twiky</h1>
+          <p className="mt-2 text-[14px] text-muted-foreground">Search by username to connect with friends.</p>
+
+          {/* Search bar */}
+          <div className="relative mt-6">
+            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by username..."
+              className="w-full rounded-2xl border border-border bg-card py-3 pl-11 pr-10 text-[14px] text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+            {query ? (
+              <button
+                onClick={() => setQuery('')}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto w-full max-w-2xl px-8 py-8">
+        {query.trim() === '' ? (
+          <div className="flex flex-col items-center py-16 text-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-muted">
+              <Users className="h-7 w-7 text-muted-foreground" />
+            </div>
+            <p className="text-[15px] font-semibold text-foreground">Search for friends</p>
+            <p className="mt-1.5 text-[13px] text-muted-foreground">Type a username above to find people.</p>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center py-16 text-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-muted">
+              <Search className="h-7 w-7 text-muted-foreground" />
+            </div>
+            <p className="text-[15px] font-semibold text-foreground">No users found</p>
+            <p className="mt-1.5 text-[13px] text-muted-foreground">Try a different username.</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <p className="mb-1 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+              {filtered.length} result{filtered.length !== 1 ? 's' : ''}
+            </p>
+            {filtered.map((user) => {
+              const isSent = sent.has(user.id)
+              return (
+                <div
+                  key={user.id}
+                  className="flex items-center gap-4 rounded-2xl border border-border bg-card px-4 py-3 transition-all hover:border-primary/20 hover:shadow-sm"
+                >
+                  <div className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${user.avatarColor} text-[15px] font-bold text-white`}>
+                    {user.displayName[0]}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-semibold text-foreground">{user.displayName}</p>
+                    <p className="text-[12px] text-muted-foreground">@{user.username}</p>
+                    {user.mutualFriends > 0 ? (
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        {user.mutualFriends} mutual friend{user.mutualFriends !== 1 ? 's' : ''}
+                      </p>
+                    ) : null}
+                  </div>
+                  <button
+                    onClick={() => setSent((prev) => new Set([...prev, user.id]))}
+                    disabled={isSent}
+                    className={
+                      isSent
+                        ? 'flex items-center gap-1.5 rounded-xl px-4 py-2 text-[12px] font-semibold transition-all bg-muted text-muted-foreground cursor-default'
+                        : 'flex items-center gap-1.5 rounded-xl px-4 py-2 text-[12px] font-semibold transition-all bg-primary text-primary-foreground hover:opacity-90'
+                    }
+                  >
+                    <UserPlus className="h-3.5 w-3.5" />
+                    {isSent ? 'Request Sent' : 'Add Friend'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 function StoreView() {
   return (
@@ -725,6 +842,8 @@ export default function ChatPage() {
         />
       ) : activeView === 'store' ? (
         <StoreView />
+      ) : activeView === 'add-friends' ? (
+        <AddFriendsView />
       ) : (
         <>
           <WorkspaceSidebar
