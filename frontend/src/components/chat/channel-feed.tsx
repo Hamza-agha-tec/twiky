@@ -926,6 +926,7 @@ export function FeedMemberProfileView({
   const [activeTab, setActiveTab] = useState<'posts' | 'articles' | 'pixel-room' | 'saved'>('posts')
   const [followRequested, setFollowRequested] = useState(false)
   const [pixelRoomLiked, setPixelRoomLiked] = useState(false)
+  const [followSheet, setFollowSheet] = useState<'followers' | 'following' | null>(null)
 
   const { data: currentUser } = useProfile()
   const { data: realUser } = useUserById(memberProfile.id)
@@ -1000,6 +1001,55 @@ export function FeedMemberProfileView({
     }
   }
 
+  if (followSheet !== null) {
+    const title = followSheet === 'followers' ? 'Followers' : 'Following'
+    const users = followSheet === 'followers'
+      ? (followersData ?? []).map((r) => ({ id: r.follower_id, username: r.users?.username ?? 'Unknown', avatar_url: r.users?.avatar_url ?? null, bio: r.users?.bio ?? null }))
+      : (followingData ?? []).map((r) => ({ id: r.following_id, username: r.users?.username ?? 'Unknown', avatar_url: r.users?.avatar_url ?? null, bio: r.users?.bio ?? null }))
+
+    return (
+      <div className="flex flex-1 flex-col overflow-y-auto bg-background text-foreground">
+        <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+          <button
+            type="button"
+            onClick={() => setFollowSheet(null)}
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <span className="text-[13px] font-semibold text-foreground">{title}</span>
+          <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+            {users.length}
+          </span>
+        </div>
+
+        {users.length === 0 ? (
+          <div className="flex flex-col items-center py-16 text-center text-muted-foreground">
+            <Users className="mb-3 h-8 w-8 opacity-30" />
+            <p className="text-[12px]">No {title.toLowerCase()} yet</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-border">
+            {users.map((u) => (
+              <div key={u.id} className="flex items-center gap-3 px-4 py-2.5">
+                <div className="h-9 w-9 flex-shrink-0 overflow-hidden rounded-full bg-muted">
+                  {u.avatar_url
+                    ? <img src={u.avatar_url} alt={u.username} className="h-full w-full object-cover" />
+                    : <span className="flex h-full w-full items-center justify-center text-[13px] font-bold text-muted-foreground">{u.username[0]?.toUpperCase()}</span>
+                  }
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[12px] font-semibold text-foreground">@{u.username}</p>
+                  {u.bio ? <p className="truncate text-[11px] text-muted-foreground">{u.bio}</p> : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-1 flex-col overflow-y-auto bg-background text-foreground">
       {/* Banner */}
@@ -1069,14 +1119,20 @@ export function FeedMemberProfileView({
         </div>
         <p className="mt-0.5 text-[11px] text-muted-foreground">@{resolvedProfile.handle}</p>
         <div className="mt-2 flex items-center gap-3.5 text-[11px]">
-          <p>
+          <button
+            onClick={() => setFollowSheet('followers')}
+            className="group text-left hover:opacity-75 transition-opacity"
+          >
             <span className="font-bold text-foreground">{formatCompactCount(resolvedProfile.followers)}</span>
-            {' '}<span className="text-muted-foreground">Followers</span>
-          </p>
-          <p>
+            {' '}<span className="text-muted-foreground group-hover:text-foreground transition-colors">Followers</span>
+          </button>
+          <button
+            onClick={() => setFollowSheet('following')}
+            className="group text-left hover:opacity-75 transition-opacity"
+          >
             <span className="font-bold text-foreground">{formatCompactCount(resolvedProfile.following)}</span>
-            {' '}<span className="text-muted-foreground">Following</span>
-          </p>
+            {' '}<span className="text-muted-foreground group-hover:text-foreground transition-colors">Following</span>
+          </button>
         </div>
       </motion.div>
 
