@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import {
   ArrowRight,
   CalendarDays,
+  Check,
   ChevronLeft,
   ChevronRight,
   Compass,
@@ -20,6 +21,7 @@ import {
   Search,
   Sparkles,
   Target,
+  Users,
   X,
 } from 'lucide-react'
 
@@ -29,7 +31,7 @@ import { ConversationContextMenu } from '@/components/chat/conversation-context-
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useDiscoverChannels, useJoinChannel } from '@/hooks/use-channels'
+import { useDiscoverChannels, useJoinChannel, useRequestJoinChannel } from '@/hooks/use-channels'
 import { Chat } from '@/lib/mock-data'
 import { cn } from '@/lib/utils'
 
@@ -69,7 +71,7 @@ interface ContextMenuState {
 }
 
 type SidebarChat = Chat & { isSynthetic?: boolean }
-type DiscoverFilter = 'all' | 'new' | 'detailed'
+type DiscoverFilter = 'all' | 'joined' | 'new' | 'private'
 
 const PERSONAL_ITEMS: {
   id: WorkspaceNavTarget
@@ -93,9 +95,10 @@ const DISCOVER_FILTERS: {
   icon: typeof Sparkles
   label: string
 }[] = [
-  { id: 'all', icon: Sparkles, label: 'Suggested' },
+  { id: 'all', icon: Sparkles, label: 'All' },
+  { id: 'joined', icon: Check, label: 'Joined' },
   { id: 'new', icon: CalendarDays, label: 'New' },
-  { id: 'detailed', icon: Filter, label: 'Detailed' },
+  { id: 'private', icon: Lock, label: 'Private' },
 ]
 
 function getChannelMonogram(label: string) {
@@ -155,6 +158,7 @@ export function WorkspaceSidebar({
 
   const { data: discoverableChannels = [], isLoading: discoverLoading } = useDiscoverChannels()
   const joinChannel = useJoinChannel()
+  const requestJoin = useRequestJoinChannel()
 
   const isSearching = searchQuery.trim().length > 0
 
@@ -202,15 +206,15 @@ export function WorkspaceSidebar({
         Number.isFinite(createdAt) &&
         newestCreatedAt > 0 &&
         newestCreatedAt - createdAt <= thirtyDays
-      const hasDetails = description.trim().length > 0 || Boolean(channel.avatar_url || channel.banner_url)
       const matchesQuery =
         query.length === 0 ||
         channel.name.toLowerCase().includes(query) ||
         description.toLowerCase().includes(query)
 
       if (!matchesQuery) return false
+      if (discoverFilter === 'joined') return channel.membership_status === 'member'
       if (discoverFilter === 'new') return isNew
-      if (discoverFilter === 'detailed') return hasDetails
+      if (discoverFilter === 'private') return channel.access_type === 'PRIVATE'
       return true
     })
   }, [discoverFilter, discoverQuery, discoverableChannels])
@@ -621,113 +625,127 @@ export function WorkspaceSidebar({
       />
 
       <Sheet open={showDiscover} onOpenChange={setShowDiscover}>
-        <SheetContent side="left" className="w-[380px] overflow-hidden p-0 sm:max-w-[380px]">
-          <SheetHeader className="border-b border-border px-4 py-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <SheetTitle className="flex items-center gap-2 text-[14px]">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                    <Compass className="h-4 w-4" />
-                  </span>
-                  Discover Channels
-                </SheetTitle>
-                <p className="mt-1 pl-10 text-[11px] text-muted-foreground">
-                  Find public spaces to join and follow.
-                </p>
-              </div>
-              <div className="rounded-full border border-border px-2 py-1 text-[10px] font-semibold text-muted-foreground">
-                {discoverableChannels.length} open
+        <SheetContent side="left" className="w-[400px] overflow-hidden p-0 sm:max-w-[400px]">
+          <SheetHeader className="border-b border-border px-5 py-4">
+            <div className="flex items-center justify-between gap-3">
+              <SheetTitle className="flex items-center gap-2.5 text-[15px]">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Compass className="h-4 w-4" />
+                </span>
+                Browse Channels
+              </SheetTitle>
+              <div className="flex items-center gap-1.5 rounded-full border border-border bg-muted/50 px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
+                <Users className="h-3 w-3" />
+                {discoverableChannels.length}
               </div>
             </div>
+            <p className="mt-1 pl-10 text-[11px] text-muted-foreground">
+              Find channels to join or request access.
+            </p>
           </SheetHeader>
 
-          <div className="border-b border-border px-4 py-3">
+          <div className="border-b border-border px-4 pt-3 pb-2.5">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
               <input
                 value={discoverQuery}
                 onChange={(event) => setDiscoverQuery(event.target.value)}
-                placeholder="Search channels"
-                className="h-10 w-full rounded-xl border border-border bg-background pl-9 pr-9 text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                placeholder="Search by name or description…"
+                className="h-9 w-full rounded-xl border border-border bg-muted/40 pl-9 pr-9 text-[12px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
               />
               {discoverSearchActive ? (
                 <button
                   type="button"
                   onClick={() => setDiscoverQuery('')}
                   className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
-                  aria-label="Clear channel search"
+                  aria-label="Clear search"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
               ) : null}
             </div>
 
-            <div className="mt-3 flex gap-1.5 overflow-x-auto pb-0.5">
+            <div className="mt-2.5 flex gap-1.5 overflow-x-auto pb-0.5">
               {DISCOVER_FILTERS.map(({ id, icon: Icon, label }) => {
                 const isActive = discoverFilter === id
-
                 return (
                   <button
                     key={id}
                     type="button"
                     onClick={() => setDiscoverFilter(id)}
                     className={cn(
-                      'flex h-8 flex-shrink-0 items-center gap-1.5 rounded-xl border px-2.5 text-[11px] font-semibold transition-colors',
+                      'flex h-7 flex-shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-semibold transition-colors',
                       isActive
                         ? 'border-primary/30 bg-primary/10 text-primary'
                         : 'border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground',
                     )}
                   >
-                    <Icon className="h-3.5 w-3.5" />
+                    <Icon className="h-3 w-3" />
                     {label}
+                    {id === 'joined' && (
+                      <span className={cn('rounded-full px-1 text-[9px] font-bold', isActive ? 'bg-primary/20' : 'bg-muted')}>
+                        {discoverableChannels.filter(c => c.membership_status === 'member').length}
+                      </span>
+                    )}
+                    {id === 'private' && (
+                      <span className={cn('rounded-full px-1 text-[9px] font-bold', isActive ? 'bg-primary/20' : 'bg-muted')}>
+                        {discoverableChannels.filter(c => c.access_type === 'PRIVATE').length}
+                      </span>
+                    )}
                   </button>
                 )
               })}
             </div>
           </div>
 
-          <div className="flex h-[calc(100vh-169px)] flex-col gap-2 overflow-y-auto p-3">
+          <div className="flex h-[calc(100vh-192px)] flex-col gap-1 overflow-y-auto p-2">
             {discoverLoading ? (
-              Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="rounded-2xl border border-border p-3">
-                  <div className="flex items-start gap-3">
-                    <div className="h-11 w-11 animate-pulse rounded-xl bg-muted" />
-                    <div className="min-w-0 flex-1 space-y-2 pt-1">
-                      <div className="h-3 w-28 animate-pulse rounded-full bg-muted" />
-                      <div className="h-2.5 w-full animate-pulse rounded-full bg-muted" />
-                      <div className="h-2.5 w-2/3 animate-pulse rounded-full bg-muted" />
-                    </div>
+              Array.from({ length: 6 }).map((_, index) => (
+                <div key={index} className="flex items-center gap-2.5 rounded-xl border border-border px-2.5 py-2">
+                  <div className="h-8 w-8 animate-pulse rounded-lg bg-muted flex-shrink-0" />
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <div className="h-2.5 w-24 animate-pulse rounded-full bg-muted" />
+                    <div className="h-2 w-32 animate-pulse rounded-full bg-muted" />
                   </div>
+                  <div className="h-7 w-14 animate-pulse rounded-lg bg-muted flex-shrink-0" />
                 </div>
               ))
             ) : discoverableChannels.length === 0 ? (
-              <div className="flex flex-col items-center py-12 text-center">
-                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
-                  <Globe className="h-5 w-5 text-muted-foreground" />
+              <div className="flex flex-col items-center py-16 text-center">
+                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
+                  <Globe className="h-6 w-6 text-muted-foreground" />
                 </div>
-                <p className="text-[13px] font-semibold text-foreground">No public channels</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">You&apos;ve joined all available channels.</p>
+                <p className="text-[13px] font-semibold text-foreground">No channels yet</p>
+                <p className="mt-1.5 text-[11px] text-muted-foreground">Create the first channel to get started.</p>
               </div>
             ) : filteredDiscoverChannels.length === 0 ? (
-              <div className="flex flex-col items-center py-12 text-center">
-                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
-                  <Search className="h-5 w-5 text-muted-foreground" />
+              <div className="flex flex-col items-center py-16 text-center">
+                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
+                  <Search className="h-6 w-6 text-muted-foreground" />
                 </div>
-                <p className="text-[13px] font-semibold text-foreground">No matches found</p>
-                <p className="mt-1 max-w-[240px] text-[11px] text-muted-foreground">
-                  Try a different search or switch filters to see more public channels.
+                <p className="text-[13px] font-semibold text-foreground">No matches</p>
+                <p className="mt-1.5 max-w-[220px] text-[11px] text-muted-foreground">
+                  Try a different search or filter.
                 </p>
               </div>
             ) : (
-              filteredDiscoverChannels.map((ch, index) => (
-                <div
-                  key={ch.id}
-                  className="group rounded-2xl border border-border bg-background p-3 transition-colors hover:bg-accent/60"
-                >
-                  <div className="flex items-start gap-3">
+              filteredDiscoverChannels.map((ch) => {
+                const status = ch.membership_status ?? 'none'
+                const isPrivate = ch.access_type === 'PRIVATE'
+
+                return (
+                  <div
+                    key={ch.id}
+                    className={cn(
+                      'group flex items-center gap-2.5 rounded-xl border px-2.5 py-2 transition-colors',
+                      status === 'member'
+                        ? 'border-primary/20 bg-primary/5 hover:bg-primary/8'
+                        : 'border-border bg-background hover:bg-accent/50',
+                    )}
+                  >
                     <div
                       className={cn(
-                        'flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br text-[11px] font-bold text-white shadow-sm',
+                        'relative flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br text-[10px] font-bold text-white shadow-sm',
                         getChannelTone(ch.id),
                       )}
                     >
@@ -736,48 +754,78 @@ export function WorkspaceSidebar({
                       ) : (
                         getChannelMonogram(ch.name)
                       )}
+                      {status === 'member' && (
+                        <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full border border-background bg-emerald-500">
+                          <Check className="h-1.5 w-1.5 text-white" strokeWidth={3} />
+                        </span>
+                      )}
                     </div>
+
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="truncate text-[13px] font-semibold text-foreground">{ch.name}</p>
-                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                            <span className="inline-flex items-center gap-1 rounded-lg bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                              <Globe className="h-3 w-3" />
-                              Public
-                            </span>
-                            {index < 3 ? (
-                              <span className="inline-flex items-center gap-1 rounded-lg bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                                <Sparkles className="h-3 w-3" />
-                                Pick
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
+                      <div className="flex items-center gap-1.5">
+                        <p className="truncate text-[12px] font-semibold text-foreground leading-none">{ch.name}</p>
+                        {isPrivate ? (
+                          <span className="inline-flex flex-shrink-0 items-center gap-0.5 rounded bg-amber-500/10 px-1 py-0.5 text-[9px] font-semibold text-amber-600 dark:text-amber-400">
+                            <Lock className="h-2 w-2" />
+                            Private
+                          </span>
+                        ) : (
+                          <span className="inline-flex flex-shrink-0 items-center gap-0.5 rounded bg-muted px-1 py-0.5 text-[9px] font-semibold text-muted-foreground">
+                            <Globe className="h-2 w-2" />
+                            Public
+                          </span>
+                        )}
+                        {status === 'requested' && (
+                          <span className="inline-flex flex-shrink-0 items-center gap-0.5 rounded bg-blue-500/10 px-1 py-0.5 text-[9px] font-semibold text-blue-600 dark:text-blue-400">
+                            Pending
+                          </span>
+                        )}
                       </div>
-
-                      <p className="mt-2 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
-                        {ch.description || 'A public channel ready for new conversations, updates, and shared posts.'}
-                      </p>
+                      {ch.description ? (
+                        <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{ch.description}</p>
+                      ) : null}
                     </div>
-                  </div>
 
-                  <button
-                    onClick={async () => {
-                      try {
-                        await joinChannel.mutateAsync(ch.id)
-                        if (onSelectChannel) onSelectChannel(ch.id)
-                        setShowDiscover(false)
-                      } catch {}
-                    }}
-                    disabled={joinChannel.isPending}
-                    className="mt-3 flex h-9 w-full items-center justify-center gap-1.5 rounded-xl bg-primary px-3 text-[12px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-                  >
-                    Join
-                    <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-                  </button>
-                </div>
-              ))
+                    {status === 'member' ? (
+                      <button
+                        onClick={() => { if (onSelectChannel) onSelectChannel(ch.id); setShowDiscover(false) }}
+                        className="flex-shrink-0 flex h-7 items-center gap-1 rounded-lg border border-primary/30 bg-primary/10 px-2.5 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/20"
+                      >
+                        Open
+                        <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
+                      </button>
+                    ) : status === 'requested' ? (
+                      <div className="flex-shrink-0 flex h-7 items-center rounded-lg border border-border bg-muted/60 px-2.5 text-[11px] font-semibold text-muted-foreground">
+                        Sent
+                      </div>
+                    ) : isPrivate ? (
+                      <button
+                        onClick={async () => { try { await requestJoin.mutateAsync(ch.id) } catch {} }}
+                        disabled={requestJoin.isPending}
+                        className="flex-shrink-0 flex h-7 items-center gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 text-[11px] font-semibold text-amber-600 transition-colors hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-400"
+                      >
+                        <Lock className="h-3 w-3" />
+                        Request
+                      </button>
+                    ) : (
+                      <button
+                        onClick={async () => {
+                          try {
+                            await joinChannel.mutateAsync(ch.id)
+                            if (onSelectChannel) onSelectChannel(ch.id)
+                            setShowDiscover(false)
+                          } catch {}
+                        }}
+                        disabled={joinChannel.isPending}
+                        className="flex-shrink-0 flex h-7 items-center gap-1 rounded-lg bg-primary px-2.5 text-[11px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+                      >
+                        Join
+                        <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
+                      </button>
+                    )}
+                  </div>
+                )
+              })
             )}
           </div>
         </SheetContent>

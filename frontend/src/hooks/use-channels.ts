@@ -63,3 +63,14 @@ export function useJoinChannel() {
     },
   });
 }
+
+export function useRequestJoinChannel() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (channelId: string) => channelsApi.requestJoinChannel(channelId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: DISCOVER_KEYS.all });
+    },
+  });
+}

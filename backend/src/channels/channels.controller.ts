@@ -59,4 +59,9 @@ export class ChannelsController {
     async joinChannel(@Request() req: any, @Param("id") channelId: string) {
         return this.channelsService.joinChannel(req.user.userId, channelId);
     }
+
+    @Post(":id/request-join")
+    async requestJoinChannel(@Request() req: any, @Param("id") channelId: string) {
+        return this.channelsService.requestJoinChannel(req.user.userId, channelId);
+    }
 }

@@ -17,8 +17,8 @@ export class CreateInvitationDto {
     @IsUUID()
     inviteeId: string;
 
-    @IsEnum(['CHANNEL', 'GROUP', 'FOLLOW'])
-    entityType: 'CHANNEL' | 'GROUP' | 'FOLLOW';
+    @IsEnum(['CHANNEL', 'GROUP', 'FOLLOW', 'CHANNEL_JOIN_REQUEST'])
+    entityType: 'CHANNEL' | 'GROUP' | 'FOLLOW' | 'CHANNEL_JOIN_REQUEST';
 
     @IsUUID()
     entityId: string;

@@ -36,6 +36,7 @@ export interface Channel {
   access_type: ChannelAccess;
   owner_id: string;
   created_at: string;
+  membership_status?: 'member' | 'requested' | 'none';
 }
 
 export const channelsApi = {
@@ -73,4 +74,7 @@ export const channelsApi = {
     authedFetch(`/channels/${id}/join`, { method: 'POST' }),
 
   discoverChannels: () => authedFetch<Channel[]>('/channels/discover'),
+
+  requestJoinChannel: (id: string) =>
+    authedFetch(`/channels/${id}/request-join`, { method: 'POST' }),
 };

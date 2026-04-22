@@ -123,8 +123,10 @@ export class InvitationsService {
         const client = this.supabaseService.getClient();
 
         if (invitation.entity_type === 'CHANNEL') {
-            // Join channel and #general group
             await this.joinChannelInternal(userId, invitation.entity_id);
+        } else if (invitation.entity_type === 'CHANNEL_JOIN_REQUEST') {
+            // inviter_id is the requester; add them to the channel
+            await this.joinChannelInternal(invitation.inviter_id, invitation.entity_id);
         } else if (invitation.entity_type === 'GROUP') {
             // Join channel, #general group, and this specific group
             const { data: group } = await client.from('groups').select('channel_id, is_general').eq('id', invitation.entity_id).single();

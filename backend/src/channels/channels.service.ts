@@ -180,27 +180,84 @@ export class ChannelsService {
     }
 
     async discoverChannels(userId: string) {
-        const { data: memberships } = await this.supabaseService
-            .getClient()
-            .from('channel_members')
-            .select('channel_id')
-            .eq('user_id', userId);
+        const [{ data: memberships }, { data: pendingRequests }] = await Promise.all([
+            this.supabaseService.getClient()
+                .from('channel_members')
+                .select('channel_id')
+                .eq('user_id', userId),
+            this.supabaseService.getClient()
+                .from('invitations')
+                .select('entity_id')
+                .eq('inviter_id', userId)
+                .eq('entity_type', 'CHANNEL_JOIN_REQUEST')
+                .eq('status', 'PENDING'),
+        ]);
 
-        const joinedIds = (memberships ?? []).map((m: { channel_id: string }) => m.channel_id);
+        const joinedIds = new Set((memberships ?? []).map((m: { channel_id: string }) => m.channel_id));
+        const requestedIds = new Set((pendingRequests ?? []).map((r: { entity_id: string }) => r.entity_id));
 
-        let query = this.supabaseService
+        const { data, error } = await this.supabaseService
             .getClient()
             .from('channels')
             .select('*')
-            .eq('access_type', 'PUBLIC');
+            .order('created_at', { ascending: false });
 
-        if (joinedIds.length > 0) {
-            query = query.not('id', 'in', `(${joinedIds.join(',')})`);
+        if (error) throw new Error(`Failed to discover channels: ${error.message}`);
+
+        return (data ?? []).map((ch: any) => ({
+            ...ch,
+            membership_status: joinedIds.has(ch.id) ? 'member' : requestedIds.has(ch.id) ? 'requested' : 'none',
+        }));
+    }
+
+    async requestJoinChannel(userId: string, channelId: string) {
+        const channel = await this.getChannelDetails(channelId);
+
+        if (channel.access_type !== 'PRIVATE') {
+            throw new Error('Channel is public. Use the join endpoint instead.');
         }
 
-        const { data, error } = await query.order('created_at', { ascending: false });
-        if (error) throw new Error(`Failed to discover channels: ${error.message}`);
-        return data ?? [];
+        const { data: existingMember } = await this.supabaseService
+            .getClient()
+            .from('channel_members')
+            .select('role')
+            .eq('channel_id', channelId)
+            .eq('user_id', userId)
+            .maybeSingle();
+
+        if (existingMember) {
+            return { message: 'Already a member of this channel' };
+        }
+
+        const { data: existing } = await this.supabaseService
+            .getClient()
+            .from('invitations')
+            .select('id')
+            .eq('inviter_id', userId)
+            .eq('entity_id', channelId)
+            .eq('entity_type', 'CHANNEL_JOIN_REQUEST')
+            .eq('status', 'PENDING')
+            .maybeSingle();
+
+        if (existing) {
+            return { message: 'Join request already pending' };
+        }
+
+        const { data, error } = await this.supabaseService
+            .getClient()
+            .from('invitations')
+            .insert({
+                inviter_id: userId,
+                invitee_id: channel.owner_id,
+                entity_type: 'CHANNEL_JOIN_REQUEST',
+                entity_id: channelId,
+                status: 'PENDING',
+            })
+            .select()
+            .single();
+
+        if (error) throw new Error(`Failed to create join request: ${error.message}`);
+        return data;
     }
 
     async joinChannel(userId: string, channelId: string) {
