@@ -40,7 +40,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
 import { type ChatMessage } from '@/hooks/use-messaging'
-import { useProfile, useUserById, useUserFollowers, useUserFollowing, useUserPosts } from '@/hooks/use-user'
+import { useProfile, useSendFollowRequest, useUserById, useUserFollowers, useUserFollowing, useUserPosts } from '@/hooks/use-user'
 import { filesApi } from '@/lib/files-api'
 import { getMockUserAvatar, getMockUserBanner } from '@/lib/mock-users'
 import { cn } from '@/lib/utils'
@@ -919,12 +919,14 @@ export function FeedMemberProfileView({
   showMessageAction?: boolean
 }) {
   const [activeTab, setActiveTab] = useState<'posts' | 'articles' | 'pixel-room' | 'saved'>('posts')
-  const [isFollowing, setIsFollowing] = useState(false)
+  const [followRequested, setFollowRequested] = useState(false)
   const [pixelRoomLiked, setPixelRoomLiked] = useState(false)
 
+  const { data: currentUser } = useProfile()
   const { data: realUser } = useUserById(memberProfile.id)
   const { data: followersData } = useUserFollowers(memberProfile.id)
   const { data: followingData } = useUserFollowing(memberProfile.id)
+  const sendFollowRequest = useSendFollowRequest()
   const {
     data: backendPosts = [],
     isError: backendPostsError,
@@ -972,6 +974,30 @@ export function FeedMemberProfileView({
 
   const roleColor = ROLE_COLORS[resolvedProfile.role] ?? 'text-primary'
   const websiteHref = normalizeExternalUrl(resolvedProfile.websiteUrl)
+  const isAlreadyFollowing = Boolean(
+    currentUser?.id &&
+    followersData?.some((follower) => follower.follower_id === currentUser.id || follower.users?.id === currentUser.id),
+  )
+  const showFollowButton = Boolean(
+    !isOwn &&
+    showMessageAction &&
+    currentUser?.id &&
+    followersData &&
+    memberProfile.id &&
+    memberProfile.id !== currentUser?.id &&
+    !isAlreadyFollowing &&
+    !followRequested,
+  )
+
+  async function handleFollow() {
+    if (!memberProfile.id) return
+    try {
+      await sendFollowRequest.mutateAsync(memberProfile.id)
+      setFollowRequested(true)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not send follow request')
+    }
+  }
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto bg-background text-foreground">
@@ -1019,20 +1045,17 @@ export function FeedMemberProfileView({
                 <MessageSquare className="h-3 w-3" />
                 {messagePending ? 'Opening…' : 'Message'}
               </button>
-              <button
-                type="button"
-                onClick={() => setIsFollowing((v) => !v)}
-                className={cn(
-                  'inline-flex h-7 items-center gap-1.5 rounded-md px-3 text-[11px] font-medium transition-colors',
-                  isFollowing
-                    ? 'border border-border bg-transparent text-muted-foreground hover:text-foreground'
-                    : 'bg-foreground text-background hover:bg-foreground/90',
-                )}
-              >
-                {isFollowing
-                  ? <><UserCheck className="h-3 w-3" />Following</>
-                  : <><UserPlus className="h-3 w-3" />Follow</>}
-              </button>
+              {showFollowButton ? (
+                <button
+                  type="button"
+                  onClick={() => void handleFollow()}
+                  disabled={sendFollowRequest.isPending}
+                  className="inline-flex h-7 items-center gap-1.5 rounded-md bg-foreground px-3 text-[11px] font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-60"
+                >
+                  <UserPlus className="h-3 w-3" />
+                  {sendFollowRequest.isPending ? 'Sending...' : 'Follow'}
+                </button>
+              ) : null}
             </div>
           ) : null}
         </div>
