@@ -262,7 +262,7 @@ export function MainArea({
       </div>
 
       <div className="flex items-center gap-0 border-t border-border/40 px-2">
-        {CHANNEL_TABS.map(({ id, label, icon: Icon }) => {
+        {CHANNEL_TABS.filter(tab => activeChannel.type === 'WORKSPACE' || tab.id === 'feed').map(({ id, label, icon: Icon }) => {
           const isActive = activeTab === id
           return (
             <button

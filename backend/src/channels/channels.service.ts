@@ -2,11 +2,15 @@ import { Injectable, UnauthorizedException, NotFoundException, ForbiddenExceptio
 import { SupabaseService } from '../supabase/supabase.module';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { UpdateChannelDto } from './dto/update-channel.dto';
-import { AddMemberDto } from './dto/add-member.dto';
+ import { AddMemberDto } from './dto/add-member.dto';
+import { GroupsService } from '../groups/groups.service';
 
 @Injectable()
 export class ChannelsService {
-    constructor(private readonly supabaseService: SupabaseService) {}
+    constructor(
+        private readonly supabaseService: SupabaseService,
+        private readonly groupsService: GroupsService
+    ) {}
 
     async createChannel(ownerId: string, createChannelDto: CreateChannelDto) {
         const { data, error } = await this.supabaseService
@@ -33,6 +37,8 @@ export class ChannelsService {
                 .getClient()
                 .from('group_members')
                 .insert({ group_id: generalGroup.id, user_id: ownerId, role: 'OWNER' });
+            
+            await this.groupsService.notifyMemberJoined(generalGroup.id, ownerId);
         }
 
         return data;
@@ -143,6 +149,8 @@ export class ChannelsService {
                 .from('group_members')
                 // Always default them to MEMBER role internally in the group
                 .insert({ group_id: generalGroup.id, user_id: addMemberDto.user_id, role: 'MEMBER' });
+            
+            await this.groupsService.notifyMemberJoined(generalGroup.id, addMemberDto.user_id);
         }
 
         return data;

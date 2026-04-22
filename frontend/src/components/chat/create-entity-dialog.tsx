@@ -1,5 +1,7 @@
 'use client'
 
+import { FormEvent, useRef, useState } from 'react'
+import { Hash, ImagePlus, MessagesSquare, Sparkles, UserCircle2 } from 'lucide-react'
 import { type ChangeEvent, FormEvent, useRef, useState } from 'react'
 import { Hash, ImagePlus, MessagesSquare, UserCircle2 } from 'lucide-react'
 
@@ -35,6 +37,7 @@ interface CreateEntityDialogProps {
   nameLabel: string
   namePlaceholder: string
   onOpenChange: (open: boolean) => void
+  onSubmit: (values: { description: string; name: string; type?: 'NORMAL' | 'WORKSPACE' }) => void
   onSubmit: (values: CreateEntityValues) => void | Promise<void>
   open: boolean
   submitLabel: string
@@ -59,6 +62,7 @@ export function CreateEntityDialog({
 }: CreateEntityDialogProps) {
   const [name, setName] = useState(defaultName)
   const [details, setDetails] = useState(defaultDescription)
+  const [type, setType] = useState<'NORMAL' | 'WORKSPACE'>('NORMAL')
   const [bannerUrl, setBannerUrl] = useState<string | null>(null)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [bannerFile, setBannerFile] = useState<File | null>(null)
@@ -81,6 +85,7 @@ export function CreateEntityDialog({
   function handleOpenChange(nextOpen: boolean) {
     setName(defaultName)
     setDetails(defaultDescription)
+    setType('NORMAL')
     setBannerUrl(null)
     setAvatarUrl(null)
     setBannerFile(null)
@@ -94,6 +99,8 @@ export function CreateEntityDialog({
     event.preventDefault()
     const nextName = name.trim()
     if (!nextName) return
+    onSubmit({ name: nextName, description: details.trim(), type: entityKind === 'channel' ? type : undefined })
+    handleOpenChange(false)
     setSubmitError(null)
     setIsSubmitting(true)
     try {
@@ -224,13 +231,44 @@ export function CreateEntityDialog({
             </div>
           )}
 
-          {/* Channel info hint */}
           {entityKind === 'channel' ? (
-            <div className="flex items-center gap-2 rounded-xl border border-border bg-background px-2 py-1.5">
-              <MessagesSquare className="h-3.5 w-3.5 text-primary" />
-              <span className="text-[10px] text-muted-foreground">
-                #general is ready from the start
-              </span>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 rounded-xl border border-border bg-background px-2 py-1.5">
+                <MessagesSquare className="h-3.5 w-3.5 text-primary" />
+                <span className="text-[10px] text-muted-foreground">
+                  #general is ready from the start
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-[11px]">Channel Type</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setType('NORMAL')}
+                    className={cn(
+                      "flex flex-col items-center gap-1 rounded-xl border p-2 text-center transition-colors",
+                      type === 'NORMAL' ? "border-primary bg-primary/5" : "border-border hover:bg-accent"
+                    )}
+                  >
+                    <MessagesSquare className="h-4 w-4 text-primary" />
+                    <span className="text-[11px] font-bold">Normal</span>
+                    <span className="text-[9px] text-muted-foreground">Feed & Groups</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setType('WORKSPACE')}
+                    className={cn(
+                      "flex flex-col items-center gap-1 rounded-xl border p-2 text-center transition-colors",
+                      type === 'WORKSPACE' ? "border-primary bg-primary/5" : "border-border hover:bg-accent"
+                    )}
+                  >
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    <span className="text-[11px] font-bold">Workspace</span>
+                    <span className="text-[9px] text-muted-foreground">Notes, Tasks & Goals</span>
+                  </button>
+                </div>
+              </div>
             </div>
           ) : null}
 

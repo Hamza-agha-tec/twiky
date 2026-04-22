@@ -1,11 +1,15 @@
 import { Injectable, UnauthorizedException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.module';
 import { CreateGroupDto } from './dto/create-group.dto';
-import { AddGroupMemberDto } from './dto/add-group-member.dto';
+ import { AddGroupMemberDto } from './dto/add-group-member.dto';
+import { MessagingService } from '../messaging/messaging.service';
 
 @Injectable()
 export class GroupsService {
-    constructor(private readonly supabaseService: SupabaseService) { }
+    constructor(
+        private readonly supabaseService: SupabaseService,
+        private readonly messagingService: MessagingService
+    ) { }
 
     async createGroup(channelId: string, creatorUserId: string, createGroupDto: CreateGroupDto) {
         // Enforce channel OWNER/ADMIN restriction for creating groups
@@ -125,6 +129,10 @@ export class GroupsService {
             .single();
 
         if (error) throw new Error(`Failed to add user to group: ${error.message}`);
+        
+        // Send automated message
+        await this.notifyMemberJoined(groupId, addGroupMemberDto.user_id);
+
         return data;
     }
 
@@ -180,5 +188,20 @@ export class GroupsService {
 
         if (error) throw new Error(`Failed to remove user from group: ${error.message}`);
         return { success: true };
+    }
+
+    async notifyMemberJoined(groupId: string, userId: string) {
+        const client = this.supabaseService.getClient();
+
+        // Fetch user, group and channel info
+        const { data: user } = await client.from('users').select('username').eq('id', userId).single();
+        const { data: group } = await client.from('groups').select('name, channel_id').eq('id', groupId).single();
+        if (!user || !group) return;
+
+        const { data: channel } = await client.from('channels').select('name').eq('id', group.channel_id).single();
+        if (!channel) return;
+
+        const content = `@${user.username} is added to @${group.name} @${channel.name}`;
+        await this.messagingService.sendSystemMessage(groupId, content);
     }
 }

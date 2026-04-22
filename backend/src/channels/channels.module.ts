@@ -3,8 +3,10 @@ import { ChannelsService } from './channels.service';
 import { ChannelsController } from './channels.controller';
 import { SupabaseModule } from '../supabase/supabase.module';
 
+import { GroupsModule } from '../groups/groups.module';
+
 @Module({
-  imports: [SupabaseModule],
+  imports: [SupabaseModule, GroupsModule],
   controllers: [ChannelsController],
   providers: [ChannelsService],
 })
