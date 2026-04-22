@@ -188,12 +188,13 @@ export class UsersService {
         return data;
     }
 
-    async searchByUsername(username: string) {
+    async searchByUsername(username: string, userId: string) {
         const { data, error } = await this.supabaseService
             .getClient()
             .from('users')
             .select('id, username, avatar_url, fullname')
-            .ilike('username', `%${username}%`);
+            .ilike('username', `${username}%`)
+            .neq('id', userId);
 
         if (error) {
             throw new Error(`Error searching for users: ${error.message}`);

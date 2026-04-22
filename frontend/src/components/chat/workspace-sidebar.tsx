@@ -15,7 +15,7 @@ import {
   Target,
 } from 'lucide-react'
 
-import { CreateEntityDialog } from '@/components/chat/create-entity-dialog'
+import { CreateEntityDialog, type CreateEntityValues } from '@/components/chat/create-entity-dialog'
 import { type WorkspaceChannel } from '@/components/chat/channels-panel'
 import { ConversationContextMenu } from '@/components/chat/conversation-context-menu'
 import { Button } from '@/components/ui/button'
@@ -33,7 +33,7 @@ interface WorkspaceSidebarProps {
   channels?: WorkspaceChannel[]
   collapsed?: boolean
   mode: WorkspaceMode
-  onCreateChannel?: (values: { description: string; name: string }) => void
+  onCreateChannel?: (values: CreateEntityValues) => void
   onModeChange: (mode: WorkspaceMode) => void
   onNavItem?: (tab: WorkspaceNavTarget) => void
   onSearchChange: (query: string) => void

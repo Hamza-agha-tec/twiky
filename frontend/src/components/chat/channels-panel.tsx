@@ -16,7 +16,7 @@ import {
   Upload,
   Volume2,
 } from 'lucide-react'
-import { CreateEntityDialog } from '@/components/chat/create-entity-dialog'
+import { CreateEntityDialog, type CreateEntityValues } from '@/components/chat/create-entity-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -93,7 +93,7 @@ interface ChannelsPanelProps {
   channel?: WorkspaceChannel | null
   channelAvatarUrl?: string | null
   onAssetSave?: (channelId: string, avatar: string | null, banner: string | null) => void
-  onCreateGroup?: (values: { description: string; name: string }) => void
+  onCreateGroup?: (values: CreateEntityValues) => void
   onSelectGroup?: (groupId: string) => void
   visible?: boolean
 }
@@ -655,7 +655,7 @@ function GroupSettingsSheet({
   const existingMemberIds = new Set(existingMembers.filter((m) => m.user).map((m) => m.user.id))
   const memberSearchQuery = memberSearch.trim().toLowerCase()
   const searchedFollowers = memberSearchQuery
-    ? followers.filter((f) => f.users.username?.toLowerCase().includes(memberSearchQuery))
+    ? followers.filter((f) => f.users.username?.toLowerCase().startsWith(memberSearchQuery))
     : []
 
   useEffect(() => {
@@ -674,7 +674,7 @@ function GroupSettingsSheet({
       <SheetContent side="right" className="w-[360px] overflow-y-auto p-0 sm:max-w-[360px]">
         <SheetHeader className="border-b border-border px-4 py-3">
           <SheetTitle className="text-[13px]">Group Settings</SheetTitle>
-        </SheetHeader>
+        </SheetHeader>  
 
         <div className="divide-y divide-border">
           {/* General */}

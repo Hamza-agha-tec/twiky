@@ -34,8 +34,8 @@ export class UsersController {
 
     @UseGuards(JwtAuthGuard)
     @Get("search")
-    async search(@Query("username") username: string) {
-        return this.usersService.searchByUsername(username);
+    async search(@Query("username") username: string , @Request() req: any) {
+        return this.usersService.searchByUsername(username , req.user.userId);
     }
 
     @UseGuards(JwtAuthGuard)

@@ -82,6 +82,13 @@ async function authedFetch<T = unknown>(path: string, init: RequestInit = {}): P
   return res.json();
 }
 
+export interface UserSearchResult {
+  id: string;
+  username: string;
+  avatar_url: string | null;
+  fullname: string | null;
+}
+
 export const userApi = {
   getProfile: () => authedFetch<UserProfile>('/users/profile'),
   getUserById: (id: string) => authedFetch<UserProfile>(`/users/${id}`),
@@ -96,4 +103,8 @@ export const userApi = {
     authedFetch<FollowingRecord[]>(`/users/${userId}/following`),
   getUserPosts: (userId: string) =>
     authedFetch<UserPost[]>(`/posts/users/${userId}`),
+  searchUsers: (username: string) =>
+    authedFetch<UserSearchResult[]>(`/users/search?username=${encodeURIComponent(username)}`),
+  sendFollowRequest: (userId: string) =>
+    authedFetch(`/users/follows/${userId}`, { method: 'POST' }),
 };

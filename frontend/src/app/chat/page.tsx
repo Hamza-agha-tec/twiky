@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BookUser, ListTodo, MessageSquare, Search, Sparkles, Store, Target, UserPlus, Users, X } from 'lucide-react'
+import { Bell, BookUser, Check, ListTodo, MessageSquare, Search, Sparkles, Store, Target, UserPlus, Users, X } from 'lucide-react'
 
 import {
   ChannelFeed,
@@ -30,15 +30,19 @@ import {
   WorkspaceNavTarget,
   WorkspaceSidebar,
 } from '@/components/chat/workspace-sidebar'
-import { useChannels, useCreateChannel } from '@/hooks/use-channels'
+import type { CreateEntityValues } from '@/components/chat/create-entity-dialog'
+import { useChannels, useCreateChannel, useUpdateChannel } from '@/hooks/use-channels'
 import { useChannelGroups, useCreateGroup, useGroupMembers, useGroupMessages, backendGroupToMock } from '@/hooks/use-groups'
 import { groupsApi, type GroupMessage } from '@/lib/groups-api'
 import { useQueryClient } from '@tanstack/react-query'
 import { GROUP_KEYS } from '@/hooks/use-groups'
 import type { FeedPost } from '@/components/chat/channel-feed'
 import { type ChatMessage } from '@/hooks/use-messaging'
-import { useProfile } from '@/hooks/use-user'
+import { useProfile, useSearchUsers, useSendFollowRequest, useUserFollowing } from '@/hooks/use-user'
+import { useNotifications, useMarkAllAsRead, useMarkAsRead } from '@/hooks/use-notifications'
+import { usePendingInvitations, useRespondToInvitation } from '@/hooks/use-invitations'
 import type { BackendChannel } from '@/lib/channel-api'
+import { filesApi } from '@/lib/files-api'
 import { type Chat } from '@/lib/mock-data'
 
 type ChatSurface =
@@ -85,7 +89,7 @@ const CHAT_VIEW_STATE_KEY = 'twiky-chat-view-state'
 const CHAT_SURFACES = ['channel', 'direct', 'personal-goals', 'personal-notes', 'personal-tasks'] as const
 const WORKSPACE_MODES = ['direct', 'channels'] as const
 const MAIN_AREA_TABS = ['feed', 'notes', 'tasks', 'goals'] as const
-const ACTIVE_VIEWS = ['chat', 'settings', 'store', 'add-friends'] as const
+const ACTIVE_VIEWS = ['chat', 'settings', 'store', 'add-friends', 'notifications'] as const
 
 function isOneOf<T extends readonly string[]>(value: unknown, options: T): value is T[number] {
   return typeof value === 'string' && options.includes(value as T[number])
@@ -198,29 +202,32 @@ const STORE_ITEMS = [
   { id: 'badges', label: 'Badges', description: 'Collectible profile badges to show off', count: 60, tag: 'Exclusive', gradient: 'from-amber-500 via-orange-500 to-rose-500' },
 ] as const
 
-const MOCK_FRIEND_RESULTS = [
-  { id: '1', username: 'alex_dev', displayName: 'Alex Dev', mutualFriends: 3, avatarColor: 'from-violet-500 to-purple-600' },
-  { id: '2', username: 'sara_design', displayName: 'Sara Design', mutualFriends: 1, avatarColor: 'from-pink-500 to-rose-600' },
-  { id: '3', username: 'john_builds', displayName: 'John Builds', mutualFriends: 7, avatarColor: 'from-emerald-500 to-teal-600' },
-  { id: '4', username: 'maya_codes', displayName: 'Maya Codes', mutualFriends: 0, avatarColor: 'from-orange-500 to-amber-600' },
-  { id: '5', username: 'carlos_ux', displayName: 'Carlos UX', mutualFriends: 2, avatarColor: 'from-sky-500 to-blue-600' },
-] as const
-
 function AddFriendsView() {
   const [query, setQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
   const [sent, setSent] = useState<Set<string>>(new Set())
 
-  const filtered = query.trim()
-    ? MOCK_FRIEND_RESULTS.filter(
-        (u) =>
-          u.username.toLowerCase().includes(query.toLowerCase()) ||
-          u.displayName.toLowerCase().includes(query.toLowerCase()),
-      )
-    : []
+  // debounce
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 400)
+    return () => clearTimeout(t)
+  }, [query])
+
+  const { data: results = [], isFetching, isError } = useSearchUsers(debouncedQuery)
+  const sendFollowRequest = useSendFollowRequest()
+  const { data: profile } = useProfile()
+  const { data: following = [] } = useUserFollowing(profile?.id)
+  const followingIds = new Set(following.map((f) => f.following_id))
+
+  async function handleSend(userId: string) {
+    try {
+      await sendFollowRequest.mutateAsync(userId)
+      setSent((prev) => new Set([...prev, userId]))
+    } catch {}
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
-      {/* Header */}
       <div className="relative overflow-hidden border-b border-border bg-gradient-to-br from-primary/10 via-background to-background px-8 py-10">
         <div className="mx-auto max-w-2xl">
           <div className="flex items-center gap-2 text-primary">
@@ -228,9 +235,8 @@ function AddFriendsView() {
             <span className="text-[11px] font-bold uppercase tracking-widest">Add Friends</span>
           </div>
           <h1 className="mt-2 text-[28px] font-black tracking-tight text-foreground">Find people on Twiky</h1>
-          <p className="mt-2 text-[14px] text-muted-foreground">Search by username to connect with friends.</p>
+          <p className="mt-2 text-[14px] text-muted-foreground">Search by username to send a follow request.</p>
 
-          {/* Search bar */}
           <div className="relative mt-6">
             <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -241,10 +247,7 @@ function AddFriendsView() {
               className="w-full rounded-2xl border border-border bg-card py-3 pl-11 pr-10 text-[14px] text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
             {query ? (
-              <button
-                onClick={() => setQuery('')}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
+              <button onClick={() => { setQuery(''); setDebouncedQuery('') }} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                 <X className="h-4 w-4" />
               </button>
             ) : null}
@@ -253,7 +256,7 @@ function AddFriendsView() {
       </div>
 
       <div className="mx-auto w-full max-w-2xl px-8 py-8">
-        {query.trim() === '' ? (
+        {debouncedQuery.trim() === '' ? (
           <div className="flex flex-col items-center py-16 text-center">
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-muted">
               <Users className="h-7 w-7 text-muted-foreground" />
@@ -261,7 +264,16 @@ function AddFriendsView() {
             <p className="text-[15px] font-semibold text-foreground">Search for friends</p>
             <p className="mt-1.5 text-[13px] text-muted-foreground">Type a username above to find people.</p>
           </div>
-        ) : filtered.length === 0 ? (
+        ) : isFetching ? (
+          <div className="flex flex-col items-center py-16 text-center">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <p className="mt-3 text-[13px] text-muted-foreground">Searching...</p>
+          </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center py-16 text-center">
+            <p className="text-[13px] text-destructive">Search failed. Try again.</p>
+          </div>
+        ) : results.length === 0 ? (
           <div className="flex flex-col items-center py-16 text-center">
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-muted">
               <Search className="h-7 w-7 text-muted-foreground" />
@@ -272,44 +284,195 @@ function AddFriendsView() {
         ) : (
           <div className="flex flex-col gap-3">
             <p className="mb-1 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-              {filtered.length} result{filtered.length !== 1 ? 's' : ''}
+              {results.length} result{results.length !== 1 ? 's' : ''}
             </p>
-            {filtered.map((user) => {
+            {results.map((user) => {
+              const isSelf = user.id === profile?.id
+              const isAlreadyFriend = followingIds.has(user.id)
               const isSent = sent.has(user.id)
+              const initial = (user.fullname ?? user.username ?? '?')[0].toUpperCase()
               return (
-                <div
-                  key={user.id}
-                  className="flex items-center gap-4 rounded-2xl border border-border bg-card px-4 py-3 transition-all hover:border-primary/20 hover:shadow-sm"
-                >
-                  <div className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${user.avatarColor} text-[15px] font-bold text-white`}>
-                    {user.displayName[0]}
-                  </div>
+                <div key={user.id} className="flex items-center gap-4 rounded-2xl border border-border bg-card px-4 py-3 transition-all hover:border-primary/20 hover:shadow-sm">
+                  {user.avatar_url ? (
+                    <img src={user.avatar_url} alt={user.username} className="h-11 w-11 flex-shrink-0 rounded-2xl object-cover" />
+                  ) : (
+                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-primary text-[15px] font-bold text-primary-foreground">
+                      {initial}
+                    </div>
+                  )}
                   <div className="min-w-0 flex-1">
-                    <p className="text-[14px] font-semibold text-foreground">{user.displayName}</p>
+                    <p className="text-[14px] font-semibold text-foreground">{user.fullname ?? user.username}</p>
                     <p className="text-[12px] text-muted-foreground">@{user.username}</p>
-                    {user.mutualFriends > 0 ? (
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">
-                        {user.mutualFriends} mutual friend{user.mutualFriends !== 1 ? 's' : ''}
-                      </p>
-                    ) : null}
                   </div>
-                  <button
-                    onClick={() => setSent((prev) => new Set([...prev, user.id]))}
-                    disabled={isSent}
-                    className={
-                      isSent
-                        ? 'flex items-center gap-1.5 rounded-xl px-4 py-2 text-[12px] font-semibold transition-all bg-muted text-muted-foreground cursor-default'
-                        : 'flex items-center gap-1.5 rounded-xl px-4 py-2 text-[12px] font-semibold transition-all bg-primary text-primary-foreground hover:opacity-90'
-                    }
-                  >
-                    <UserPlus className="h-3.5 w-3.5" />
-                    {isSent ? 'Request Sent' : 'Add Friend'}
-                  </button>
+                  {isSelf ? null : isAlreadyFriend ? (
+                    <span className="rounded-xl bg-muted px-3 py-2 text-[12px] font-medium text-muted-foreground">
+                      Friends
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => handleSend(user.id)}
+                      disabled={isSent || sendFollowRequest.isPending}
+                      className={isSent
+                        ? 'flex items-center gap-1.5 rounded-xl px-4 py-2 text-[12px] font-semibold bg-muted text-muted-foreground cursor-default'
+                        : 'flex items-center gap-1.5 rounded-xl px-4 py-2 text-[12px] font-semibold bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50'}
+                    >
+                      <UserPlus className="h-3.5 w-3.5" />
+                      {isSent ? 'Sent' : 'Add Friend'}
+                    </button>
+                  )}
                 </div>
               )
             })}
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function NotificationsView() {
+  const { data: notifications = [], isLoading } = useNotifications()
+  const { data: invitations = [] } = usePendingInvitations()
+  const markAsRead = useMarkAsRead()
+  const markAllAsRead = useMarkAllAsRead()
+  const respondToInvitation = useRespondToInvitation()
+
+  const unreadCount = notifications.filter((n) => !n.is_read).length
+  const followInvitations = invitations.filter((inv) => inv.entity_type === 'FOLLOW')
+
+  function formatTime(iso: string) {
+    const d = new Date(iso)
+    const diff = Date.now() - d.getTime()
+    if (diff < 60000) return 'just now'
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
+    return d.toLocaleDateString('en', { month: 'short', day: 'numeric' })
+  }
+
+  function notificationLabel(type: string) {
+    switch (type) {
+      case 'FOLLOW': return 'started following you'
+      case 'INVITATION': return 'sent you a follow request'
+      case 'INVITATION_ACCEPTED': return 'accepted your follow request'
+      case 'LIKE': return 'liked your post'
+      default: return type.toLowerCase().replace(/_/g, ' ')
+    }
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
+      <div className="relative overflow-hidden border-b border-border bg-gradient-to-br from-primary/10 via-background to-background px-8 py-10">
+        <div className="mx-auto max-w-2xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-primary">
+                <Bell className="h-5 w-5" />
+                <span className="text-[11px] font-bold uppercase tracking-widest">Notifications</span>
+              </div>
+              <h1 className="mt-2 text-[28px] font-black tracking-tight text-foreground">Activity</h1>
+              <p className="mt-2 text-[14px] text-muted-foreground">Follow requests and account activity.</p>
+            </div>
+            {unreadCount > 0 ? (
+              <button
+                onClick={() => markAllAsRead.mutate()}
+                className="flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <Check className="h-3.5 w-3.5" />
+                Mark all read
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto w-full max-w-2xl px-8 py-8 space-y-8">
+        {/* Pending follow requests */}
+        {followInvitations.length > 0 ? (
+          <div>
+            <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+              Follow Requests · {followInvitations.length}
+            </p>
+            <div className="flex flex-col gap-3">
+              {followInvitations.map((inv) => (
+                <div key={inv.id} className="flex items-center gap-4 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
+                  {inv.inviter.avatar_url ? (
+                    <img src={inv.inviter.avatar_url} alt={inv.inviter.username} className="h-11 w-11 flex-shrink-0 rounded-2xl object-cover" />
+                  ) : (
+                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-primary text-[15px] font-bold text-primary-foreground">
+                      {inv.inviter.username[0].toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-semibold text-foreground">@{inv.inviter.username}</p>
+                    <p className="text-[12px] text-muted-foreground">wants to follow you · {formatTime(inv.created_at)}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => respondToInvitation.mutate({ invitationId: inv.id, status: 'ACCEPTED' })}
+                      disabled={respondToInvitation.isPending}
+                      className="rounded-xl bg-primary px-3 py-1.5 text-[12px] font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                    >
+                      Accept
+                    </button>
+                    <button
+                      onClick={() => respondToInvitation.mutate({ invitationId: inv.id, status: 'REJECTED' })}
+                      disabled={respondToInvitation.isPending}
+                      className="rounded-xl border border-border px-3 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {/* All notifications */}
+        <div>
+          <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Recent</p>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          ) : notifications.length === 0 ? (
+            <div className="flex flex-col items-center py-12 text-center">
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-muted">
+                <Bell className="h-7 w-7 text-muted-foreground" />
+              </div>
+              <p className="text-[15px] font-semibold text-foreground">No notifications yet</p>
+              <p className="mt-1.5 text-[13px] text-muted-foreground">Activity will show up here.</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {notifications.map((notif) => (
+                <button
+                  key={notif.id}
+                  onClick={() => { if (!notif.is_read) markAsRead.mutate(notif.id) }}
+                  className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-left transition-all hover:bg-accent ${!notif.is_read ? 'border border-primary/20 bg-primary/5' : 'border border-border bg-card'}`}
+                >
+                  {notif.actor.avatar_url ? (
+                    <img src={notif.actor.avatar_url} alt={notif.actor.username} className="h-10 w-10 flex-shrink-0 rounded-xl object-cover" />
+                  ) : (
+                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-muted text-[13px] font-bold text-foreground">
+                      {notif.actor.username[0].toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] text-foreground">
+                      <span className="font-semibold">@{notif.actor.username}</span>{' '}
+                      {notificationLabel(notif.type)}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">{formatTime(notif.created_at)}</p>
+                  </div>
+                  {!notif.is_read ? (
+                    <span className="h-2 w-2 flex-shrink-0 rounded-full bg-primary" />
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -397,8 +560,11 @@ export default function ChatPage() {
 
   const queryClient = useQueryClient()
   const { data: profile } = useProfile()
+  const { data: allNotifications = [] } = useNotifications()
+  const unreadNotificationCount = allNotifications.filter((n) => !n.is_read).length
   const { data: backendChannels = [] } = useChannels()
   const createChannel = useCreateChannel()
+  const updateChannel = useUpdateChannel()
   const { data: backendGroups = [] } = useChannelGroups(activeChannelId || undefined)
   const createGroup = useCreateGroup(activeChannelId)
   const isRealGroupId = /^[0-9a-f-]{36}$/i.test(activeGroupId)
@@ -725,12 +891,53 @@ export default function ChatPage() {
           setChannelTab('feed')
           setWorkspaceCollapsed(false)
           setShowDirectProfile(false)
+  async function handleCreateChannel(values: CreateEntityValues) {
+    const channel = await createChannel.mutateAsync({
+      name: values.name,
+      description: values.description || undefined,
+    })
+
+    let avatarUrl = channel.avatar_url ?? null
+    let bannerUrl = channel.banner_url ?? null
+
+    if (values.avatarFile) {
+      const { publicUrl } = await filesApi.uploadChannelLogo(channel.id, values.avatarFile)
+      avatarUrl = publicUrl
+    }
+
+    if (values.bannerFile) {
+      const { publicUrl } = await filesApi.uploadChannelBanner(channel.id, values.bannerFile)
+      bannerUrl = publicUrl
+    }
+
+    if (avatarUrl || bannerUrl) {
+      await updateChannel.mutateAsync({
+        id: channel.id,
+        data: {
+          ...(avatarUrl ? { avatar_url: avatarUrl } : {}),
+          ...(bannerUrl ? { banner_url: bannerUrl } : {}),
         },
-      },
-    )
+      })
+      setChannelAssets((prev) => ({ ...prev, [channel.id]: { avatar: avatarUrl, banner: bannerUrl } }))
+    }
+
+    const channelWithAssets: BackendChannel = {
+      ...channel,
+      avatar_url: avatarUrl,
+      banner_url: bannerUrl,
+    }
+    const nextChannel = toWorkspaceChannel(channelWithAssets, workspaceChannels.length, channelGroupsById)
+    setActiveChannelId(nextChannel.id)
+    setActiveGroupId(nextChannel.groups[0]?.id ?? '')
+    setWorkspaceMode('channels')
+    setActiveSurface('channel')
+    setActiveView('chat')
+    setChannelTab('feed')
+    setWorkspaceCollapsed(false)
+    setShowDirectProfile(false)
   }
 
-  function handleCreateGroup(values: { description: string; name: string }) {
+  function handleCreateGroup(values: CreateEntityValues) {
     if (!activeChannel) return
     createGroup.mutate(
       { name: values.name, description: values.description || undefined },
@@ -840,6 +1047,7 @@ export default function ChatPage() {
         onAvatarClick={handleAvatarClick}
         userInitial={userInitial}
         userAvatar={userAvatar}
+        notificationCount={unreadNotificationCount}
       />
 
       {activeView === 'settings' ? (
@@ -852,6 +1060,8 @@ export default function ChatPage() {
         <StoreView />
       ) : activeView === 'add-friends' ? (
         <AddFriendsView />
+      ) : activeView === 'notifications' ? (
+        <NotificationsView />
       ) : (
         <>
           <WorkspaceSidebar
