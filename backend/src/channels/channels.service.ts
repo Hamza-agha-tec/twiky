@@ -179,6 +179,30 @@ export class ChannelsService {
         return { success: true };
     }
 
+    async discoverChannels(userId: string) {
+        const { data: memberships } = await this.supabaseService
+            .getClient()
+            .from('channel_members')
+            .select('channel_id')
+            .eq('user_id', userId);
+
+        const joinedIds = (memberships ?? []).map((m: { channel_id: string }) => m.channel_id);
+
+        let query = this.supabaseService
+            .getClient()
+            .from('channels')
+            .select('*')
+            .eq('access_type', 'PUBLIC');
+
+        if (joinedIds.length > 0) {
+            query = query.not('id', 'in', `(${joinedIds.join(',')})`);
+        }
+
+        const { data, error } = await query.order('created_at', { ascending: false });
+        if (error) throw new Error(`Failed to discover channels: ${error.message}`);
+        return data ?? [];
+    }
+
     async joinChannel(userId: string, channelId: string) {
         const channel = await this.getChannelDetails(channelId);
 

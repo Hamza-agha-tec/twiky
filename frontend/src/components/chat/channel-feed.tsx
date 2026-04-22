@@ -215,22 +215,27 @@ const ROLE_COLORS: Record<string, string> = {
 }
 
 function RoleBadge({ role, variant = 'feed' }: { role: string; variant?: 'feed' | 'profile' }) {
-  const isAdmin = role.toLowerCase() === 'admin'
+  const normalized = role.toLowerCase()
+  const isOwner = normalized === 'owner'
+  const isAdmin = normalized === 'admin'
   const baseClass = variant === 'profile'
-    ? 'inline-flex items-center rounded-md px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.12em]'
-    : 'inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]'
+    ? 'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.12em]'
+    : 'inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]'
 
   return (
     <span
       className={cn(
         baseClass,
-        isAdmin
-          ? 'border border-sky-400/30 bg-[linear-gradient(135deg,rgba(14,165,233,0.16),rgba(16,185,129,0.14),rgba(244,63,94,0.10))] text-sky-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_4px_14px_rgba(14,165,233,0.12)] backdrop-blur dark:border-cyan-300/25 dark:text-cyan-100'
-          : variant === 'profile'
-            ? 'border border-current/30 bg-muted/50 text-muted-foreground'
-            : 'bg-muted text-muted-foreground',
+        isOwner
+          ? 'border border-amber-400/40 bg-[linear-gradient(135deg,rgba(251,191,36,0.22),rgba(245,158,11,0.18),rgba(217,119,6,0.14))] text-amber-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_4px_14px_rgba(251,191,36,0.18)] backdrop-blur dark:border-yellow-400/30 dark:text-yellow-200'
+          : isAdmin
+            ? 'border border-sky-400/30 bg-[linear-gradient(135deg,rgba(14,165,233,0.16),rgba(16,185,129,0.14),rgba(244,63,94,0.10))] text-sky-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_4px_14px_rgba(14,165,233,0.12)] backdrop-blur dark:border-cyan-300/25 dark:text-cyan-100'
+            : variant === 'profile'
+              ? 'border border-current/30 bg-muted/50 text-muted-foreground'
+              : 'bg-muted text-muted-foreground',
       )}
     >
+      {isOwner ? <span className="text-[8px]">♛</span> : null}
       {role}
     </span>
   )

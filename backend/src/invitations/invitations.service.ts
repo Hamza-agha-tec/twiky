@@ -83,11 +83,18 @@ export class InvitationsService {
 
         if (status === InvitationStatus.ACCEPTED) {
             await this.handleAcceptance(inviteeId, invitation);
-            // Notify inviter
             await this.notificationsService.notify(
                 invitation.inviter_id,
                 inviteeId,
                 'INVITATION_ACCEPTED',
+                invitation.id,
+                'invitation'
+            );
+        } else if (status === InvitationStatus.REJECTED) {
+            await this.notificationsService.notify(
+                invitation.inviter_id,
+                inviteeId,
+                'INVITATION_REJECTED',
                 invitation.id,
                 'invitation'
             );

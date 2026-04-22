@@ -11,14 +11,14 @@ export interface BackendChannel {
   created_at: string;
   description: string | null;
   role: 'OWNER' | 'ADMIN' | 'MEMBER' | string;
-  type: 'NORMAL' | 'WORKSPACE';
+  access_type?: 'PUBLIC' | 'PRIVATE';
 }
 
 export interface CreateChannelInput {
   name: string;
   description?: string;
   avatar_url?: string;
-  type?: 'NORMAL' | 'WORKSPACE';
+  access_type?: 'PUBLIC' | 'PRIVATE';
 }
 
 async function getToken(): Promise<string> {
