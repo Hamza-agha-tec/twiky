@@ -1,7 +1,5 @@
 'use client'
 
-import { FormEvent, useRef, useState } from 'react'
-import { Hash, ImagePlus, MessagesSquare, Sparkles, UserCircle2 } from 'lucide-react'
 import { type ChangeEvent, FormEvent, useRef, useState } from 'react'
 import { Globe, Hash, ImagePlus, Lock, MessagesSquare, UserCircle2 } from 'lucide-react'
 
@@ -38,7 +36,6 @@ interface CreateEntityDialogProps {
   nameLabel: string
   namePlaceholder: string
   onOpenChange: (open: boolean) => void
-  onSubmit: (values: { description: string; name: string; type?: 'NORMAL' | 'WORKSPACE' }) => void
   onSubmit: (values: CreateEntityValues) => void | Promise<void>
   open: boolean
   submitLabel: string
@@ -75,13 +72,6 @@ export function CreateEntityDialog({
   const avatarRef = useRef<HTMLInputElement>(null)
 
   const previewName = name.trim() || (entityKind === 'channel' ? 'Creator Hub' : 'showroom-updates')
-  const previewMonogram = previewName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('')
-    .slice(0, 2) || 'CH'
 
   function handleOpenChange(nextOpen: boolean) {
     setName(defaultName)
@@ -100,8 +90,6 @@ export function CreateEntityDialog({
     event.preventDefault()
     const nextName = name.trim()
     if (!nextName) return
-    onSubmit({ name: nextName, description: details.trim(), type: entityKind === 'channel' ? type : undefined })
-    handleOpenChange(false)
     setSubmitError(null)
     setIsSubmitting(true)
     try {
@@ -150,10 +138,8 @@ export function CreateEntityDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-3 px-3 py-3">
-          {/* Channel: avatar + banner as separate upload zones */}
           {entityKind === 'channel' ? (
             <div className="flex gap-2">
-              {/* Avatar upload */}
               <div className="flex flex-col items-center gap-1">
                 <span className="text-[10px] text-muted-foreground">Avatar</span>
                 <button
@@ -178,7 +164,6 @@ export function CreateEntityDialog({
                 <input ref={avatarRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
               </div>
 
-              {/* Banner upload */}
               <div className="flex flex-1 flex-col gap-1">
                 <span className="text-[10px] text-muted-foreground">Banner</span>
                 <button
@@ -204,7 +189,6 @@ export function CreateEntityDialog({
               </div>
             </div>
           ) : (
-            /* Group: keep existing preview */
             <div className="rounded-2xl border border-border bg-sidebar/50 p-2.5">
               <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                 Preview
@@ -233,7 +217,6 @@ export function CreateEntityDialog({
             </div>
           )}
 
-          {/* Channel info hint + visibility toggle */}
           {entityKind === 'channel' ? (
             <>
               <div className="flex items-center gap-2 rounded-xl border border-border bg-background px-2 py-1.5">

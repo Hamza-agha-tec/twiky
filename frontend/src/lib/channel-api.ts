@@ -12,6 +12,7 @@ export interface BackendChannel {
   description: string | null;
   role: 'OWNER' | 'ADMIN' | 'MEMBER' | string;
   access_type?: 'PUBLIC' | 'PRIVATE';
+  type?: 'NORMAL' | 'WORKSPACE';
 }
 
 export interface CreateChannelInput {
@@ -19,6 +20,7 @@ export interface CreateChannelInput {
   description?: string;
   avatar_url?: string;
   access_type?: 'PUBLIC' | 'PRIVATE';
+  type?: 'NORMAL' | 'WORKSPACE';
 }
 
 async function getToken(): Promise<string> {

@@ -191,7 +191,7 @@ function toWorkspaceChannel(
     membersLabel: getChannelRoleLabel(channel.role),
     access_type: channel.access_type,
     role: (channel.role as 'OWNER' | 'ADMIN' | 'MEMBER') ?? 'MEMBER',
-    type: channel.type,
+    type: channel.type ?? 'NORMAL',
   }
 }
 
@@ -966,20 +966,6 @@ export default function ChatPage() {
     if (tab === 'goals') setActiveSurface('personal-goals')
   }
 
-  function handleCreateChannel(values: { description: string; name: string; type?: 'NORMAL' | 'WORKSPACE' }) {
-    createChannel.mutate(
-      { name: values.name, description: values.description || undefined, type: values.type },
-      {
-        onSuccess: (channel) => {
-          const nextChannel = toWorkspaceChannel(channel, workspaceChannels.length, channelGroupsById)
-          setActiveChannelId(nextChannel.id)
-          setActiveGroupId(nextChannel.groups[0]?.id ?? '')
-          setWorkspaceMode('channels')
-          setActiveSurface('channel')
-          setActiveView('chat')
-          setChannelTab('feed')
-          setWorkspaceCollapsed(false)
-          setShowDirectProfile(false)
   async function handleCreateChannel(values: CreateEntityValues) {
     const channel = await createChannel.mutateAsync({
       name: values.name,
