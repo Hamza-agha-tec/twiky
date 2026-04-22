@@ -1296,7 +1296,7 @@ export function SettingsView({ initialSection, onAvatarChange, avatarUrl: avatar
       </nav>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto bg-background px-8 py-7">
+      <div className="relative flex-1 overflow-y-auto bg-background px-8 py-7">
         <div className="mx-auto max-w-[640px]">
           <AnimatePresence mode="wait">
             <motion.div
