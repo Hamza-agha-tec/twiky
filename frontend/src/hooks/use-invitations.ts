@@ -25,3 +25,10 @@ export function useRespondToInvitation() {
     },
   });
 }
+
+export function useSendGroupInvitation() {
+  return useMutation({
+    mutationFn: ({ inviteeId, groupId }: { inviteeId: string; groupId: string }) =>
+      invitationsApi.send(inviteeId, 'GROUP', groupId),
+  });
+}

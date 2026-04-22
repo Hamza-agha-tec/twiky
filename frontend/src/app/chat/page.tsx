@@ -340,6 +340,8 @@ function NotificationsView() {
 
   const unreadCount = notifications.filter((n) => !n.is_read).length
   const followInvitations = invitations.filter((inv) => inv.entity_type === 'FOLLOW')
+  const groupInvitations = invitations.filter((inv) => inv.entity_type === 'GROUP')
+  const channelInvitations = invitations.filter((inv) => inv.entity_type === 'CHANNEL')
 
   function formatTime(iso: string) {
     const d = new Date(iso)
@@ -353,8 +355,9 @@ function NotificationsView() {
   function notificationLabel(type: string) {
     switch (type) {
       case 'FOLLOW': return 'started following you'
-      case 'INVITATION': return 'sent you a follow request'
-      case 'INVITATION_ACCEPTED': return 'accepted your follow request'
+      case 'INVITATION': return 'sent you an invitation'
+      case 'INVITATION_ACCEPTED': return 'accepted your invitation'
+      case 'INVITATION_REJECTED': return 'declined your invitation'
       case 'LIKE': return 'liked your post'
       default: return type.toLowerCase().replace(/_/g, ' ')
     }
@@ -387,6 +390,90 @@ function NotificationsView() {
       </div>
 
       <div className="mx-auto w-full max-w-2xl px-8 py-8 space-y-8">
+        {/* Group invitations */}
+        {groupInvitations.length > 0 ? (
+          <div>
+            <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+              Group Invitations · {groupInvitations.length}
+            </p>
+            <div className="flex flex-col gap-3">
+              {groupInvitations.map((inv) => (
+                <div key={inv.id} className="flex items-center gap-4 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
+                  {inv.inviter.avatar_url ? (
+                    <img src={inv.inviter.avatar_url} alt={inv.inviter.username} className="h-11 w-11 flex-shrink-0 rounded-2xl object-cover" />
+                  ) : (
+                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-primary text-[15px] font-bold text-primary-foreground">
+                      {inv.inviter.username[0].toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-semibold text-foreground">@{inv.inviter.username}</p>
+                    <p className="text-[12px] text-muted-foreground">invited you to a group · {formatTime(inv.created_at)}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => respondToInvitation.mutate({ invitationId: inv.id, status: 'ACCEPTED' })}
+                      disabled={respondToInvitation.isPending}
+                      className="rounded-xl bg-primary px-3 py-1.5 text-[12px] font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                    >
+                      Accept
+                    </button>
+                    <button
+                      onClick={() => respondToInvitation.mutate({ invitationId: inv.id, status: 'REJECTED' })}
+                      disabled={respondToInvitation.isPending}
+                      className="rounded-xl border border-border px-3 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {/* Channel invitations */}
+        {channelInvitations.length > 0 ? (
+          <div>
+            <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+              Channel Invitations · {channelInvitations.length}
+            </p>
+            <div className="flex flex-col gap-3">
+              {channelInvitations.map((inv) => (
+                <div key={inv.id} className="flex items-center gap-4 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
+                  {inv.inviter.avatar_url ? (
+                    <img src={inv.inviter.avatar_url} alt={inv.inviter.username} className="h-11 w-11 flex-shrink-0 rounded-2xl object-cover" />
+                  ) : (
+                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-primary text-[15px] font-bold text-primary-foreground">
+                      {inv.inviter.username[0].toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-semibold text-foreground">@{inv.inviter.username}</p>
+                    <p className="text-[12px] text-muted-foreground">invited you to a channel · {formatTime(inv.created_at)}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => respondToInvitation.mutate({ invitationId: inv.id, status: 'ACCEPTED' })}
+                      disabled={respondToInvitation.isPending}
+                      className="rounded-xl bg-primary px-3 py-1.5 text-[12px] font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                    >
+                      Accept
+                    </button>
+                    <button
+                      onClick={() => respondToInvitation.mutate({ invitationId: inv.id, status: 'REJECTED' })}
+                      disabled={respondToInvitation.isPending}
+                      className="rounded-xl border border-border px-3 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         {/* Pending follow requests */}
         {followInvitations.length > 0 ? (
           <div>

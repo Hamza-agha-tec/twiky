@@ -39,7 +39,8 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { useUpdateChannel } from '@/hooks/use-channels'
-import { useAddGroupMember, useGroupMembers, useDeleteGroup } from '@/hooks/use-groups'
+import { useGroupMembers, useDeleteGroup } from '@/hooks/use-groups'
+import { useSendGroupInvitation } from '@/hooks/use-invitations'
 import { useProfile, useUserFollowers } from '@/hooks/use-user'
 import { filesApi } from '@/lib/files-api'
 import { toast } from 'sonner'
@@ -627,12 +628,16 @@ function GroupSettingsSheet({
   onOpenChange,
   channelId,
   onDeleted,
+  invitedIds,
+  onInvited,
 }: {
   group: MockChannelGroup
   open: boolean
   onOpenChange: (open: boolean) => void
   channelId?: string
   onDeleted?: () => void
+  invitedIds: Set<string>
+  onInvited: (userId: string) => void
 }) {
   const [name, setName] = useState(group.label)
   const [description, setDescription] = useState(group.description)
@@ -640,9 +645,10 @@ function GroupSettingsSheet({
   const [notifications, setNotifications] = useState(true)
   const [mentionsOnly, setMentionsOnly] = useState(false)
   const [slowMode, setSlowMode] = useState(false)
-  const [addMemberError, setAddMemberError] = useState<string | null>(null)
+  const [inviteError, setInviteError] = useState<string | null>(null)
+  const [sending, setSending] = useState<Set<string>>(new Set())
   const [memberSearch, setMemberSearch] = useState('')
-  const addGroupMember = useAddGroupMember(group.id)
+  const sendInvitation = useSendGroupInvitation()
   const deleteGroup = useDeleteGroup(channelId ?? '')
   const { data: profile } = useProfile()
   const { data: followers = [] } = useUserFollowers(profile?.id)
@@ -661,7 +667,8 @@ function GroupSettingsSheet({
     setMentionsOnly(false)
     setSlowMode(false)
     setMemberSearch('')
-    setAddMemberError(null)
+    setInviteError(null)
+    setSending(new Set())
   }, [group.description, group.id, group.kind, group.label])
 
   return (
@@ -759,19 +766,19 @@ function GroupSettingsSheet({
             </div>
           </div>
 
-          {/* Add Members */}
+          {/* Invite Members */}
           <div className="space-y-3 p-4">
             <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-              Add Members
+              Invite Members
             </p>
-            {addMemberError ? <p className="text-[11px] text-destructive">{addMemberError}</p> : null}
+            {inviteError ? <p className="text-[11px] text-destructive">{inviteError}</p> : null}
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={memberSearch}
                 onChange={(e) => {
                   setMemberSearch(e.target.value)
-                  setAddMemberError(null)
+                  setInviteError(null)
                 }}
                 placeholder="Search followers"
                 className="h-9 rounded-xl pl-8 text-[12px]"
@@ -779,14 +786,16 @@ function GroupSettingsSheet({
             </div>
             <div className="space-y-1 max-h-52 overflow-y-auto">
               {!memberSearchQuery ? (
-                <p className="py-1 text-[11px] text-muted-foreground">Search to find followers to add</p>
+                <p className="py-1 text-[11px] text-muted-foreground">Search followers to invite</p>
               ) : followers.length === 0 ? (
-                <p className="py-1 text-[11px] text-muted-foreground">No followers to add</p>
+                <p className="py-1 text-[11px] text-muted-foreground">No followers to invite</p>
               ) : searchedFollowers.length === 0 ? (
                 <p className="py-1 text-[11px] text-muted-foreground">No matching followers</p>
               ) : searchedFollowers.map((f) => {
                 const user = f.users
                 const alreadyMember = existingMemberIds.has(user.id)
+                const alreadyInvited = invitedIds.has(user.id)
+                const isSending = sending.has(user.id)
                 return (
                   <div key={user.id} className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 hover:bg-accent">
                     <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
@@ -798,17 +807,28 @@ function GroupSettingsSheet({
                     </div>
                     <p className="flex-1 truncate text-[12px] text-foreground">@{user.username}</p>
                     <button
-                      disabled={alreadyMember || addGroupMember.isPending}
+                      disabled={alreadyMember || alreadyInvited || isSending}
                       onClick={() => {
-                        setAddMemberError(null)
-                        addGroupMember.mutate(
-                          { user_id: user.id },
-                          { onError: (e) => setAddMemberError(e instanceof Error ? e.message : 'Failed') },
+                        if (alreadyInvited || isSending) return
+                        setSending((prev) => new Set([...prev, user.id]))
+                        setInviteError(null)
+                        sendInvitation.mutate(
+                          { inviteeId: user.id, groupId: group.id },
+                          {
+                            onSuccess: () => {
+                              onInvited(user.id)
+                              setSending((prev) => { const next = new Set(prev); next.delete(user.id); return next })
+                            },
+                            onError: (e) => {
+                              setSending((prev) => { const next = new Set(prev); next.delete(user.id); return next })
+                              setInviteError(e instanceof Error ? e.message : 'Failed to send invite')
+                            },
+                          },
                         )
                       }}
                       className="rounded-lg border border-border px-2 py-0.5 text-[10px] font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-40"
                     >
-                      {alreadyMember ? 'Added' : 'Add'}
+                      {alreadyMember ? 'Member' : alreadyInvited ? 'Invited' : isSending ? '…' : 'Invite'}
                     </button>
                   </div>
                 )
@@ -859,6 +879,7 @@ export function ChannelsPanel({
   const [showCreateGroup, setShowCreateGroup] = useState(false)
   const [channelSettingsOpen, setChannelSettingsOpen] = useState(false)
   const [groupSettingsTarget, setGroupSettingsTarget] = useState<MockChannelGroup | null>(null)
+  const [invitedByGroup, setInvitedByGroup] = useState<Record<string, Set<string>>>({})
 
   if (!visible || !channel) return null
 
@@ -1048,6 +1069,13 @@ export function ChannelsPanel({
           onOpenChange={(open) => { if (!open) setGroupSettingsTarget(null) }}
           channelId={channel.id}
           onDeleted={() => setGroupSettingsTarget(null)}
+          invitedIds={invitedByGroup[groupSettingsTarget.id] ?? new Set()}
+          onInvited={(userId) =>
+            setInvitedByGroup((prev) => {
+              const existing = prev[groupSettingsTarget.id] ?? new Set<string>()
+              return { ...prev, [groupSettingsTarget.id]: new Set([...existing, userId]) }
+            })
+          }
         />
       ) : null}
     </>

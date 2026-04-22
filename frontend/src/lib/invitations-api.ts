@@ -45,6 +45,13 @@ async function authedFetch<T = unknown>(path: string, init: RequestInit = {}): P
 
 export const invitationsApi = {
   getPending: () => authedFetch<Invitation[]>('/invitations'),
+
+  send: (inviteeId: string, entityType: 'CHANNEL' | 'GROUP' | 'FOLLOW', entityId: string) =>
+    authedFetch<Invitation>('/invitations', {
+      method: 'POST',
+      body: JSON.stringify({ inviteeId, entityType, entityId }),
+    }),
+
   respond: (invitationId: string, status: 'ACCEPTED' | 'REJECTED') =>
     authedFetch('/invitations/respond', {
       method: 'POST',
