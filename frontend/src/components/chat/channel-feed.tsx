@@ -2,6 +2,7 @@
 
 import Image from 'next/image'
 import {
+  type ChangeEvent,
   KeyboardEvent,
   MouseEvent,
   ReactNode,
@@ -41,13 +42,25 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Textarea } from '@/components/ui/textarea'
 import { type ChatMessage } from '@/hooks/use-messaging'
 import { useProfile, useUserById, useUserFollowers, useUserFollowing, useUserPosts } from '@/hooks/use-user'
+import { filesApi } from '@/lib/files-api'
 import { getMockUserAvatar, getMockUserBanner } from '@/lib/mock-users'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
 
 interface FeedMedia {
   alt: string
   label: string
   src: string
+}
+
+function isProbablyImageUrl(url: string): boolean {
+  try {
+    const pathname = new URL(url, typeof window !== 'undefined' ? window.location.origin : 'http://localhost')
+      .pathname.toLowerCase()
+    return /\.(png|jpe?g|webp|gif|svg|avif|bmp|ico)$/i.test(pathname)
+  } catch {
+    return /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(url)
+  }
 }
 
 interface FeedReaction {
@@ -562,11 +575,23 @@ function MessageRow({
             {(post.media?.length || post.imageUrl) ? (
               <div className={cn('mt-2 flex flex-wrap gap-2')}>
                 {post.imageUrl ? (
-                  <img
-                    src={post.imageUrl}
-                    alt="Uploaded"
-                    className="max-h-32 max-w-[200px] rounded-xl"
-                  />
+                  isProbablyImageUrl(post.imageUrl) ? (
+                    <img
+                      src={post.imageUrl}
+                      alt="Uploaded"
+                      className="max-h-32 max-w-[200px] rounded-xl"
+                    />
+                  ) : (
+                    <a
+                      href={post.imageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-2 rounded-xl border border-border bg-muted/50 px-3 py-2 text-[12px] font-medium text-primary hover:bg-muted"
+                    >
+                      <Paperclip className="h-4 w-4 shrink-0" />
+                      Open attachment
+                    </a>
+                  )
                 ) : null}
                 {post.media?.map((media) => (
                   <div key={media.label} className="relative h-36 w-56 overflow-hidden rounded-xl border border-border">
@@ -1253,11 +1278,23 @@ function FeedProfileRow({
         {(post.media?.length || post.imageUrl) ? (
           <div className="mt-2 flex flex-wrap gap-2">
             {post.imageUrl ? (
-              <img
-                src={post.imageUrl}
-                alt="Uploaded"
-                className="max-h-32 max-w-[200px] rounded-xl"
-              />
+              isProbablyImageUrl(post.imageUrl) ? (
+                <img
+                  src={post.imageUrl}
+                  alt="Uploaded"
+                  className="max-h-32 max-w-[200px] rounded-xl"
+                />
+              ) : (
+                <a
+                  href={post.imageUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 rounded-xl border border-border bg-muted/50 px-3 py-2 text-[12px] font-medium text-primary hover:bg-muted"
+                >
+                  <Paperclip className="h-4 w-4 shrink-0" />
+                  Open attachment
+                </a>
+              )
             ) : null}
             {post.media?.map((media) => (
               <div key={media.label} className="relative h-36 w-56 overflow-hidden rounded-xl border border-border">
@@ -1366,8 +1403,15 @@ export function ChannelFeed({
 
   const { data: profile } = useProfile()
 
+  const useBackendUpload = Boolean(onSendPost)
   const imageInputRef = useRef<HTMLInputElement>(null)
+  const genericFileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const blobUrlsRef = useRef<string[]>([])
+
+  const [postUploading, setPostUploading] = useState(false)
+  const [pendingImageFile, setPendingImageFile] = useState<File | null>(null)
+  const [pendingGenericFile, setPendingGenericFile] = useState<File | null>(null)
 
   const posts = postsByGroup[group.id] ?? postsOverride ?? buildFallbackPosts(channel, group)
   const draft = drafts[group.id] ?? ''
@@ -1382,6 +1426,13 @@ export function ChannelFeed({
         .slice()
         .reverse()
     : []
+
+  useEffect(() => {
+    return () => {
+      blobUrlsRef.current.forEach((u) => URL.revokeObjectURL(u))
+      blobUrlsRef.current = []
+    }
+  }, [])
 
   useEffect(() => {
     setSelectedProfile(null)
@@ -1526,26 +1577,76 @@ export function ChannelFeed({
     })
   }
 
-  function handleImageFile(e: React.ChangeEvent<HTMLInputElement>) {
+  function revokeBlob(url?: string) {
+    if (url?.startsWith('blob:')) URL.revokeObjectURL(url)
+  }
+
+  function handleImageFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    if (file) setDraftImage(URL.createObjectURL(file))
     e.target.value = ''
+    if (!file) return
+    setPendingGenericFile(null)
+    setAttachment(undefined)
+    setPendingImageFile(file)
+    const url = URL.createObjectURL(file)
+    blobUrlsRef.current.push(url)
+    setDraftImage(url)
+  }
+
+  function handleGenericFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (draftImage) {
+      revokeBlob(draftImage)
+      setDraftImage(undefined)
+    }
+    setPendingImageFile(null)
+    setAttachment(undefined)
+    setPendingGenericFile(file)
+  }
+
+  function clearQueuedImage() {
+    revokeBlob(draftImage)
+    setDraftImage(undefined)
+    setPendingImageFile(null)
+  }
+
+  function clearQueuedGeneric() {
+    setPendingGenericFile(null)
   }
 
   async function sendDraft() {
     const body = draft.trim()
-    if (!body && !draftImage && !draftAttachment) return
+    const hasQueuedFile = !!(pendingImageFile || pendingGenericFile)
+    if (!body && !draftImage && !draftAttachment && !hasQueuedFile) return
 
     if (onSendPost) {
-      await onSendPost({
-        content: body,
-        fileUrl: draftAttachment?.src,
-        replyToId: replyingTo?.id,
-      })
-      setDraft('')
-      setDraftImage(undefined)
-      setAttachment(undefined)
-      setReplyingTo(null)
+      if (!hasQueuedFile && !body) return
+      setPostUploading(true)
+      try {
+        let fileUrl: string | undefined
+        if (pendingImageFile) {
+          const { publicUrl } = await filesApi.uploadGroupExtra(group.id, pendingImageFile)
+          fileUrl = publicUrl
+        } else if (pendingGenericFile) {
+          const { publicUrl } = await filesApi.uploadGroupExtra(group.id, pendingGenericFile)
+          fileUrl = publicUrl
+        }
+        await onSendPost({
+          content: body,
+          fileUrl,
+          replyToId: replyingTo?.id,
+        })
+        setDraft('')
+        clearQueuedImage()
+        clearQueuedGeneric()
+        setReplyingTo(null)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to send')
+      } finally {
+        setPostUploading(false)
+      }
       return
     }
 
@@ -1585,7 +1686,7 @@ export function ChannelFeed({
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      sendDraft()
+      void sendDraft()
     }
   }
 
@@ -1635,7 +1736,13 @@ export function ChannelFeed({
     setContextMenu({ postId, x: e.clientX, y: e.clientY })
   }
 
-  const canSend = !!(draft.trim() || draftImage || draftAttachment)
+  const canSend = !!(
+    draft.trim() ||
+    draftImage ||
+    draftAttachment ||
+    pendingImageFile ||
+    pendingGenericFile
+  )
 
   return (
     <div className="flex flex-1 overflow-hidden bg-background">
@@ -1705,23 +1812,41 @@ export function ChannelFeed({
             ) : null}
 
             {/* Image / attachment preview */}
-            {(draftImage || draftAttachment) ? (
+            {(draftImage || pendingGenericFile || (!useBackendUpload && draftAttachment)) ? (
               <div className="flex items-center gap-3 border-b border-border/60 bg-background/40 px-3 py-2">
                 {draftImage ? (
-                  <div className="relative h-14 w-20 flex-shrink-0 overflow-hidden rounded-lg border border-border">
+                  <div className="relative h-14 w-20 shrink-0 overflow-hidden rounded-lg border border-border">
                     <img src={draftImage} alt="Preview" className="h-full w-full object-cover" />
                     <button
-                      onClick={() => setDraftImage(undefined)}
+                      type="button"
+                      onClick={() => clearQueuedImage()}
                       className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/70 text-white"
                     >
                       <X className="h-2.5 w-2.5" />
                     </button>
                   </div>
                 ) : null}
-                {draftAttachment ? (
-                  <div className="relative h-14 w-20 flex-shrink-0 overflow-hidden rounded-lg border border-border">
+                {pendingGenericFile && !draftImage ? (
+                  <div className="flex h-14 min-w-0 flex-1 items-center gap-2 rounded-lg border border-border bg-background/80 px-3">
+                    <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[11px] font-medium text-foreground">{pendingGenericFile.name}</p>
+                      <p className="text-[10px] text-muted-foreground">File attached</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => clearQueuedGeneric()}
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ) : null}
+                {!useBackendUpload && draftAttachment ? (
+                  <div className="relative h-14 w-20 shrink-0 overflow-hidden rounded-lg border border-border">
                     <Image src={draftAttachment.src} alt={draftAttachment.alt} fill unoptimized sizes="96px" className="object-cover" />
                     <button
+                      type="button"
                       onClick={() => setAttachment(undefined)}
                       className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/70 text-white"
                     >
@@ -1729,12 +1854,14 @@ export function ChannelFeed({
                     </button>
                   </div>
                 ) : null}
-                <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-medium text-foreground">
-                    {draftImage ? 'Image attached' : draftAttachment?.label}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">Ready to send</p>
-                </div>
+                {draftImage || (!useBackendUpload && draftAttachment) ? (
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-medium text-foreground">
+                      {draftImage ? 'Image attached' : draftAttachment?.label}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">Ready to send</p>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -1758,10 +1885,17 @@ export function ChannelFeed({
                   size="icon"
                   className={cn(
                     'h-8 w-8 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground',
-                    draftAttachment && 'bg-primary/10 text-primary',
+                    (useBackendUpload ? pendingGenericFile : draftAttachment) && 'bg-primary/10 text-primary',
                   )}
-                  onClick={() => draftAttachment ? setAttachment(undefined) : setAttachment(getSuggestedAttachment(channel, group))}
-                  title="Attach mock media"
+                  onClick={() => {
+                    if (useBackendUpload) {
+                      if (pendingGenericFile) clearQueuedGeneric()
+                      else genericFileInputRef.current?.click()
+                    } else {
+                      draftAttachment ? setAttachment(undefined) : setAttachment(getSuggestedAttachment(channel, group))
+                    }
+                  }}
+                  title={useBackendUpload ? 'Attach file' : 'Attach mock media'}
                 >
                   <Paperclip className="h-4 w-4" />
                 </Button>
@@ -1796,8 +1930,8 @@ export function ChannelFeed({
                 />
                 <Button
                   type="button"
-                  onClick={sendDraft}
-                  disabled={!canSend || sendingPost}
+                  onClick={() => void sendDraft()}
+                  disabled={!canSend || sendingPost || postUploading}
                   size="icon"
                   className="h-8 w-8 rounded-lg"
                 >
@@ -1813,6 +1947,12 @@ export function ChannelFeed({
             accept="image/*"
             className="hidden"
             onChange={handleImageFile}
+          />
+          <input
+            ref={genericFileInputRef}
+            type="file"
+            className="hidden"
+            onChange={handleGenericFile}
           />
 
           <p className="mt-1 px-1 text-[10px] text-muted-foreground">

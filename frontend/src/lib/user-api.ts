@@ -5,6 +5,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3500';
 export interface UserProfile {
   id: string;
   username: string | null;
+  fullname: string | null;
   avatar_url: string | null;
   created_at: string;
   phone_number: string | null;
@@ -12,6 +13,8 @@ export interface UserProfile {
   status: string | null;
   last_seen_at: string | null;
   banner: string | null;
+  website_url: string | null;
+  x_url: string | null;
 }
 
 export interface UserSummary {
@@ -41,7 +44,7 @@ export interface UserPost {
 }
 
 export type UpdateProfileInput = Partial<
-  Pick<UserProfile, 'username' | 'avatar_url' | 'phone_number' | 'bio' | 'status'>
+  Pick<UserProfile, 'username' | 'avatar_url' | 'banner' | 'phone_number' | 'bio' | 'status'>
 >;
 
 async function getToken(): Promise<string> {

@@ -182,6 +182,7 @@ function toWorkspaceChannel(
   return {
     ...base,
     avatarUrl: channel.avatar_url ?? undefined,
+    bannerUrl: channel.banner_url ?? undefined,
     groups: groupsByChannel[channel.id] ?? base.groups,
     membersLabel: getChannelRoleLabel(channel.role),
   }
@@ -255,9 +256,7 @@ export default function ChatPage() {
   const [activeDirectChat, setActiveDirectChat] = useState<string | null>(null)
   const [activeView, setActiveView] = useState<ActiveView>('chat')
   const [settingsSection, setSettingsSection] = useState<string>('account')
-  const [localAvatar, setLocalAvatar] = useState<string | null>(() => {
-    try { return localStorage.getItem('twiky-user-avatar') } catch { return null }
-  })
+  const [localAvatar, setLocalAvatar] = useState<string | null>(null)
   const [activeSurface, setActiveSurface] = useState<ChatSurface>('direct')
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('direct')
   const [workspaceCollapsed, setWorkspaceCollapsed] = useState(false)
@@ -744,7 +743,11 @@ export default function ChatPage() {
           <ChannelsPanel
             activeGroup={activeGroup?.id}
             channel={activeChannel}
-            channelAvatarUrl={activeChannel ? (channelAssets[activeChannel.id]?.avatar ?? null) : null}
+            channelAvatarUrl={
+              activeChannel
+                ? (channelAssets[activeChannel.id]?.avatar ?? activeChannel.avatarUrl ?? null)
+                : null
+            }
             onAssetSave={handleChannelAssetSave}
             onCreateGroup={handleCreateGroup}
             onSelectGroup={(groupId) => {
