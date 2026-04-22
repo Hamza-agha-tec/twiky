@@ -7,6 +7,7 @@ export interface BackendChannel {
   name: string;
   owner_id: string;
   avatar_url: string | null;
+  banner_url: string | null;
   created_at: string;
   description: string | null;
   role: 'OWNER' | 'ADMIN' | 'MEMBER' | string;

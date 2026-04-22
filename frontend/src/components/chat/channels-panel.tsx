@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Archive,
@@ -41,6 +41,8 @@ import { cn } from '@/lib/utils'
 import { useUpdateChannel } from '@/hooks/use-channels'
 import { useAddGroupMember, useGroupMembers, useDeleteGroup } from '@/hooks/use-groups'
 import { useProfile, useUserFollowers } from '@/hooks/use-user'
+import { filesApi } from '@/lib/files-api'
+import { toast } from 'sonner'
 
 export interface MockChannelGroup {
   id: string
@@ -324,17 +326,6 @@ export function getMockGroup(
   return channel.groups.find((group) => group.id === groupId) ?? channel.groups[0] ?? null
 }
 
-function readChAsset(channelId: string, key: 'avatar' | 'banner'): string | null {
-  if (typeof window === 'undefined') return null
-  try { return localStorage.getItem(`twiky-ch-${key}-${channelId}`) } catch { return null }
-}
-function writeChAsset(channelId: string, key: 'avatar' | 'banner', url: string | null) {
-  try {
-    if (url) localStorage.setItem(`twiky-ch-${key}-${channelId}`, url)
-    else localStorage.removeItem(`twiky-ch-${key}-${channelId}`)
-  } catch {}
-}
-
 function ChannelSettingsSheet({
   channel,
   open,
@@ -355,40 +346,53 @@ function ChannelSettingsSheet({
   const [muteAll, setMuteAll] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const updateChannel = useUpdateChannel()
-  const [bannerUrl, setBannerUrl] = useState<string | null>(
-    readChAsset(channel.id, 'banner') ?? channel.bannerUrl ?? null,
-  )
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(
-    readChAsset(channel.id, 'avatar') ?? channel.avatarUrl ?? null,
-  )
+  const [bannerUrl, setBannerUrl] = useState<string | null>(channel.bannerUrl ?? null)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(channel.avatarUrl ?? null)
+  const [bannerFile, setBannerFile] = useState<File | null>(null)
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [uploadingMedia, setUploadingMedia] = useState(false)
+  const blobUrlsRef = useRef<string[]>([])
   const bannerRef = useRef<HTMLInputElement>(null)
   const avatarRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
+    return () => {
+      blobUrlsRef.current.forEach((u) => URL.revokeObjectURL(u))
+      blobUrlsRef.current = []
+    }
+  }, [])
+
+  useEffect(() => {
+    blobUrlsRef.current.forEach((u) => URL.revokeObjectURL(u))
+    blobUrlsRef.current = []
     setName(channel.label)
     setDescription(channel.description)
     setVisibility('public')
     setNotifications(true)
     setMuteAll(false)
     setSaveError(null)
-    setBannerUrl(readChAsset(channel.id, 'banner') ?? channel.bannerUrl ?? null)
-    setAvatarUrl(readChAsset(channel.id, 'avatar') ?? channel.avatarUrl ?? null)
+    setBannerUrl(channel.bannerUrl ?? null)
+    setAvatarUrl(channel.avatarUrl ?? null)
+    setBannerFile(null)
+    setAvatarFile(null)
   }, [channel.avatarUrl, channel.bannerUrl, channel.description, channel.id, channel.label])
 
-  function handleBannerChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleBannerChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => setBannerUrl(reader.result as string)
-    reader.readAsDataURL(file)
+    const url = URL.createObjectURL(file)
+    blobUrlsRef.current.push(url)
+    setBannerFile(file)
+    setBannerUrl(url)
   }
 
-  function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleAvatarChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => setAvatarUrl(reader.result as string)
-    reader.readAsDataURL(file)
+    const url = URL.createObjectURL(file)
+    blobUrlsRef.current.push(url)
+    setAvatarFile(file)
+    setAvatarUrl(url)
   }
 
   const tone = getChannelTone(channel.id)
@@ -557,28 +561,56 @@ function ChannelSettingsSheet({
             ) : null}
             <Button
               className="w-full rounded-xl text-[12px]"
-              disabled={updateChannel.isPending}
+              disabled={updateChannel.isPending || uploadingMedia}
               onClick={async () => {
                 setSaveError(null)
+                setUploadingMedia(true)
                 try {
-                  await updateChannel.mutateAsync({
-                    id: channel.id,
-                    data: {
-                      name: name.trim() || channel.label,
-                      description: description.trim() || undefined,
-                      access_type: visibility === 'private' ? 'PRIVATE' : 'PUBLIC',
-                    },
-                  })
-                  writeChAsset(channel.id, 'avatar', avatarUrl)
-                  writeChAsset(channel.id, 'banner', bannerUrl)
-                  onSave?.(avatarUrl, bannerUrl)
+                  let nextAvatar = avatarUrl
+                  let nextBanner = bannerUrl
+                  if (avatarFile) {
+                    const { publicUrl } = await filesApi.uploadChannelLogo(channel.id, avatarFile)
+                    nextAvatar = publicUrl
+                  }
+                  if (bannerFile) {
+                    const { publicUrl } = await filesApi.uploadChannelBanner(channel.id, bannerFile)
+                    nextBanner = publicUrl
+                  }
+                  const data: {
+                    name: string
+                    description?: string
+                    access_type: 'PUBLIC' | 'PRIVATE'
+                    avatar_url?: string
+                    banner_url?: string
+                  } = {
+                    name: name.trim() || channel.label,
+                    description: description.trim() || undefined,
+                    access_type: visibility === 'private' ? 'PRIVATE' : 'PUBLIC',
+                  }
+                  if (nextAvatar?.startsWith('http')) data.avatar_url = nextAvatar
+                  if (nextBanner?.startsWith('http')) data.banner_url = nextBanner
+                  await updateChannel.mutateAsync({ id: channel.id, data })
+                  blobUrlsRef.current.forEach((u) => URL.revokeObjectURL(u))
+                  blobUrlsRef.current = []
+                  setAvatarFile(null)
+                  setBannerFile(null)
+                  setAvatarUrl(nextAvatar?.startsWith('http') ? nextAvatar : null)
+                  setBannerUrl(nextBanner?.startsWith('http') ? nextBanner : null)
+                  onSave?.(
+                    nextAvatar?.startsWith('http') ? nextAvatar : null,
+                    nextBanner?.startsWith('http') ? nextBanner : null,
+                  )
                   onOpenChange(false)
                 } catch (err) {
-                  setSaveError(err instanceof Error ? err.message : 'Failed to save')
+                  const msg = err instanceof Error ? err.message : 'Failed to save'
+                  setSaveError(msg)
+                  toast.error(msg)
+                } finally {
+                  setUploadingMedia(false)
                 }
               }}
             >
-              {updateChannel.isPending ? 'Saving…' : 'Save changes'}
+              {updateChannel.isPending || uploadingMedia ? 'Saving…' : 'Save changes'}
             </Button>
           </div>
         </div>

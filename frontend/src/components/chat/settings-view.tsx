@@ -1,6 +1,6 @@
 'use client'
 
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type ChangeEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Archive,
@@ -62,7 +62,9 @@ import {
 } from '@/hooks/use-user'
 import { useSpotifyAuthUrl, useSpotifyNowPlaying } from '@/hooks/use-spotify'
 import type { UserPost, UserProfile } from '@/lib/user-api'
+import { filesApi } from '@/lib/files-api'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
 
 interface SettingsViewProps {
   initialSection?: string
@@ -280,9 +282,10 @@ function ProfileSection({
   const bannerRef = useRef<HTMLInputElement>(null)
   const updateProfile = useUpdateProfile()
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
-  const initialUsername = profile?.username ?? ''
-  const [displayName, setDisplayName] = useState(initialUsername || 'Your Name')
-  const [username, setUsername] = useState(initialUsername)
+  const [avatarBusy, setAvatarBusy] = useState(false)
+  const [bannerBusy, setBannerBusy] = useState(false)
+  const [fullname, setFullname] = useState(profile?.fullname ?? '')
+  const [username, setUsername] = useState(profile?.username ?? '')
   const [pronouns, setPronouns] = useState('')
   const [location, setLocation] = useState('')
   const [bio, setBio] = useState(profile?.bio ?? '')
@@ -297,9 +300,56 @@ function ProfileSection({
     await updateProfile.mutateAsync({
       bio: bio.trim() || null,
       status: status.trim() || null,
-      username: username.trim() || undefined,
+      username: username.trim() || undefined
     })
     setSaveMessage('Saved')
+  }
+
+  async function handleAvatarFile(e: ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    setAvatarBusy(true)
+    try {
+      const { publicUrl } = await filesApi.uploadUserAvatar(f)
+      await updateProfile.mutateAsync({ avatar_url: publicUrl })
+      onAvatarChange(publicUrl)
+      toast.success('Avatar updated')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setAvatarBusy(false)
+    }
+  }
+
+  async function handleBannerFile(e: ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    setBannerBusy(true)
+    try {
+      const { publicUrl } = await filesApi.uploadUserLogo(f)
+      await updateProfile.mutateAsync({ banner: publicUrl })
+      onBannerChange(publicUrl)
+      toast.success('Banner updated')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setBannerBusy(false)
+    }
+  }
+
+  async function handleBannerRemove() {
+    setBannerBusy(true)
+    try {
+      await updateProfile.mutateAsync({ banner: null })
+      onBannerChange('')
+      toast.success('Banner removed')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not remove banner')
+    } finally {
+      setBannerBusy(false)
+    }
   }
 
   const BANNER_GRADIENTS = [
@@ -314,7 +364,7 @@ function ProfileSection({
   const effectiveBannerUrl = bannerUrl ?? profile?.banner ?? null
   const [selectedGradient, setSelectedGradient] = useState(0)
   const completionChecks = [
-    displayName.trim().length > 0,
+    fullname.trim().length > 0,
     username.trim().length >= 3,
     bio.trim().length >= 20,
     location.trim().length > 0,
@@ -363,7 +413,8 @@ function ProfileSection({
             {effectiveBannerUrl ? (
               <button
                 type="button"
-                onClick={() => onBannerChange('')}
+                disabled={bannerBusy}
+                onClick={() => void handleBannerRemove()}
                 className="inline-flex h-7 items-center gap-1 rounded-full border border-white/20 bg-black/45 px-2.5 text-[10px] font-semibold text-white/90 backdrop-blur-sm transition-colors hover:bg-black/60"
               >
                 <Trash2 className="h-3 w-3" />
@@ -372,14 +423,15 @@ function ProfileSection({
             ) : null}
             <button
               type="button"
+              disabled={bannerBusy}
               onClick={() => bannerRef.current?.click()}
-              className="inline-flex h-7 items-center gap-1 rounded-full border border-white/20 bg-black/45 px-2.5 text-[10px] font-semibold text-white/90 backdrop-blur-sm transition-colors hover:bg-black/60"
+              className="inline-flex h-7 items-center gap-1 rounded-full border border-white/20 bg-black/45 px-2.5 text-[10px] font-semibold text-white/90 backdrop-blur-sm transition-colors hover:bg-black/60 disabled:opacity-50"
             >
               <Upload className="h-3 w-3" />
               {effectiveBannerUrl ? 'Replace' : 'Upload'}
             </button>
           </div>
-          <input ref={bannerRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) { const r = new FileReader(); r.onload = () => onBannerChange(r.result as string); r.readAsDataURL(f) } }} />
+          <input ref={bannerRef} type="file" accept="image/*" className="hidden" onChange={(e) => void handleBannerFile(e)} />
 
           {!effectiveBannerUrl ? (
             <div className="absolute bottom-2.5 right-2.5 flex items-center gap-1.5 rounded-full border border-white/20 bg-black/40 px-2 py-1.5 backdrop-blur-sm" onClick={(e) => e.stopPropagation()}>
@@ -402,29 +454,30 @@ function ProfileSection({
           <div className="relative z-10 mb-3 -mt-8">
             <button
               type="button"
-              className="relative cursor-pointer"
+              disabled={avatarBusy}
+              className="relative cursor-pointer disabled:pointer-events-none disabled:opacity-50"
               onClick={() => avatarRef.current?.click()}
             >
               <div className="h-16 w-16 overflow-hidden rounded-2xl border-4 border-card">
                 {effectiveAvatarUrl ? (
-                  <img src={effectiveAvatarUrl} alt={displayName} className="h-full w-full object-cover" />
+                  <img src={effectiveAvatarUrl} alt={fullname} className="h-full w-full object-cover" />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center bg-primary text-[22px] font-bold text-primary-foreground">
-                    {displayName?.[0]?.toUpperCase() ?? 'Z'}
+                    {fullname?.[0]?.toUpperCase() ?? 'Z'}
                   </div>
                 )}
               </div>
               <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/50 opacity-0 transition-opacity hover:opacity-100">
                 <Upload className="h-4 w-4 text-white" />
               </div>
-              <input ref={avatarRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) { const r = new FileReader(); r.onload = () => onAvatarChange(r.result as string); r.readAsDataURL(f) } }} />
+              <input ref={avatarRef} type="file" accept="image/*" className="hidden" onChange={(e) => void handleAvatarFile(e)} />
             </button>
           </div>
 
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <p className="text-[17px] font-bold text-foreground">{displayName || 'Your Name'}</p>
+                <p className="text-[17px] font-bold text-foreground">{fullname || 'Your Name'}</p>
                 {status ? <span className="text-[13px]">{statusEmoji}</span> : null}
               </div>
               <p className="text-[12px] text-muted-foreground">@{username}</p>
@@ -491,8 +544,8 @@ function ProfileSection({
             <div>
               <Label className="mb-1.5 block text-[11px] text-muted-foreground">Display name</Label>
               <input
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
+                value={fullname}
+                onChange={(e) => setFullname(e.target.value)}
                 placeholder="How your name appears"
                 className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary"
               />
@@ -1211,9 +1264,7 @@ export function SettingsView({ initialSection, onAvatarChange, avatarUrl: avatar
   const { data: following = [] } = useUserFollowing(profile?.id)
   const { data: posts = [] } = useUserPosts(profile?.id)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(avatarUrlProp ?? null)
-  const [bannerUrl, setBannerUrl] = useState<string | null>(() => {
-    try { return localStorage.getItem('twiky-user-banner') } catch { return null }
-  })
+  const [bannerUrl, setBannerUrl] = useState<string | null>(null)
 
   useEffect(() => {
     if (initialSection) setActiveSection(initialSection as SettingsSectionId)
@@ -1223,15 +1274,17 @@ export function SettingsView({ initialSection, onAvatarChange, avatarUrl: avatar
     if (avatarUrlProp) setAvatarUrl(avatarUrlProp)
   }, [avatarUrlProp])
 
+  useEffect(() => {
+    setBannerUrl(profile?.banner ?? null)
+  }, [profile?.banner, profile?.id])
+
   function handleAvatarChange(url: string) {
     setAvatarUrl(url)
     onAvatarChange?.(url)
-    try { localStorage.setItem('twiky-user-avatar', url) } catch {}
   }
 
   function handleBannerChange(url: string) {
-    setBannerUrl(url)
-    try { localStorage.setItem('twiky-user-banner', url) } catch {}
+    setBannerUrl(url || null)
   }
 
   function renderSection() {
