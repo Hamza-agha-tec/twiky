@@ -303,6 +303,14 @@ function displayExternalUrl(value: string) {
   return value.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '')
 }
 
+function createPixelRoomPreview() {
+  const artwork = `<rect width='800' height='560' rx='38' fill='#0B1422'/><rect y='320' width='800' height='240' fill='#20384A'/><rect x='90' y='96' width='146' height='126' fill='#2D4B79'/><rect x='112' y='118' width='104' height='80' fill='#9EE6FF'/><rect x='298' y='84' width='118' height='92' fill='#F3B949'/><rect x='318' y='102' width='78' height='40' fill='#FFF0BF'/><rect x='112' y='372' width='264' height='88' fill='#4B6CB7'/><rect x='520' y='112' width='132' height='152' fill='#252F45'/><rect x='548' y='136' width='84' height='48' fill='#FFD369'/>`
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 560' fill='none'>${artwork}</svg>`
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
+}
+
+const PIXEL_ROOM_PREVIEW_SRC = createPixelRoomPreview()
+
 function escapeSvgText(value: string) {
   return value
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -866,6 +874,7 @@ export function FeedMemberProfileView({
 }) {
   const [activeTab, setActiveTab] = useState<'posts' | 'articles' | 'pixel-room' | 'saved'>('posts')
   const [isFollowing, setIsFollowing] = useState(false)
+  const [pixelRoomLiked, setPixelRoomLiked] = useState(false)
 
   const { data: realUser } = useUserById(memberProfile.id)
   const { data: followersData } = useUserFollowers(memberProfile.id)
@@ -1166,6 +1175,68 @@ export function FeedMemberProfileView({
               )
             })}
           </motion.div>
+        ) : activeTab === 'pixel-room' ? (
+          <motion.div
+            key="pixel-room"
+            className="space-y-2.5"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+          >
+            <div className="relative overflow-hidden rounded-2xl border border-border bg-card">
+              <img
+                src={PIXEL_ROOM_PREVIEW_SRC}
+                alt={`${resolvedProfile.name}'s Pixel Room`}
+                className="h-32 w-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+              <div className="absolute bottom-2.5 left-3 right-3 flex items-end justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-[12px] font-bold text-white">{resolvedProfile.name}'s Room</p>
+                  <p className="text-[10px] text-white/70">Pixel World · preview</p>
+                </div>
+                <span className="rounded-full bg-white/15 px-2 py-0.5 text-[9px] font-semibold text-white backdrop-blur-sm">
+                  Open soon
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-1.5">
+              {[
+                { label: 'Furniture', value: '—' },
+                { label: 'Visitors', value: formatCompactCount(resolvedProfile.followers) },
+                { label: 'Style', value: 'Loft' },
+              ].map(({ label, value }) => (
+                <div key={label} className="rounded-lg border border-border bg-card/70 px-2 py-1.5 text-center">
+                  <p className="text-[12px] font-bold leading-none text-foreground">{value}</p>
+                  <p className="mt-0.5 text-[9px] text-muted-foreground">{label}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="h-8 flex-1 rounded-lg bg-primary px-3 text-[11px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                Enter Room
+              </button>
+              <button
+                type="button"
+                onClick={() => setPixelRoomLiked((liked) => !liked)}
+                aria-pressed={pixelRoomLiked}
+                className={cn(
+                  'flex h-8 w-9 items-center justify-center rounded-lg border transition-colors',
+                  pixelRoomLiked
+                    ? 'border-rose-400/30 bg-rose-500/10 text-rose-500'
+                    : 'border-border bg-card text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <Heart className={cn('h-3.5 w-3.5', pixelRoomLiked && 'fill-current')} />
+              </button>
+            </div>
+          </motion.div>
         ) : (
           <motion.div
             key={activeTab}
@@ -1176,12 +1247,10 @@ export function FeedMemberProfileView({
             transition={{ duration: 0.22, ease: 'easeOut' }}
           >
             <p className="text-[12px] font-semibold text-foreground">
-              {activeTab === 'pixel-room' ? 'Pixel Room' : activeTab === 'articles' ? 'Articles' : 'Saved'}
+              {activeTab === 'articles' ? 'Articles' : 'Saved'}
             </p>
             <p className="mt-1.5 text-[11px] leading-[1.75] text-muted-foreground">
-              {activeTab === 'pixel-room'
-                ? resolvedProfile.focus
-                : activeTab === 'articles'
+              {activeTab === 'articles'
                   ? resolvedProfile.bio
                   : 'Pinned references and useful items will appear here.'}
             </p>
