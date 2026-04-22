@@ -20,6 +20,11 @@ export class ChannelsController {
         return this.channelsService.getUserChannels(req.user.userId);
     }
 
+    @Get("discover")
+    async discoverChannels(@Request() req: any) {
+        return this.channelsService.discoverChannels(req.user.userId);
+    }
+
     @Get(":id")
     async getChannelDetails(@Param("id") channelId: string) {
         return this.channelsService.getChannelDetails(channelId);

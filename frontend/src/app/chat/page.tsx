@@ -189,6 +189,7 @@ function toWorkspaceChannel(
     bannerUrl: channel.banner_url ?? undefined,
     groups: groupsByChannel[channel.id] ?? base.groups,
     membersLabel: getChannelRoleLabel(channel.role),
+    access_type: channel.access_type,
   }
 }
 
@@ -873,6 +874,7 @@ export default function ChatPage() {
     const channel = await createChannel.mutateAsync({
       name: values.name,
       description: values.description || undefined,
+      access_type: values.access_type,
     })
 
     let avatarUrl = channel.avatar_url ?? null

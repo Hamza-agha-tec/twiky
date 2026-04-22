@@ -64,6 +64,7 @@ export interface WorkspaceChannel {
   groups: MockChannelGroup[]
   avatarUrl?: string
   bannerUrl?: string
+  access_type?: 'PUBLIC' | 'PRIVATE'
 }
 
 interface BuildChannelGroupInput {
@@ -367,7 +368,7 @@ function ChannelSettingsSheet({
     blobUrlsRef.current = []
     setName(channel.label)
     setDescription(channel.description)
-    setVisibility('public')
+    setVisibility(channel.access_type === 'PRIVATE' ? 'private' : 'public')
     setNotifications(true)
     setMuteAll(false)
     setSaveError(null)

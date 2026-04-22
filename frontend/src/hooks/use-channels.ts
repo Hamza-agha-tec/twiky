@@ -40,3 +40,26 @@ export function useUpdateChannel() {
     },
   });
 }
+
+export const DISCOVER_KEYS = {
+  all: ['channels', 'discover'] as const,
+};
+
+export function useDiscoverChannels() {
+  return useQuery<Channel[]>({
+    queryKey: DISCOVER_KEYS.all,
+    queryFn: channelsApi.discoverChannels,
+  });
+}
+
+export function useJoinChannel() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (channelId: string) => channelsApi.joinChannel(channelId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: CHANNEL_KEYS.all });
+      queryClient.invalidateQueries({ queryKey: DISCOVER_KEYS.all });
+    },
+  });
+}

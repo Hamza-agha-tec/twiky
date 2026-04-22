@@ -1,7 +1,7 @@
 'use client'
 
 import { type ChangeEvent, FormEvent, useRef, useState } from 'react'
-import { Hash, ImagePlus, MessagesSquare, UserCircle2 } from 'lucide-react'
+import { Globe, Hash, ImagePlus, Lock, MessagesSquare, UserCircle2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -22,6 +22,7 @@ export interface CreateEntityValues {
   name: string
   avatarFile?: File | null
   bannerFile?: File | null
+  access_type?: 'PUBLIC' | 'PRIVATE'
 }
 
 interface CreateEntityDialogProps {
@@ -59,6 +60,7 @@ export function CreateEntityDialog({
 }: CreateEntityDialogProps) {
   const [name, setName] = useState(defaultName)
   const [details, setDetails] = useState(defaultDescription)
+  const [accessType, setAccessType] = useState<'PUBLIC' | 'PRIVATE'>('PUBLIC')
   const [bannerUrl, setBannerUrl] = useState<string | null>(null)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [bannerFile, setBannerFile] = useState<File | null>(null)
@@ -81,6 +83,7 @@ export function CreateEntityDialog({
   function handleOpenChange(nextOpen: boolean) {
     setName(defaultName)
     setDetails(defaultDescription)
+    setAccessType('PUBLIC')
     setBannerUrl(null)
     setAvatarUrl(null)
     setBannerFile(null)
@@ -102,6 +105,7 @@ export function CreateEntityDialog({
         description: details.trim(),
         avatarFile: entityKind === 'channel' ? avatarFile : null,
         bannerFile: entityKind === 'channel' ? bannerFile : null,
+        access_type: entityKind === 'channel' ? accessType : undefined,
       })
       handleOpenChange(false)
     } catch (err) {
@@ -224,14 +228,44 @@ export function CreateEntityDialog({
             </div>
           )}
 
-          {/* Channel info hint */}
+          {/* Channel info hint + visibility toggle */}
           {entityKind === 'channel' ? (
-            <div className="flex items-center gap-2 rounded-xl border border-border bg-background px-2 py-1.5">
-              <MessagesSquare className="h-3.5 w-3.5 text-primary" />
-              <span className="text-[10px] text-muted-foreground">
-                #general is ready from the start
-              </span>
-            </div>
+            <>
+              <div className="flex items-center gap-2 rounded-xl border border-border bg-background px-2 py-1.5">
+                <MessagesSquare className="h-3.5 w-3.5 text-primary" />
+                <span className="text-[10px] text-muted-foreground">
+                  #general is ready from the start
+                </span>
+              </div>
+              <div className="flex items-center gap-2 rounded-xl border border-border bg-background px-2.5 py-2">
+                {accessType === 'PRIVATE' ? (
+                  <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                ) : (
+                  <Globe className="h-3.5 w-3.5 text-muted-foreground" />
+                )}
+                <span className="flex-1 text-[11px] font-medium text-foreground">
+                  {accessType === 'PRIVATE' ? 'Private' : 'Public'}
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  {accessType === 'PRIVATE' ? 'Invite only' : 'Anyone can join'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setAccessType((v) => (v === 'PUBLIC' ? 'PRIVATE' : 'PUBLIC'))}
+                  className={cn(
+                    'relative ml-1 inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none',
+                    accessType === 'PRIVATE' ? 'bg-primary' : 'bg-muted',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                      accessType === 'PRIVATE' ? 'translate-x-4' : 'translate-x-0',
+                    )}
+                  />
+                </button>
+              </div>
+            </>
           ) : null}
 
           <div className="space-y-1.5">

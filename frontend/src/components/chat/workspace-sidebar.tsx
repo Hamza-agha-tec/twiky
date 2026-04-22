@@ -5,14 +5,18 @@ import { AnimatePresence, motion } from 'framer-motion'
 import {
   ChevronLeft,
   ChevronRight,
+  Compass,
+  Globe,
   Hash,
   ListTodo,
+  Lock,
   MessageSquare,
   MessagesSquare,
   NotebookPen,
   Plus,
   Search,
   Target,
+  X,
 } from 'lucide-react'
 
 import { CreateEntityDialog, type CreateEntityValues } from '@/components/chat/create-entity-dialog'
@@ -20,7 +24,9 @@ import { type WorkspaceChannel } from '@/components/chat/channels-panel'
 import { ConversationContextMenu } from '@/components/chat/conversation-context-menu'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useDiscoverChannels, useJoinChannel } from '@/hooks/use-channels'
 import { Chat } from '@/lib/mock-data'
 import { getMockUserAvatar } from '@/lib/mock-users'
 import { cn } from '@/lib/utils'
@@ -130,6 +136,10 @@ export function WorkspaceSidebar({
   const [deleted, setDeleted] = useState<Set<string>>(new Set())
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [showCreateChannel, setShowCreateChannel] = useState(false)
+  const [showDiscover, setShowDiscover] = useState(false)
+
+  const { data: discoverableChannels = [], isLoading: discoverLoading } = useDiscoverChannels()
+  const joinChannel = useJoinChannel()
 
   const isSearching = searchQuery.trim().length > 0
 
@@ -398,14 +408,25 @@ export function WorkspaceSidebar({
               <p className="text-[10px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">
                 Channels
               </p>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 rounded-xl"
-                onClick={() => setShowCreateChannel(true)}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-xl"
+                  onClick={() => setShowDiscover(true)}
+                  title="Discover channels"
+                >
+                  <Compass className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-xl"
+                  onClick={() => setShowCreateChannel(true)}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
 
             <div className="space-y-1.5">
@@ -438,6 +459,11 @@ export function WorkspaceSidebar({
                     <span className="truncate text-[12px] font-medium text-foreground">
                       {channel.label}
                     </span>
+                    {channel.access_type === 'PRIVATE' ? (
+                      <Lock className="ml-auto h-3 w-3 flex-shrink-0 text-muted-foreground/60" />
+                    ) : (
+                      <Globe className="ml-auto h-3 w-3 flex-shrink-0 text-muted-foreground/40" />
+                    )}
                   </button>
                 )
               })}
@@ -560,6 +586,62 @@ export function WorkspaceSidebar({
         submitLabel="Create channel"
         onSubmit={onCreateChannel ?? (() => {})}
       />
+
+      <Sheet open={showDiscover} onOpenChange={setShowDiscover}>
+        <SheetContent side="left" className="w-[340px] p-0 sm:max-w-[340px]">
+          <SheetHeader className="border-b border-border px-4 py-3">
+            <SheetTitle className="flex items-center gap-2 text-[13px]">
+              <Compass className="h-4 w-4 text-primary" />
+              Discover Channels
+            </SheetTitle>
+          </SheetHeader>
+          <div className="flex flex-col gap-0 overflow-y-auto p-3">
+            {discoverLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              </div>
+            ) : discoverableChannels.length === 0 ? (
+              <div className="flex flex-col items-center py-12 text-center">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
+                  <Globe className="h-5 w-5 text-muted-foreground" />
+                </div>
+                <p className="text-[13px] font-semibold text-foreground">No public channels</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">You've joined all available channels.</p>
+              </div>
+            ) : (
+              discoverableChannels.map((ch) => (
+                <div
+                  key={ch.id}
+                  className="flex items-center gap-3 rounded-xl px-2 py-2.5 hover:bg-accent"
+                >
+                  <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500 via-cyan-500 to-blue-600 text-[10px] font-bold text-white">
+                    {(ch.name ?? '').slice(0, 2).toUpperCase() || 'CH'}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-semibold text-foreground">{ch.name}</p>
+                    {ch.description ? (
+                      <p className="truncate text-[11px] text-muted-foreground">{ch.description}</p>
+                    ) : null}
+                  </div>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await joinChannel.mutateAsync(ch.id)
+                        if (onSelectChannel) onSelectChannel(ch.id)
+                        setShowDiscover(false)
+                      } catch {}
+                    }}
+                    disabled={joinChannel.isPending}
+                    className="flex-shrink-0 rounded-xl bg-primary px-3 py-1.5 text-[11px] font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                  >
+                    Join
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
 
     </>
   )

@@ -8,7 +8,7 @@ async function getToken(): Promise<string> {
   return data.session?.access_token ?? '';
 }
 
-async function authedFetch(path: string, init: RequestInit = {}) {
+async function authedFetch<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
   const token = await getToken();
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -71,4 +71,6 @@ export const channelsApi = {
 
   joinChannel: (id: string) =>
     authedFetch(`/channels/${id}/join`, { method: 'POST' }),
+
+  discoverChannels: () => authedFetch<Channel[]>('/channels/discover'),
 };
