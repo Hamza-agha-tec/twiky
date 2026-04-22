@@ -185,6 +185,7 @@ function toWorkspaceChannel(
     bannerUrl: channel.banner_url ?? undefined,
     groups: groupsByChannel[channel.id] ?? base.groups,
     membersLabel: getChannelRoleLabel(channel.role),
+    type: channel.type,
   }
 }
 
@@ -416,16 +417,17 @@ export default function ChatPage() {
     return counts
   }, new Map<string, number>())
   const groupPosts: FeedPost[] = (rawMessages ?? []).map((msg: GroupMessage) => {
+    const isSystem = !msg.sender_id
     const replySource = msg.reply_to_id ? groupMessageById.get(msg.reply_to_id) : null
     const replyBody = replySource?.content?.trim()
       || (replySource?.file_url ? 'Attachment' : '')
 
     return {
       id: msg.id,
-      author: msg.sender?.username ?? 'Unknown',
+      author: isSystem ? 'System' : (msg.sender?.username ?? 'Unknown'),
       authorId: msg.sender_id,
-      authorAvatarUrl: msg.sender?.avatar_url ?? null,
-      role: groupMemberRoleByUserId.get(msg.sender_id) ?? 'Member',
+      authorAvatarUrl: isSystem ? null : (msg.sender?.avatar_url ?? null),
+      role: isSystem ? 'Automation' : (groupMemberRoleByUserId.get(msg.sender_id) ?? 'Member'),
       time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       body: msg.content,
       isOwn: msg.sender_id === profile?.id,
@@ -488,6 +490,12 @@ export default function ChatPage() {
       setActiveGroupId(channel.groups[0]?.id ?? '')
     }
   }, [activeChannelId, activeGroupId, workspaceChannels])
+
+  useEffect(() => {
+    if (activeChannel?.type === 'NORMAL' && channelTab !== 'feed') {
+      setChannelTab('feed')
+    }
+  }, [activeChannel?.id, activeChannel?.type, channelTab])
 
   useEffect(() => {
     const persisted = readPersistedChatState()
@@ -703,9 +711,9 @@ export default function ChatPage() {
     if (tab === 'goals') setActiveSurface('personal-goals')
   }
 
-  function handleCreateChannel(values: { description: string; name: string }) {
+  function handleCreateChannel(values: { description: string; name: string; type?: 'NORMAL' | 'WORKSPACE' }) {
     createChannel.mutate(
-      { name: values.name, description: values.description || undefined },
+      { name: values.name, description: values.description || undefined, type: values.type },
       {
         onSuccess: (channel) => {
           const nextChannel = toWorkspaceChannel(channel, workspaceChannels.length, channelGroupsById)

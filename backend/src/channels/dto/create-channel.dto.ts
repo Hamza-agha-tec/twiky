@@ -6,4 +6,5 @@ export class CreateChannelDto {
     avatar_url?: string;
     banner_url?: string;
     access_type?: ChannelAccess;
+    type?: 'NORMAL' | 'WORKSPACE';
 }

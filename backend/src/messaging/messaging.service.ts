@@ -269,4 +269,19 @@ export class MessagingService {
         if (error) throw new Error(`Failed to delete group message: ${error.message}`);
         return { success: true };
     }
+    async sendSystemMessage(groupId: string, content: string) {
+        const { data, error } = await this.supabaseService
+            .getClient()
+            .from('group_messages')
+            .insert({
+                group_id: groupId,
+                sender_id: null, // System message
+                content: content,
+            })
+            .select('*, sender:users!group_messages_sender_id_fkey(id, username, avatar_url)')
+            .single();
+
+        if (error) throw new Error(`Failed to send system message: ${error.message}`);
+        return data;
+    }
 }

@@ -64,6 +64,7 @@ export interface WorkspaceChannel {
   groups: MockChannelGroup[]
   avatarUrl?: string
   bannerUrl?: string
+  type: 'NORMAL' | 'WORKSPACE'
 }
 
 interface BuildChannelGroupInput {
@@ -84,6 +85,7 @@ interface BuildWorkspaceChannelInput {
   label: string
   description?: string
   index?: number
+  type?: 'NORMAL' | 'WORKSPACE'
 }
 
 interface ChannelsPanelProps {
@@ -167,6 +169,7 @@ export function buildWorkspaceChannel({
   label,
   description,
   index = 0,
+  type = 'NORMAL',
 }: BuildWorkspaceChannelInput): WorkspaceChannel {
   const membersLabel = MEMBER_LABELS[index % MEMBER_LABELS.length]
 
@@ -185,6 +188,7 @@ export function buildWorkspaceChannel({
         membersLabel,
       }),
     ],
+    type,
   }
 }
 
@@ -195,6 +199,7 @@ export const MOCK_WORKSPACE_CHANNELS: WorkspaceChannel[] = [
       label: 'Twiky Studio',
       description: 'Main studio channel for broadcast updates, planning, and team-wide discussion.',
       index: 0,
+      type: 'WORKSPACE',
     }),
     groups: [
       buildChannelGroup({
@@ -235,6 +240,7 @@ export const MOCK_WORKSPACE_CHANNELS: WorkspaceChannel[] = [
       label: 'Design Lab',
       description: 'Design channel for critiques, component polish, and implementation handoff.',
       index: 1,
+      type: 'NORMAL',
     }),
     groups: [
       buildChannelGroup({
@@ -274,6 +280,7 @@ export const MOCK_WORKSPACE_CHANNELS: WorkspaceChannel[] = [
       label: 'Game Room',
       description: 'Gameplay channel for the future room system, playtests, and progression ideas.',
       index: 2,
+      type: 'NORMAL',
     }),
     groups: [
       buildChannelGroup({

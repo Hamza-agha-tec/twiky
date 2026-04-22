@@ -1,13 +1,15 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.module';
 import { NotificationsService } from '../notifications/notifications.service';
-import { CreateInvitationDto, InvitationStatus } from './dto/invitation.dto';
+ import { CreateInvitationDto, InvitationStatus } from './dto/invitation.dto';
+import { GroupsService } from '../groups/groups.service';
 
 @Injectable()
 export class InvitationsService {
     constructor(
         private readonly supabaseService: SupabaseService,
         private readonly notificationsService: NotificationsService,
+        private readonly groupsService: GroupsService,
     ) { }
 
     async createInvitation(inviterId: string, dto: CreateInvitationDto) {
@@ -130,6 +132,8 @@ export class InvitationsService {
                     user_id: userId,
                     role: 'MEMBER'
                 });
+                
+                await this.groupsService.notifyMemberJoined(invitation.entity_id, userId);
             }
         } else if (invitation.entity_type === 'FOLLOW') {
             // MUTUAL FOLLOW: User A follows B AND User B follows A
@@ -167,6 +171,8 @@ export class InvitationsService {
                 user_id: userId,
                 role: 'MEMBER'
             });
+
+            await this.groupsService.notifyMemberJoined(generalGroup.id, userId);
         }
     }
 }
