@@ -1,13 +1,13 @@
 'use client'
 
-import { MessageSquareMore, Settings2, Store, UserPlus } from 'lucide-react'
+import { Bell, MessageSquareMore, Settings2, Store, UserPlus } from 'lucide-react'
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-export type ActiveView = 'chat' | 'settings' | 'store' | 'add-friends'
+export type ActiveView = 'chat' | 'settings' | 'store' | 'add-friends' | 'notifications'
 
 interface IconRailProps {
   activeView: ActiveView
@@ -15,13 +15,15 @@ interface IconRailProps {
   onAvatarClick: () => void
   userInitial?: string
   userAvatar?: string | null
+  notificationCount?: number
 }
 
 const NAV_ITEMS = [
-  { id: 'chat',         label: 'Chat',       icon: MessageSquareMore },
-  { id: 'add-friends',  label: 'Add Friends', icon: UserPlus },
-  { id: 'store',        label: 'Store',      icon: Store },
-  { id: 'settings',     label: 'Settings',   icon: Settings2 },
+  { id: 'chat',          label: 'Chat',          icon: MessageSquareMore },
+  { id: 'add-friends',   label: 'Add Friends',   icon: UserPlus },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
+  { id: 'store',         label: 'Store',         icon: Store },
+  { id: 'settings',      label: 'Settings',      icon: Settings2 },
 ] as const satisfies ReadonlyArray<{ id: ActiveView; label: string; icon: typeof MessageSquareMore }>
 
 export function IconRail({
@@ -30,6 +32,7 @@ export function IconRail({
   onAvatarClick,
   userInitial = 'Y',
   userAvatar,
+  notificationCount = 0,
 }: IconRailProps) {
   return (
     <TooltipProvider delayDuration={250}>
@@ -59,6 +62,11 @@ export function IconRail({
                       <span className="absolute left-0 top-1/2 h-7 w-1 -translate-y-1/2 rounded-r-full bg-primary" />
                     ) : null}
                     <Icon className="h-5 w-5" />
+                    {id === 'notifications' && notificationCount > 0 ? (
+                      <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-white">
+                        {notificationCount > 9 ? '9+' : notificationCount}
+                      </span>
+                    ) : null}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="right">{label}</TooltipContent>

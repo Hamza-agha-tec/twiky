@@ -6,6 +6,7 @@ import {
   type FollowingRecord,
   type UserPost,
   type UserProfile,
+  type UserSearchResult,
   userApi,
 } from '@/lib/user-api';
 
@@ -16,6 +17,7 @@ export const USER_KEYS = {
   followers: (userId: string) => ['user', userId, 'followers'] as const,
   following: (userId: string) => ['user', userId, 'following'] as const,
   posts: (userId: string) => ['user', userId, 'posts'] as const,
+  search: (q: string) => ['user', 'search', q] as const,
 };
 
 export function useProfile() {
@@ -71,6 +73,20 @@ export function useUserPosts(userId?: string) {
     queryKey: userId ? USER_KEYS.posts(userId) : ['user', 'posts', 'missing'],
     queryFn: () => userApi.getUserPosts(userId!),
     enabled: Boolean(userId),
+  });
+}
+
+export function useSearchUsers(query: string) {
+  return useQuery<UserSearchResult[]>({
+    queryKey: USER_KEYS.search(query),
+    queryFn: () => userApi.searchUsers(query),
+    enabled: query.trim().length > 0,
+  });
+}
+
+export function useSendFollowRequest() {
+  return useMutation({
+    mutationFn: (userId: string) => userApi.sendFollowRequest(userId),
   });
 }
 
