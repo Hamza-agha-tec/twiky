@@ -648,7 +648,7 @@ function GroupSettingsSheet({
   const existingMemberIds = new Set(existingMembers.filter((m) => m.user).map((m) => m.user.id))
   const memberSearchQuery = memberSearch.trim().toLowerCase()
   const searchedFollowers = memberSearchQuery
-    ? followers.filter((f) => f.users.username?.toLowerCase().includes(memberSearchQuery))
+    ? followers.filter((f) => f.users.username?.toLowerCase().startsWith(memberSearchQuery))
     : []
 
   useEffect(() => {
@@ -667,7 +667,7 @@ function GroupSettingsSheet({
       <SheetContent side="right" className="w-[360px] overflow-y-auto p-0 sm:max-w-[360px]">
         <SheetHeader className="border-b border-border px-4 py-3">
           <SheetTitle className="text-[13px]">Group Settings</SheetTitle>
-        </SheetHeader>
+        </SheetHeader>  
 
         <div className="divide-y divide-border">
           {/* General */}
