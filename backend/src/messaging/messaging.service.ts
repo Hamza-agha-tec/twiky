@@ -1,10 +1,12 @@
-import { Injectable, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, ForbiddenException, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.module';
 import { StartDirectConversationDto, SendDirectMessageDto } from './dto/direct-messaging.dto';
 import { SendGroupMessageDto } from './dto/group-messaging.dto';
 
 @Injectable()
 export class MessagingService {
+    private readonly logger = new Logger(MessagingService.name);
+
     constructor(private supabaseService: SupabaseService) {}
 
     // ==========================================
@@ -172,6 +174,62 @@ export class MessagingService {
     // GROUP MESSAGING
     // ==========================================
 
+    private async createMentionNotification(recipientId: string, actorId: string, messageId: string) {
+        if (recipientId === actorId) return;
+
+        const { error } = await this.supabaseService
+            .getClient()
+            .from('notifications')
+            .insert({
+                recipient_id: recipientId,
+                actor_id: actorId,
+                type: 'MENTION',
+                entity_id: messageId,
+                entity_type: 'group_message',
+                metadata: {},
+            });
+
+        if (error) {
+            this.logger.warn(`Failed to create mention notification: ${error.message}`);
+        }
+    }
+
+    private async notifyMentionRecipients(userId: string, groupId: string, messageId: string, dto: SendGroupMessageDto) {
+        const mentions = dto.entityMentions ?? [];
+        if (mentions.length === 0) return;
+
+        const hasAllMention = mentions.some((mention) => mention.type === 'all');
+        const userMentionIds = mentions
+            .filter((mention) => mention.type === 'user')
+            .map((mention) => mention.entityId);
+
+        if (!hasAllMention && userMentionIds.length === 0) return;
+
+        const { data: groupMembers, error } = await this.supabaseService
+            .getClient()
+            .from('group_members')
+            .select('user_id')
+            .eq('group_id', groupId);
+
+        if (error) {
+            this.logger.warn(`Failed to fetch group members for mention notifications: ${error.message}`);
+            return;
+        }
+
+        const memberIds = new Set((groupMembers ?? []).map((member) => member.user_id));
+        const recipientIds = hasAllMention
+            ? memberIds
+            : new Set(userMentionIds.filter((recipientId) => memberIds.has(recipientId)));
+
+        recipientIds.delete(userId);
+
+        await Promise.all(
+            Array.from(recipientIds).map((recipientId) =>
+                this.createMentionNotification(recipientId, userId, messageId),
+            ),
+        );
+    }
+
     async sendGroupMessage(userId: string, groupId: string, dto: SendGroupMessageDto) {
         // Verify user is in the group_members table
         const { data: member } = await this.supabaseService
@@ -186,6 +244,20 @@ export class MessagingService {
             throw new ForbiddenException("You are not a member of this group.");
         }
 
+        const userOrAllMentions = dto.entityMentions?.filter((mention) => mention.type === 'user' || mention.type === 'all') ?? [];
+        let groupMemberIds: Set<string> | null = null;
+
+        if (userOrAllMentions.length > 0) {
+            const { data: groupMembers, error } = await this.supabaseService
+                .getClient()
+                .from('group_members')
+                .select('user_id')
+                .eq('group_id', groupId);
+
+            if (error) throw new Error(`Failed to verify group mentions: ${error.message}`);
+            groupMemberIds = new Set((groupMembers ?? []).map((groupMember) => groupMember.user_id));
+        }
+
         // Entity Mentions Validation
         if (dto.entityMentions && dto.entityMentions.length > 0) {
             for (const mention of dto.entityMentions) {
@@ -198,6 +270,16 @@ export class MessagingService {
                 } else if (mention.type === 'goal') {
                     const { data: goal } = await this.supabaseService.getClient().from('goals').select('*').eq('id', mention.entityId).single();
                     if (!goal || goal.group_id !== groupId) throw new BadRequestException(`Goal not found in this group`);
+                } else if (mention.type === 'user') {
+                    if (!groupMemberIds?.has(mention.entityId)) {
+                        throw new BadRequestException(`Mentioned user is not in this group`);
+                    }
+                } else if (mention.type === 'all') {
+                    if (mention.entityId !== groupId) {
+                        throw new BadRequestException(`Invalid @all mention target`);
+                    }
+                } else {
+                    throw new BadRequestException(`Unsupported mention type`);
                 }
             }
         }
@@ -217,6 +299,7 @@ export class MessagingService {
             .single();
 
         if (error) throw new Error(`Failed to send group message: ${error.message}`);
+        await this.notifyMentionRecipients(userId, groupId, data.id, dto);
         return data;
     }
 

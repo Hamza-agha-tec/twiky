@@ -12,7 +12,6 @@ import { format } from 'date-fns';
 import { ChatMessage } from '@/hooks/use-messaging';
 import { useProfile } from '@/hooks/use-user';
 import { useChatThemeContext } from '@/context/ChatThemeContext';
-import { getMockUserAvatar } from '@/lib/mock-users';
 
 interface ChatWindowProps {
   activeChat: string;
@@ -38,9 +37,6 @@ interface ReplyTo {
   content: string;
 }
 
-function buildFallbackAvatar(name: string) {
-  return getMockUserAvatar(name);
-}
 
 function getDisabledConversationMetadata(): { is_group: boolean; participants: unknown[] } | null {
   return null;
@@ -102,8 +98,7 @@ export function ChatWindow({ chatOverride, messages: providedMessages = [], onSe
 
 
   const chatName = chatOverride?.name ?? 'Chat';
-  const chatAvatar = chatOverride?.avatarUrl ?? undefined;
-  const resolvedChatAvatar = chatAvatar || buildFallbackAvatar(chatName);
+  const resolvedChatAvatar = chatOverride?.avatarUrl ?? undefined;
   const initials = chatName
     .split(' ')
     .map((word: string) => word[0])

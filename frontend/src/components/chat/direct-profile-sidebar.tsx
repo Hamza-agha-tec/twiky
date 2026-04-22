@@ -5,8 +5,6 @@ import {
   buildStandaloneFeedMemberProfile,
   type FeedPost,
 } from '@/components/chat/channel-feed'
-import { getMockUserAvatar } from '@/lib/mock-users'
-
 interface DirectProfileSidebarProps {
   activeChat: string
   chatOverride?: {
@@ -20,9 +18,7 @@ interface DirectProfileSidebarProps {
 
 export function DirectProfileSidebar({ activeChat, chatOverride, onClose }: DirectProfileSidebarProps) {
   const name = chatOverride?.name ?? 'Direct chat'
-  const avatar =
-    chatOverride?.avatarUrl ??
-    getMockUserAvatar(name)
+  const avatar = chatOverride?.avatarUrl ?? null
   const memberProfile = buildStandaloneFeedMemberProfile({
     avatarUrl: avatar,
     handle: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),

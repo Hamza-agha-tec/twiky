@@ -55,6 +55,7 @@ export interface MockChannelGroup {
   pinnedMessage: string
   unreadCount?: number
   hasUnread?: boolean
+  hasMention?: boolean
 }
 
 export interface WorkspaceChannel {
@@ -991,12 +992,15 @@ export function ChannelsPanel({
                           Default
                         </span>
                       ) : null}
-                      {group.unreadCount ? (
+                      {group.hasMention ? (
+                        <span className="ml-auto flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-primary text-[9px] font-black text-primary-foreground">
+                          @
+                        </span>
+                      ) : group.unreadCount ? (
                         <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-bold text-primary-foreground">
                           {group.unreadCount}
                         </span>
-                      ) : null}
-                      {!group.unreadCount && group.hasUnread ? (
+                      ) : group.hasUnread ? (
                         <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary" />
                       ) : null}
                     </div>

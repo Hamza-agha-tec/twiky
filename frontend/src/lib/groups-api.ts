@@ -56,6 +56,11 @@ export interface GroupMessage {
   sender?: { id: string; username: string | null; avatar_url: string | null };
 }
 
+export interface GroupMessageMention {
+  type: 'user' | 'all' | 'task' | 'note' | 'goal';
+  entityId: string;
+}
+
 export const groupsApi = {
   getChannelGroups: (channelId: string) =>
     authedFetch<BackendGroup[]>(`/channels/${channelId}/groups`),
@@ -78,7 +83,7 @@ export const groupsApi = {
   getGroupMessages: (groupId: string) =>
     authedFetch<GroupMessage[]>(`/groups/${groupId}/messages`),
 
-  sendGroupMessage: (groupId: string, data: { content: string; fileUrl?: string; replyToId?: string | null }) =>
+  sendGroupMessage: (groupId: string, data: { content: string; fileUrl?: string; replyToId?: string | null; entityMentions?: GroupMessageMention[] }) =>
     authedFetch<GroupMessage>(`/groups/${groupId}/messages`, {
       method: 'POST',
       body: JSON.stringify(data),

@@ -7,6 +7,7 @@ import {
   MouseEvent,
   ReactNode,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -30,6 +31,7 @@ import {
   Trash2,
   UserCheck,
   UserPlus,
+  Users,
   X,
 } from 'lucide-react'
 
@@ -42,7 +44,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { type ChatMessage } from '@/hooks/use-messaging'
 import { useProfile, useSendFollowRequest, useUserById, useUserFollowers, useUserFollowing, useUserPosts } from '@/hooks/use-user'
 import { filesApi } from '@/lib/files-api'
-import { getMockUserAvatar, getMockUserBanner } from '@/lib/mock-users'
+import type { GroupMember, GroupMessageMention } from '@/lib/groups-api'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -66,6 +68,20 @@ interface FeedReaction {
   emoji: string
   count: number
   mine: boolean
+}
+
+interface MentionOption {
+  avatarUrl?: string | null
+  entityId: string
+  label: string
+  role?: string
+  type: 'user' | 'all'
+}
+
+interface MentionQuery {
+  end: number
+  query: string
+  start: number
 }
 
 export interface FeedPost {
@@ -261,6 +277,37 @@ function normalizePersonName(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
+function normalizeMentionName(value: string) {
+  return value.trim().replace(/^@+/, '').toLowerCase()
+}
+
+function getMentionQuery(value: string, cursor: number): MentionQuery | null {
+  const beforeCursor = value.slice(0, cursor)
+  const match = beforeCursor.match(/(?:^|\s)@([a-zA-Z0-9_.-]*)$/)
+  if (!match) return null
+
+  return {
+    end: cursor,
+    query: match[1].toLowerCase(),
+    start: cursor - match[1].length - 1,
+  }
+}
+
+function extractMentionTargets(content: string, options: MentionOption[]): GroupMessageMention[] {
+  const optionByLabel = new Map(options.map((option) => [normalizeMentionName(option.label), option]))
+  const mentions = new Map<string, GroupMessageMention>()
+
+  for (const match of content.matchAll(/(?:^|\s)@([a-zA-Z0-9_.-]+)/g)) {
+    const option = optionByLabel.get(normalizeMentionName(match[1]))
+    if (!option) continue
+
+    const mention = { type: option.type, entityId: option.entityId }
+    mentions.set(`${mention.type}:${mention.entityId}`, mention)
+  }
+
+  return Array.from(mentions.values())
+}
+
 function buildFeedMemberProfile(post: FeedPost, avatarUrl: string | null, handle?: string | null, id?: string): FeedMemberProfile {
   const defaults = FEED_MEMBER_PROFILES[post.author] ?? {
     accent: 'from-slate-500 via-slate-700 to-slate-900',
@@ -364,53 +411,12 @@ function createFeedArtwork({ title, subtitle, variant }: { title: string; subtit
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
 }
 
-function createMockProfileBanner(memberProfile: FeedMemberProfile) {
-  return getMockUserBanner(memberProfile.name)
-}
-
-function createMockProfileAvatar(memberProfile: FeedMemberProfile) {
-  return getMockUserAvatar(memberProfile.name)
-}
-
 const FEED_MEDIA_LIBRARY = {
   releaseBoard: { alt: 'Studio release board', label: 'Release board', src: createFeedArtwork({ title: 'Release Sync', subtitle: 'Launch blockers and final checklist', variant: 'studio' }) },
   roomFrame:    { alt: 'Pixel room frame',     label: 'Pixel room',    src: createFeedArtwork({ title: 'Profile Room Frame', subtitle: 'Reserved shell for game mode', variant: 'room' }) },
   uiCritique:   { alt: 'UI critique board',    label: 'UI critique',   src: createFeedArtwork({ title: 'Compact Shell Review', subtitle: 'Tighter profile, settings, and feed', variant: 'board' }) },
 } satisfies Record<string, FeedMedia>
 
-const FEED_BY_GROUP: Record<string, FeedPost[]> = {
-  'twiky-studio-general': [
-    { id: 'tsg-1', author: 'Amina', role: 'Studio Lead', time: '10:14', body: 'Use this default group for broad studio updates. Once the topic gets focused enough, split it into its own group.', pinned: true, reactions: [{ emoji: '👍', count: 12, mine: false }, { emoji: '🔥', count: 6, mine: true }], replyCount: 6, tags: ['Priority'] },
-    { id: 'tsg-2', author: 'Release Bot', role: 'Automation', time: '09:03', body: 'Frontend build is green. Remaining warnings are tied to legacy Next config and deprecated middleware naming.', reactions: [{ emoji: '✅', count: 8, mine: false }], replyCount: 2 },
-    { id: 'tsg-3', author: 'Amina', role: 'Studio Lead', time: '09:45', body: 'Great, let\'s proceed with the deployment. QA sign-off is confirmed.', reactions: [], replyCount: 0 },
-  ],
-  'twiky-studio-announcements': [
-    { id: 'tsa-1', author: 'Amina', role: 'Studio Lead', time: '11:02', body: 'Navigation polish is approved. Keep the shell compact, sidebars collapsible, and channel hierarchy clear.', pinned: true, reactions: [{ emoji: '🎉', count: 14, mine: false }, { emoji: '❤️', count: 9, mine: true }], replyCount: 9, media: [FEED_MEDIA_LIBRARY.releaseBoard], tags: ['Announcement'] },
-  ],
-  'twiky-studio-release-sync': [
-    { id: 'tsr-1', author: 'Zakaria', role: 'Release Manager', time: '12:20', body: 'QA is using this group for launch blockers, final signoff, and scope calls.', pinned: true, reactions: [{ emoji: '💪', count: 7, mine: false }], replyCount: 4, media: [FEED_MEDIA_LIBRARY.releaseBoard] },
-  ],
-  'design-lab-general': [
-    { id: 'dlg-1', author: 'Sara', role: 'Design', time: '10:48', body: 'Default design group. Broad review items land here first, then move to narrower groups.', pinned: true, reactions: [{ emoji: '👍', count: 11, mine: false }], replyCount: 3 },
-  ],
-  'design-lab-ui-critique': [
-    { id: 'dlu-1', author: 'Sara', role: 'Design', time: '13:08', body: 'Profile and settings should feel lighter: smaller typography, tighter cards, less empty space so the app reads faster.', pinned: true, reactions: [{ emoji: '🔥', count: 11, mine: true }, { emoji: '💯', count: 8, mine: false }], replyCount: 7, media: [FEED_MEDIA_LIBRARY.uiCritique], tags: ['Critique'] },
-    { id: 'dlu-2', author: 'Nora', role: 'UX', time: 'Yesterday', body: 'Channel feeds should feel broadcast-first, not like DMs. Layout should look like updates and threads, not chat bubbles.', reactions: [{ emoji: '👀', count: 9, mine: false }, { emoji: '❤️', count: 4, mine: false }], replyCount: 4 },
-    { id: 'dlu-3', author: 'Sara', role: 'Design', time: 'Yesterday', body: 'Agreed. Let\'s look at Discord\'s approach and adapt it.', reactions: [{ emoji: '👍', count: 5, mine: false }], replyCount: 0, replyTo: { author: 'Nora', body: 'Channel feeds should feel broadcast-first...' } },
-  ],
-  'design-lab-frontend-sync': [
-    { id: 'dlf-1', author: 'Omar', role: 'Frontend', time: '08:44', body: 'Direct messages now own the chat window. Channel mode is feed-first, left rail can collapse.', pinned: true, reactions: [{ emoji: '✅', count: 10, mine: false }, { emoji: '🚀', count: 4, mine: false }], replyCount: 5, media: [FEED_MEDIA_LIBRARY.uiCritique] },
-  ],
-  'game-room-general': [
-    { id: 'grg-1', author: 'Rayan', role: 'Game Design', time: '09:20', body: 'This default game group tracks major gameplay direction, profile room plans, and system-level ideas.', pinned: true, reactions: [{ emoji: '🎯', count: 10, mine: false }], replyCount: 2 },
-  ],
-  'game-room-showroom': [
-    { id: 'grs-1', author: 'Rayan', role: 'Game Design', time: '09:51', body: 'Each profile should expose a personal room with trophies and an interaction layer. Shell is enough for now.', pinned: true, reactions: [{ emoji: '⭐', count: 17, mine: true }, { emoji: '🔥', count: 8, mine: false }], replyCount: 8, media: [FEED_MEDIA_LIBRARY.roomFrame], tags: ['Showroom'] },
-  ],
-  'game-room-playtests': [
-    { id: 'grp-1', author: 'Studio Bot', role: 'Voice', time: 'Now', body: 'Playtest voice room is open. Join for quick syncs, then summarize results back into the group feed.', pinned: true, reactions: [{ emoji: '👋', count: 4, mine: false }], replyCount: 1 },
-  ],
-}
 
 function buildFallbackPosts(channel: WorkspaceChannel, group: MockChannelGroup): FeedPost[] {
   return [{
@@ -578,10 +584,9 @@ function MessageRow({
 
   const roleColor = ROLE_COLORS[post.role] ?? 'text-primary'
   const initial = post.author[0].toUpperCase()
-  const fallbackAvatar = createMockProfileAvatar(resolvedProfile)
   const displayAvatar = post.isOwn
-    ? (authorAvatarUrl ?? myAvatarUrl ?? resolvedProfile.avatarUrl ?? fallbackAvatar)
-    : (authorAvatarUrl ?? resolvedProfile.avatarUrl ?? fallbackAvatar)
+    ? (authorAvatarUrl ?? myAvatarUrl ?? resolvedProfile.avatarUrl ?? null)
+    : (authorAvatarUrl ?? resolvedProfile.avatarUrl ?? null)
 
   function handleMessageClick() {
     onMessageAuthor()
@@ -947,14 +952,10 @@ export function FeedMemberProfileView({
     posts: memberProfile.id ? backendPosts.length : memberProfile.posts,
   }
 
-  const bannerImage = realUser?.banner ?? createMockProfileBanner(resolvedProfile)
-  const avatarImage = resolvedProfile.avatarUrl ?? createMockProfileAvatar(resolvedProfile)
+  const bannerImage = realUser?.banner ?? null
+  const avatarImage = resolvedProfile.avatarUrl ?? null
 
-  const allFeedPosts = Object.values(FEED_BY_GROUP).flat()
-  const memberPosts = allFeedPosts.filter((p) => p.author === resolvedProfile.name)
-  const fallbackPosts = memberPosts.length > 0
-    ? memberPosts.slice(0, 3)
-    : posts.length > 0 ? posts.slice(0, 3) : allFeedPosts.slice(0, 2)
+  const fallbackPosts = posts.slice(0, 3)
   const profilePosts = memberProfile.id
     ? backendPosts.map((post) => ({
         id: post.id,
@@ -1003,8 +1004,10 @@ export function FeedMemberProfileView({
     <div className="flex flex-1 flex-col overflow-y-auto bg-background text-foreground">
       {/* Banner */}
       <div className="relative h-[118px] flex-shrink-0 overflow-hidden">
-        <img src={bannerImage} alt="" className="h-full w-full object-cover" />
-        {!realUser?.banner && <div className={cn('absolute inset-0 bg-gradient-to-br opacity-45', resolvedProfile.accent)} />}
+        {bannerImage
+          ? <img src={bannerImage} alt="" className="h-full w-full object-cover" />
+          : <div className={cn('absolute inset-0 bg-gradient-to-br', resolvedProfile.accent)} />
+        }
         <div className="absolute inset-0 bg-gradient-to-b from-black/10 to-black/70" />
         <button
           type="button"
@@ -1338,6 +1341,7 @@ function FeedProfileRow({
   post,
   isGrouped,
   myAvatarUrl,
+  isMentioned,
   onReact,
   onReply,
   onPin,
@@ -1350,6 +1354,7 @@ function FeedProfileRow({
   post: FeedPost
   isGrouped: boolean
   myAvatarUrl?: string | null
+  isMentioned?: boolean
   onReact: (emoji: string) => void
   onReply: () => void
   onPin: () => void
@@ -1357,16 +1362,16 @@ function FeedProfileRow({
   onContextMenu: (e: MouseEvent) => void
 }) {
   const roleColor = ROLE_COLORS[post.role] ?? 'text-primary'
-  const fallbackAvatar = createMockProfileAvatar(memberProfile)
   const displayAvatar = post.isOwn
-    ? (authorAvatarUrl ?? myAvatarUrl ?? memberProfile.avatarUrl ?? fallbackAvatar)
-    : (authorAvatarUrl ?? memberProfile.avatarUrl ?? fallbackAvatar)
+    ? (authorAvatarUrl ?? myAvatarUrl ?? memberProfile.avatarUrl ?? null)
+    : (authorAvatarUrl ?? memberProfile.avatarUrl ?? null)
 
   return (
     <div
       className={cn(
         'group relative flex gap-3 px-4 transition-colors hover:bg-accent/20',
         isGrouped ? 'py-0.5' : 'mt-4 pt-1 pb-0.5',
+        isMentioned && 'bg-amber-500/10 border-l-2 border-amber-400',
       )}
       onContextMenu={onContextMenu}
     >
@@ -1514,6 +1519,7 @@ function FeedProfileRow({
 export function ChannelFeed({
   channel,
   group,
+  members = [],
   myAvatarUrl,
   postsOverride,
   onSendPost,
@@ -1525,22 +1531,25 @@ export function ChannelFeed({
 }: {
   channel: WorkspaceChannel
   group: MockChannelGroup
+  members?: GroupMember[]
   myAvatarUrl?: string | null
   postsOverride?: FeedPost[]
-  onSendPost?: (input: { content: string; fileUrl?: string; replyToId?: string }) => Promise<void>
+  onSendPost?: (input: { content: string; fileUrl?: string; replyToId?: string; entityMentions?: GroupMessageMention[] }) => Promise<void>
   sendingPost?: boolean
   onOpenDirectConversation?: (conversation: string | FeedDirectConversationTarget) => void
   onProfilePanelWidthChange?: (width: number) => void
   onProfileSidebarContentChange?: (content: ReactNode | null) => void
   onProfileCloseRequestChange?: (closeFn: (() => void) | null) => void
 }) {
-  const [postsByGroup, setPostsByGroup] = useState<Record<string, FeedPost[]>>({ ...FEED_BY_GROUP })
+  const [postsByGroup, setPostsByGroup] = useState<Record<string, FeedPost[]>>({})
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [draftImages, setDraftImages] = useState<Record<string, string>>({})
   const [draftAttachments, setDraftAttachments] = useState<Record<string, FeedMedia>>({})
   const [replyingTo, setReplyingTo] = useState<FeedPost | null>(null)
   const [contextMenu, setContextMenu] = useState<{ postId: string; x: number; y: number } | null>(null)
   const [selectedProfile, setSelectedProfile] = useState<FeedProfileSelection | null>(null)
+  const [mentionCursorByGroup, setMentionCursorByGroup] = useState<Record<string, number>>({})
+  const [activeMentionIndex, setActiveMentionIndex] = useState(0)
 
   const { data: profile } = useProfile()
 
@@ -1556,6 +1565,7 @@ export function ChannelFeed({
 
   const posts = postsByGroup[group.id] ?? postsOverride ?? buildFallbackPosts(channel, group)
   const draft = drafts[group.id] ?? ''
+  const mentionCursor = mentionCursorByGroup[group.id] ?? draft.length
   const draftImage = draftImages[group.id]
   const draftAttachment = draftAttachments[group.id]
   const selectedPost = contextMenu ? posts.find((p) => p.id === contextMenu.postId) ?? null : null
@@ -1567,6 +1577,39 @@ export function ChannelFeed({
         .slice()
         .reverse()
     : []
+  const mentionOptions = useMemo<MentionOption[]>(() => {
+    const seen = new Set<string>()
+    const userOptions = members
+      .filter((member) => member.user?.id)
+      .map((member) => {
+        const label = member.user.username?.trim() || `user-${member.user.id.slice(0, 8)}`
+        return {
+          avatarUrl: member.user.avatar_url,
+          entityId: member.user.id,
+          label,
+          role: member.role,
+          type: 'user' as const,
+        }
+      })
+      .filter((option) => {
+        const key = normalizeMentionName(option.label)
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+
+    return [
+      { entityId: group.id, label: 'all', role: `${members.length} members`, type: 'all' as const },
+      ...userOptions,
+    ]
+  }, [group.id, members])
+  const mentionQuery = getMentionQuery(draft, mentionCursor)
+  const filteredMentionOptions = mentionQuery
+    ? mentionOptions
+        .filter((option) => normalizeMentionName(option.label).includes(mentionQuery.query))
+        .slice(0, 8)
+    : []
+  const showMentionMenu = !!mentionQuery && filteredMentionOptions.length > 0
 
   useEffect(() => {
     return () => {
@@ -1583,6 +1626,10 @@ export function ChannelFeed({
     if (!postsOverride) return
     setPostsByGroup((prev) => ({ ...prev, [group.id]: postsOverride }))
   }, [group.id, postsOverride])
+
+  useEffect(() => {
+    setActiveMentionIndex(0)
+  }, [group.id, mentionQuery?.query])
 
   useEffect(() => {
     onProfilePanelWidthChange?.(profilePanelWidth)
@@ -1645,7 +1692,7 @@ export function ChannelFeed({
       canMessage: true,
       profile: buildFeedMemberProfile(
         post,
-        post.authorAvatarUrl ?? createMockProfileAvatar(buildFeedMemberProfile(post, null)),
+        post.authorAvatarUrl ?? null,
         undefined,
         post.authorId,
       ),
@@ -1696,6 +1743,31 @@ export function ChannelFeed({
 
   function setDraft(value: string) {
     setDrafts((prev) => ({ ...prev, [group.id]: value }))
+  }
+
+  function setMentionCursor(cursor: number) {
+    setMentionCursorByGroup((prev) => ({ ...prev, [group.id]: cursor }))
+  }
+
+  function syncMentionCursor() {
+    setMentionCursor(textareaRef.current?.selectionStart ?? draft.length)
+  }
+
+  function insertMention(option: MentionOption) {
+    if (!mentionQuery) return
+
+    const insertion = `@${option.label} `
+    const next = `${draft.slice(0, mentionQuery.start)}${insertion}${draft.slice(mentionQuery.end)}`
+    const nextCursor = mentionQuery.start + insertion.length
+
+    setDraft(next)
+    setMentionCursor(nextCursor)
+    setActiveMentionIndex(0)
+
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus()
+      textareaRef.current?.setSelectionRange(nextCursor, nextCursor)
+    })
   }
 
   function setDraftImage(url?: string) {
@@ -1769,6 +1841,7 @@ export function ChannelFeed({
 
     if (onSendPost) {
       if (!hasQueuedFile && !body) return
+      const entityMentions = extractMentionTargets(body, mentionOptions)
       setPostUploading(true)
       try {
         let fileUrl: string | undefined
@@ -1781,10 +1854,12 @@ export function ChannelFeed({
         }
         await onSendPost({
           content: body,
+          entityMentions,
           fileUrl,
           replyToId: replyingTo?.id,
         })
         setDraft('')
+        setMentionCursor(0)
         clearQueuedImage()
         clearQueuedGeneric()
         setReplyingTo(null)
@@ -1824,12 +1899,38 @@ export function ChannelFeed({
       return [...nextCurrent, post]
     })
     setDraft('')
+    setMentionCursor(0)
     setDraftImage(undefined)
     setAttachment(undefined)
     setReplyingTo(null)
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (showMentionMenu) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setActiveMentionIndex((current) => (current + 1) % filteredMentionOptions.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setActiveMentionIndex((current) => (
+          current - 1 + filteredMentionOptions.length
+        ) % filteredMentionOptions.length)
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        insertMention(filteredMentionOptions[activeMentionIndex] ?? filteredMentionOptions[0])
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setMentionCursor(0)
+        return
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       void sendDraft()
@@ -1908,6 +2009,11 @@ export function ChannelFeed({
             const isSystem = post.isSystem || (post.author === 'System' && post.role === 'Automation')
             const isGrouped = !!prevPost && !isSystem && !prevPost.isSystem && prevPost.author === post.author
             const authorContext = getAuthorContext(post)
+            const myUsername = profile?.username
+            const isMentioned = !post.isOwn && !!myUsername && !!post.body && (
+              post.body.toLowerCase().includes(`@${myUsername.toLowerCase()}`) ||
+              /(?:^|\s)@all\b/i.test(post.body)
+            )
 
             if (isSystem) {
               return <SystemFeedRow key={post.id} post={post} />
@@ -1929,6 +2035,7 @@ export function ChannelFeed({
                 post={post}
                 isGrouped={isGrouped}
                 myAvatarUrl={myAvatarUrl}
+                isMentioned={isMentioned}
                 onReact={(emoji) => handleReact(post.id, emoji)}
                 onReply={() => {
                   setReplyingTo(post)
@@ -1946,7 +2053,7 @@ export function ChannelFeed({
       {/* Composer */}
       <div className="flex-shrink-0 border-t border-border bg-background px-4 py-3">
         <div className="mx-auto max-w-4xl">
-          <div className="overflow-hidden rounded-xl border border-border bg-sidebar/60 focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/20 transition-all">
+          <div className="relative rounded-xl border border-border bg-sidebar/60 focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/20 transition-all">
             {/* Reply bar */}
             {replyingTo ? (
               <div className="flex items-center gap-2 border-b border-border/60 bg-background/40 px-3 py-1.5">
@@ -2053,15 +2160,67 @@ export function ChannelFeed({
               </div>
 
               {/* Text input */}
-              <Textarea
-                ref={textareaRef}
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={`Message ${group.kind === 'voice' ? group.label : `#${group.label}`}`}
-                rows={1}
-                className="max-h-40 min-h-[36px] flex-1 resize-none border-0 bg-transparent px-2 py-2 text-[13px] leading-[1.5] shadow-none focus-visible:ring-0"
-              />
+              <div className="relative flex-1">
+                {showMentionMenu ? (
+                  <div className="absolute bottom-full left-0 z-30 mb-2 w-[min(22rem,calc(100vw-4rem))] overflow-hidden rounded-xl border border-border bg-popover p-1 shadow-xl">
+                    {filteredMentionOptions.map((option, index) => {
+                      const isActive = index === activeMentionIndex
+                      const initials = option.label.slice(0, 2).toUpperCase()
+                      return (
+                        <button
+                          key={`${option.type}:${option.entityId}`}
+                          type="button"
+                          onMouseDown={(event) => {
+                            event.preventDefault()
+                            insertMention(option)
+                          }}
+                          className={cn(
+                            'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors',
+                            isActive ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/70',
+                          )}
+                        >
+                          {option.type === 'all' ? (
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                              <Users className="h-4 w-4" />
+                            </span>
+                          ) : (
+                            <Avatar className="h-8 w-8 shrink-0 rounded-lg">
+                              <AvatarImage src={option.avatarUrl ?? undefined} alt={option.label} />
+                              <AvatarFallback className="rounded-lg text-[11px]">{initials}</AvatarFallback>
+                            </Avatar>
+                          )}
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[13px] font-semibold">@{option.label}</span>
+                            <span className="block truncate text-[11px] text-muted-foreground">
+                              {option.type === 'all' ? 'Notify everyone in this group' : option.role ?? 'Member'}
+                            </span>
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : null}
+                <Textarea
+                  ref={textareaRef}
+                  value={draft}
+                  onChange={(e) => {
+                    setDraft(e.target.value)
+                    setMentionCursor(e.target.selectionStart ?? e.target.value.length)
+                  }}
+                  onBlur={() => {
+                    window.setTimeout(() => setMentionCursor(0), 100)
+                  }}
+                  onClick={syncMentionCursor}
+                  onKeyDown={handleKeyDown}
+                  onKeyUp={(event) => {
+                    if (event.key !== 'Escape') syncMentionCursor()
+                  }}
+                  onSelect={syncMentionCursor}
+                  placeholder={`Message ${group.kind === 'voice' ? group.label : `#${group.label}`}`}
+                  rows={1}
+                  className="max-h-40 min-h-[36px] w-full resize-none border-0 bg-transparent px-2 py-2 text-[13px] leading-[1.5] shadow-none focus-visible:ring-0"
+                />
+              </div>
 
               {/* Right actions */}
               <div className="flex items-center gap-0.5">

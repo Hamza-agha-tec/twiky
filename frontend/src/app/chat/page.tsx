@@ -339,7 +339,8 @@ function NotificationsView() {
   const markAllAsRead = useMarkAllAsRead()
   const respondToInvitation = useRespondToInvitation()
 
-  const unreadCount = notifications.filter((n) => !n.is_read).length
+  const nonMentionNotifications = notifications.filter((n) => n.type !== 'MENTION')
+  const unreadCount = nonMentionNotifications.filter((n) => !n.is_read).length
   const followInvitations = invitations.filter((inv) => inv.entity_type === 'FOLLOW')
   const groupInvitations = invitations.filter((inv) => inv.entity_type === 'GROUP')
   const channelInvitations = invitations.filter((inv) => inv.entity_type === 'CHANNEL')
@@ -360,6 +361,7 @@ function NotificationsView() {
       case 'INVITATION_ACCEPTED': return 'accepted your invitation'
       case 'INVITATION_REJECTED': return 'declined your invitation'
       case 'LIKE': return 'liked your post'
+      case 'MENTION': return 'mentioned you'
       default: return type.toLowerCase().replace(/_/g, ' ')
     }
   }
@@ -524,7 +526,7 @@ function NotificationsView() {
             <div className="flex items-center justify-center py-12">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             </div>
-          ) : notifications.length === 0 ? (
+          ) : nonMentionNotifications.length === 0 ? (
             <div className="flex flex-col items-center py-12 text-center">
               <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-muted">
                 <Bell className="h-7 w-7 text-muted-foreground" />
@@ -534,7 +536,7 @@ function NotificationsView() {
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              {notifications.map((notif) => (
+              {nonMentionNotifications.map((notif) => (
                 <button
                   key={notif.id}
                   onClick={() => { if (!notif.is_read) markAsRead.mutate(notif.id) }}
@@ -650,7 +652,7 @@ export default function ChatPage() {
   const queryClient = useQueryClient()
   const { data: profile } = useProfile()
   const { data: allNotifications = [] } = useNotifications()
-  const unreadNotificationCount = allNotifications.filter((n) => !n.is_read).length
+  const unreadNotificationCount = allNotifications.filter((n) => !n.is_read && n.type !== 'MENTION').length
   const { data: backendChannels = [] } = useChannels()
   const createChannel = useCreateChannel()
   const updateChannel = useUpdateChannel()
@@ -700,12 +702,36 @@ export default function ChatPage() {
   })
   const activeSyntheticChat = activeDirectChat ? (syntheticDirectChats[activeDirectChat] ?? null) : null
 
+  const mentionedGroupIds = useMemo(
+    () => new Set(
+      allNotifications
+        .filter((n) => !n.is_read && n.type === 'MENTION')
+        .flatMap((n) => {
+          const candidates: string[] = []
+          if (typeof n.metadata?.group_id === 'string') candidates.push(n.metadata.group_id)
+          if (typeof n.metadata?.channel_group_id === 'string') candidates.push(n.metadata.channel_group_id)
+          if (n.entity_type?.toLowerCase().includes('group')) candidates.push(n.entity_id)
+          // fallback: entity_id itself might be the group UUID
+          if (n.entity_id) candidates.push(n.entity_id)
+          return candidates
+        }),
+    ),
+    [allNotifications],
+  )
+
   const workspaceChannels = useMemo(
     () =>
-      backendChannels.map((channel, index) =>
-        toWorkspaceChannel(channel, index, channelGroupsById),
-      ),
-    [backendChannels, channelGroupsById],
+      backendChannels.map((channel, index) => {
+        const wc = toWorkspaceChannel(channel, index, channelGroupsById)
+        return {
+          ...wc,
+          groups: wc.groups.map((g) => ({
+            ...g,
+            hasMention: mentionedGroupIds.has(g.id),
+          })),
+        }
+      }),
+    [backendChannels, channelGroupsById, mentionedGroupIds],
   )
 
   // Sync real backend groups into channelGroupsById when they load
@@ -716,6 +742,26 @@ export default function ChatPage() {
       [activeChannelId]: backendGroups.map(backendGroupToMock),
     }));
   }, [activeChannelId, backendGroups]);
+
+  const { mutate: markNotifAsRead } = useMarkAsRead()
+
+  // Clear mention badge when user opens a group
+  useEffect(() => {
+    if (!activeGroupId) return
+    const toMark = allNotifications.filter(
+      (n) =>
+        !n.is_read &&
+        n.type === 'MENTION' &&
+        (
+          n.metadata?.group_id === activeGroupId ||
+          n.metadata?.channel_group_id === activeGroupId ||
+          (n.entity_type?.toLowerCase().includes('group') && n.entity_id === activeGroupId) ||
+          n.entity_id === activeGroupId
+        ),
+    )
+    toMark.forEach((n) => markNotifAsRead(n.id))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeGroupId])
 
   function handleChannelAssetSave(channelId: string, avatar: string | null, banner: string | null) {
     setChannelAssets((prev) => ({ ...prev, [channelId]: { avatar, banner } }))
@@ -1104,12 +1150,13 @@ export default function ChatPage() {
         <ChannelFeed
           channel={activeChannel}
           group={activeGroup}
+          members={activeGroupMembers}
           myAvatarUrl={userAvatar}
           onOpenDirectConversation={openDirectChat}
           postsOverride={isRealGroupId ? groupPosts : undefined}
-          onSendPost={async ({ content, fileUrl, replyToId }) => {
+          onSendPost={async ({ content, fileUrl, replyToId, entityMentions }) => {
             if (!isRealGroupId) return
-            await groupsApi.sendGroupMessage(activeGroup.id, { content, fileUrl, replyToId: replyToId ?? null })
+            await groupsApi.sendGroupMessage(activeGroup.id, { content, entityMentions, fileUrl, replyToId: replyToId ?? null })
             queryClient.invalidateQueries({ queryKey: GROUP_KEYS.messages(activeGroup.id) })
           }}
         />

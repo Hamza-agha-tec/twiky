@@ -29,7 +29,7 @@ export default function NotificationBell() {
         refetchInterval: 10000, // Refresh every 10 seconds
     });
 
-    const notifications = Array.isArray(notificationsData) ? notificationsData : [];
+    const notifications = Array.isArray(notificationsData) ? notificationsData.filter(n => n.type !== 'MENTION') : [];
     const unreadCount = notifications.filter(n => !n.is_read).length;
 
     const readMutation = useMutation({

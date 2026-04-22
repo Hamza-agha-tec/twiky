@@ -3,9 +3,12 @@
 import { useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
+  ArrowRight,
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
   Compass,
+  Filter,
   Globe,
   Hash,
   ListTodo,
@@ -15,6 +18,7 @@ import {
   NotebookPen,
   Plus,
   Search,
+  Sparkles,
   Target,
   X,
 } from 'lucide-react'
@@ -23,12 +27,10 @@ import { CreateEntityDialog, type CreateEntityValues } from '@/components/chat/c
 import { type WorkspaceChannel } from '@/components/chat/channels-panel'
 import { ConversationContextMenu } from '@/components/chat/conversation-context-menu'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useDiscoverChannels, useJoinChannel } from '@/hooks/use-channels'
 import { Chat } from '@/lib/mock-data'
-import { getMockUserAvatar } from '@/lib/mock-users'
 import { cn } from '@/lib/utils'
 
 interface WorkspaceSidebarProps {
@@ -67,6 +69,7 @@ interface ContextMenuState {
 }
 
 type SidebarChat = Chat & { isSynthetic?: boolean }
+type DiscoverFilter = 'all' | 'new' | 'detailed'
 
 const PERSONAL_ITEMS: {
   id: WorkspaceNavTarget
@@ -83,6 +86,16 @@ const CHANNEL_TONES = [
   'from-emerald-500 via-teal-500 to-cyan-600',
   'from-orange-500 via-amber-500 to-yellow-500',
   'from-fuchsia-500 via-violet-500 to-indigo-600',
+]
+
+const DISCOVER_FILTERS: {
+  id: DiscoverFilter
+  icon: typeof Sparkles
+  label: string
+}[] = [
+  { id: 'all', icon: Sparkles, label: 'Suggested' },
+  { id: 'new', icon: CalendarDays, label: 'New' },
+  { id: 'detailed', icon: Filter, label: 'Detailed' },
 ]
 
 function getChannelMonogram(label: string) {
@@ -108,9 +121,9 @@ function getChannelTone(seed: string) {
   return CHANNEL_TONES[index]
 }
 
-function resolveConversationAvatar(name: string, avatar?: string | null) {
+function resolveConversationAvatar(_name: string, avatar?: string | null) {
   if (avatar && avatar.trim().length > 0) return avatar
-  return getMockUserAvatar(name)
+  return ''
 }
 
 export function WorkspaceSidebar({
@@ -137,6 +150,8 @@ export function WorkspaceSidebar({
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [showCreateChannel, setShowCreateChannel] = useState(false)
   const [showDiscover, setShowDiscover] = useState(false)
+  const [discoverQuery, setDiscoverQuery] = useState('')
+  const [discoverFilter, setDiscoverFilter] = useState<DiscoverFilter>('all')
 
   const { data: discoverableChannels = [], isLoading: discoverLoading } = useDiscoverChannels()
   const joinChannel = useJoinChannel()
@@ -171,6 +186,36 @@ export function WorkspaceSidebar({
       chat.lastMessage.toLowerCase().includes(query),
     )
   }, [directChats, isSearching, searchQuery])
+
+  const filteredDiscoverChannels = useMemo(() => {
+    const query = discoverQuery.trim().toLowerCase()
+    const thirtyDays = 30 * 24 * 60 * 60 * 1000
+    const newestCreatedAt = discoverableChannels.reduce((latest, channel) => {
+      const createdAt = new Date(channel.created_at).getTime()
+      return Number.isFinite(createdAt) ? Math.max(latest, createdAt) : latest
+    }, 0)
+
+    return discoverableChannels.filter((channel) => {
+      const description = channel.description ?? ''
+      const createdAt = new Date(channel.created_at).getTime()
+      const isNew =
+        Number.isFinite(createdAt) &&
+        newestCreatedAt > 0 &&
+        newestCreatedAt - createdAt <= thirtyDays
+      const hasDetails = description.trim().length > 0 || Boolean(channel.avatar_url || channel.banner_url)
+      const matchesQuery =
+        query.length === 0 ||
+        channel.name.toLowerCase().includes(query) ||
+        description.toLowerCase().includes(query)
+
+      if (!matchesQuery) return false
+      if (discoverFilter === 'new') return isNew
+      if (discoverFilter === 'detailed') return hasDetails
+      return true
+    })
+  }, [discoverFilter, discoverQuery, discoverableChannels])
+
+  const discoverSearchActive = discoverQuery.trim().length > 0
 
   const handleContextMenu = (event: React.MouseEvent, chat: SidebarChat) => {
     event.preventDefault()
@@ -328,18 +373,6 @@ export function WorkspaceSidebar({
 
         {mode === 'direct' && !collapsed ? (
           <>
-            <div className="border-b border-border px-3 py-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search direct messages"
-                  value={searchQuery}
-                  onChange={(event) => onSearchChange(event.target.value)}
-                  className="h-9 rounded-xl border-border bg-background pl-8 text-[12px]"
-                />
-              </div>
-            </div>
-
             <div className="flex-1 overflow-y-auto px-2.5 py-2">
               {visibleDirectChats.length > 0 ? (
                 visibleDirectChats.map((chat, index) => (
@@ -429,7 +462,7 @@ export function WorkspaceSidebar({
               </div>
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-0.5">
               {channels.map((channel) => {
                 const isActive = activeChannelId === channel.id
                 const storedAvatar = channelAssets[channel.id]?.avatar ?? channel.avatarUrl ?? null
@@ -439,7 +472,7 @@ export function WorkspaceSidebar({
                     key={channel.id}
                     onClick={() => onSelectChannel?.(channel.id)}
                     className={cn(
-                      'flex w-full items-center gap-2.5 rounded-2xl px-2.5 py-2 text-left transition-colors',
+                      'flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left transition-colors',
                       isActive
                         ? 'bg-primary/10 text-foreground'
                         : 'text-muted-foreground hover:bg-accent hover:text-foreground',
@@ -447,16 +480,16 @@ export function WorkspaceSidebar({
                   >
                     <div
                       className={cn(
-                        'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-[10px] font-bold text-white shadow-sm overflow-hidden',
+                        'flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-[9px] font-bold text-white shadow-sm overflow-hidden',
                         getChannelTone(channel.id),
-                        isActive && 'ring-2 ring-primary/20 ring-offset-2 ring-offset-sidebar',
+                        isActive && 'ring-2 ring-primary/20 ring-offset-1 ring-offset-sidebar',
                       )}
                     >
                       {storedAvatar ? (
                         <img src={storedAvatar} alt={channel.label} className="block h-full w-full object-cover object-center" />
                       ) : getChannelMonogram(channel.label)}
                     </div>
-                    <span className="truncate text-[12px] font-medium text-foreground">
+                    <span className="truncate text-[11px] font-medium text-foreground">
                       {channel.label}
                     </span>
                     {channel.access_type === 'PRIVATE' ? (
@@ -588,41 +621,147 @@ export function WorkspaceSidebar({
       />
 
       <Sheet open={showDiscover} onOpenChange={setShowDiscover}>
-        <SheetContent side="left" className="w-[340px] p-0 sm:max-w-[340px]">
-          <SheetHeader className="border-b border-border px-4 py-3">
-            <SheetTitle className="flex items-center gap-2 text-[13px]">
-              <Compass className="h-4 w-4 text-primary" />
-              Discover Channels
-            </SheetTitle>
-          </SheetHeader>
-          <div className="flex flex-col gap-0 overflow-y-auto p-3">
-            {discoverLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <SheetContent side="left" className="w-[380px] overflow-hidden p-0 sm:max-w-[380px]">
+          <SheetHeader className="border-b border-border px-4 py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <SheetTitle className="flex items-center gap-2 text-[14px]">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <Compass className="h-4 w-4" />
+                  </span>
+                  Discover Channels
+                </SheetTitle>
+                <p className="mt-1 pl-10 text-[11px] text-muted-foreground">
+                  Find public spaces to join and follow.
+                </p>
               </div>
+              <div className="rounded-full border border-border px-2 py-1 text-[10px] font-semibold text-muted-foreground">
+                {discoverableChannels.length} open
+              </div>
+            </div>
+          </SheetHeader>
+
+          <div className="border-b border-border px-4 py-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={discoverQuery}
+                onChange={(event) => setDiscoverQuery(event.target.value)}
+                placeholder="Search channels"
+                className="h-10 w-full rounded-xl border border-border bg-background pl-9 pr-9 text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+              />
+              {discoverSearchActive ? (
+                <button
+                  type="button"
+                  onClick={() => setDiscoverQuery('')}
+                  className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+                  aria-label="Clear channel search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
+            </div>
+
+            <div className="mt-3 flex gap-1.5 overflow-x-auto pb-0.5">
+              {DISCOVER_FILTERS.map(({ id, icon: Icon, label }) => {
+                const isActive = discoverFilter === id
+
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setDiscoverFilter(id)}
+                    className={cn(
+                      'flex h-8 flex-shrink-0 items-center gap-1.5 rounded-xl border px-2.5 text-[11px] font-semibold transition-colors',
+                      isActive
+                        ? 'border-primary/30 bg-primary/10 text-primary'
+                        : 'border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground',
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="flex h-[calc(100vh-169px)] flex-col gap-2 overflow-y-auto p-3">
+            {discoverLoading ? (
+              Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="rounded-2xl border border-border p-3">
+                  <div className="flex items-start gap-3">
+                    <div className="h-11 w-11 animate-pulse rounded-xl bg-muted" />
+                    <div className="min-w-0 flex-1 space-y-2 pt-1">
+                      <div className="h-3 w-28 animate-pulse rounded-full bg-muted" />
+                      <div className="h-2.5 w-full animate-pulse rounded-full bg-muted" />
+                      <div className="h-2.5 w-2/3 animate-pulse rounded-full bg-muted" />
+                    </div>
+                  </div>
+                </div>
+              ))
             ) : discoverableChannels.length === 0 ? (
               <div className="flex flex-col items-center py-12 text-center">
                 <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
                   <Globe className="h-5 w-5 text-muted-foreground" />
                 </div>
                 <p className="text-[13px] font-semibold text-foreground">No public channels</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">You've joined all available channels.</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">You&apos;ve joined all available channels.</p>
+              </div>
+            ) : filteredDiscoverChannels.length === 0 ? (
+              <div className="flex flex-col items-center py-12 text-center">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
+                  <Search className="h-5 w-5 text-muted-foreground" />
+                </div>
+                <p className="text-[13px] font-semibold text-foreground">No matches found</p>
+                <p className="mt-1 max-w-[240px] text-[11px] text-muted-foreground">
+                  Try a different search or switch filters to see more public channels.
+                </p>
               </div>
             ) : (
-              discoverableChannels.map((ch) => (
+              filteredDiscoverChannels.map((ch, index) => (
                 <div
                   key={ch.id}
-                  className="flex items-center gap-3 rounded-xl px-2 py-2.5 hover:bg-accent"
+                  className="group rounded-2xl border border-border bg-background p-3 transition-colors hover:bg-accent/60"
                 >
-                  <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500 via-cyan-500 to-blue-600 text-[10px] font-bold text-white">
-                    {(ch.name ?? '').slice(0, 2).toUpperCase() || 'CH'}
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={cn(
+                        'flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br text-[11px] font-bold text-white shadow-sm',
+                        getChannelTone(ch.id),
+                      )}
+                    >
+                      {ch.avatar_url ? (
+                        <img src={ch.avatar_url} alt={ch.name} className="block h-full w-full object-cover object-center" />
+                      ) : (
+                        getChannelMonogram(ch.name)
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-[13px] font-semibold text-foreground">{ch.name}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1 rounded-lg bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                              <Globe className="h-3 w-3" />
+                              Public
+                            </span>
+                            {index < 3 ? (
+                              <span className="inline-flex items-center gap-1 rounded-lg bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                                <Sparkles className="h-3 w-3" />
+                                Pick
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+
+                      <p className="mt-2 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
+                        {ch.description || 'A public channel ready for new conversations, updates, and shared posts.'}
+                      </p>
+                    </div>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-semibold text-foreground">{ch.name}</p>
-                    {ch.description ? (
-                      <p className="truncate text-[11px] text-muted-foreground">{ch.description}</p>
-                    ) : null}
-                  </div>
+
                   <button
                     onClick={async () => {
                       try {
@@ -632,9 +771,10 @@ export function WorkspaceSidebar({
                       } catch {}
                     }}
                     disabled={joinChannel.isPending}
-                    className="flex-shrink-0 rounded-xl bg-primary px-3 py-1.5 text-[11px] font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                    className="mt-3 flex h-9 w-full items-center justify-center gap-1.5 rounded-xl bg-primary px-3 text-[12px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
                   >
                     Join
+                    <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
                   </button>
                 </div>
               ))
