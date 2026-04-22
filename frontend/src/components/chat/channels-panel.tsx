@@ -16,7 +16,7 @@ import {
   Upload,
   Volume2,
 } from 'lucide-react'
-import { CreateEntityDialog } from '@/components/chat/create-entity-dialog'
+import { CreateEntityDialog, type CreateEntityValues } from '@/components/chat/create-entity-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -91,7 +91,7 @@ interface ChannelsPanelProps {
   channel?: WorkspaceChannel | null
   channelAvatarUrl?: string | null
   onAssetSave?: (channelId: string, avatar: string | null, banner: string | null) => void
-  onCreateGroup?: (values: { description: string; name: string }) => void
+  onCreateGroup?: (values: CreateEntityValues) => void
   onSelectGroup?: (groupId: string) => void
   visible?: boolean
 }

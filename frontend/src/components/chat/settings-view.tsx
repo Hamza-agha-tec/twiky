@@ -292,7 +292,6 @@ function ProfileSection({
       bio: bio.trim() || null,
       fullname: fullname.trim() || null,
       status: status.trim() || null,
-      fullname: fullname.trim() || undefined,
       username: username.trim() || undefined
     })
     setSaveMessage('Saved')

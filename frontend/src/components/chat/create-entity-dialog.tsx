@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useRef, useState } from 'react'
+import { type ChangeEvent, FormEvent, useRef, useState } from 'react'
 import { Hash, ImagePlus, MessagesSquare, UserCircle2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,13 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
+export interface CreateEntityValues {
+  description: string
+  name: string
+  avatarFile?: File | null
+  bannerFile?: File | null
+}
+
 interface CreateEntityDialogProps {
   contextLabel?: string
   defaultDescription?: string
@@ -28,7 +35,7 @@ interface CreateEntityDialogProps {
   nameLabel: string
   namePlaceholder: string
   onOpenChange: (open: boolean) => void
-  onSubmit: (values: { description: string; name: string }) => void
+  onSubmit: (values: CreateEntityValues) => void | Promise<void>
   open: boolean
   submitLabel: string
   title: string
@@ -54,6 +61,10 @@ export function CreateEntityDialog({
   const [details, setDetails] = useState(defaultDescription)
   const [bannerUrl, setBannerUrl] = useState<string | null>(null)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [bannerFile, setBannerFile] = useState<File | null>(null)
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const bannerRef = useRef<HTMLInputElement>(null)
   const avatarRef = useRef<HTMLInputElement>(null)
@@ -72,25 +83,45 @@ export function CreateEntityDialog({
     setDetails(defaultDescription)
     setBannerUrl(null)
     setAvatarUrl(null)
+    setBannerFile(null)
+    setAvatarFile(null)
+    setSubmitError(null)
+    setIsSubmitting(false)
     onOpenChange(nextOpen)
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const nextName = name.trim()
     if (!nextName) return
-    onSubmit({ name: nextName, description: details.trim() })
-    handleOpenChange(false)
+    setSubmitError(null)
+    setIsSubmitting(true)
+    try {
+      await onSubmit({
+        name: nextName,
+        description: details.trim(),
+        avatarFile: entityKind === 'channel' ? avatarFile : null,
+        bannerFile: entityKind === 'channel' ? bannerFile : null,
+      })
+      handleOpenChange(false)
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Could not create item')
+      setIsSubmitting(false)
+    }
   }
 
-  function handleBannerChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleBannerChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    if (file) setBannerUrl(URL.createObjectURL(file))
+    if (!file) return
+    setBannerFile(file)
+    setBannerUrl(URL.createObjectURL(file))
   }
 
-  function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleAvatarChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    if (file) setAvatarUrl(URL.createObjectURL(file))
+    if (!file) return
+    setAvatarFile(file)
+    setAvatarUrl(URL.createObjectURL(file))
   }
 
   return (
@@ -231,11 +262,14 @@ export function CreateEntityDialog({
           </div>
 
           <DialogFooter className="border-t border-border px-0 pt-3">
-            <Button type="button" variant="ghost" onClick={() => handleOpenChange(false)}>
+            {submitError ? (
+              <p className="mr-auto self-center text-[11px] text-destructive">{submitError}</p>
+            ) : null}
+            <Button type="button" variant="ghost" onClick={() => handleOpenChange(false)} disabled={isSubmitting}>
               Cancel
             </Button>
-            <Button type="submit" className="rounded-xl px-4">
-              {submitLabel}
+            <Button type="submit" className="rounded-xl px-4" disabled={isSubmitting}>
+              {isSubmitting ? 'Creating...' : submitLabel}
             </Button>
           </DialogFooter>
         </form>

@@ -30,7 +30,8 @@ import {
   WorkspaceNavTarget,
   WorkspaceSidebar,
 } from '@/components/chat/workspace-sidebar'
-import { useChannels, useCreateChannel } from '@/hooks/use-channels'
+import type { CreateEntityValues } from '@/components/chat/create-entity-dialog'
+import { useChannels, useCreateChannel, useUpdateChannel } from '@/hooks/use-channels'
 import { useChannelGroups, useCreateGroup, useGroupMembers, useGroupMessages, backendGroupToMock } from '@/hooks/use-groups'
 import { groupsApi, type GroupMessage } from '@/lib/groups-api'
 import { useQueryClient } from '@tanstack/react-query'
@@ -41,6 +42,7 @@ import { useProfile, useSearchUsers, useSendFollowRequest, useUserFollowing } fr
 import { useNotifications, useMarkAllAsRead, useMarkAsRead } from '@/hooks/use-notifications'
 import { usePendingInvitations, useRespondToInvitation } from '@/hooks/use-invitations'
 import type { BackendChannel } from '@/lib/channel-api'
+import { filesApi } from '@/lib/files-api'
 import { type Chat } from '@/lib/mock-data'
 
 type ChatSurface =
@@ -561,6 +563,7 @@ export default function ChatPage() {
   const unreadNotificationCount = allNotifications.filter((n) => !n.is_read).length
   const { data: backendChannels = [] } = useChannels()
   const createChannel = useCreateChannel()
+  const updateChannel = useUpdateChannel()
   const { data: backendGroups = [] } = useChannelGroups(activeChannelId || undefined)
   const createGroup = useCreateGroup(activeChannelId)
   const isRealGroupId = /^[0-9a-f-]{36}$/i.test(activeGroupId)
@@ -866,26 +869,53 @@ export default function ChatPage() {
     if (tab === 'goals') setActiveSurface('personal-goals')
   }
 
-  function handleCreateChannel(values: { description: string; name: string }) {
-    createChannel.mutate(
-      { name: values.name, description: values.description || undefined },
-      {
-        onSuccess: (channel) => {
-          const nextChannel = toWorkspaceChannel(channel, workspaceChannels.length, channelGroupsById)
-          setActiveChannelId(nextChannel.id)
-          setActiveGroupId(nextChannel.groups[0]?.id ?? '')
-          setWorkspaceMode('channels')
-          setActiveSurface('channel')
-          setActiveView('chat')
-          setChannelTab('feed')
-          setWorkspaceCollapsed(false)
-          setShowDirectProfile(false)
+  async function handleCreateChannel(values: CreateEntityValues) {
+    const channel = await createChannel.mutateAsync({
+      name: values.name,
+      description: values.description || undefined,
+    })
+
+    let avatarUrl = channel.avatar_url ?? null
+    let bannerUrl = channel.banner_url ?? null
+
+    if (values.avatarFile) {
+      const { publicUrl } = await filesApi.uploadChannelLogo(channel.id, values.avatarFile)
+      avatarUrl = publicUrl
+    }
+
+    if (values.bannerFile) {
+      const { publicUrl } = await filesApi.uploadChannelBanner(channel.id, values.bannerFile)
+      bannerUrl = publicUrl
+    }
+
+    if (avatarUrl || bannerUrl) {
+      await updateChannel.mutateAsync({
+        id: channel.id,
+        data: {
+          ...(avatarUrl ? { avatar_url: avatarUrl } : {}),
+          ...(bannerUrl ? { banner_url: bannerUrl } : {}),
         },
-      },
-    )
+      })
+      setChannelAssets((prev) => ({ ...prev, [channel.id]: { avatar: avatarUrl, banner: bannerUrl } }))
+    }
+
+    const channelWithAssets: BackendChannel = {
+      ...channel,
+      avatar_url: avatarUrl,
+      banner_url: bannerUrl,
+    }
+    const nextChannel = toWorkspaceChannel(channelWithAssets, workspaceChannels.length, channelGroupsById)
+    setActiveChannelId(nextChannel.id)
+    setActiveGroupId(nextChannel.groups[0]?.id ?? '')
+    setWorkspaceMode('channels')
+    setActiveSurface('channel')
+    setActiveView('chat')
+    setChannelTab('feed')
+    setWorkspaceCollapsed(false)
+    setShowDirectProfile(false)
   }
 
-  function handleCreateGroup(values: { description: string; name: string }) {
+  function handleCreateGroup(values: CreateEntityValues) {
     if (!activeChannel) return
     createGroup.mutate(
       { name: values.name, description: values.description || undefined },
