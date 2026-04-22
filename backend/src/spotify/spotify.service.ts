@@ -316,30 +316,30 @@ export class SpotifyService {
         },
         top_tracks: topTracksRes?.data?.items
           ? topTracksRes.data.items.map((item: any) => ({
-              name: item.name,
-              artist: item.artists?.map((a: any) => a.name).join(', '),
-              album_art: item.album?.images?.[0]?.url,
-              spotify_url: item.external_urls?.spotify,
-            }))
+            name: item.name,
+            artist: item.artists?.map((a: any) => a.name).join(', '),
+            album_art: item.album?.images?.[0]?.url,
+            spotify_url: item.external_urls?.spotify,
+          }))
           : [],
         recently_played: recentTracksRes?.data?.items
           ? recentTracksRes.data.items.map((item: any) => ({
-              name: item.track?.name,
-              artist: item.track?.artists?.map((a: any) => a.name).join(', '),
-              album_art: item.track?.album?.images?.[0]?.url,
-              played_at: item.played_at,
-              spotify_url: item.track?.external_urls?.spotify,
-            }))
+            name: item.track?.name,
+            artist: item.track?.artists?.map((a: any) => a.name).join(', '),
+            album_art: item.track?.album?.images?.[0]?.url,
+            played_at: item.played_at,
+            spotify_url: item.track?.external_urls?.spotify,
+          }))
           : [],
         playlists: playlistsRes?.data?.items
           ? playlistsRes.data.items.map((item: any) => ({
-              name: item.name,
-              description: item.description,
-              image: item.images?.[0]?.url,
-              tracks_count: item.tracks?.total ?? 0,
-              spotify_url: item.external_urls?.spotify,
-              owner: item.owner?.display_name,
-            }))
+            name: item.name,
+            description: item.description,
+            image: item.images?.[0]?.url,
+            tracks_count: item.tracks?.total ?? 0,
+            spotify_url: item.external_urls?.spotify,
+            owner: item.owner?.display_name,
+          }))
           : [],
         partial: optionalErrors.length > 0 ? true : undefined,
         errors: optionalErrors.length > 0 ? optionalErrors : undefined,
@@ -502,5 +502,24 @@ export class SpotifyService {
       .single();
 
     return !!(follow1 && follow2);
+  }
+
+  async disconnect(userId: string) {
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('spotify_connections')
+      .delete()
+      .eq('user_id', userId);
+
+    if (error) {
+      this.logger.error(`Spotify disconnect failed: ${error.message}`);
+      throw new BadRequestException('Failed to disconnect Spotify');
+    }
+
+    const disconnected = { is_playing: false, message: 'Spotify not connected' };
+    this.nowPlayingCache.set(userId, { data: disconnected, fetchedAt: Date.now() });
+    this.changeCallbacks.get(userId)?.(disconnected);
+
+    return { success: true };
   }
 }

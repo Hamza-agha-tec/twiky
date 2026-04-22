@@ -18,6 +18,7 @@ import { SpotifyModule } from './spotify/spotify.module';
 import { PassportModule } from '@nestjs/passport';
 import { SupabaseStrategy } from './auth/strategies/supabase.strategy';
 import { FilesModule } from './files/files.module';
+import { InvitationsModule } from './invitations/invitations.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { FilesModule } from './files/files.module';
     NotificationsModule,
     SpotifyModule,
     FilesModule,
+    InvitationsModule,
   ],
   controllers: [AppController, AuthController],
   providers: [AppService, AuthService, SupabaseStrategy],

@@ -44,7 +44,7 @@ export interface UserPost {
 }
 
 export type UpdateProfileInput = Partial<
-  Pick<UserProfile, 'username' | 'avatar_url' | 'banner' | 'phone_number' | 'bio' | 'status'>
+  Pick<UserProfile, 'username' | 'avatar_url' | 'banner' | 'phone_number' | 'bio' | 'status' | 'fullname'>
 >;
 
 async function getToken(): Promise<string> {

@@ -300,6 +300,7 @@ function ProfileSection({
     await updateProfile.mutateAsync({
       bio: bio.trim() || null,
       status: status.trim() || null,
+      fullname: fullname.trim() || undefined,
       username: username.trim() || undefined
     })
     setSaveMessage('Saved')

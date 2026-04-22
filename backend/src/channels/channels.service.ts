@@ -17,7 +17,7 @@ export class ChannelsService {
             .single();
 
         if (error) throw new Error(`Failed to create channel: ${error.message}`);
-        
+
         // Trigger auto-creates #general and adds the owner to channel_members implicitly
         // Now, we must ALSO add the user to the `#general` group's group_members:
         const { data: generalGroup } = await this.supabaseService
@@ -32,7 +32,7 @@ export class ChannelsService {
             await this.supabaseService
                 .getClient()
                 .from('group_members')
-                .insert({ group_id: generalGroup.id, user_id: ownerId, role: 'ADMIN' });
+                .insert({ group_id: generalGroup.id, user_id: ownerId, role: 'OWNER' });
         }
 
         return data;
@@ -118,10 +118,10 @@ export class ChannelsService {
         const { data, error } = await this.supabaseService
             .getClient()
             .from('channel_members')
-            .insert({ 
-                channel_id: channelId, 
-                user_id: addMemberDto.user_id, 
-                role: addMemberDto.role || 'MEMBER' 
+            .insert({
+                channel_id: channelId,
+                user_id: addMemberDto.user_id,
+                role: addMemberDto.role || 'MEMBER'
             })
             .select()
             .single();
@@ -173,7 +173,7 @@ export class ChannelsService {
 
     async joinChannel(userId: string, channelId: string) {
         const channel = await this.getChannelDetails(channelId);
-        
+
         if (channel.access_type === 'PRIVATE') {
             throw new ForbiddenException("This channel is private. You need an invite to join.");
         }

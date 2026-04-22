@@ -3,12 +3,14 @@ import { SupabaseService } from '../supabase/supabase.module';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { InvitationsService } from '../invitations/invitations.service';
 
 @Injectable()
 export class UsersService {
     constructor(
         private readonly supabaseService: SupabaseService,
-        private readonly notificationsService: NotificationsService
+        private readonly notificationsService: NotificationsService,
+        private readonly invitationsService: InvitationsService,
     ) { }
 
     async getUserById(id: string) {
@@ -90,19 +92,39 @@ export class UsersService {
             throw new BadRequestException("You cannot follow yourself.");
         }
 
-        const { data, error } = await this.supabaseService
+        // Check if there is already a follow or a pending invitation
+        const { data: existingFollow } = await this.supabaseService
             .getClient()
             .from('follows')
-            .insert({ follower_id: followerId, following_id: followingId })
-            .select()
-            .single();
+            .select('*')
+            .eq('follower_id', followerId)
+            .eq('following_id', followingId)
+            .maybeSingle();
 
-        if (error) throw new Error(`Failed to follow user: ${error.message}`);
+        if (existingFollow) {
+            throw new BadRequestException("You are already following this user.");
+        }
 
-        // Trigger Notification
-        await this.notificationsService.notify(followingId, followerId, 'FOLLOW', followerId, 'user');
+        const { data: existingInvite } = await this.supabaseService
+            .getClient()
+            .from('invitations')
+            .select('*')
+            .eq('inviter_id', followerId)
+            .eq('invitee_id', followingId)
+            .eq('entity_type', 'FOLLOW')
+            .eq('status', 'PENDING')
+            .maybeSingle();
 
-        return data;
+        if (existingInvite) {
+            throw new BadRequestException("A follow request is already pending.");
+        }
+
+        // Create Invitation instead of direct follow
+        return this.invitationsService.createInvitation(followerId, {
+            inviteeId: followingId,
+            entityType: 'FOLLOW',
+            entityId: followerId // We use followerId as entityId for follow requests
+        });
     }
 
     async unfollowUser(followerId: string, followingId: string) {
@@ -166,12 +188,12 @@ export class UsersService {
         return data;
     }
 
-    async searchByPhone(phone: string) {
+    async searchByUsername(username: string) {
         const { data, error } = await this.supabaseService
             .getClient()
             .from('users')
-            .select('id, username, avatar_url, phone_number')
-            .ilike('phone_number', `%${phone}%`);
+            .select('id, username, avatar_url, fullname')
+            .ilike('username', `%${username}%`);
 
         if (error) {
             throw new Error(`Error searching for users: ${error.message}`);
