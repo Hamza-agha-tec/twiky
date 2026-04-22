@@ -864,7 +864,7 @@ export function FeedMemberProfileView({
   posts: FeedPost[]
   showMessageAction?: boolean
 }) {
-  const [activeTab, setActiveTab] = useState<'posts' | 'articles' | 'projects' | 'saved'>('posts')
+  const [activeTab, setActiveTab] = useState<'posts' | 'articles' | 'pixel-room' | 'saved'>('posts')
   const [isFollowing, setIsFollowing] = useState(false)
 
   const { data: realUser } = useUserById(memberProfile.id)
@@ -914,9 +914,6 @@ export function FeedMemberProfileView({
         time: formatUserPostTime(post.created_at),
       }))
     : fallbackPosts
-
-  const projectTitle = resolvedProfile.focus.split(',')[0]?.trim() ?? resolvedProfile.focus
-  const projectBody = resolvedProfile.bio.split('.')[0]?.trim() ?? resolvedProfile.focus
 
   const roleColor = ROLE_COLORS[resolvedProfile.role] ?? 'text-primary'
   const websiteHref = normalizeExternalUrl(resolvedProfile.websiteUrl)
@@ -1049,7 +1046,7 @@ export function FeedMemberProfileView({
         <div className="flex items-center gap-0.5 rounded-xl border border-border bg-card p-1">
           {([
             { id: 'posts' as const, label: 'Posts' },
-            { id: 'projects' as const, label: 'Projects' },
+            { id: 'pixel-room' as const, label: 'Pixel Room' },
             { id: 'articles' as const, label: 'Articles' },
             { id: 'saved' as const, label: 'Saved' },
           ]).map((tab) => {
@@ -1179,10 +1176,10 @@ export function FeedMemberProfileView({
             transition={{ duration: 0.22, ease: 'easeOut' }}
           >
             <p className="text-[12px] font-semibold text-foreground">
-              {activeTab === 'projects' ? 'Projects' : activeTab === 'articles' ? 'Articles' : 'Saved'}
+              {activeTab === 'pixel-room' ? 'Pixel Room' : activeTab === 'articles' ? 'Articles' : 'Saved'}
             </p>
             <p className="mt-1.5 text-[11px] leading-[1.75] text-muted-foreground">
-              {activeTab === 'projects'
+              {activeTab === 'pixel-room'
                 ? resolvedProfile.focus
                 : activeTab === 'articles'
                   ? resolvedProfile.bio

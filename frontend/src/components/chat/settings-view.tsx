@@ -488,13 +488,6 @@ function ProfileSection({
                 {saveMessage}
               </span>
             ) : null}
-            <Button
-              className="h-9 rounded-xl text-[12px]"
-              disabled={!username.trim() || updateProfile.isPending}
-              onClick={handleSaveProfile}
-            >
-              {updateProfile.isPending ? 'Saving...' : 'Save profile'}
-            </Button>
           </div>
         </div>
       </SectionBlock>
@@ -540,7 +533,7 @@ function ProfileSection({
             disabled={!username.trim() || updateProfile.isPending}
             onClick={handleSaveProfile}
           >
-            {updateProfile.isPending ? 'Saving...' : 'Save links'}
+            {updateProfile.isPending ? 'Saving...' : 'Save profile'}
           </Button>
         </div>
       </SectionBlock>
