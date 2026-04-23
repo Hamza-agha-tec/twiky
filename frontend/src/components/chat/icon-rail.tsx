@@ -1,13 +1,13 @@
 'use client'
 
-import { Bell, MessageSquareMore, Settings2, Store, UserPlus } from 'lucide-react'
+import { Bell, Compass, MessageSquareMore, Settings2, Store, UserPlus } from 'lucide-react'
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-export type ActiveView = 'chat' | 'settings' | 'store' | 'add-friends' | 'notifications'
+export type ActiveView = 'chat' | 'discover-channels' | 'settings' | 'store' | 'add-friends' | 'notifications'
 
 interface IconRailProps {
   activeView: ActiveView
@@ -20,6 +20,7 @@ interface IconRailProps {
 
 const NAV_ITEMS = [
   { id: 'chat',          label: 'Chat',          icon: MessageSquareMore },
+  { id: 'discover-channels', label: 'Discover Channels', icon: Compass },
   { id: 'add-friends',   label: 'Add Friends',   icon: UserPlus },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'store',         label: 'Store',         icon: Store },
