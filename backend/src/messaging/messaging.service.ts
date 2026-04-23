@@ -104,7 +104,7 @@ export class MessagingService {
                 reply_to_id: dto.replyToId || null,
                 entity_mentions: dto.entityMentions || []
             })
-            .select('*, sender:users!direct_messages_sender_id_fkey(id, username, avatar_url)')
+            .select('*, sender:users!direct_messages_sender_id_fkey(id, username, fullname, avatar_url, sub_plan)')
             .single();
 
         if (error) throw new Error(`Failed to send DM: ${error.message}`);
@@ -126,7 +126,7 @@ export class MessagingService {
         const { data, error } = await this.supabaseService
             .getClient()
             .from('direct_messages')
-            .select('*, sender:users!direct_messages_sender_id_fkey(id, username, avatar_url)')
+            .select('*, sender:users!direct_messages_sender_id_fkey(id, username, fullname, avatar_url, sub_plan)')
             .eq('conversation_id', conversationId)
             .order('created_at', { ascending: true }); // typically chronologically ordered
 
@@ -141,7 +141,7 @@ export class MessagingService {
             .update({ content, is_edited: true })
             .eq('id', messageId)
             .eq('sender_id', userId)
-            .select('*, sender:users!direct_messages_sender_id_fkey(id, username, avatar_url)')
+            .select('*, sender:users!direct_messages_sender_id_fkey(id, username, fullname, avatar_url, sub_plan)')
             .single();
 
         if (error) throw new Error(`Failed to edit DM: ${error.message}`);
@@ -297,7 +297,7 @@ export class MessagingService {
                 reply_to_id: dto.replyToId || null,
                 entity_mentions: dto.entityMentions || []
             })
-            .select('*, sender:users!group_messages_sender_id_fkey(id, username, avatar_url)')
+            .select('*, sender:users!group_messages_sender_id_fkey(id, username, fullname, avatar_url, sub_plan)')
             .single();
 
         if (error) throw new Error(`Failed to send group message: ${error.message}`);
@@ -321,7 +321,7 @@ export class MessagingService {
         const { data, error } = await this.supabaseService
             .getClient()
             .from('group_messages')
-            .select('*, sender:users!group_messages_sender_id_fkey(id, username, avatar_url)')
+            .select('*, sender:users!group_messages_sender_id_fkey(id, username, fullname, avatar_url, sub_plan)')
             .eq('group_id', groupId)
             .order('created_at', { ascending: true });
 
@@ -336,7 +336,7 @@ export class MessagingService {
             .update({ content, is_edited: true })
             .eq('id', messageId)
             .eq('sender_id', userId)
-            .select('*, sender:users!group_messages_sender_id_fkey(id, username, avatar_url)')
+            .select('*, sender:users!group_messages_sender_id_fkey(id, username, fullname, avatar_url, sub_plan)')
             .single();
 
         if (error) throw new Error(`Failed to edit group message: ${error.message}`);
@@ -425,7 +425,7 @@ export class MessagingService {
             .from(table)
             .update({ reactions })
             .eq('id', messageId)
-            .select('*, sender:users(id, username, avatar_url)')
+            .select('*, sender:users(id, username, fullname, avatar_url, sub_plan)')
             .single();
 
         if (updateError) throw new Error(`Failed to update reactions: ${updateError.message}`);
@@ -441,7 +441,7 @@ export class MessagingService {
                 sender_id: null, // System message
                 content: content,
             })
-            .select('*, sender:users!group_messages_sender_id_fkey(id, username, avatar_url)')
+            .select('*, sender:users!group_messages_sender_id_fkey(id, username, fullname, avatar_url, sub_plan)')
             .single();
 
         if (error) throw new Error(`Failed to send system message: ${error.message}`);

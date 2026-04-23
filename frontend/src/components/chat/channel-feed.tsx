@@ -98,6 +98,7 @@ export interface FeedPost {
   authorId?: string
   authorAvatarUrl?: string | null
   authorIsVerified?: boolean
+  authorIsPro?: boolean
   isSystem?: boolean
   role: string
   time: string
@@ -349,6 +350,7 @@ function buildFeedMemberProfile(post: FeedPost, avatarUrl: string | null, handle
     name: post.author,
     role: post.role,
     isVerified: post.authorIsVerified ?? false,
+    isPro: post.authorIsPro ?? false,
     websiteUrl: null,
     xUrl: null,
   }
@@ -1543,7 +1545,7 @@ function FeedProfileRow({
               className={cn('inline-flex items-center gap-1 text-[14px] font-semibold leading-none hover:underline', roleColor)}
             >
               {post.author}
-              {memberProfile.isVerified ? <VerifiedBadge size="xs" /> : null}
+              {memberProfile.isVerified ? <VerifiedBadge size="xs" variant={memberProfile.isPro ? 'pro' : 'standard'} /> : null}
             </button>
             <RoleBadge role={post.role} />
             <span className="text-[11px] text-muted-foreground">{post.time}</span>
@@ -1702,6 +1704,7 @@ export function ChannelFeed({
     email: profile?.email ?? authUser?.email,
     id: profile?.id,
     is_verified: profile?.is_verified,
+    sub_plan: profile?.sub_plan,
   }
   const currentIsVerified = isVerifiedAccountIdentity(currentIdentity)
 
@@ -1836,7 +1839,7 @@ export function ChannelFeed({
       return {
         canMessage: false,
         profile: buildFeedMemberProfile(
-          { ...post, authorIsVerified: post.authorIsVerified || currentIsVerified },
+          { ...post, authorIsVerified: post.authorIsVerified || currentIsVerified, authorIsPro: post.authorIsPro || isProPlan(profile?.sub_plan) },
           post.authorAvatarUrl ?? myAvatarUrl ?? profile?.avatar_url ?? null,
           profile?.username ?? 'you',
           profile?.id,

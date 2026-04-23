@@ -681,10 +681,11 @@ export default function ChatPage() {
 
     return {
       id: msg.id,
-      author: isSystem ? 'System' : (msg.sender?.username ?? 'Unknown'),
+      author: isSystem ? 'System' : (msg.sender?.fullname ?? msg.sender?.full_name ?? msg.sender?.username ?? 'Unknown'),
       authorId: msg.sender_id,
       authorAvatarUrl: isSystem ? null : (msg.sender?.avatar_url ?? null),
-      authorIsVerified: Boolean(msg.sender?.is_verified),
+      authorIsVerified: msg.sender?.sub_plan === 'PRO' || msg.sender?.sub_plan === 'ENTERPRISE',
+      authorIsPro: msg.sender?.sub_plan === 'PRO' || msg.sender?.sub_plan === 'ENTERPRISE',
       isSystem,
       role: isSystem ? 'Automation' : (groupMemberRoleByUserId.get(msg.sender_id) ?? 'Member'),
       time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
