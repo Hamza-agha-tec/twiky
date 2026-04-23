@@ -684,6 +684,7 @@ export default function ChatPage() {
       author: isSystem ? 'System' : (msg.sender?.username ?? 'Unknown'),
       authorId: msg.sender_id,
       authorAvatarUrl: isSystem ? null : (msg.sender?.avatar_url ?? null),
+      authorIsVerified: Boolean(msg.sender?.is_verified),
       isSystem,
       role: isSystem ? 'Automation' : (groupMemberRoleByUserId.get(msg.sender_id) ?? 'Member'),
       time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -885,6 +886,7 @@ export default function ChatPage() {
             unread: unreadCounts[chat.id] ?? 0,
             isGroup: false,
             isOnline: chat.isOnline ?? false,
+            isVerified: chat.isVerified ?? false,
           }
         })
         .sort(
@@ -1088,6 +1090,7 @@ export default function ChatPage() {
             ? {
                 avatarUrl: activeSyntheticChat.avatarUrl,
                 isOnline: activeSyntheticChat.isOnline,
+                isVerified: activeSyntheticChat.isVerified,
                 name: activeSyntheticChat.name,
                 subtitle: activeSyntheticChat.status,
               }
@@ -1247,6 +1250,7 @@ export default function ChatPage() {
                           ? {
                               avatarUrl: activeSyntheticChat.avatarUrl,
                               isOnline: activeSyntheticChat.isOnline,
+                              isVerified: activeSyntheticChat.isVerified,
                               name: activeSyntheticChat.name,
                               subtitle: activeSyntheticChat.status,
                             }

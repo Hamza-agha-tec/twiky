@@ -4,8 +4,10 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3500';
 
 export interface UserProfile {
   id: string;
+  email?: string | null;
   username: string | null;
   fullname: string | null;
+  full_name?: string | null;
   avatar_url: string | null;
   created_at: string;
   phone_number: string | null;
@@ -15,13 +17,18 @@ export interface UserProfile {
   banner: string | null;
   website_url: string | null;
   x_url: string | null;
+  is_verified?: boolean | null;
 }
 
 export interface UserSummary {
   id: string;
+  email?: string | null;
   bio: string | null;
+  fullname?: string | null;
+  full_name?: string | null;
   username: string | null;
   avatar_url: string | null;
+  is_verified?: boolean | null;
 }
 
 export interface FollowerRecord {
@@ -84,9 +91,12 @@ async function authedFetch<T = unknown>(path: string, init: RequestInit = {}): P
 
 export interface UserSearchResult {
   id: string;
+  email?: string | null;
   username: string;
   avatar_url: string | null;
   fullname: string | null;
+  full_name?: string | null;
+  is_verified?: boolean | null;
 }
 
 export const userApi = {

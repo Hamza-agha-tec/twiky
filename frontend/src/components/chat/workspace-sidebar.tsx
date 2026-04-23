@@ -9,7 +9,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Compass,
-  Filter,
   Globe,
   Hash,
   ListTodo,
@@ -28,6 +27,7 @@ import {
 import { CreateEntityDialog, type CreateEntityValues } from '@/components/chat/create-entity-dialog'
 import { type WorkspaceChannel } from '@/components/chat/channels-panel'
 import { ConversationContextMenu } from '@/components/chat/conversation-context-menu'
+import { VerifiedBadge } from '@/components/chat/verified-badge'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -404,8 +404,11 @@ export function WorkspaceSidebar({
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="truncate text-[12px] font-medium text-foreground">
-                          {chat.name}
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate text-[12px] font-medium text-foreground">
+                            {chat.name}
+                          </span>
+                          {chat.isVerified ? <VerifiedBadge size="xs" /> : null}
                         </span>
                         <span className="text-[10px] text-muted-foreground">
                           {chat.timestamp

@@ -39,9 +39,13 @@ export interface GroupMember {
   joined_at: string;
   user: {
     id: string;
+    email?: string | null;
+    fullname?: string | null;
+    full_name?: string | null;
     username: string | null;
     avatar_url: string | null;
     bio: string | null;
+    is_verified?: boolean | null;
   };
 }
 
@@ -53,7 +57,7 @@ export interface GroupMessage {
   file_url: string | null;
   reply_to_id: string | null;
   created_at: string;
-  sender?: { id: string; username: string | null; avatar_url: string | null };
+  sender?: { id: string; email?: string | null; fullname?: string | null; full_name?: string | null; username: string | null; avatar_url: string | null; is_verified?: boolean | null };
 }
 
 export interface GroupMessageMention {

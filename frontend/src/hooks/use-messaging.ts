@@ -49,8 +49,10 @@ export interface ChatMessage {
   created_at: string;
   sender: {
     id: string;
+    email?: string | null;
     username: string;
     avatar_url: string | null;
+    is_verified?: boolean | null;
   };
 }
 

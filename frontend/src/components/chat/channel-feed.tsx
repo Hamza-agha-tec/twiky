@@ -36,6 +36,7 @@ import {
 } from 'lucide-react'
 
 import { FeedPostContextMenu } from '@/components/chat/feed-post-context-menu'
+import { VerifiedBadge, isVerifiedAccountIdentity } from '@/components/chat/verified-badge'
 import type { MockChannelGroup, WorkspaceChannel } from '@/components/chat/channels-panel'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -43,6 +44,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Textarea } from '@/components/ui/textarea'
 import { type ChatMessage } from '@/hooks/use-messaging'
 import { useProfile, useSendFollowRequest, useUserById, useUserFollowers, useUserFollowing, useUserPosts } from '@/hooks/use-user'
+import { useAuth } from '@/context/AuthContext'
 import { filesApi } from '@/lib/files-api'
 import type { GroupMember, GroupMessageMention } from '@/lib/groups-api'
 import { cn } from '@/lib/utils'
@@ -53,6 +55,8 @@ interface FeedMedia {
   label: string
   src: string
 }
+
+const fallbackAvatar = '/placeholder-user.jpg'
 
 function isProbablyImageUrl(url: string): boolean {
   try {
@@ -89,6 +93,7 @@ export interface FeedPost {
   author: string
   authorId?: string
   authorAvatarUrl?: string | null
+  authorIsVerified?: boolean
   isSystem?: boolean
   role: string
   time: string
@@ -132,6 +137,7 @@ export interface FeedMemberProfile {
   posts: number
   role: string
   status: string
+  isVerified?: boolean
   websiteUrl?: string | null
   xUrl?: string | null
 }
@@ -141,6 +147,7 @@ export interface FeedDirectConversationTarget {
   id: string
   initialMessages?: ChatMessage[]
   isOnline?: boolean
+  isVerified?: boolean
   name: string
   status: string
 }
@@ -328,6 +335,7 @@ function buildFeedMemberProfile(post: FeedPost, avatarUrl: string | null, handle
     handle: handle ?? defaults.handle,
     name: post.author,
     role: post.role,
+    isVerified: post.authorIsVerified ?? false,
     websiteUrl: null,
     xUrl: null,
   }
@@ -340,6 +348,7 @@ export function buildStandaloneFeedMemberProfile({
   name,
   role = 'Member',
   status,
+  isVerified = false,
 }: {
   id?: string
   avatarUrl: string | null
@@ -347,6 +356,7 @@ export function buildStandaloneFeedMemberProfile({
   name: string
   role?: string
   status?: string
+  isVerified?: boolean
 }): FeedMemberProfile {
   const defaults = FEED_MEMBER_PROFILES[name] ?? {
     accent: 'from-slate-500 via-slate-700 to-slate-900',
@@ -368,6 +378,7 @@ export function buildStandaloneFeedMemberProfile({
     name,
     role,
     status: status ?? defaults.status,
+    isVerified,
     websiteUrl: null,
     xUrl: null,
   }
@@ -382,6 +393,30 @@ function normalizeExternalUrl(value?: string | null) {
 
 function displayExternalUrl(value: string) {
   return value.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '')
+}
+
+function resolveProfileDisplayName({
+  fallback,
+  fullname,
+  username,
+}: {
+  fallback: string
+  fullname?: string | null
+  username?: string | null
+}) {
+  const cleanFullname = fullname?.trim()
+  const cleanUsername = username?.trim()
+  const cleanFallback = fallback.trim()
+
+  if (cleanFullname && cleanFullname.toLowerCase() !== cleanUsername?.toLowerCase()) {
+    return cleanFullname
+  }
+
+  if (cleanFallback && cleanFallback.toLowerCase() !== cleanUsername?.toLowerCase()) {
+    return cleanFallback
+  }
+
+  return cleanFullname || cleanUsername || cleanFallback || 'User'
 }
 
 function createPixelRoomPreview() {
@@ -571,7 +606,11 @@ function MessageRow({
 
   const resolvedProfile: FeedMemberProfile = {
     ...memberProfile,
-    name: realUser?.username ?? memberProfile.name,
+    name: resolveProfileDisplayName({
+      fallback: memberProfile.name,
+      fullname: realUser?.fullname ?? realUser?.full_name,
+      username: realUser?.username,
+    }),
     handle: realUser?.username ?? memberProfile.handle,
     bio: realUser?.bio ?? memberProfile.bio,
     status: realUser?.status ?? memberProfile.status,
@@ -580,6 +619,12 @@ function MessageRow({
     xUrl: realUser?.x_url ?? memberProfile.xUrl,
     followers: followersData?.length ?? memberProfile.followers,
     following: followingData?.length ?? memberProfile.following,
+    isVerified: isVerifiedAccountIdentity({
+      email: realUser?.email,
+      id: realUser?.id ?? memberProfile.id,
+      is_verified: realUser?.is_verified,
+      isVerified: memberProfile.isVerified,
+    }),
   }
 
   const roleColor = ROLE_COLORS[post.role] ?? 'text-primary'
@@ -624,9 +669,10 @@ function MessageRow({
               <div className="mb-0.5 flex items-baseline gap-2">
                 <button
                   onClick={() => setProfileOpen(true)}
-                  className={cn('text-[14px] font-semibold leading-none hover:underline', roleColor)}
+                  className={cn('inline-flex items-center gap-1 text-[14px] font-semibold leading-none hover:underline', roleColor)}
                 >
                   {post.author}
+                  {resolvedProfile.isVerified ? <VerifiedBadge size="xs" /> : null}
                 </button>
                 <RoleBadge role={post.role} />
                 <span className="text-[11px] text-muted-foreground">{post.time}</span>
@@ -755,11 +801,11 @@ function MessageRow({
                 <div className="h-[80px] w-[80px] overflow-hidden rounded-full border-[5px] border-popover bg-muted shadow-sm">
                   {displayAvatar ? (
                     <img
-                      src={displayAvatar}
+                      src={displayAvatar ?? fallbackAvatar}
                       alt={post.author}
                       className="h-full w-full rounded-full object-cover"
                       onError={(e) => {
-                        if (e.currentTarget.src !== fallbackAvatar) e.currentTarget.src = fallbackAvatar
+                        if (!e.currentTarget.src.endsWith(fallbackAvatar)) e.currentTarget.src = fallbackAvatar
                       }}
                     />
                   ) : (
@@ -928,6 +974,7 @@ export function FeedMemberProfileView({
   const [pixelRoomLiked, setPixelRoomLiked] = useState(false)
   const [followSheet, setFollowSheet] = useState<'followers' | 'following' | null>(null)
 
+  const { user: authUser } = useAuth()
   const { data: currentUser } = useProfile()
   const { data: realUser } = useUserById(memberProfile.id)
   const { data: followersData } = useUserFollowers(memberProfile.id)
@@ -941,7 +988,11 @@ export function FeedMemberProfileView({
 
   const resolvedProfile: FeedMemberProfile = {
     ...memberProfile,
-    name: realUser?.username ?? memberProfile.name,
+    name: resolveProfileDisplayName({
+      fallback: memberProfile.name,
+      fullname: realUser?.fullname ?? realUser?.full_name,
+      username: realUser?.username,
+    }),
     handle: realUser?.username ?? memberProfile.handle,
     bio: realUser?.bio ?? memberProfile.bio,
     status: realUser?.status ?? memberProfile.status,
@@ -951,6 +1002,19 @@ export function FeedMemberProfileView({
     followers: followersData?.length ?? memberProfile.followers,
     following: followingData?.length ?? memberProfile.following,
     posts: memberProfile.id ? backendPosts.length : memberProfile.posts,
+    isVerified: isVerifiedAccountIdentity(
+      {
+        email: realUser?.email,
+        id: realUser?.id ?? memberProfile.id,
+        is_verified: realUser?.is_verified,
+        isVerified: memberProfile.isVerified,
+      },
+      {
+        email: currentUser?.email ?? authUser?.email,
+        id: currentUser?.id,
+        is_verified: currentUser?.is_verified,
+      },
+    ),
   }
 
   const bannerImage = realUser?.banner ?? null
@@ -960,7 +1024,7 @@ export function FeedMemberProfileView({
   const profilePosts = memberProfile.id
     ? backendPosts.map((post) => ({
         id: post.id,
-        author: post.users?.username ?? resolvedProfile.name,
+        author: realUser?.fullname || post.users?.username || resolvedProfile.name,
         authorId: post.user_id,
         body: post.caption ?? '',
         imageUrl: post.media_urls?.[0],
@@ -1004,8 +1068,8 @@ export function FeedMemberProfileView({
   if (followSheet !== null) {
     const title = followSheet === 'followers' ? 'Followers' : 'Following'
     const users = followSheet === 'followers'
-      ? (followersData ?? []).map((r) => ({ id: r.follower_id, username: r.users?.username ?? 'Unknown', avatar_url: r.users?.avatar_url ?? null, bio: r.users?.bio ?? null }))
-      : (followingData ?? []).map((r) => ({ id: r.following_id, username: r.users?.username ?? 'Unknown', avatar_url: r.users?.avatar_url ?? null, bio: r.users?.bio ?? null }))
+      ? (followersData ?? []).map((r) => ({ id: r.follower_id, username: r.users?.username ?? 'Unknown', avatar_url: r.users?.avatar_url ?? null, bio: r.users?.bio ?? null, is_verified: r.users?.is_verified ?? false }))
+      : (followingData ?? []).map((r) => ({ id: r.following_id, username: r.users?.username ?? 'Unknown', avatar_url: r.users?.avatar_url ?? null, bio: r.users?.bio ?? null, is_verified: r.users?.is_verified ?? false }))
 
     return (
       <div className="flex flex-1 flex-col overflow-y-auto bg-background text-foreground">
@@ -1039,7 +1103,10 @@ export function FeedMemberProfileView({
                   }
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[12px] font-semibold text-foreground">@{u.username}</p>
+                  <p className="flex items-center gap-1 truncate text-[12px] font-semibold text-foreground">
+                    @{u.username}
+                    {u.is_verified ? <VerifiedBadge size="xs" /> : null}
+                  </p>
                   {u.bio ? <p className="truncate text-[11px] text-muted-foreground">{u.bio}</p> : null}
                 </div>
               </div>
@@ -1079,7 +1146,7 @@ export function FeedMemberProfileView({
         <div className="-mt-9 mb-2.5 flex items-end justify-between">
           <div className="relative">
             <Avatar className="h-[68px] w-[68px] overflow-hidden rounded-full border-[3px] border-sidebar bg-muted shadow-xl">
-              <AvatarImage src={avatarImage} alt={resolvedProfile.name} className="h-full w-full rounded-full object-cover" />
+              <AvatarImage src={avatarImage ?? undefined} alt={resolvedProfile.name} className="h-full w-full rounded-full object-cover" />
               <AvatarFallback className="rounded-full bg-muted text-[18px] font-bold text-foreground">
                 {resolvedProfile.name[0]?.toUpperCase() ?? 'U'}
               </AvatarFallback>
@@ -1115,6 +1182,7 @@ export function FeedMemberProfileView({
 
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-[19px] font-black leading-none tracking-tight text-foreground">{resolvedProfile.name}</h1>
+          {resolvedProfile.isVerified ? <VerifiedBadge size="sm" /> : null}
           <RoleBadge role={resolvedProfile.role} variant="profile" />
         </div>
         <p className="mt-0.5 text-[11px] text-muted-foreground">@{resolvedProfile.handle}</p>
@@ -1249,7 +1317,7 @@ export function FeedMemberProfileView({
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex min-w-0 items-center gap-2">
                         <Avatar className="h-6 w-6 flex-shrink-0 rounded-full border border-border bg-muted">
-                          <AvatarImage src={avatarImage} alt={resolvedProfile.name} className="h-full w-full rounded-full object-cover" />
+                          <AvatarImage src={avatarImage ?? undefined} alt={resolvedProfile.name} className="h-full w-full rounded-full object-cover" />
                           <AvatarFallback className="rounded-full bg-muted text-[9px] font-bold text-foreground">
                             {resolvedProfile.name[0]?.toUpperCase() ?? 'U'}
                           </AvatarFallback>
@@ -1321,7 +1389,7 @@ export function FeedMemberProfileView({
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
               <div className="absolute bottom-2.5 left-3 right-3 flex items-end justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="truncate text-[12px] font-bold text-white">{resolvedProfile.name}'s Room</p>
+                  <p className="truncate text-[12px] font-bold text-white">{resolvedProfile.name}&apos;s Room</p>
                   <p className="text-[10px] text-white/70">Pixel World · preview</p>
                 </div>
                 <span className="rounded-full bg-white/15 px-2 py-0.5 text-[9px] font-semibold text-white backdrop-blur-sm">
@@ -1439,11 +1507,11 @@ function FeedProfileRow({
           aria-label={`Open ${post.author} profile`}
         >
           <img
-            src={displayAvatar}
+            src={displayAvatar ?? fallbackAvatar}
             alt={post.author}
             className="h-full w-full object-cover"
             onError={(e) => {
-              if (e.currentTarget.src !== fallbackAvatar) e.currentTarget.src = fallbackAvatar
+              if (!e.currentTarget.src.endsWith(fallbackAvatar)) e.currentTarget.src = fallbackAvatar
             }}
           />
         </button>
@@ -1455,9 +1523,10 @@ function FeedProfileRow({
             <button
               type="button"
               onClick={onOpenProfile}
-              className={cn('text-[14px] font-semibold leading-none hover:underline', roleColor)}
+              className={cn('inline-flex items-center gap-1 text-[14px] font-semibold leading-none hover:underline', roleColor)}
             >
               {post.author}
+              {memberProfile.isVerified ? <VerifiedBadge size="xs" /> : null}
             </button>
             <RoleBadge role={post.role} />
             <span className="text-[11px] text-muted-foreground">{post.time}</span>
@@ -1607,7 +1676,14 @@ export function ChannelFeed({
   const [mentionCursorByGroup, setMentionCursorByGroup] = useState<Record<string, number>>({})
   const [activeMentionIndex, setActiveMentionIndex] = useState(0)
 
+  const { user: authUser } = useAuth()
   const { data: profile } = useProfile()
+  const currentIdentity = {
+    email: profile?.email ?? authUser?.email,
+    id: profile?.id,
+    is_verified: profile?.is_verified,
+  }
+  const currentIsVerified = isVerifiedAccountIdentity(currentIdentity)
 
   const useBackendUpload = Boolean(onSendPost)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -1630,6 +1706,10 @@ export function ChannelFeed({
     ? Object.values({ ...postsByGroup, [group.id]: posts })
         .flat()
         .filter((post) => post.author === selectedProfile.profile.name)
+        .map((post) => ({
+          ...post,
+          authorIsVerified: post.authorIsVerified || selectedProfile.profile.isVerified,
+        }))
         .slice()
         .reverse()
     : []
@@ -1736,7 +1816,7 @@ export function ChannelFeed({
       return {
         canMessage: false,
         profile: buildFeedMemberProfile(
-          post,
+          { ...post, authorIsVerified: post.authorIsVerified || currentIsVerified },
           post.authorAvatarUrl ?? myAvatarUrl ?? profile?.avatar_url ?? null,
           profile?.username ?? 'you',
           profile?.id,
@@ -1784,10 +1864,12 @@ export function ChannelFeed({
             id: senderId,
             username: memberProfile.name,
             avatar_url: memberProfile.avatarUrl,
+            is_verified: memberProfile.isVerified ?? false,
           },
         },
       ],
       isOnline: true,
+      isVerified: memberProfile.isVerified ?? false,
       name: memberProfile.name,
       status: memberProfile.status,
     }

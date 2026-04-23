@@ -32,6 +32,8 @@ import {
 } from 'lucide-react'
 
 import { ModeToggle } from '@/components/ui/mode-toggle'
+import { VerifiedBadge, isVerifiedAccountIdentity } from '@/components/chat/verified-badge'
+import { useAuth } from '@/context/AuthContext'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -188,6 +190,11 @@ function getInitial(value?: string | null) {
   return (value?.trim()[0] ?? 'T').toUpperCase()
 }
 
+function versionedImageUrl(url: string) {
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}v=${Date.now()}`
+}
+
 function AccountSection({ profile }: { profile?: UserProfile }) {
   return (
     <>
@@ -270,6 +277,7 @@ function ProfileSection({
   onAvatarChange: (url: string) => void
   onBannerChange: (url: string) => void
 }) {
+  const { user } = useAuth()
   const avatarRef = useRef<HTMLInputElement>(null)
   const bannerRef = useRef<HTMLInputElement>(null)
   const updateProfile = useUpdateProfile()
@@ -321,8 +329,9 @@ function ProfileSection({
     setBannerBusy(true)
     try {
       const { publicUrl } = await filesApi.uploadUserLogo(f)
-      await updateProfile.mutateAsync({ banner: publicUrl })
-      onBannerChange(publicUrl)
+      const nextBannerUrl = versionedImageUrl(publicUrl)
+      await updateProfile.mutateAsync({ banner: nextBannerUrl })
+      onBannerChange(nextBannerUrl)
       toast.success('Banner updated')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Upload failed')
@@ -354,6 +363,11 @@ function ProfileSection({
   ]
   const effectiveAvatarUrl = avatarUrl ?? profile?.avatar_url ?? null
   const effectiveBannerUrl = bannerUrl ?? profile?.banner ?? null
+  const isVerified = isVerifiedAccountIdentity({
+    email: profile?.email ?? user?.email,
+    id: profile?.id,
+    is_verified: profile?.is_verified,
+  })
   const [selectedGradient, setSelectedGradient] = useState(0)
 
   return (
@@ -461,6 +475,7 @@ function ProfileSection({
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <p className="text-[17px] font-bold text-foreground">{fullname || 'Your Name'}</p>
+                {isVerified ? <VerifiedBadge size="sm" /> : null}
                 {status ? <span className="text-[13px]">{statusEmoji}</span> : null}
               </div>
               <p className="text-[12px] text-muted-foreground">@{username}</p>
@@ -1157,6 +1172,7 @@ function AboutSection() {
 // ─── root ─────────────────────────────────────────────────────────────────────
 
 export function SettingsView({ initialSection, onAvatarChange, avatarUrl: avatarUrlProp }: SettingsViewProps) {
+  const { user } = useAuth()
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(
     (initialSection as SettingsSectionId) ?? 'account',
   )
@@ -1166,6 +1182,11 @@ export function SettingsView({ initialSection, onAvatarChange, avatarUrl: avatar
   const { data: posts = [] } = useUserPosts(profile?.id)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(avatarUrlProp ?? null)
   const [bannerUrl, setBannerUrl] = useState<string | null>(null)
+  const isVerified = isVerifiedAccountIdentity({
+    email: profile?.email ?? user?.email,
+    id: profile?.id,
+    is_verified: profile?.is_verified,
+  })
 
   useEffect(() => {
     if (initialSection) setActiveSection(initialSection as SettingsSectionId)
@@ -1224,9 +1245,12 @@ export function SettingsView({ initialSection, onAvatarChange, avatarUrl: avatar
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[12px] font-semibold text-foreground">
-                {profile?.username ?? 'Loading profile'}
-              </p>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <p className="truncate text-[12px] font-semibold text-foreground">
+                  {profile?.fullname || profile?.username || 'Loading profile'}
+                </p>
+                {isVerified ? <VerifiedBadge size="xs" /> : null}
+              </div>
               <p className="truncate text-[10.5px] text-muted-foreground">
                 {profile?.username ? `@${profile.username}` : 'Backend profile'}
               </p>

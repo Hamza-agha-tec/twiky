@@ -12,12 +12,15 @@ import { format } from 'date-fns';
 import { ChatMessage } from '@/hooks/use-messaging';
 import { useProfile } from '@/hooks/use-user';
 import { useChatThemeContext } from '@/context/ChatThemeContext';
+import { useAuth } from '@/context/AuthContext';
+import { VerifiedBadge, isVerifiedAccountIdentity } from '@/components/chat/verified-badge';
 
 interface ChatWindowProps {
   activeChat: string;
   chatOverride?: {
     avatarUrl?: string | null;
     isOnline?: boolean;
+    isVerified?: boolean;
     name: string;
     subtitle?: string | null;
   };
@@ -42,7 +45,7 @@ function getDisabledConversationMetadata(): { is_group: boolean; participants: u
   return null;
 }
 
-function toUiMessage(m: ChatMessage, myId: string): Message {
+function toUiMessage(m: ChatMessage, myId: string, myIsVerified: boolean): Message {
   // Group reactions: [{ userId, emoji }] → [{ emoji, count, reactedByMe }]
   const reactionMap: Record<string, { count: number; reactedByMe: boolean }> = {};
   for (const r of m.reactions ?? []) {
@@ -57,6 +60,14 @@ function toUiMessage(m: ChatMessage, myId: string): Message {
     id: m.id,
     senderId: m.sender_id,
     senderName: m.sender.username,
+    senderIsVerified: isVerifiedAccountIdentity(
+      {
+        email: m.sender.email,
+        id: m.sender.id,
+        is_verified: m.sender.is_verified,
+      },
+      { id: myId, isVerified: myIsVerified },
+    ),
     avatar: m.sender.avatar_url ?? undefined,
     content: m.file_url ?? m.content ?? '',
     type: (m.type as Message['type']) ?? 'text',
@@ -73,13 +84,19 @@ function toUiMessage(m: ChatMessage, myId: string): Message {
 }
 
 export function ChatWindow({ chatOverride, messages: providedMessages = [], onSendMessage, onTyping, otherIsTyping = false, onReact, onDelete, onProfileClick }: ChatWindowProps) {
+  const { user } = useAuth();
   const { data: profile } = useProfile();
   const { resolved: chatTheme } = useChatThemeContext();
   const conv = getDisabledConversationMetadata();
+  const currentIsVerified = isVerifiedAccountIdentity({
+    email: profile?.email ?? user?.email,
+    id: profile?.id,
+    is_verified: profile?.is_verified,
+  });
   const messages = providedMessages
     .slice()
     .reverse()
-    .map((m) => toUiMessage(m, profile?.id ?? ''));
+    .map((m) => toUiMessage(m, profile?.id ?? '', currentIsVerified));
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const initialScrollDone = useRef(false);
   const [replyTo, setReplyTo] = useState<ReplyTo | null>(null);
@@ -161,7 +178,10 @@ export function ChatWindow({ chatOverride, messages: providedMessages = [], onSe
           </motion.button>
 
           <div className="flex-1 min-w-0">
-            <h2 className="font-semibold text-foreground text-sm leading-tight truncate">{chatName}</h2>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <h2 className="truncate text-sm font-semibold leading-tight text-foreground">{chatName}</h2>
+              {chatOverride?.isVerified ? <VerifiedBadge size="sm" /> : null}
+            </div>
             {conv?.is_group ? (
               <p className="text-xs text-muted-foreground">
                 Channel · {conv.participants.length} members
