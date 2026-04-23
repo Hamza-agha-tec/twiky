@@ -29,7 +29,6 @@ const OVERRIDDEN_VARS = [
   '--accent', '--accent-foreground',
   '--sidebar-accent', '--sidebar-accent-foreground',
   '--muted',
-  '--sidebar',
   '--border',
 ];
 
@@ -53,7 +52,6 @@ function applyThemeVars(v: ChatThemeVariant, isDark: boolean) {
   // Approximate neutral base values for light/dark mode
   const bgBase     = isDark ? 24  : 255; // --background
   const mutedBase  = isDark ? 55  : 245; // --muted
-  const sidebarBase= isDark ? 38  : 252; // --sidebar
 
   // Primary & ring
   el.style.setProperty('--primary',                    v.own);
@@ -73,9 +71,6 @@ function applyThemeVars(v: ChatThemeVariant, isDark: boolean) {
 
   // Muted — input backgrounds, skeletons, badges (opaque blend)
   el.style.setProperty('--muted',   blendColor(r, g, b, mutedBase,   isDark ? 0.14 : 0.16));
-
-  // Sidebar — panel and surface backgrounds (opaque blend)
-  el.style.setProperty('--sidebar', blendColor(r, g, b, sidebarBase, isDark ? 0.08 : 0.10));
 
   // Border — subtle themed dividers
   el.style.setProperty('--border',  rgba(isDark ? 0.14 : 0.18));
