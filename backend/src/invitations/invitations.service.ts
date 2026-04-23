@@ -1,8 +1,9 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.module';
 import { NotificationsService } from '../notifications/notifications.service';
- import { CreateInvitationDto, InvitationStatus } from './dto/invitation.dto';
+import { CreateInvitationDto, InvitationStatus } from './dto/invitation.dto';
 import { GroupsService } from '../groups/groups.service';
+import { MessagingService } from '../messaging/messaging.service';
 
 @Injectable()
 export class InvitationsService {
@@ -10,6 +11,7 @@ export class InvitationsService {
         private readonly supabaseService: SupabaseService,
         private readonly notificationsService: NotificationsService,
         private readonly groupsService: GroupsService,
+        private readonly messagingService: MessagingService,
     ) { }
 
     async createInvitation(inviterId: string, dto: CreateInvitationDto) {
@@ -153,6 +155,9 @@ export class InvitationsService {
                 { follower_id: userA, following_id: userB },
                 { follower_id: userB, following_id: userA }
             ]);
+
+            // Create Direct Conversation automatically
+            await this.messagingService.createDirectConversation(userA, { targetUserId: userB });
         }
     }
 

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, UseGuards, Request, Patch } from '@nestjs/common';
 import { MessagingService } from './messaging.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SendGroupMessageDto } from './dto/group-messaging.dto';
@@ -16,5 +16,15 @@ export class GroupMessagingController {
     @Post(':groupId/messages')
     async sendGroupMessage(@Request() req: any, @Param('groupId') groupId: string, @Body() dto: SendGroupMessageDto) {
         return this.messagingService.sendGroupMessage(req.user.userId, groupId, dto);
+    }
+
+    @Post('messages/:messageId/reactions')
+    async toggleReaction(@Request() req: any, @Param('messageId') messageId: string, @Body() dto: { emoji: string }) {
+        return this.messagingService.toggleGroupMessageReaction(req.user.userId, messageId, dto.emoji);
+    }
+
+    @Patch('messages/:messageId/pin')
+    async togglePin(@Request() req: any, @Param('messageId') messageId: string) {
+        return this.messagingService.toggleGroupMessagePin(req.user.userId, messageId);
     }
 }

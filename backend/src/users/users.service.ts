@@ -201,4 +201,31 @@ export class UsersService {
         }
         return data;
     }
+
+    async getMutualFollowers(userId: string) {
+        // Step 1: Get IDs of people I follow
+        const { data: following, error: followingError } = await this.supabaseService
+            .getClient()
+            .from('follows')
+            .select('following_id')
+            .eq('follower_id', userId);
+
+        if (followingError) throw new Error(followingError.message);
+        const followingIds = following.map(f => f.following_id);
+
+        if (followingIds.length === 0) return [];
+
+        // Step 2: From those people, find who also follows me
+        const { data: mutuals, error: mutualError } = await this.supabaseService
+            .getClient()
+            .from('follows')
+            .select('follower_id, users!follows_follower_id_fkey(id, username, avatar_url, bio)')
+            .in('follower_id', followingIds)
+            .eq('following_id', userId);
+
+        if (mutualError) throw new Error(mutualError.message);
+
+        // Map to return the user objects directly
+        return mutuals.map((m: any) => m.users);
+    }
 }

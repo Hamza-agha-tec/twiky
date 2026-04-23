@@ -100,6 +100,7 @@ export class MessagingService {
                 sender_id: userId,
                 content: dto.content,
                 file_url: dto.fileUrl || null,
+                file_urls: dto.fileUrls || [],
                 reply_to_id: dto.replyToId || null,
                 entity_mentions: dto.entityMentions || []
             })
@@ -292,6 +293,7 @@ export class MessagingService {
                 sender_id: userId,
                 content: dto.content,
                 file_url: dto.fileUrl || null,
+                file_urls: dto.fileUrls || [],
                 reply_to_id: dto.replyToId || null,
                 entity_mentions: dto.entityMentions || []
             })
@@ -352,6 +354,84 @@ export class MessagingService {
         if (error) throw new Error(`Failed to delete group message: ${error.message}`);
         return { success: true };
     }
+
+    async toggleDirectMessageReaction(userId: string, messageId: string, emoji: string) {
+        return this.toggleReactionInternal('direct_messages', userId, messageId, emoji);
+    }
+
+    async toggleGroupMessageReaction(userId: string, messageId: string, emoji: string) {
+        return this.toggleReactionInternal('group_messages', userId, messageId, emoji);
+    }
+
+    async toggleGroupMessagePin(userId: string, messageId: string) {
+        // Only allow admins or owners to pin? Actually check if user is admin of the group's channel
+        const { data: message } = await this.supabaseService.getClient().from('group_messages').select('group_id, is_pinned').eq('id', messageId).single();
+        if (!message) throw new NotFoundException('Message not found');
+
+        const { data: group } = await this.supabaseService.getClient().from('groups').select('channel_id').eq('id', message.group_id).single();
+        if (!group) throw new NotFoundException('Group not found');
+
+        const { data: member } = await this.supabaseService.getClient().from('channel_members').select('role').eq('channel_id', group.channel_id).eq('user_id', userId).single();
+
+        if (!member || (member.role !== 'OWNER' && member.role !== 'ADMIN')) {
+            throw new ForbiddenException("Only Channel Admins or Owners can pin messages.");
+        }
+
+        const { data: updated, error } = await this.supabaseService
+            .getClient()
+            .from('group_messages')
+            .update({ is_pinned: !message.is_pinned })
+            .eq('id', messageId)
+            .select()
+            .single();
+
+        if (error) throw new Error(`Failed to toggle pin: ${error.message}`);
+        return updated;
+    }
+
+    private async toggleReactionInternal(table: string, userId: string, messageId: string, emoji: string) {
+        const { data: message, error: fetchError } = await this.supabaseService
+            .getClient()
+            .from(table)
+            .select('reactions')
+            .eq('id', messageId)
+            .single();
+
+        if (fetchError || !message) throw new NotFoundException('Message not found');
+
+        let reactions = message.reactions || [];
+        const reactionIndex = reactions.findIndex((r: any) => r.emoji === emoji);
+
+        if (reactionIndex > -1) {
+            const userIndex = reactions[reactionIndex].users.indexOf(userId);
+            if (userIndex > -1) {
+                // Remove reaction
+                reactions[reactionIndex].users.splice(userIndex, 1);
+                // If no users left for this emoji, remove the emoji entry entirely
+                if (reactions[reactionIndex].users.length === 0) {
+                    reactions.splice(reactionIndex, 1);
+                }
+            } else {
+                // Add user to existing emoji
+                reactions[reactionIndex].users.push(userId);
+            }
+        } else {
+            // Add new emoji reaction
+            reactions.push({ emoji, users: [userId] });
+        }
+
+        const { data: updated, error: updateError } = await this.supabaseService
+            .getClient()
+            .from(table)
+            .update({ reactions })
+            .eq('id', messageId)
+            .select('*, sender:users(id, username, avatar_url)')
+            .single();
+
+        if (updateError) throw new Error(`Failed to update reactions: ${updateError.message}`);
+        return updated;
+    }
+
     async sendSystemMessage(groupId: string, content: string) {
         const { data, error } = await this.supabaseService
             .getClient()
