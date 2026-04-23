@@ -17,7 +17,6 @@ import {
   Volume2,
 } from 'lucide-react'
 import { CreateEntityDialog, type CreateEntityValues } from '@/components/chat/create-entity-dialog'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -97,6 +96,7 @@ interface ChannelsPanelProps {
   activeGroup?: string
   channel?: WorkspaceChannel | null
   channelAvatarUrl?: string | null
+  channelBannerUrl?: string | null
   onAssetSave?: (channelId: string, avatar: string | null, banner: string | null) => void
   onCreateGroup?: (values: CreateEntityValues) => void
   onSelectGroup?: (groupId: string) => void
@@ -131,6 +131,11 @@ function getChannelMonogram(label: string) {
   const words = label.split(/\s+/).filter(Boolean)
   if (words.length >= 2) return `${words[0][0]}${words[1][0]}`.toUpperCase()
   return label.slice(0, 2).toUpperCase() || 'CH'
+}
+
+function versionedAssetUrl(url: string) {
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}v=${Date.now()}`
 }
 
 export function buildChannelGroup({
@@ -589,7 +594,7 @@ function ChannelSettingsSheet({
                   }
                   if (bannerFile) {
                     const { publicUrl } = await filesApi.uploadChannelBanner(channel.id, bannerFile)
-                    nextBanner = publicUrl
+                    nextBanner = versionedAssetUrl(publicUrl)
                   }
                   const data: {
                     name: string
@@ -883,6 +888,7 @@ export function ChannelsPanel({
   activeGroup,
   channel,
   channelAvatarUrl,
+  channelBannerUrl,
   onAssetSave,
   onCreateGroup,
   onSelectGroup,
@@ -898,6 +904,7 @@ export function ChannelsPanel({
   const tone = getChannelTone(channel.id)
   const monogram = getChannelMonogram(channel.label)
   const displayAvatar = channelAvatarUrl ?? channel.avatarUrl ?? null
+  const displayBanner = channelBannerUrl ?? channel.bannerUrl ?? null
   const canManage = channel.role === 'OWNER' || channel.role === 'ADMIN'
 
   return (
@@ -909,28 +916,32 @@ export function ChannelsPanel({
         transition={{ duration: 0.28, ease: 'easeOut' }}
       >
         {/* Header */}
-        <div className="border-b border-border px-3 py-3">
-          <div className="flex items-center gap-2.5">
-            <div
-              className={cn(
-                'flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-[10px] font-bold text-white shadow-sm',
-                tone,
-              )}
-            >
-              {displayAvatar ? (
-                <img src={displayAvatar} alt={channel.label} className="h-full w-full rounded-xl object-cover" />
-              ) : monogram}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[12.5px] font-semibold">{channel.label}</p>
-              <p className="truncate text-[10px] text-muted-foreground">{channel.membersLabel}</p>
-            </div>
+        <div className="relative h-[94px] overflow-hidden border-b border-border px-3">
+          {displayBanner ? (
+            <>
+              <img
+                src={displayBanner}
+                alt={`${channel.label} banner`}
+                className="absolute inset-0 h-full w-full object-cover [object-position:center_34%]"
+              />
+              <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-background/35 to-background" />
+            </>
+          ) : (
+            <div className={cn('absolute inset-0 bg-gradient-to-br opacity-15', tone)} />
+          )}
+
+          <div className="relative flex justify-end pt-2.5">
             {canManage ? (
               <div className="flex items-center gap-0.5">
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 rounded-xl"
+                  className={cn(
+                    'h-7 w-7 rounded-xl',
+                    displayBanner
+                      ? 'bg-black/25 text-white hover:bg-black/40 hover:text-white'
+                      : '',
+                  )}
                   onClick={() => setShowCreateGroup(true)}
                 >
                   <Plus className="h-3.5 w-3.5" />
@@ -938,13 +949,39 @@ export function ChannelsPanel({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 rounded-xl"
+                  className={cn(
+                    'h-7 w-7 rounded-xl',
+                    displayBanner
+                      ? 'bg-black/25 text-white hover:bg-black/40 hover:text-white'
+                      : '',
+                  )}
                   onClick={() => setChannelSettingsOpen(true)}
                 >
                   <MoreHorizontal className="h-3.5 w-3.5" />
                 </Button>
               </div>
             ) : null}
+          </div>
+
+          <div className="absolute inset-x-3 bottom-2 flex items-center gap-2.5">
+            <div
+              className={cn(
+                'flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-background/80 bg-gradient-to-br text-[10px] font-bold text-white shadow-sm',
+                tone,
+              )}
+            >
+              {displayAvatar ? (
+                <img src={displayAvatar} alt={channel.label} className="h-full w-full object-cover" />
+              ) : monogram}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className={cn('truncate text-[12.5px] font-semibold', displayBanner ? 'text-white' : 'text-foreground')}>
+                {channel.label}
+              </p>
+              <p className={cn('truncate text-[10px]', displayBanner ? 'text-white/80' : 'text-muted-foreground')}>
+                {channel.membersLabel}
+              </p>
+            </div>
           </div>
         </div>
 

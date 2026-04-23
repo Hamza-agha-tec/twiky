@@ -91,6 +91,11 @@ const WORKSPACE_MODES = ['direct', 'channels'] as const
 const MAIN_AREA_TABS = ['feed', 'notes', 'tasks', 'goals'] as const
 const ACTIVE_VIEWS = ['chat', 'discover-channels', 'settings', 'store', 'add-friends', 'notifications'] as const
 
+function versionedAssetUrl(url: string) {
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}v=${Date.now()}`
+}
+
 function isOneOf<T extends readonly string[]>(value: unknown, options: T): value is T[number] {
   return typeof value === 'string' && options.includes(value as T[number])
 }
@@ -1292,7 +1297,7 @@ export default function ChatPage() {
 
     if (values.bannerFile) {
       const { publicUrl } = await filesApi.uploadChannelBanner(channel.id, values.bannerFile)
-      bannerUrl = publicUrl
+      bannerUrl = versionedAssetUrl(publicUrl)
     }
 
     if (avatarUrl || bannerUrl) {
@@ -1484,6 +1489,11 @@ export default function ChatPage() {
             channelAvatarUrl={
               activeChannel
                 ? (channelAssets[activeChannel.id]?.avatar ?? activeChannel.avatarUrl ?? null)
+                : null
+            }
+            channelBannerUrl={
+              activeChannel
+                ? (channelAssets[activeChannel.id]?.banner ?? activeChannel.bannerUrl ?? null)
                 : null
             }
             onAssetSave={handleChannelAssetSave}
