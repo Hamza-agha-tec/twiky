@@ -6,6 +6,7 @@ export const STORAGE_BUCKETS = {
 } as const;
 
 export const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8 MiB
+export const MAX_BANNER_BYTES = 20 * 1024 * 1024; // 20 MiB to support animated GIF banners
 export const MAX_GROUP_FILE_BYTES = 25 * 1024 * 1024; // 25 MiB
 
 export const IMAGE_MIME_TYPES = new Set([

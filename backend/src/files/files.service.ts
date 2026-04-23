@@ -7,6 +7,7 @@ import {
 import { SupabaseService } from '../supabase/supabase.module';
 import {
   IMAGE_MIME_TYPES,
+  MAX_BANNER_BYTES,
   MAX_GROUP_FILE_BYTES,
   MAX_IMAGE_BYTES,
   STORAGE_BUCKETS,
@@ -19,15 +20,65 @@ type UserImageSlot = 'avatar_url' | 'logo';
 export class FilesService {
   constructor(private readonly supabaseService: SupabaseService) {}
 
-  private assertImage(file: Express.Multer.File) {
+  private inferImageMimeType(file: Express.Multer.File): string | null {
+    const claimedMime = file.mimetype?.toLowerCase().trim()
+    if (claimedMime && IMAGE_MIME_TYPES.has(claimedMime)) {
+      return claimedMime
+    }
+
+    const lowerName = file.originalname?.toLowerCase().trim() ?? ''
+    if (lowerName.endsWith('.gif')) return 'image/gif'
+    if (lowerName.endsWith('.png')) return 'image/png'
+    if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) return 'image/jpeg'
+    if (lowerName.endsWith('.webp')) return 'image/webp'
+    if (lowerName.endsWith('.svg')) return 'image/svg+xml'
+
+    const buffer = file.buffer
+    if (!buffer?.length) return null
+
+    const startsWith = (signature: number[]) =>
+      signature.every((value, index) => buffer[index] === value)
+
+    if (startsWith([0x47, 0x49, 0x46, 0x38])) return 'image/gif'
+    if (startsWith([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return 'image/png'
+    if (startsWith([0xff, 0xd8, 0xff])) return 'image/jpeg'
+    if (
+      startsWith([0x52, 0x49, 0x46, 0x46]) &&
+      buffer.length >= 12 &&
+      buffer.subarray(8, 12).toString('ascii') === 'WEBP'
+    ) {
+      return 'image/webp'
+    }
+
+    const textStart = buffer.subarray(0, Math.min(buffer.length, 512)).toString('utf8').trimStart()
+    if (textStart.startsWith('<svg') || textStart.startsWith('<?xml')) {
+      return 'image/svg+xml'
+    }
+
+    return null
+  }
+
+  private assertImage(file: Express.Multer.File, resolvedMimeType?: string | null) {
     if (!file?.buffer?.length) {
       throw new BadRequestException('Missing file');
     }
     if (file.size > MAX_IMAGE_BYTES) {
       throw new BadRequestException(`Image too large (max ${MAX_IMAGE_BYTES} bytes)`);
     }
-    if (!IMAGE_MIME_TYPES.has(file.mimetype)) {
+    if (!resolvedMimeType || !IMAGE_MIME_TYPES.has(resolvedMimeType)) {
       throw new BadRequestException(`Unsupported image type: ${file.mimetype}`);
+    }
+  }
+
+  private assertBannerImage(file: Express.Multer.File, resolvedMimeType?: string | null) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Missing file');
+    }
+    if (file.size > MAX_BANNER_BYTES) {
+      throw new BadRequestException(`Banner image too large (max ${MAX_BANNER_BYTES} bytes)`);
+    }
+    if (!resolvedMimeType || !IMAGE_MIME_TYPES.has(resolvedMimeType)) {
+      throw new BadRequestException(`Unsupported banner image type: ${file.mimetype}`);
     }
   }
 
@@ -107,11 +158,12 @@ export class FilesService {
     bucket: string,
     objectPath: string,
     file: Express.Multer.File,
+    contentType = file.mimetype,
     cacheControl = '3600',
   ): Promise<{ path: string; publicUrl: string }> {
     const client = this.supabaseService.getClient();
     const { error } = await client.storage.from(bucket).upload(objectPath, file.buffer, {
-      contentType: file.mimetype,
+      contentType,
       upsert: true,
       cacheControl,
     });
@@ -131,25 +183,40 @@ export class FilesService {
     file: Express.Multer.File,
   ) {
     await this.assertChannelAdminOrOwner(userId, channelId);
-    this.assertImage(file);
-    const ext = this.extFromMime(file.mimetype);
+    const resolvedMimeType = this.inferImageMimeType(file);
+    if (slot === 'banner') {
+      this.assertBannerImage(file, resolvedMimeType);
+    } else {
+      this.assertImage(file, resolvedMimeType);
+    }
+    const ext = this.extFromMime(resolvedMimeType ?? file.mimetype);
     const objectPath = `${channelId}/${slot}${ext}`;
-    return this.uploadObject(STORAGE_BUCKETS.channel, objectPath, file);
+    return this.uploadObject(STORAGE_BUCKETS.channel, objectPath, file, resolvedMimeType ?? file.mimetype);
   }
 
   async uploadUserImage(userId: string, slot: UserImageSlot, file: Express.Multer.File) {
-    this.assertImage(file);
-    const ext = this.extFromMime(file.mimetype);
+    const resolvedMimeType = this.inferImageMimeType(file);
+    if (slot === 'logo') {
+      this.assertBannerImage(file, resolvedMimeType);
+    } else {
+      this.assertImage(file, resolvedMimeType);
+    }
+    const ext = this.extFromMime(resolvedMimeType ?? file.mimetype);
     const objectPath = `${userId}/${slot}${ext}`;
-    return this.uploadObject(STORAGE_BUCKETS.users, objectPath, file);
+    return this.uploadObject(STORAGE_BUCKETS.users, objectPath, file, resolvedMimeType ?? file.mimetype);
   }
 
   async uploadGroupImage(userId: string, groupId: string, slot: ImageSlot, file: Express.Multer.File) {
     await this.assertGroupUploader(userId, groupId);
-    this.assertImage(file);
-    const ext = this.extFromMime(file.mimetype);
+    const resolvedMimeType = this.inferImageMimeType(file);
+    if (slot === 'banner') {
+      this.assertBannerImage(file, resolvedMimeType);
+    } else {
+      this.assertImage(file, resolvedMimeType);
+    }
+    const ext = this.extFromMime(resolvedMimeType ?? file.mimetype);
     const objectPath = `${groupId}/${slot}${ext}`;
-    return this.uploadObject(STORAGE_BUCKETS.groups, objectPath, file);
+    return this.uploadObject(STORAGE_BUCKETS.groups, objectPath, file, resolvedMimeType ?? file.mimetype);
   }
 
   /** Single “file” slot under the group folder (diagram); good for one primary attachment. */

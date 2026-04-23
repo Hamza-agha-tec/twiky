@@ -43,6 +43,7 @@ import { useGroupMembers, useDeleteGroup } from '@/hooks/use-groups'
 import { useSendGroupInvitation } from '@/hooks/use-invitations'
 import { useProfile, useUserFollowers } from '@/hooks/use-user'
 import { filesApi } from '@/lib/files-api'
+import { BANNER_ACCEPT } from '@/lib/files-api'
 import { toast } from 'sonner'
 
 export interface MockChannelGroup {
@@ -435,10 +436,13 @@ function ChannelSettingsSheet({
               )}
               <div className="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/30 opacity-0 transition-opacity hover:opacity-100">
                 <Upload className="h-4 w-4 text-white" />
-                <span className="text-[11px] font-medium text-white">Upload banner</span>
+                <span className="text-[11px] font-medium text-white">Upload GIF or image banner</span>
               </div>
-              <input ref={bannerRef} type="file" accept="image/*" className="hidden" onChange={handleBannerChange} />
+              <input ref={bannerRef} type="file" accept={BANNER_ACCEPT} className="hidden" onChange={handleBannerChange} />
             </div>
+            <p className="text-[10px] text-muted-foreground">
+              Banners support PNG, JPG, WEBP, SVG, and animated GIF up to 20 MB.
+            </p>
 
             {/* Avatar */}
             <div className="flex items-center gap-3">

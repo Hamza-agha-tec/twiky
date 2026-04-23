@@ -58,7 +58,7 @@ import {
 } from '@/hooks/use-user'
 import { useSpotifyAuthUrl, useSpotifyDisconnect, useSpotifyNowPlaying } from '@/hooks/use-spotify'
 import type { UserPost, UserProfile } from '@/lib/user-api'
-import { filesApi } from '@/lib/files-api'
+import { BANNER_ACCEPT, filesApi } from '@/lib/files-api'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -282,6 +282,7 @@ function ProfileSection({
   const { user } = useAuth()
   const avatarRef = useRef<HTMLInputElement>(null)
   const bannerRef = useRef<HTMLInputElement>(null)
+  const bannerPreviewUrlRef = useRef<string | null>(null)
   const updateProfile = useUpdateProfile()
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [avatarBusy, setAvatarBusy] = useState(false)
@@ -328,14 +329,27 @@ function ProfileSection({
     const f = e.target.files?.[0]
     e.target.value = ''
     if (!f) return
+    const previousBannerUrl = effectiveBannerUrl
+    if (bannerPreviewUrlRef.current) {
+      URL.revokeObjectURL(bannerPreviewUrlRef.current)
+      bannerPreviewUrlRef.current = null
+    }
+    const previewUrl = URL.createObjectURL(f)
+    bannerPreviewUrlRef.current = previewUrl
+    onBannerChange(previewUrl)
     setBannerBusy(true)
     try {
-      const { publicUrl } = await filesApi.uploadUserLogo(f)
+      const { publicUrl } = await filesApi.uploadUserBanner(f)
       const nextBannerUrl = versionedImageUrl(publicUrl)
       await updateProfile.mutateAsync({ banner: nextBannerUrl })
       onBannerChange(nextBannerUrl)
+      URL.revokeObjectURL(previewUrl)
+      bannerPreviewUrlRef.current = null
       toast.success('Banner updated')
     } catch (err) {
+      onBannerChange(previousBannerUrl ?? '')
+      URL.revokeObjectURL(previewUrl)
+      bannerPreviewUrlRef.current = null
       toast.error(err instanceof Error ? err.message : 'Upload failed')
     } finally {
       setBannerBusy(false)
@@ -346,6 +360,10 @@ function ProfileSection({
     setBannerBusy(true)
     try {
       await updateProfile.mutateAsync({ banner: null })
+      if (bannerPreviewUrlRef.current) {
+        URL.revokeObjectURL(bannerPreviewUrlRef.current)
+        bannerPreviewUrlRef.current = null
+      }
       onBannerChange('')
       toast.success('Banner removed')
     } catch (err) {
@@ -354,6 +372,15 @@ function ProfileSection({
       setBannerBusy(false)
     }
   }
+
+  useEffect(() => {
+    return () => {
+      if (bannerPreviewUrlRef.current) {
+        URL.revokeObjectURL(bannerPreviewUrlRef.current)
+        bannerPreviewUrlRef.current = null
+      }
+    }
+  }, [])
 
   const BANNER_GRADIENTS = [
     'from-sky-500 via-cyan-500 to-blue-600',
@@ -382,7 +409,7 @@ function ProfileSection({
         {/* Banner */}
         <div
           className={cn(
-            'group relative h-20 cursor-pointer overflow-hidden rounded-t-2xl',
+            'group relative h-24 cursor-pointer overflow-hidden rounded-t-2xl',
             !effectiveBannerUrl && cn('bg-gradient-to-br', BANNER_GRADIENTS[selectedGradient]),
           )}
           onClick={() => bannerRef.current?.click()}
@@ -395,7 +422,13 @@ function ProfileSection({
           role="button"
           tabIndex={0}
         >
-          {effectiveBannerUrl ? <img src={effectiveBannerUrl} alt="Banner" className="h-full w-full object-cover" /> : null}
+          {effectiveBannerUrl ? (
+            <img
+              src={effectiveBannerUrl}
+              alt="Banner"
+              className="h-full w-full object-cover [object-position:center_34%]"
+            />
+          ) : null}
           <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/20 to-transparent" />
           <div className="absolute inset-0 bg-gradient-to-r from-primary/15 via-transparent to-transparent" />
           <div className="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/35 opacity-0 transition-opacity group-hover:opacity-100">
@@ -421,17 +454,8 @@ function ProfileSection({
                 Remove
               </button>
             ) : null}
-            <button
-              type="button"
-              disabled={bannerBusy}
-              onClick={() => bannerRef.current?.click()}
-              className="inline-flex h-7 items-center gap-1 rounded-full border border-white/20 bg-black/45 px-2.5 text-[10px] font-semibold text-white/90 backdrop-blur-sm transition-colors hover:bg-black/60 disabled:opacity-50"
-            >
-              <Upload className="h-3 w-3" />
-              {effectiveBannerUrl ? 'Replace' : 'Upload'}
-            </button>
           </div>
-          <input ref={bannerRef} type="file" accept="image/*" className="hidden" onChange={(e) => void handleBannerFile(e)} />
+          <input ref={bannerRef} type="file" accept={BANNER_ACCEPT} className="hidden" onChange={(e) => void handleBannerFile(e)} />
 
           {!effectiveBannerUrl ? (
             <div className="absolute bottom-2.5 right-2.5 flex items-center gap-1.5 rounded-full border border-white/20 bg-black/40 px-2 py-1.5 backdrop-blur-sm" onClick={(e) => e.stopPropagation()}>
@@ -504,6 +528,9 @@ function ProfileSection({
               {websiteUrl ? <span className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground"><Link2 className="h-2.5 w-2.5" />{websiteUrl}</span> : null}
             </div>
           ) : null}
+          <p className="mt-2 text-[10.5px] text-muted-foreground">
+            Banner uploads support PNG, JPG, WEBP, SVG, and animated GIF up to 20 MB.
+          </p>
         </div>
       </div>
 

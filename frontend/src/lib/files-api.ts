@@ -3,6 +3,7 @@ import { createClient } from '@/utils/supabase/client';
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3500';
 
 export type UploadSlotResult = { path: string; publicUrl: string };
+export const BANNER_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml';
 
 async function getToken(): Promise<string> {
   const supabase = createClient();
@@ -37,6 +38,7 @@ export const filesApi = {
 
   /** `users` bucket `logo` slot; use with `users.banner` when that is your header image. */
   uploadUserLogo: (file: File) => uploadForm('/files/users/me/logo', file),
+  uploadUserBanner: (file: File) => uploadForm('/files/users/me/logo', file),
 
   uploadGroupBanner: (groupId: string, file: File) =>
     uploadForm(`/files/groups/${groupId}/banner`, file),
