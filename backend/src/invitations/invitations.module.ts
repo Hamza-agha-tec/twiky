@@ -5,9 +5,10 @@ import { SupabaseModule } from '../supabase/supabase.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 import { GroupsModule } from '../groups/groups.module';
+import { MessagingModule } from '../messaging/messaging.module';
 
 @Module({
-    imports: [SupabaseModule, NotificationsModule, GroupsModule],
+    imports: [SupabaseModule, NotificationsModule, GroupsModule, MessagingModule],
     controllers: [InvitationsController],
     providers: [InvitationsService],
     exports: [InvitationsService],

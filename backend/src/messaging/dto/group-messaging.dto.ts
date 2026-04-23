@@ -18,6 +18,11 @@ export class SendGroupMessageDto {
     fileUrl?: string;
 
     @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    fileUrls?: string[];
+
+    @IsOptional()
     @IsUUID()
     replyToId?: string;
 

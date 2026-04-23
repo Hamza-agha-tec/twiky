@@ -27,4 +27,9 @@ export class DirectMessagingController {
     async sendDirectMessage(@Request() req: any, @Param('id') conversationId: string, @Body() dto: SendDirectMessageDto) {
         return this.messagingService.sendDirectMessage(req.user.userId, conversationId, dto);
     }
+
+    @Post('messages/:messageId/reactions')
+    async toggleReaction(@Request() req: any, @Param('messageId') messageId: string, @Body() dto: { emoji: string }) {
+        return this.messagingService.toggleDirectMessageReaction(req.user.userId, messageId, dto.emoji);
+    }
 }

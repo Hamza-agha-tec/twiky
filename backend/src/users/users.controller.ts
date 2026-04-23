@@ -34,8 +34,14 @@ export class UsersController {
 
     @UseGuards(JwtAuthGuard)
     @Get("search")
-    async search(@Query("username") username: string , @Request() req: any) {
-        return this.usersService.searchByUsername(username , req.user.userId);
+    async search(@Query("username") username: string, @Request() req: any) {
+        return this.usersService.searchByUsername(username, req.user.userId);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Get("mutual-followers")
+    async getMutualFollowers(@Request() req: any) {
+        return this.usersService.getMutualFollowers(req.user.userId);
     }
 
     @UseGuards(JwtAuthGuard)
