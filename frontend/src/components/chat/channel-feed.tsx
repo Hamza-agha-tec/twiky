@@ -1017,6 +1017,7 @@ export function FeedMemberProfileView({
   const [followRequested, setFollowRequested] = useState(false)
   const [pixelRoomLiked, setPixelRoomLiked] = useState(false)
   const [followSheet, setFollowSheet] = useState<'followers' | 'following' | null>(null)
+  const [viewingUser, setViewingUser] = useState<FeedMemberProfile | null>(null)
 
   const { user: authUser } = useAuth()
   const { data: currentUser } = useProfile()
@@ -1114,6 +1115,21 @@ export function FeedMemberProfileView({
     }
   }
 
+  if (viewingUser !== null) {
+    return (
+      <FeedMemberProfileView
+        currentGroupLabel={currentGroupLabel}
+        isOwn={false}
+        memberProfile={viewingUser}
+        messagePending={false}
+        onBack={() => setViewingUser(null)}
+        onMessage={() => {}}
+        posts={[]}
+        showMessageAction={showMessageAction}
+      />
+    )
+  }
+
   if (followSheet !== null) {
     const title = followSheet === 'followers' ? 'Followers' : 'Following'
     const users = followSheet === 'followers'
@@ -1144,7 +1160,12 @@ export function FeedMemberProfileView({
         ) : (
           <div className="divide-y divide-border">
             {users.map((u) => (
-              <div key={u.id} className="flex items-center gap-3 px-4 py-2.5">
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => setViewingUser(buildStandaloneFeedMemberProfile({ id: u.id, avatarUrl: u.avatar_url, name: u.username, handle: u.username, isVerified: u.is_verified }))}
+                className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-accent"
+              >
                 <div className="h-9 w-9 flex-shrink-0 overflow-hidden rounded-full bg-muted">
                   {u.avatar_url
                     ? <img src={u.avatar_url} alt={u.username} className="h-full w-full object-cover" />
@@ -1158,7 +1179,7 @@ export function FeedMemberProfileView({
                   </p>
                   {u.bio ? <p className="truncate text-[11px] text-muted-foreground">{u.bio}</p> : null}
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         )}
