@@ -15,6 +15,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import {
   ArrowLeft,
   Bookmark,
+  Crown,
   Heart,
   ImagePlus,
   MessageSquare,
@@ -27,9 +28,11 @@ import {
   Reply,
   SendHorizontal,
   Share2,
+  Shield,
   SmilePlus,
   Trash2,
   UserCheck,
+  UserMinus,
   UserPlus,
   Users,
   X,
@@ -43,6 +46,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
 import { type ChatMessage } from '@/hooks/use-messaging'
+import { useRemoveGroupMember, useUpdateGroupMemberRole } from '@/hooks/use-groups'
 import { useProfile, useSendFollowRequest, useUserById, useUserFollowers, useUserFollowing, useUserPosts } from '@/hooks/use-user'
 import { useAuth } from '@/context/AuthContext'
 import { filesApi } from '@/lib/files-api'
@@ -257,24 +261,54 @@ function RoleBadge({ role, variant = 'feed' }: { role: string; variant?: 'feed' 
   const normalized = role.toLowerCase()
   const isOwner = normalized === 'owner'
   const isAdmin = normalized === 'admin'
+  const iconSize = variant === 'profile' ? 'h-[9px] w-[9px]' : 'h-[8px] w-[8px]'
   const baseClass = variant === 'profile'
-    ? 'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.12em]'
-    : 'inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]'
+    ? 'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em]'
+    : 'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]'
+
+  if (isOwner) {
+    return (
+      <span
+        className={cn(
+          baseClass,
+          'border border-amber-400/50 text-amber-600 dark:text-yellow-300',
+          'bg-[linear-gradient(135deg,rgba(251,191,36,0.28),rgba(245,158,11,0.22),rgba(217,119,6,0.16))]',
+          'shadow-[inset_0_1px_0_rgba(255,255,255,0.32),0_0_10px_rgba(251,191,36,0.22),0_2px_6px_rgba(0,0,0,0.08)]',
+          'dark:border-yellow-400/35 dark:bg-[linear-gradient(135deg,rgba(251,191,36,0.20),rgba(245,158,11,0.16),rgba(217,119,6,0.12))]',
+        )}
+      >
+        <Crown className={cn(iconSize, 'fill-current opacity-90')} strokeWidth={0} />
+        {role}
+      </span>
+    )
+  }
+
+  if (isAdmin) {
+    return (
+      <span
+        className={cn(
+          baseClass,
+          'border border-violet-400/40 text-violet-600 dark:text-violet-300',
+          'bg-[linear-gradient(135deg,rgba(139,92,246,0.18),rgba(109,40,217,0.14),rgba(167,139,250,0.10))]',
+          'shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_0_8px_rgba(139,92,246,0.16),0_2px_6px_rgba(0,0,0,0.06)]',
+          'dark:border-violet-400/30 dark:bg-[linear-gradient(135deg,rgba(139,92,246,0.16),rgba(109,40,217,0.12))]',
+        )}
+      >
+        <Shield className={cn(iconSize, 'fill-current opacity-80')} strokeWidth={0} />
+        {role}
+      </span>
+    )
+  }
 
   return (
     <span
       className={cn(
         baseClass,
-        isOwner
-          ? 'border border-amber-400/40 bg-[linear-gradient(135deg,rgba(251,191,36,0.22),rgba(245,158,11,0.18),rgba(217,119,6,0.14))] text-amber-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_4px_14px_rgba(251,191,36,0.18)] backdrop-blur dark:border-yellow-400/30 dark:text-yellow-200'
-          : isAdmin
-            ? 'border border-sky-400/30 bg-[linear-gradient(135deg,rgba(14,165,233,0.16),rgba(16,185,129,0.14),rgba(244,63,94,0.10))] text-sky-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_4px_14px_rgba(14,165,233,0.12)] backdrop-blur dark:border-cyan-300/25 dark:text-cyan-100'
-            : variant === 'profile'
-              ? 'border border-current/30 bg-muted/50 text-muted-foreground'
-              : 'bg-muted text-muted-foreground',
+        variant === 'profile'
+          ? 'border border-current/20 bg-muted/50 text-muted-foreground'
+          : 'bg-muted text-muted-foreground',
       )}
     >
-      {isOwner ? <span className="text-[8px]">♛</span> : null}
       {role}
     </span>
   )
@@ -1676,6 +1710,9 @@ export function ChannelFeed({
   const [mentionCursorByGroup, setMentionCursorByGroup] = useState<Record<string, number>>({})
   const [activeMentionIndex, setActiveMentionIndex] = useState(0)
 
+  const removeMember = useRemoveGroupMember(group.id)
+  const updateMemberRole = useUpdateGroupMemberRole(group.id)
+
   const { user: authUser } = useAuth()
   const { data: profile } = useProfile()
   const currentIdentity = {
@@ -2417,11 +2454,38 @@ export function ChannelFeed({
             isPinned={selectedPost.pinned}
             isOwn={selectedPost.isOwn}
             hasMedia={!!(selectedPost.media?.length || selectedPost.imageUrl)}
+            targetRole={selectedPost.role}
+            viewerRole={channel.role}
             onClose={() => setContextMenu(null)}
             onReply={() => { setReplyingTo(selectedPost); textareaRef.current?.focus() }}
             onCopy={() => void handleCopy(selectedPost)}
             onTogglePin={() => handleTogglePin(selectedPost.id)}
             onDelete={() => handleDelete(selectedPost.id)}
+            onKick={() => {
+              const userId = selectedPost.authorId
+              if (userId) {
+                removeMember.mutate(userId)
+              }
+              updatePosts((current) => current.filter((p) => p.author !== selectedPost.author))
+            }}
+            onPromote={() => {
+              const userId = selectedPost.authorId
+              if (userId) {
+                updateMemberRole.mutate({ user_id: userId, role: 'ADMIN' })
+              }
+              updatePosts((current) =>
+                current.map((p) => p.author === selectedPost.author ? { ...p, role: 'Admin' } : p),
+              )
+            }}
+            onDemote={() => {
+              const userId = selectedPost.authorId
+              if (userId) {
+                updateMemberRole.mutate({ user_id: userId, role: 'MEMBER' })
+              }
+              updatePosts((current) =>
+                current.map((p) => p.author === selectedPost.author ? { ...p, role: 'Member' } : p),
+              )
+            }}
           />
         ) : null}
       </div>

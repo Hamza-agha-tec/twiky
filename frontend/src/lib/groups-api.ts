@@ -84,6 +84,15 @@ export const groupsApi = {
       body: JSON.stringify({ role: 'MEMBER', ...data }),
     }),
 
+  updateMemberRole: (groupId: string, data: { user_id: string; role: 'OWNER' | 'ADMIN' | 'MEMBER' }) =>
+    authedFetch(`/groups/${groupId}/members`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  removeGroupMember: (groupId: string, memberId: string) =>
+    authedFetch(`/groups/${groupId}/members/${memberId}`, { method: 'DELETE' }),
+
   getGroupMessages: (groupId: string) =>
     authedFetch<GroupMessage[]>(`/groups/${groupId}/messages`),
 

@@ -67,6 +67,27 @@ export function useSendGroupMessage(groupId: string) {
   });
 }
 
+export function useUpdateGroupMemberRole(groupId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { user_id: string; role: 'ADMIN' | 'MEMBER' }) =>
+      groupsApi.updateMemberRole(groupId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: GROUP_KEYS.members(groupId) });
+    },
+  });
+}
+
+export function useRemoveGroupMember(groupId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (memberId: string) => groupsApi.removeGroupMember(groupId, memberId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: GROUP_KEYS.members(groupId) });
+    },
+  });
+}
+
 export function useDeleteGroup(channelId: string) {
   const queryClient = useQueryClient();
   return useMutation({
