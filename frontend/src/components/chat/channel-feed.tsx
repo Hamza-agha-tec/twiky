@@ -39,7 +39,7 @@ import {
 } from 'lucide-react'
 
 import { FeedPostContextMenu } from '@/components/chat/feed-post-context-menu'
-import { VerifiedBadge, isVerifiedAccountIdentity } from '@/components/chat/verified-badge'
+import { VerifiedBadge, isVerifiedAccountIdentity, isProPlan } from '@/components/chat/verified-badge'
 import type { MockChannelGroup, WorkspaceChannel } from '@/components/chat/channels-panel'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -132,10 +132,12 @@ export interface FeedMemberProfile {
   accent: string
   avatarUrl: string | null
   bio: string
+  email?: string | null
   focus: string
   followers: number
   following: number
   handle: string
+  isPro?: boolean
   location: string
   name: string
   posts: number
@@ -706,7 +708,7 @@ function MessageRow({
                   className={cn('inline-flex items-center gap-1 text-[14px] font-semibold leading-none hover:underline', roleColor)}
                 >
                   {post.author}
-                  {resolvedProfile.isVerified ? <VerifiedBadge size="xs" /> : null}
+                  {resolvedProfile.isVerified ? <VerifiedBadge size="xs" variant={isProPlan(realUser?.sub_plan) ? 'pro' : 'standard'} /> : null}
                 </button>
                 <RoleBadge role={post.role} />
                 <span className="text-[11px] text-muted-foreground">{post.time}</span>
@@ -1053,6 +1055,7 @@ export function FeedMemberProfileView({
 
   const bannerImage = realUser?.banner ?? null
   const avatarImage = resolvedProfile.avatarUrl ?? null
+  const isProfilePro = isProPlan(realUser?.sub_plan)
 
   const fallbackPosts = posts.slice(0, 3)
   const profilePosts = memberProfile.id
@@ -1102,8 +1105,8 @@ export function FeedMemberProfileView({
   if (followSheet !== null) {
     const title = followSheet === 'followers' ? 'Followers' : 'Following'
     const users = followSheet === 'followers'
-      ? (followersData ?? []).map((r) => ({ id: r.follower_id, username: r.users?.username ?? 'Unknown', avatar_url: r.users?.avatar_url ?? null, bio: r.users?.bio ?? null, is_verified: r.users?.is_verified ?? false }))
-      : (followingData ?? []).map((r) => ({ id: r.following_id, username: r.users?.username ?? 'Unknown', avatar_url: r.users?.avatar_url ?? null, bio: r.users?.bio ?? null, is_verified: r.users?.is_verified ?? false }))
+      ? (followersData ?? []).map((r) => ({ id: r.follower_id, username: r.users?.username ?? 'Unknown', avatar_url: r.users?.avatar_url ?? null, bio: r.users?.bio ?? null, is_verified: r.users?.is_verified ?? false, sub_plan: r.users?.sub_plan ?? null }))
+      : (followingData ?? []).map((r) => ({ id: r.following_id, username: r.users?.username ?? 'Unknown', avatar_url: r.users?.avatar_url ?? null, bio: r.users?.bio ?? null, is_verified: r.users?.is_verified ?? false, sub_plan: r.users?.sub_plan ?? null }))
 
     return (
       <div className="flex flex-1 flex-col overflow-y-auto bg-background text-foreground">
@@ -1139,7 +1142,7 @@ export function FeedMemberProfileView({
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-1 truncate text-[12px] font-semibold text-foreground">
                     @{u.username}
-                    {u.is_verified ? <VerifiedBadge size="xs" /> : null}
+                    {u.is_verified ? <VerifiedBadge size="xs" variant={isProPlan(u.sub_plan) ? 'pro' : 'standard'} /> : null}
                   </p>
                   {u.bio ? <p className="truncate text-[11px] text-muted-foreground">{u.bio}</p> : null}
                 </div>
@@ -1216,7 +1219,7 @@ export function FeedMemberProfileView({
 
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-[19px] font-black leading-none tracking-tight text-foreground">{resolvedProfile.name}</h1>
-          {resolvedProfile.isVerified ? <VerifiedBadge size="sm" /> : null}
+          {resolvedProfile.isVerified ? <VerifiedBadge size="sm" variant={isProfilePro ? 'pro' : 'standard'} /> : null}
           <RoleBadge role={resolvedProfile.role} variant="profile" />
         </div>
         <p className="mt-0.5 text-[11px] text-muted-foreground">@{resolvedProfile.handle}</p>

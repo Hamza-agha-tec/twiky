@@ -59,7 +59,7 @@ export class GroupsService {
         const { data, error } = await this.supabaseService
             .getClient()
             .from('group_members')
-            .select('role, joined_at, users!group_members_user_id_fkey(id, username, avatar_url, bio)')
+            .select('role, joined_at, users!group_members_user_id_fkey(id, username, avatar_url, bio, sub_plan)')
             .eq('group_id', groupId);
 
         if (error) throw new Error(`Failed to fetch group members: ${error.message}`);

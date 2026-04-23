@@ -143,7 +143,7 @@ export class UsersService {
             .getClient()
             .from('follows')
             // Using raw select here, client might need to adjust specific relationship alias based on Supabase generated types
-            .select('follower_id, users!follows_follower_id_fkey(id, username, avatar_url, bio)')
+            .select('follower_id, users!follows_follower_id_fkey(id, username, avatar_url, bio, sub_plan)')
             .eq('following_id', userId);
 
         if (error) throw new Error(`Failed to get followers: ${error.message}`);
@@ -154,7 +154,7 @@ export class UsersService {
         const { data, error } = await this.supabaseService
             .getClient()
             .from('follows')
-            .select('following_id, users!follows_following_id_fkey(id, username, avatar_url, bio)')
+            .select('following_id, users!follows_following_id_fkey(id, username, avatar_url, bio, sub_plan)')
             .eq('follower_id', userId);
 
         if (error) throw new Error(`Failed to get following: ${error.message}`);
