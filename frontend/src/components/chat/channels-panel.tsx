@@ -590,7 +590,7 @@ function ChannelSettingsSheet({
                   let nextBanner = bannerUrl
                   if (avatarFile) {
                     const { publicUrl } = await filesApi.uploadChannelLogo(channel.id, avatarFile)
-                    nextAvatar = publicUrl
+                    nextAvatar = versionedAssetUrl(publicUrl)
                   }
                   if (bannerFile) {
                     const { publicUrl } = await filesApi.uploadChannelBanner(channel.id, bannerFile)

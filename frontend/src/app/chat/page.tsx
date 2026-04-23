@@ -1292,7 +1292,7 @@ export default function ChatPage() {
 
     if (values.avatarFile) {
       const { publicUrl } = await filesApi.uploadChannelLogo(channel.id, values.avatarFile)
-      avatarUrl = publicUrl
+      avatarUrl = versionedAssetUrl(publicUrl)
     }
 
     if (values.bannerFile) {
