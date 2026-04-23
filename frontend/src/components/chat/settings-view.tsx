@@ -282,6 +282,7 @@ function ProfileSection({
   const { user } = useAuth()
   const avatarRef = useRef<HTMLInputElement>(null)
   const bannerRef = useRef<HTMLInputElement>(null)
+  const avatarPreviewUrlRef = useRef<string | null>(null)
   const bannerPreviewUrlRef = useRef<string | null>(null)
   const updateProfile = useUpdateProfile()
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
@@ -312,13 +313,27 @@ function ProfileSection({
     const f = e.target.files?.[0]
     e.target.value = ''
     if (!f) return
+    const previousAvatarUrl = effectiveAvatarUrl
+    if (avatarPreviewUrlRef.current) {
+      URL.revokeObjectURL(avatarPreviewUrlRef.current)
+      avatarPreviewUrlRef.current = null
+    }
+    const previewUrl = URL.createObjectURL(f)
+    avatarPreviewUrlRef.current = previewUrl
+    onAvatarChange(previewUrl)
     setAvatarBusy(true)
     try {
       const { publicUrl } = await filesApi.uploadUserAvatar(f)
-      await updateProfile.mutateAsync({ avatar_url: publicUrl })
-      onAvatarChange(publicUrl)
+      const nextAvatarUrl = versionedImageUrl(publicUrl)
+      await updateProfile.mutateAsync({ avatar_url: nextAvatarUrl })
+      onAvatarChange(nextAvatarUrl)
+      URL.revokeObjectURL(previewUrl)
+      avatarPreviewUrlRef.current = null
       toast.success('Avatar updated')
     } catch (err) {
+      onAvatarChange(previousAvatarUrl ?? '')
+      URL.revokeObjectURL(previewUrl)
+      avatarPreviewUrlRef.current = null
       toast.error(err instanceof Error ? err.message : 'Upload failed')
     } finally {
       setAvatarBusy(false)
@@ -375,6 +390,10 @@ function ProfileSection({
 
   useEffect(() => {
     return () => {
+      if (avatarPreviewUrlRef.current) {
+        URL.revokeObjectURL(avatarPreviewUrlRef.current)
+        avatarPreviewUrlRef.current = null
+      }
       if (bannerPreviewUrlRef.current) {
         URL.revokeObjectURL(bannerPreviewUrlRef.current)
         bannerPreviewUrlRef.current = null
