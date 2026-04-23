@@ -406,8 +406,36 @@ function normalizeExternalUrl(value?: string | null) {
   return `https://${trimmed}`
 }
 
+function normalizeXUrl(value?: string | null) {
+  const trimmed = value?.trim()
+  if (!trimmed) return null
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+
+  const normalizedHandle = trimmed.replace(/^@+/, '').replace(/^x\.com\//i, '').replace(/^twitter\.com\//i, '')
+  if (!normalizedHandle) return null
+  return `https://x.com/${normalizedHandle}`
+}
+
 function displayExternalUrl(value: string) {
   return value.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '')
+}
+
+function displayXHandle(value?: string | null) {
+  const trimmed = value?.trim()
+  if (!trimmed) return null
+  if (/^https?:\/\//i.test(trimmed)) {
+    return `@${trimmed
+      .replace(/^https?:\/\//i, '')
+      .replace(/^www\./i, '')
+      .replace(/^(x\.com|twitter\.com)\//i, '')
+      .replace(/\/.*$/, '')
+      .replace(/^@+/, '')}`
+  }
+
+  return `@${trimmed
+    .replace(/^@+/, '')
+    .replace(/^x\.com\//i, '')
+    .replace(/^twitter\.com\//i, '')}`
 }
 
 function resolveProfileDisplayName({
@@ -1059,6 +1087,8 @@ export function FeedMemberProfileView({
 
   const roleColor = ROLE_COLORS[resolvedProfile.role] ?? 'text-primary'
   const websiteHref = normalizeExternalUrl(resolvedProfile.websiteUrl)
+  const xHref = normalizeXUrl(resolvedProfile.xUrl)
+  const xHandle = displayXHandle(resolvedProfile.xUrl)
   const isAlreadyFollowing = Boolean(
     currentUser?.id &&
     followersData?.some((follower) => follower.follower_id === currentUser.id || follower.users?.id === currentUser.id),
@@ -1241,6 +1271,19 @@ export function FeedMemberProfileView({
         <p className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">About</p>
         <p className="text-[11.5px] leading-[1.65] text-foreground">{resolvedProfile.bio}</p>
         <div className="mt-2.5 space-y-1.5 text-[11px] text-muted-foreground">
+          {xHref && xHandle ? (
+            <a
+              href={xHref}
+              target="_blank"
+              rel="noreferrer"
+              className="flex min-w-0 items-center gap-1.5 text-foreground/80 transition-colors hover:text-foreground"
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" className="flex-shrink-0">
+                <path d="M18.244 2H21l-6.02 6.879L22 22h-5.49l-4.3-7.98L5.23 22H2.47l6.44-7.36L2 2h5.63l3.89 7.27L18.244 2Zm-.96 18h1.52L6.8 3.9H5.17l12.114 16.1Z" />
+              </svg>
+              <span className="truncate">{xHandle}</span>
+            </a>
+          ) : null}
           {websiteHref ? (
             <a
               href={websiteHref}
