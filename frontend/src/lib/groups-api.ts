@@ -57,7 +57,7 @@ export interface GroupMessage {
   file_url: string | null;
   reply_to_id: string | null;
   created_at: string;
-  sender?: { id: string; email?: string | null; fullname?: string | null; full_name?: string | null; username: string | null; avatar_url: string | null; sub_plan?: 'FREE' | 'PRO' | 'ENTERPRISE' | null };
+  sender?: { id: string; email?: string | null; fullname?: string | null; full_name?: string | null; username: string | null; avatar_url: string | null; sub_plan?: 'FREE' | 'PRO' | 'GEEK' | null };
 }
 
 export interface GroupMessageMention {

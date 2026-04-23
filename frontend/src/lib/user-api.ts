@@ -18,7 +18,7 @@ export interface UserProfile {
   website_url: string | null;
   x_url: string | null;
   is_verified?: boolean | null;
-  sub_plan?: 'FREE' | 'PRO' | 'ENTERPRISE' | null;
+  sub_plan?: 'FREE' | 'PRO' | 'GEEK' | null;
 }
 
 export interface UserSummary {
@@ -30,7 +30,7 @@ export interface UserSummary {
   username: string | null;
   avatar_url: string | null;
   is_verified?: boolean | null;
-  sub_plan?: 'FREE' | 'PRO' | 'ENTERPRISE' | null;
+  sub_plan?: 'FREE' | 'PRO' | 'GEEK' | null;
 }
 
 export interface FollowerRecord {

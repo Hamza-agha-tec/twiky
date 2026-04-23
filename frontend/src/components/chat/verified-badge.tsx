@@ -3,7 +3,7 @@
 import { cn } from '@/lib/utils'
 
 export function isProPlan(sub_plan?: string | null) {
-  return sub_plan === 'PRO' || sub_plan === 'ENTERPRISE'
+  return sub_plan === 'PRO' || sub_plan === 'GEEK'
 }
 
 export function isVerifiedAccountIdentity(

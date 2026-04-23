@@ -16,5 +16,5 @@ db.sql
 new_endpoints.MD
 supabase/
 .gitignore
-
+banner.gif
 alldb.sql
