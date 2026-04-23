@@ -265,21 +265,13 @@ function RoleBadge({ role, variant = 'feed' }: { role: string; variant?: 'feed' 
   const isAdmin = normalized === 'admin'
   const iconSize = variant === 'profile' ? 'h-[9px] w-[9px]' : 'h-[8px] w-[8px]'
   const baseClass = variant === 'profile'
-    ? 'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em]'
-    : 'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]'
+    ? 'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em]'
+    : 'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]'
 
   if (isOwner) {
     return (
-      <span
-        className={cn(
-          baseClass,
-          'border border-amber-400/50 text-amber-600 dark:text-yellow-300',
-          'bg-[linear-gradient(135deg,rgba(251,191,36,0.28),rgba(245,158,11,0.22),rgba(217,119,6,0.16))]',
-          'shadow-[inset_0_1px_0_rgba(255,255,255,0.32),0_0_10px_rgba(251,191,36,0.22),0_2px_6px_rgba(0,0,0,0.08)]',
-          'dark:border-yellow-400/35 dark:bg-[linear-gradient(135deg,rgba(251,191,36,0.20),rgba(245,158,11,0.16),rgba(217,119,6,0.12))]',
-        )}
-      >
-        <Crown className={cn(iconSize, 'fill-current opacity-90')} strokeWidth={0} />
+      <span className={cn(baseClass, 'bg-amber-500/10 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400')}>
+        <Crown className={cn(iconSize, 'fill-current')} strokeWidth={0} />
         {role}
       </span>
     )
@@ -287,30 +279,15 @@ function RoleBadge({ role, variant = 'feed' }: { role: string; variant?: 'feed' 
 
   if (isAdmin) {
     return (
-      <span
-        className={cn(
-          baseClass,
-          'border border-violet-400/40 text-violet-600 dark:text-violet-300',
-          'bg-[linear-gradient(135deg,rgba(139,92,246,0.18),rgba(109,40,217,0.14),rgba(167,139,250,0.10))]',
-          'shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_0_8px_rgba(139,92,246,0.16),0_2px_6px_rgba(0,0,0,0.06)]',
-          'dark:border-violet-400/30 dark:bg-[linear-gradient(135deg,rgba(139,92,246,0.16),rgba(109,40,217,0.12))]',
-        )}
-      >
-        <Shield className={cn(iconSize, 'fill-current opacity-80')} strokeWidth={0} />
+      <span className={cn(baseClass, 'bg-violet-500/10 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400')}>
+        <Shield className={cn(iconSize, 'fill-current')} strokeWidth={0} />
         {role}
       </span>
     )
   }
 
   return (
-    <span
-      className={cn(
-        baseClass,
-        variant === 'profile'
-          ? 'border border-current/20 bg-muted/50 text-muted-foreground'
-          : 'bg-muted text-muted-foreground',
-      )}
-    >
+    <span className={cn(baseClass, 'bg-muted text-muted-foreground')}>
       {role}
     </span>
   )
@@ -660,6 +637,7 @@ function MessageRow({
       id: realUser?.id ?? memberProfile.id,
       is_verified: realUser?.is_verified,
       isVerified: memberProfile.isVerified,
+      sub_plan: realUser?.sub_plan,
     }),
   }
 
@@ -1044,11 +1022,13 @@ export function FeedMemberProfileView({
         id: realUser?.id ?? memberProfile.id,
         is_verified: realUser?.is_verified,
         isVerified: memberProfile.isVerified,
+        sub_plan: realUser?.sub_plan,
       },
       {
         email: currentUser?.email ?? authUser?.email,
         id: currentUser?.id,
         is_verified: currentUser?.is_verified,
+        sub_plan: currentUser?.sub_plan,
       },
     ),
   }

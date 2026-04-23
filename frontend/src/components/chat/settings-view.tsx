@@ -369,6 +369,7 @@ function ProfileSection({
     email: profile?.email ?? user?.email,
     id: profile?.id,
     is_verified: profile?.is_verified,
+    sub_plan: profile?.sub_plan,
   })
   const [selectedGradient, setSelectedGradient] = useState(0)
 
@@ -1349,6 +1350,7 @@ export function SettingsView({ initialSection, onAvatarChange, avatarUrl: avatar
     email: profile?.email ?? user?.email,
     id: profile?.id,
     is_verified: profile?.is_verified,
+    sub_plan: profile?.sub_plan,
   })
   const isPro = isProPlan(profile?.sub_plan)
 
