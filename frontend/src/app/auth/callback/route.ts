@@ -28,9 +28,9 @@ export async function GET(request: NextRequest) {
             user.user_metadata?.name ||
             `User_${user.id.substring(0, 5)}`;
           const avatar_url = user.user_metadata?.avatar_url || '';
-
+          const email = user.email;
           await supabase.from('users').insert({ id: user.id, username, avatar_url });
-          await supabase.from('user_settings').insert({ user_id: user.id, theme: 'dark' });
+          await supabase.from('user_settings').insert({ user_id: user.id, theme: 'dark', email });
         }
       }
 
