@@ -47,7 +47,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Textarea } from '@/components/ui/textarea'
 import { type ChatMessage } from '@/hooks/use-messaging'
 import { useRemoveGroupMember, useUpdateGroupMemberRole } from '@/hooks/use-groups'
-import { useProfile, useSendFollowRequest, useUserById, useUserFollowers, useUserFollowing, useUserPosts } from '@/hooks/use-user'
+import { useProfile, usePrefetchUserProfile, useSendFollowRequest, useUserById, useUserFollowers, useUserFollowing, useUserPosts } from '@/hooks/use-user'
 import { useAuth } from '@/context/AuthContext'
 import { filesApi } from '@/lib/files-api'
 import type { GroupMember, GroupMessageMention } from '@/lib/groups-api'
@@ -643,9 +643,11 @@ function MessageRow({
   const [profileOpen, setProfileOpen] = useState(false)
   const [isFollowing, setIsFollowing] = useState(false)
 
-  const { data: realUser } = useUserById(memberProfile.id)
-  const { data: followersData } = useUserFollowers(memberProfile.id)
-  const { data: followingData } = useUserFollowing(memberProfile.id)
+  const prefetchUserProfile = usePrefetchUserProfile()
+  // Only fetch when profile card is open — prefetch on hover so data is ready by click time
+  const { data: realUser } = useUserById(profileOpen ? memberProfile.id : undefined)
+  const { data: followersData } = useUserFollowers(profileOpen ? memberProfile.id : undefined)
+  const { data: followingData } = useUserFollowing(profileOpen ? memberProfile.id : undefined)
 
   const resolvedProfile: FeedMemberProfile = {
     ...memberProfile,
@@ -700,6 +702,7 @@ function MessageRow({
           <div className="mt-0.5 w-10 flex-shrink-0">
             <PopoverTrigger asChild>
               <button
+                onMouseEnter={() => memberProfile.id && prefetchUserProfile(memberProfile.id)}
                 className="flex h-10 w-10 cursor-pointer overflow-hidden rounded-full ring-2 ring-background focus:outline-none"
                 aria-label={`Open ${post.author} actions`}
               >
@@ -712,6 +715,7 @@ function MessageRow({
             {!isGrouped ? (
               <div className="mb-0.5 flex items-baseline gap-2">
                 <button
+                  onMouseEnter={() => memberProfile.id && prefetchUserProfile(memberProfile.id)}
                   onClick={() => setProfileOpen(true)}
                   className={cn('inline-flex items-center gap-1 text-[14px] font-semibold leading-none hover:underline', roleColor)}
                 >
@@ -1025,6 +1029,7 @@ export function FeedMemberProfileView({
   const { data: followersData } = useUserFollowers(memberProfile.id)
   const { data: followingData } = useUserFollowing(memberProfile.id)
   const sendFollowRequest = useSendFollowRequest()
+  const prefetchUserProfile = usePrefetchUserProfile()
   const {
     data: backendPosts = [],
     isError: backendPostsError,
@@ -1163,6 +1168,7 @@ export function FeedMemberProfileView({
               <button
                 key={u.id}
                 type="button"
+                onMouseEnter={() => prefetchUserProfile(u.id)}
                 onClick={() => setViewingUser(buildStandaloneFeedMemberProfile({ id: u.id, avatarUrl: u.avatar_url, name: u.username, handle: u.username, isVerified: u.is_verified }))}
                 className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-accent"
               >
@@ -1568,10 +1574,15 @@ function FeedProfileRow({
   onDelete: () => void
   onContextMenu: (e: MouseEvent) => void
 }) {
+  const prefetchUserProfile = usePrefetchUserProfile()
   const roleColor = ROLE_COLORS[post.role] ?? 'text-primary'
   const displayAvatar = post.isOwn
     ? (authorAvatarUrl ?? myAvatarUrl ?? memberProfile.avatarUrl ?? null)
     : (authorAvatarUrl ?? memberProfile.avatarUrl ?? null)
+
+  const handlePrefetch = () => {
+    if (memberProfile.id) prefetchUserProfile(memberProfile.id)
+  }
 
   return (
     <div
@@ -1585,6 +1596,7 @@ function FeedProfileRow({
       <div className="mt-0.5 w-10 flex-shrink-0">
         <button
           type="button"
+          onMouseEnter={handlePrefetch}
           onClick={onOpenProfile}
           className="flex h-10 w-10 cursor-pointer overflow-hidden rounded-full ring-2 ring-background focus:outline-none"
           aria-label={`Open ${post.author} profile`}
@@ -1605,6 +1617,7 @@ function FeedProfileRow({
           <div className="mb-0.5 flex items-baseline gap-2">
             <button
               type="button"
+              onMouseEnter={handlePrefetch}
               onClick={onOpenProfile}
               className={cn('inline-flex items-center gap-1 text-[14px] font-semibold leading-none hover:underline', roleColor)}
             >

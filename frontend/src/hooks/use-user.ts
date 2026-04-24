@@ -10,6 +10,8 @@ import {
   userApi,
 } from '@/lib/user-api';
 
+const PROFILE_STALE_TIME = 2 * 60 * 1000; // 2 min
+
 export const USER_KEYS = {
   profile: ['user', 'profile'] as const,
   byId: (id: string) => ['user', 'by-id', id] as const,
@@ -24,6 +26,7 @@ export function useProfile() {
   return useQuery<UserProfile>({
     queryKey: USER_KEYS.profile,
     queryFn: userApi.getProfile,
+    staleTime: PROFILE_STALE_TIME,
   });
 }
 
@@ -32,6 +35,7 @@ export function useUserById(id?: string) {
     queryKey: id ? USER_KEYS.byId(id) : ['user', 'by-id', 'missing'],
     queryFn: () => userApi.getUserById(id!),
     enabled: Boolean(id),
+    staleTime: PROFILE_STALE_TIME,
   });
 }
 
@@ -49,6 +53,7 @@ export function useSettings() {
   return useQuery({
     queryKey: USER_KEYS.settings,
     queryFn: userApi.getSettings,
+    staleTime: PROFILE_STALE_TIME,
   });
 }
 
@@ -57,6 +62,7 @@ export function useUserFollowers(userId?: string) {
     queryKey: userId ? USER_KEYS.followers(userId) : ['user', 'followers', 'missing'],
     queryFn: () => userApi.getFollowers(userId!),
     enabled: Boolean(userId),
+    staleTime: PROFILE_STALE_TIME,
   });
 }
 
@@ -65,6 +71,7 @@ export function useUserFollowing(userId?: string) {
     queryKey: userId ? USER_KEYS.following(userId) : ['user', 'following', 'missing'],
     queryFn: () => userApi.getFollowing(userId!),
     enabled: Boolean(userId),
+    staleTime: PROFILE_STALE_TIME,
   });
 }
 
@@ -73,6 +80,7 @@ export function useUserPosts(userId?: string) {
     queryKey: userId ? USER_KEYS.posts(userId) : ['user', 'posts', 'missing'],
     queryFn: () => userApi.getUserPosts(userId!),
     enabled: Boolean(userId),
+    staleTime: PROFILE_STALE_TIME,
   });
 }
 
@@ -81,6 +89,7 @@ export function useSearchUsers(query: string) {
     queryKey: USER_KEYS.search(query),
     queryFn: () => userApi.searchUsers(query),
     enabled: query.trim().length > 0,
+    staleTime: 30_000,
   });
 }
 
@@ -109,4 +118,14 @@ export function useUpdateSettings() {
       queryClient.setQueryData(USER_KEYS.settings, updated);
     },
   });
+}
+
+export function usePrefetchUserProfile() {
+  const queryClient = useQueryClient();
+  return (id: string) => {
+    queryClient.prefetchQuery({ queryKey: USER_KEYS.byId(id), queryFn: () => userApi.getUserById(id), staleTime: PROFILE_STALE_TIME });
+    queryClient.prefetchQuery({ queryKey: USER_KEYS.followers(id), queryFn: () => userApi.getFollowers(id), staleTime: PROFILE_STALE_TIME });
+    queryClient.prefetchQuery({ queryKey: USER_KEYS.following(id), queryFn: () => userApi.getFollowing(id), staleTime: PROFILE_STALE_TIME });
+    queryClient.prefetchQuery({ queryKey: USER_KEYS.posts(id), queryFn: () => userApi.getUserPosts(id), staleTime: PROFILE_STALE_TIME });
+  };
 }
