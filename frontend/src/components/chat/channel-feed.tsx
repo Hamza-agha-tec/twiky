@@ -364,6 +364,9 @@ export function buildStandaloneFeedMemberProfile({
   role = 'Member',
   status,
   isVerified = false,
+  followers,
+  following,
+  posts,
 }: {
   id?: string
   avatarUrl: string | null
@@ -372,16 +375,19 @@ export function buildStandaloneFeedMemberProfile({
   role?: string
   status?: string
   isVerified?: boolean
+  followers?: number
+  following?: number
+  posts?: number
 }): FeedMemberProfile {
   const defaults = FEED_MEMBER_PROFILES[name] ?? {
     accent: 'from-slate-500 via-slate-700 to-slate-900',
     bio: `${name} is active in ${role.toLowerCase()} work across direct and channel conversations.`,
     focus: `Following up on ${role.toLowerCase()} updates inside the workspace.`,
-    followers: 0,
-    following: 0,
+    followers: followers ?? 0,
+    following: following ?? 0,
     handle: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
     location: 'Workspace',
-    posts: 0,
+    posts: posts ?? 0,
     status: 'Active in chat',
   }
 
@@ -393,6 +399,9 @@ export function buildStandaloneFeedMemberProfile({
     name,
     role,
     status: status ?? defaults.status,
+    followers: followers ?? defaults.followers,
+    following: following ?? defaults.following,
+    posts: posts ?? defaults.posts,
     isVerified,
     websiteUrl: null,
     xUrl: null,
@@ -1715,6 +1724,7 @@ export function ChannelFeed({
   onProfilePanelWidthChange,
   onProfileSidebarContentChange,
   onProfileCloseRequestChange,
+  onCloseFeedRequest,
 }: {
   channel: WorkspaceChannel
   group: MockChannelGroup
@@ -1727,6 +1737,7 @@ export function ChannelFeed({
   onProfilePanelWidthChange?: (width: number) => void
   onProfileSidebarContentChange?: (content: ReactNode | null) => void
   onProfileCloseRequestChange?: (closeFn: (() => void) | null) => void
+  onCloseFeedRequest?: () => void
 }) {
   const [postsByGroup, setPostsByGroup] = useState<Record<string, FeedPost[]>>({})
   const [drafts, setDrafts] = useState<Record<string, string>>({})
@@ -1876,6 +1887,39 @@ export function ChannelFeed({
   useEffect(() => {
     return () => onProfileCloseRequestChange?.(null)
   }, [onProfileCloseRequestChange])
+
+  useEffect(() => {
+    function handleEscapeClose(event: globalThis.KeyboardEvent) {
+      if (event.key !== 'Escape') return
+
+      const target = event.target as HTMLElement | null
+      const tag = target?.tagName
+      const isTypingTarget =
+        !!target &&
+        (target.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT')
+      if (isTypingTarget) return
+
+      if (contextMenu) {
+        event.preventDefault()
+        setContextMenu(null)
+        return
+      }
+
+      if (selectedProfile) {
+        event.preventDefault()
+        setSelectedProfile(null)
+        return
+      }
+
+      if (onCloseFeedRequest) {
+        event.preventDefault()
+        onCloseFeedRequest()
+      }
+    }
+
+    window.addEventListener('keydown', handleEscapeClose)
+    return () => window.removeEventListener('keydown', handleEscapeClose)
+  }, [contextMenu, onCloseFeedRequest, selectedProfile])
 
   function getAuthorContext(post: FeedPost) {
     if (post.isOwn) {

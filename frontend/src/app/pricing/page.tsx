@@ -1,71 +1,45 @@
 "use client";
 
 import React, { useState } from 'react';
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardFooter,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { motion } from 'framer-motion';
 import { createClient } from '@/utils/supabase/client';
-import { Check, Loader2, Sparkles } from 'lucide-react';
+import { Check, Loader2, Sparkles, Zap } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3500';
 
-const plans = [
-    {
-        name: 'Free',
-        id: 'free',
-        price: '$0',
-        description: 'Perfect for getting started with basic messaging.',
-        features: [
-            'Unlimited DMs with mutual followers',
-            'Up to 3 Channels',
-            'Standard emoji reactions',
-            'Standard file sharing (5MB limit)',
-        ],
-        cta: 'Current Plan',
-        isPro: false,
-    },
-    {
-        name: 'Pro',
-        id: process.env.NEXT_PUBLIC_DODO_PLAN_ID_PRO || 'pdt_0NdK6U7UrrnbFQdea7CLd',
-        price: '$4.99',
-        period: '/month',
-        description: 'Advanced features for power users and creators.',
-        features: [
-            'Everything in Free',
-            'Pro Badge & Verified Status',
-            'Unlimited Channels & Groups',
-            'Premium file sharing (50MB limit)',
-            'Custom reactions & Stickers',
-            'Early access to new features',
-        ],
-        cta: 'Upgrade to Pro',
-        isPro: true,
-    },
+const FREE_FEATURES = [
+    { label: 'Unlimited DMs', description: 'With mutual followers' },
+    { label: 'Up to 3 Channels', description: 'Create and manage channels' },
+    { label: 'Standard emoji reactions', description: 'Express yourself with emojis' },
+    { label: 'File sharing', description: 'Up to 5 MB per file' },
+];
+
+const PRO_FEATURES = [
+    { label: 'Everything in Free', description: 'All free features included', free: true },
+    { label: 'Pro Badge & Verified Status', description: 'Stand out with a verified profile', free: false },
+    { label: 'Unlimited Channels & Groups', description: 'No limits on channels or group size', free: false },
+    { label: 'Premium file sharing', description: 'Up to 50 MB per file', free: false },
+    { label: 'Custom reactions & Stickers', description: 'Express more with custom content', free: false },
+    { label: 'Early access to new features', description: 'Be first to try what\'s coming', free: false },
 ];
 
 export default function PricingPage() {
     const [loading, setLoading] = useState<string | null>(null);
+    const proId = process.env.NEXT_PUBLIC_DODO_PLAN_ID_PRO || 'pdt_0NdK6U7UrrnbFQdea7CLd';
 
     const handleCheckout = async (productId: string) => {
         if (productId === 'free') return;
-
         setLoading(productId);
         try {
             const supabase = createClient();
             const { data: { session } } = await supabase.auth.getSession();
-
             if (!session) {
                 toast.error("Please login to upgrade your plan");
                 return;
             }
-
             const res = await fetch(`${API_URL}/payments/checkout`, {
                 method: 'POST',
                 headers: {
@@ -73,24 +47,18 @@ export default function PricingPage() {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    productId: productId,
+                    productId,
                     redirectUrl: `${window.location.origin}/chat`,
                 }),
             });
-
             const data = await res.json();
-
-            if (!res.ok) {
-                throw new Error(data?.message || "Failed to initiate checkout");
-            }
-
+            if (!res.ok) throw new Error(data?.message || "Failed to initiate checkout");
             if (data.checkout_url) {
                 window.location.href = data.checkout_url;
             } else {
                 throw new Error("Could not generate checkout link");
             }
         } catch (error: unknown) {
-            console.error("Checkout Error:", error);
             const message = error instanceof Error ? error.message : "Failed to initiate checkout";
             toast.error(message);
         } finally {
@@ -107,103 +75,169 @@ export default function PricingPage() {
             });
             const { url } = await res.json();
             if (url) window.location.href = url;
-        } catch (err) {
+        } catch {
             toast.error("Could not open billing portal");
         }
     };
 
     return (
-        <main className="min-h-screen bg-slate-950 text-white selection:bg-purple-500/30">
-            {/* Background Effects */}
-            <div className="fixed inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] bg-purple-900/20 blur-[120px] rounded-full" />
-                <div className="absolute top-[20%] -right-[10%] w-[30%] h-[30%] bg-blue-900/10 blur-[100px] rounded-full" />
-            </div>
+        <main className="min-h-screen bg-background">
+            <div className="mx-auto max-w-3xl px-6 py-16">
 
-            <section className="relative mx-auto flex w-full max-w-5xl flex-col gap-12 px-6 py-20">
-                <div className="text-center space-y-4">
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 text-sm font-medium">
-                        <Sparkles className="w-4 h-4" />
-                        <span>Pricing Plans</span>
+                {/* Header */}
+                <motion.div
+                    className="mb-12 text-center"
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.28, ease: 'easeOut' }}
+                >
+                    <div className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-primary">
+                        <Sparkles className="h-3 w-3" />
+                        Pricing
                     </div>
-                    <h1 className="text-4xl md:text-5xl font-bold tracking-tight bg-gradient-to-b from-white to-white/60 bg-clip-text text-transparent">
-                        Unlock the full potential
+                    <h1 className="text-[28px] font-bold tracking-tight text-foreground">
+                        Choose your plan
                     </h1>
-                    <p className="mx-auto max-w-2xl text-lg text-slate-400">
-                        Choose the plan that fits your social experience. Upgrade anytime to get premium perks and support Twiky.
+                    <p className="mt-2 text-[13px] text-muted-foreground">
+                        Upgrade anytime to unlock premium perks and support Twiky.
                     </p>
-                </div>
+                </motion.div>
 
-                <div className="grid gap-8 md:grid-cols-2 mt-8">
-                    {plans.map((plan) => (
-                        <Card 
-                            key={plan.name} 
-                            className={`relative flex flex-col h-full bg-slate-900/50 border-slate-800 backdrop-blur-xl transition-all duration-300 hover:border-slate-700 ${
-                                plan.isPro ? 'ring-2 ring-purple-500/50 ring-offset-4 ring-offset-slate-950 shadow-2xl shadow-purple-500/10' : ''
-                            }`}
+                {/* Cards */}
+                <div className="grid gap-4 md:grid-cols-2">
+
+                    {/* Free */}
+                    <motion.div
+                        className="flex flex-col rounded-[22px] border border-border bg-card p-6"
+                        initial={{ opacity: 0, y: 14 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.28, delay: 0.08, ease: 'easeOut' }}
+                    >
+                        <div className="mb-5">
+                            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-2xl bg-muted">
+                                <Zap className="h-5 w-5 text-muted-foreground" />
+                            </div>
+                            <p className="text-[15px] font-bold text-foreground">Free</p>
+                            <div className="mt-1 flex items-baseline gap-1">
+                                <span className="text-[32px] font-bold tracking-tight text-foreground">$0</span>
+                                <span className="text-[12px] text-muted-foreground">/month</span>
+                            </div>
+                            <p className="mt-1 text-[12px] text-muted-foreground">
+                                Perfect for getting started.
+                            </p>
+                        </div>
+
+                        <div className="flex-1 space-y-0 divide-y divide-border/50">
+                            {FREE_FEATURES.map((f) => (
+                                <div key={f.label} className="flex items-start gap-2.5 py-2.5">
+                                    <div className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-muted text-[9px] text-muted-foreground">
+                                        <Check className="h-2.5 w-2.5" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[12.5px] font-medium text-foreground">{f.label}</p>
+                                        <p className="text-[11px] text-muted-foreground">{f.description}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <Button
+                            variant="outline"
+                            className="mt-5 h-9 w-full rounded-xl text-[12px]"
+                            disabled
                         >
-                            {plan.isPro && (
-                                <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-gradient-to-r from-purple-600 to-blue-600 text-xs font-bold uppercase tracking-wider text-white shadow-lg">
-                                    Most Popular
+                            Current Plan
+                        </Button>
+                    </motion.div>
+
+                    {/* Pro */}
+                    <motion.div
+                        className="relative flex flex-col overflow-hidden rounded-[22px] border border-primary/25 bg-gradient-to-br from-primary/[0.12] to-primary/[0.04] p-6"
+                        initial={{ opacity: 0, y: 14 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.28, delay: 0.14, ease: 'easeOut' }}
+                    >
+                        {/* Most popular badge */}
+                        <div className="absolute right-5 top-5 rounded-full border border-primary/30 bg-primary/15 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">
+                            Most popular
+                        </div>
+
+                        <div className="mb-5">
+                            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/15">
+                                <Sparkles className="h-5 w-5 text-primary" />
+                            </div>
+                            <p className="text-[15px] font-bold text-foreground">Pro</p>
+                            <div className="mt-1 flex items-baseline gap-1">
+                                <span className="text-[32px] font-bold tracking-tight text-foreground">$4.99</span>
+                                <span className="text-[12px] text-muted-foreground">/month</span>
+                            </div>
+                            <p className="mt-1 text-[12px] text-muted-foreground">
+                                Advanced features for power users.
+                            </p>
+                        </div>
+
+                        <div className="flex-1 space-y-0 divide-y divide-border/40">
+                            {PRO_FEATURES.map((f) => (
+                                <div key={f.label} className="flex items-start gap-2.5 py-2.5">
+                                    <div className={cn(
+                                        'mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-[9px]',
+                                        f.free
+                                            ? 'bg-muted text-muted-foreground'
+                                            : 'bg-primary/15 text-primary'
+                                    )}>
+                                        <Check className="h-2.5 w-2.5" />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-1.5">
+                                            <p className="text-[12.5px] font-medium text-foreground">{f.label}</p>
+                                            {!f.free && (
+                                                <span className="rounded-full border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-primary">
+                                                    Pro
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-[11px] text-muted-foreground">{f.description}</p>
+                                    </div>
                                 </div>
-                            )}
+                            ))}
+                        </div>
 
-                            <CardHeader className="pt-8">
-                                <CardTitle className="text-2xl font-bold text-white">{plan.name}</CardTitle>
-                                <CardDescription className="text-slate-400">{plan.description}</CardDescription>
-                            </CardHeader>
-
-                            <CardContent className="flex-1 space-y-6">
-                                <div className="flex items-baseline gap-1">
-                                    <span className="text-5xl font-bold text-white">{plan.price}</span>
-                                    {plan.period && <span className="text-slate-400">{plan.period}</span>}
-                                </div>
-
-                                <ul className="space-y-4">
-                                    {plan.features.map((feature) => (
-                                        <li key={feature} className="flex items-start gap-3 text-slate-300">
-                                            <div className={`mt-1 flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center ${plan.isPro ? 'bg-purple-500/20 text-purple-400' : 'bg-slate-800 text-slate-500'}`}>
-                                                <Check className="w-3.5 h-3.5" />
-                                            </div>
-                                            <span className="text-sm">{feature}</span>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </CardContent>
-
-                            <CardFooter className="pb-8">
-                                <Button 
-                                    className={`w-full h-12 text-md font-semibold transition-all ${
-                                        plan.isPro 
-                                            ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white shadow-lg shadow-purple-500/20 border-0' 
-                                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-                                    }`}
-                                    onClick={() => handleCheckout(plan.id)}
-                                    disabled={loading !== null || plan.id === 'free'}
-                                >
-                                    {loading === plan.id ? (
-                                        <>
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                            Initializing...
-                                        </>
-                                    ) : (
-                                        plan.cta
-                                    )}
-                                </Button>
-                                {plan.isPro && (
-                                <Button
-                                        variant="outline"
-                                        className="w-full border-slate-700 text-slate-300 hover:bg-slate-800"
-                                        onClick={ () => handleManageSubscription()}
-                                    >
-                                        Manage Subscription
-                                    </Button>
+                        <div className="mt-5 flex flex-col gap-2">
+                            <Button
+                                className="h-10 w-full rounded-xl text-[13px] font-semibold"
+                                onClick={() => handleCheckout(proId)}
+                                disabled={loading !== null}
+                            >
+                                {loading === proId ? (
+                                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Initializing…</>
+                                ) : (
+                                    <><Sparkles className="mr-2 h-4 w-4" />Upgrade to Pro</>
                                 )}
-                            </CardFooter>
-                        </Card>
-                    ))}
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-full rounded-xl text-[11px] text-muted-foreground"
+                                onClick={handleManageSubscription}
+                            >
+                                Manage subscription
+                            </Button>
+                        </div>
+                    </motion.div>
+
                 </div>
-            </section>
+
+                {/* Footer */}
+                <motion.p
+                    className="mt-8 text-center text-[11px] text-muted-foreground/50"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.4, duration: 0.3 }}
+                >
+                    Cancel anytime · Secure payments · Instant activation
+                </motion.p>
+
+            </div>
         </main>
     );
 }

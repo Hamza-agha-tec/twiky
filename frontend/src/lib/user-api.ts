@@ -104,6 +104,7 @@ export interface UserSearchResult {
 export const userApi = {
   getProfile: () => authedFetch<UserProfile>('/users/profile'),
   getUserById: (id: string) => authedFetch<UserProfile>(`/users/${id}`),
+  getUserByUsername: (username: string) => authedFetch<UserProfile>(`/users/username/${username}`),
   updateProfile: (data: UpdateProfileInput) =>
     authedFetch<UserProfile>('/users/profile', { method: 'PATCH', body: JSON.stringify(data) }),
   getSettings: () => authedFetch('/users/settings'),

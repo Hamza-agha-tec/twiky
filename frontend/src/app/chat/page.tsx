@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowRight, Bell, BookUser, CalendarDays, Check, Compass, Globe, ListTodo, Lock, MessageSquare, Search, Sparkles, Store, Target, UserPlus, Users, X } from 'lucide-react'
+import { BookUser, ListTodo, MessageSquare, Target } from 'lucide-react'
 
 import {
   ChannelFeed,
@@ -23,27 +23,31 @@ import { GoalsPanel } from '@/components/chat/goals-panel'
 import { ActiveView, IconRail } from '@/components/chat/icon-rail'
 import { MainArea, MainAreaTab } from '@/components/chat/main-area'
 import { NotesPanel } from '@/components/chat/notes-panel'
-import { SettingsView } from '@/components/chat/settings-view'
 import { TasksPanel } from '@/components/chat/tasks-panel'
+import { WorkspaceEmptyState } from '@/components/chat/workspace-empty-state'
+import { AddFriendsView } from '@/components/chat/views/add-friends-view'
+import { DiscoverChannelsView } from '@/components/chat/views/discover-channels-view'
+import { NotificationsView } from '@/components/chat/views/notifications-view'
+import { StoreView } from '@/components/chat/views/store-view'
 import {
   WorkspaceMode,
   WorkspaceNavTarget,
   WorkspaceSidebar,
 } from '@/components/chat/workspace-sidebar'
 import type { CreateEntityValues } from '@/components/chat/create-entity-dialog'
-import { useChannels, useCreateChannel, useDiscoverChannels, useJoinChannel, useRequestJoinChannel, useUpdateChannel } from '@/hooks/use-channels'
+import { useChannels, useCreateChannel, useUpdateChannel } from '@/hooks/use-channels'
 import { useChannelGroups, useCreateGroup, useGroupMembers, useGroupMessages, backendGroupToMock } from '@/hooks/use-groups'
 import { groupsApi, type GroupMessage } from '@/lib/groups-api'
 import { useQueryClient } from '@tanstack/react-query'
 import { GROUP_KEYS } from '@/hooks/use-groups'
 import type { FeedPost } from '@/components/chat/channel-feed'
 import { type ChatMessage } from '@/hooks/use-messaging'
-import { useProfile, useSearchUsers, useSendFollowRequest, useUserFollowing } from '@/hooks/use-user'
-import { useNotifications, useMarkAllAsRead, useMarkAsRead } from '@/hooks/use-notifications'
-import { usePendingInvitations, useRespondToInvitation } from '@/hooks/use-invitations'
+import { useProfile } from '@/hooks/use-user'
+import { useNotifications, useMarkAsRead } from '@/hooks/use-notifications'
 import type { BackendChannel } from '@/lib/channel-api'
 import { filesApi } from '@/lib/files-api'
 import { type Chat } from '@/lib/mock-data'
+import { useRouter } from 'next/navigation'
 
 type ChatSurface =
   | 'channel'
@@ -200,697 +204,25 @@ function toWorkspaceChannel(
   }
 }
 
-const STORE_ITEMS = [
-  { id: 'themes', label: 'Themes', description: 'Custom color schemes and visual styles', count: 24, tag: 'Popular', gradient: 'from-violet-500 via-purple-500 to-fuchsia-600' },
-  { id: 'stickers', label: 'Sticker Packs', description: 'Expressive sticker sets for reactions', count: 48, tag: 'New', gradient: 'from-orange-500 via-amber-500 to-yellow-500' },
-  { id: 'sounds', label: 'Sound Packs', description: 'Custom notification and UI sounds', count: 12, tag: null, gradient: 'from-emerald-500 via-teal-500 to-cyan-600' },
-  { id: 'frames', label: 'Profile Frames', description: 'Animated borders for your avatar', count: 36, tag: 'Hot', gradient: 'from-pink-500 via-rose-500 to-red-500' },
-  { id: 'rooms', label: 'Room Templates', description: 'Backgrounds and layouts for your profile room', count: 18, tag: 'Coming soon', gradient: 'from-cyan-500 via-sky-500 to-blue-600' },
-  { id: 'badges', label: 'Badges', description: 'Collectible profile badges to show off', count: 60, tag: 'Exclusive', gradient: 'from-amber-500 via-orange-500 to-rose-500' },
-] as const
-
-function AddFriendsView() {
-  const [query, setQuery] = useState('')
-  const [debouncedQuery, setDebouncedQuery] = useState('')
-  const [sent, setSent] = useState<Set<string>>(new Set())
-
-  // debounce
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(query), 400)
-    return () => clearTimeout(t)
-  }, [query])
-
-  const { data: results = [], isFetching, isError } = useSearchUsers(debouncedQuery)
-  const sendFollowRequest = useSendFollowRequest()
-  const { data: profile } = useProfile()
-  const { data: following = [] } = useUserFollowing(profile?.id)
-  const followingIds = new Set(following.map((f) => f.following_id))
-
-  async function handleSend(userId: string) {
-    try {
-      await sendFollowRequest.mutateAsync(userId)
-      setSent((prev) => new Set([...prev, userId]))
-    } catch {}
-  }
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
-      <div className="relative overflow-hidden border-b border-border bg-gradient-to-br from-primary/10 via-background to-background px-8 py-10">
-        <div className="mx-auto max-w-2xl">
-          <div className="flex items-center gap-2 text-primary">
-            <UserPlus className="h-5 w-5" />
-            <span className="text-[11px] font-bold uppercase tracking-widest">Add Friends</span>
-          </div>
-          <h1 className="mt-2 text-[28px] font-black tracking-tight text-foreground">Find people on Twiky</h1>
-          <p className="mt-2 text-[14px] text-muted-foreground">Search by username to send a follow request.</p>
-
-          <div className="relative mt-6">
-            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by username..."
-              className="w-full rounded-2xl border border-border bg-card py-3 pl-11 pr-10 text-[14px] text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
-            {query ? (
-              <button onClick={() => { setQuery(''); setDebouncedQuery('') }} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                <X className="h-4 w-4" />
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </div>
-
-      <div className="mx-auto w-full max-w-2xl px-8 py-8">
-        {debouncedQuery.trim() === '' ? (
-          <div className="flex flex-col items-center py-16 text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-muted">
-              <Users className="h-7 w-7 text-muted-foreground" />
-            </div>
-            <p className="text-[15px] font-semibold text-foreground">Search for friends</p>
-            <p className="mt-1.5 text-[13px] text-muted-foreground">Type a username above to find people.</p>
-          </div>
-        ) : isFetching ? (
-          <div className="flex flex-col items-center py-16 text-center">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            <p className="mt-3 text-[13px] text-muted-foreground">Searching...</p>
-          </div>
-        ) : isError ? (
-          <div className="flex flex-col items-center py-16 text-center">
-            <p className="text-[13px] text-destructive">Search failed. Try again.</p>
-          </div>
-        ) : results.length === 0 ? (
-          <div className="flex flex-col items-center py-16 text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-muted">
-              <Search className="h-7 w-7 text-muted-foreground" />
-            </div>
-            <p className="text-[15px] font-semibold text-foreground">No users found</p>
-            <p className="mt-1.5 text-[13px] text-muted-foreground">Try a different username.</p>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            <p className="mb-1 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-              {results.length} result{results.length !== 1 ? 's' : ''}
-            </p>
-            {results.map((user) => {
-              const isSelf = user.id === profile?.id
-              const isAlreadyFriend = followingIds.has(user.id)
-              const isSent = sent.has(user.id)
-              const initial = (user.fullname ?? user.username ?? '?')[0].toUpperCase()
-              return (
-                <div key={user.id} className="flex items-center gap-4 rounded-2xl border border-border bg-card px-4 py-3 transition-all hover:border-primary/20 hover:shadow-sm">
-                  {user.avatar_url ? (
-                    <img src={user.avatar_url} alt={user.username} className="h-11 w-11 flex-shrink-0 rounded-2xl object-cover" />
-                  ) : (
-                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-primary text-[15px] font-bold text-primary-foreground">
-                      {initial}
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[14px] font-semibold text-foreground">{user.fullname ?? user.username}</p>
-                    <p className="text-[12px] text-muted-foreground">@{user.username}</p>
-                  </div>
-                  {isSelf ? null : isAlreadyFriend ? (
-                    <span className="rounded-xl bg-muted px-3 py-2 text-[12px] font-medium text-muted-foreground">
-                      Friends
-                    </span>
-                  ) : (
-                    <button
-                      onClick={() => handleSend(user.id)}
-                      disabled={isSent || sendFollowRequest.isPending}
-                      className={isSent
-                        ? 'flex items-center gap-1.5 rounded-xl px-4 py-2 text-[12px] font-semibold bg-muted text-muted-foreground cursor-default'
-                        : 'flex items-center gap-1.5 rounded-xl px-4 py-2 text-[12px] font-semibold bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50'}
-                    >
-                      <UserPlus className="h-3.5 w-3.5" />
-                      {isSent ? 'Sent' : 'Add Friend'}
-                    </button>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  )
+type ChatPageProps = {
+  lockedView?: ActiveView
+  hideRail?: boolean
 }
 
-function NotificationsView() {
-  const { data: notifications = [], isLoading } = useNotifications()
-  const { data: invitations = [] } = usePendingInvitations()
-  const markAsRead = useMarkAsRead()
-  const markAllAsRead = useMarkAllAsRead()
-  const respondToInvitation = useRespondToInvitation()
-
-  const nonMentionNotifications = notifications.filter((n) => n.type !== 'MENTION')
-  const unreadCount = nonMentionNotifications.filter((n) => !n.is_read).length
-  const followInvitations = invitations.filter((inv) => inv.entity_type === 'FOLLOW')
-  const groupInvitations = invitations.filter((inv) => inv.entity_type === 'GROUP')
-  const channelInvitations = invitations.filter((inv) => inv.entity_type === 'CHANNEL')
-
-  function formatTime(iso: string) {
-    const d = new Date(iso)
-    const diff = Date.now() - d.getTime()
-    if (diff < 60000) return 'just now'
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
-    return d.toLocaleDateString('en', { month: 'short', day: 'numeric' })
-  }
-
-  function notificationLabel(type: string) {
-    switch (type) {
-      case 'FOLLOW': return 'started following you'
-      case 'INVITATION': return 'sent you an invitation'
-      case 'INVITATION_ACCEPTED': return 'accepted your invitation'
-      case 'INVITATION_REJECTED': return 'declined your invitation'
-      case 'LIKE': return 'liked your post'
-      case 'MENTION': return 'mentioned you'
-      default: return type.toLowerCase().replace(/_/g, ' ')
-    }
-  }
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
-      <div className="relative overflow-hidden border-b border-border bg-gradient-to-br from-primary/10 via-background to-background px-8 py-10">
-        <div className="mx-auto max-w-2xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2 text-primary">
-                <Bell className="h-5 w-5" />
-                <span className="text-[11px] font-bold uppercase tracking-widest">Notifications</span>
-              </div>
-              <h1 className="mt-2 text-[28px] font-black tracking-tight text-foreground">Activity</h1>
-              <p className="mt-2 text-[14px] text-muted-foreground">Follow requests and account activity.</p>
-            </div>
-            {unreadCount > 0 ? (
-              <button
-                onClick={() => markAllAsRead.mutate()}
-                className="flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
-              >
-                <Check className="h-3.5 w-3.5" />
-                Mark all read
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </div>
-
-      <div className="mx-auto w-full max-w-2xl px-8 py-8 space-y-8">
-        {/* Group invitations */}
-        {groupInvitations.length > 0 ? (
-          <div>
-            <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-              Group Invitations · {groupInvitations.length}
-            </p>
-            <div className="flex flex-col gap-3">
-              {groupInvitations.map((inv) => (
-                <div key={inv.id} className="flex items-center gap-4 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
-                  {inv.inviter.avatar_url ? (
-                    <img src={inv.inviter.avatar_url} alt={inv.inviter.username} className="h-11 w-11 flex-shrink-0 rounded-2xl object-cover" />
-                  ) : (
-                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-primary text-[15px] font-bold text-primary-foreground">
-                      {inv.inviter.username[0].toUpperCase()}
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[14px] font-semibold text-foreground">@{inv.inviter.username}</p>
-                    <p className="text-[12px] text-muted-foreground">invited you to a group · {formatTime(inv.created_at)}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => respondToInvitation.mutate({ invitationId: inv.id, status: 'ACCEPTED' })}
-                      disabled={respondToInvitation.isPending}
-                      className="rounded-xl bg-primary px-3 py-1.5 text-[12px] font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                    >
-                      Accept
-                    </button>
-                    <button
-                      onClick={() => respondToInvitation.mutate({ invitationId: inv.id, status: 'REJECTED' })}
-                      disabled={respondToInvitation.isPending}
-                      className="rounded-xl border border-border px-3 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-                    >
-                      Decline
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        {/* Channel invitations */}
-        {channelInvitations.length > 0 ? (
-          <div>
-            <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-              Channel Invitations · {channelInvitations.length}
-            </p>
-            <div className="flex flex-col gap-3">
-              {channelInvitations.map((inv) => (
-                <div key={inv.id} className="flex items-center gap-4 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
-                  {inv.inviter.avatar_url ? (
-                    <img src={inv.inviter.avatar_url} alt={inv.inviter.username} className="h-11 w-11 flex-shrink-0 rounded-2xl object-cover" />
-                  ) : (
-                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-primary text-[15px] font-bold text-primary-foreground">
-                      {inv.inviter.username[0].toUpperCase()}
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[14px] font-semibold text-foreground">@{inv.inviter.username}</p>
-                    <p className="text-[12px] text-muted-foreground">invited you to a channel · {formatTime(inv.created_at)}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => respondToInvitation.mutate({ invitationId: inv.id, status: 'ACCEPTED' })}
-                      disabled={respondToInvitation.isPending}
-                      className="rounded-xl bg-primary px-3 py-1.5 text-[12px] font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                    >
-                      Accept
-                    </button>
-                    <button
-                      onClick={() => respondToInvitation.mutate({ invitationId: inv.id, status: 'REJECTED' })}
-                      disabled={respondToInvitation.isPending}
-                      className="rounded-xl border border-border px-3 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-                    >
-                      Decline
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        {/* Pending follow requests */}
-        {followInvitations.length > 0 ? (
-          <div>
-            <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-              Follow Requests · {followInvitations.length}
-            </p>
-            <div className="flex flex-col gap-3">
-              {followInvitations.map((inv) => (
-                <div key={inv.id} className="flex items-center gap-4 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
-                  {inv.inviter.avatar_url ? (
-                    <img src={inv.inviter.avatar_url} alt={inv.inviter.username} className="h-11 w-11 flex-shrink-0 rounded-2xl object-cover" />
-                  ) : (
-                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-primary text-[15px] font-bold text-primary-foreground">
-                      {inv.inviter.username[0].toUpperCase()}
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[14px] font-semibold text-foreground">@{inv.inviter.username}</p>
-                    <p className="text-[12px] text-muted-foreground">wants to follow you · {formatTime(inv.created_at)}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => respondToInvitation.mutate({ invitationId: inv.id, status: 'ACCEPTED' })}
-                      disabled={respondToInvitation.isPending}
-                      className="rounded-xl bg-primary px-3 py-1.5 text-[12px] font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                    >
-                      Accept
-                    </button>
-                    <button
-                      onClick={() => respondToInvitation.mutate({ invitationId: inv.id, status: 'REJECTED' })}
-                      disabled={respondToInvitation.isPending}
-                      className="rounded-xl border border-border px-3 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-                    >
-                      Decline
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        {/* All notifications */}
-        <div>
-          <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Recent</p>
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            </div>
-          ) : nonMentionNotifications.length === 0 ? (
-            <div className="flex flex-col items-center py-12 text-center">
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-muted">
-                <Bell className="h-7 w-7 text-muted-foreground" />
-              </div>
-              <p className="text-[15px] font-semibold text-foreground">No notifications yet</p>
-              <p className="mt-1.5 text-[13px] text-muted-foreground">Activity will show up here.</p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {nonMentionNotifications.map((notif) => (
-                <button
-                  key={notif.id}
-                  onClick={() => { if (!notif.is_read) markAsRead.mutate(notif.id) }}
-                  className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-left transition-all hover:bg-accent ${!notif.is_read ? 'border border-primary/20 bg-primary/5' : 'border border-border bg-card'}`}
-                >
-                  {notif.actor.avatar_url ? (
-                    <img src={notif.actor.avatar_url} alt={notif.actor.username} className="h-10 w-10 flex-shrink-0 rounded-xl object-cover" />
-                  ) : (
-                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-muted text-[13px] font-bold text-foreground">
-                      {notif.actor.username[0].toUpperCase()}
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[13px] text-foreground">
-                      <span className="font-semibold">@{notif.actor.username}</span>{' '}
-                      {notificationLabel(notif.type)}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">{formatTime(notif.created_at)}</p>
-                  </div>
-                  {!notif.is_read ? (
-                    <span className="h-2 w-2 flex-shrink-0 rounded-full bg-primary" />
-                  ) : null}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-type DiscoverFilter = 'all' | 'joined' | 'new' | 'private'
-
-const DISCOVER_FILTERS: { id: DiscoverFilter; icon: typeof Sparkles; label: string }[] = [
-  { id: 'all', icon: Sparkles, label: 'All' },
-  { id: 'joined', icon: Check, label: 'Joined' },
-  { id: 'new', icon: CalendarDays, label: 'New' },
-  { id: 'private', icon: Lock, label: 'Private' },
-]
-
-const DISCOVER_CHANNEL_TONES = [
-  'from-sky-500 via-cyan-500 to-blue-600',
-  'from-emerald-500 via-teal-500 to-cyan-600',
-  'from-orange-500 via-amber-500 to-yellow-500',
-  'from-fuchsia-500 via-violet-500 to-indigo-600',
-]
-
-function getDiscoverChannelTone(seed: string) {
-  const index =
-    seed.split('').reduce((total, char) => total + char.charCodeAt(0), 0) %
-    DISCOVER_CHANNEL_TONES.length
-  return DISCOVER_CHANNEL_TONES[index]
-}
-
-function getDiscoverChannelMonogram(label: string) {
-  const words = label.split(/\s+/).filter(Boolean)
-  if (words.length >= 2) return `${words[0][0]}${words[1][0]}`.toUpperCase()
-  return label.slice(0, 2).toUpperCase() || 'CH'
-}
-
-function DiscoverChannelsView({ onSelectChannel }: { onSelectChannel?: (id: string) => void }) {
-  const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState<DiscoverFilter>('all')
-  const { data: channels = [], isLoading } = useDiscoverChannels()
-  const joinChannel = useJoinChannel()
-  const requestJoin = useRequestJoinChannel()
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    const thirtyDays = 30 * 24 * 60 * 60 * 1000
-    const newestCreatedAt = channels.reduce((latest, ch) => {
-      const t = new Date(ch.created_at).getTime()
-      return Number.isFinite(t) ? Math.max(latest, t) : latest
-    }, 0)
-    return channels.filter((ch) => {
-      const desc = ch.description ?? ''
-      const createdAt = new Date(ch.created_at).getTime()
-      const isNew =
-        Number.isFinite(createdAt) &&
-        newestCreatedAt > 0 &&
-        newestCreatedAt - createdAt <= thirtyDays
-      const matchesQuery =
-        q.length === 0 ||
-        ch.name.toLowerCase().includes(q) ||
-        desc.toLowerCase().includes(q)
-      if (!matchesQuery) return false
-      if (filter === 'joined') return ch.membership_status === 'member'
-      if (filter === 'new') return isNew
-      if (filter === 'private') return ch.access_type === 'PRIVATE'
-      return true
-    })
-  }, [channels, filter, query])
-
-  const searchActive = query.trim().length > 0
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
-      <div className="relative overflow-hidden border-b border-border bg-gradient-to-br from-primary/10 via-background to-background px-8 py-10">
-        <div className="mx-auto max-w-2xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2 text-primary">
-                <Compass className="h-5 w-5" />
-                <span className="text-[11px] font-bold uppercase tracking-widest">Discover Channels</span>
-              </div>
-              <h1 className="mt-2 text-[28px] font-black tracking-tight text-foreground">Browse Channels</h1>
-              <p className="mt-2 text-[14px] text-muted-foreground">Find channels to join or request access.</p>
-            </div>
-            <div className="flex items-center gap-1.5 rounded-full border border-border bg-muted/50 px-3 py-1.5 text-[11px] font-semibold text-muted-foreground">
-              <Users className="h-3.5 w-3.5" />
-              {channels.length}
-            </div>
-          </div>
-
-          <div className="relative mt-6">
-            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by name or description…"
-              className="w-full rounded-2xl border border-border bg-card py-3 pl-11 pr-10 text-[14px] text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
-            {searchActive ? (
-              <button onClick={() => setQuery('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                <X className="h-4 w-4" />
-              </button>
-            ) : null}
-          </div>
-
-          <div className="mt-3 flex gap-2">
-            {DISCOVER_FILTERS.map(({ id, icon: Icon, label }) => {
-              const isActive = filter === id
-              return (
-                <button
-                  key={id}
-                  onClick={() => setFilter(id)}
-                  className={`flex h-8 items-center gap-1.5 rounded-xl border px-3 text-[12px] font-semibold transition-colors ${
-                    isActive
-                      ? 'border-primary/30 bg-primary/10 text-primary'
-                      : 'border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground'
-                  }`}
-                >
-                  <Icon className="h-3 w-3" />
-                  {label}
-                  {id === 'joined' && (
-                    <span className={`rounded-full px-1 text-[9px] font-bold ${isActive ? 'bg-primary/20' : 'bg-muted'}`}>
-                      {channels.filter((c) => c.membership_status === 'member').length}
-                    </span>
-                  )}
-                  {id === 'private' && (
-                    <span className={`rounded-full px-1 text-[9px] font-bold ${isActive ? 'bg-primary/20' : 'bg-muted'}`}>
-                      {channels.filter((c) => c.access_type === 'PRIVATE').length}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      </div>
-
-      <div className="mx-auto w-full max-w-2xl px-8 py-6">
-        {isLoading ? (
-          <div className="flex flex-col gap-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-3 rounded-2xl border border-border px-4 py-3">
-                <div className="h-11 w-11 animate-pulse rounded-2xl bg-muted flex-shrink-0" />
-                <div className="min-w-0 flex-1 space-y-2">
-                  <div className="h-3 w-28 animate-pulse rounded-full bg-muted" />
-                  <div className="h-2.5 w-40 animate-pulse rounded-full bg-muted" />
-                </div>
-                <div className="h-8 w-16 animate-pulse rounded-xl bg-muted flex-shrink-0" />
-              </div>
-            ))}
-          </div>
-        ) : channels.length === 0 ? (
-          <div className="flex flex-col items-center py-16 text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-muted">
-              <Globe className="h-7 w-7 text-muted-foreground" />
-            </div>
-            <p className="text-[15px] font-semibold text-foreground">No channels yet</p>
-            <p className="mt-1.5 text-[13px] text-muted-foreground">Create the first channel to get started.</p>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center py-16 text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-muted">
-              <Search className="h-7 w-7 text-muted-foreground" />
-            </div>
-            <p className="text-[15px] font-semibold text-foreground">No matches</p>
-            <p className="mt-1.5 text-[13px] text-muted-foreground">Try a different search or filter.</p>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {filtered.map((ch) => {
-              const status = ch.membership_status ?? 'none'
-              const isPrivate = ch.access_type === 'PRIVATE'
-              return (
-                <div
-                  key={ch.id}
-                  className={`group flex items-center gap-4 rounded-2xl border px-4 py-3 transition-all ${
-                    status === 'member'
-                      ? 'border-primary/20 bg-primary/5 hover:border-primary/30'
-                      : 'border-border bg-card hover:border-primary/20 hover:shadow-sm'
-                  }`}
-                >
-                  <div
-                    className={`relative flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br text-[11px] font-bold text-white shadow-sm ${getDiscoverChannelTone(ch.id)}`}
-                  >
-                    {ch.avatar_url ? (
-                      <img src={ch.avatar_url} alt={ch.name} className="block h-full w-full object-cover object-center" />
-                    ) : getDiscoverChannelMonogram(ch.name)}
-                    {status === 'member' && (
-                      <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full border-2 border-background bg-emerald-500">
-                        <Check className="h-2 w-2 text-white" strokeWidth={3} />
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate text-[14px] font-semibold text-foreground">{ch.name}</p>
-                      {isPrivate ? (
-                        <span className="inline-flex flex-shrink-0 items-center gap-0.5 rounded-lg bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
-                          <Lock className="h-2.5 w-2.5" />
-                          Private
-                        </span>
-                      ) : (
-                        <span className="inline-flex flex-shrink-0 items-center gap-0.5 rounded-lg bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                          <Globe className="h-2.5 w-2.5" />
-                          Public
-                        </span>
-                      )}
-                      {status === 'requested' && (
-                        <span className="inline-flex flex-shrink-0 items-center gap-0.5 rounded-lg bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 dark:text-blue-400">
-                          Pending
-                        </span>
-                      )}
-                    </div>
-                    {ch.description ? (
-                      <p className="mt-0.5 truncate text-[12px] text-muted-foreground">{ch.description}</p>
-                    ) : null}
-                  </div>
-
-                  {status === 'member' ? (
-                    <button
-                      onClick={() => onSelectChannel?.(ch.id)}
-                      className="flex-shrink-0 flex items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-[12px] font-semibold text-primary transition-colors hover:bg-primary/20"
-                    >
-                      Open
-                      <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-                    </button>
-                  ) : status === 'requested' ? (
-                    <div className="flex-shrink-0 flex items-center rounded-xl border border-border bg-muted/60 px-3 py-2 text-[12px] font-semibold text-muted-foreground">
-                      Sent
-                    </div>
-                  ) : isPrivate ? (
-                    <button
-                      onClick={async () => { try { await requestJoin.mutateAsync(ch.id) } catch {} }}
-                      disabled={requestJoin.isPending}
-                      className="flex-shrink-0 flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] font-semibold text-amber-600 transition-colors hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-400"
-                    >
-                      <Lock className="h-3.5 w-3.5" />
-                      Request
-                    </button>
-                  ) : (
-                    <button
-                      onClick={async () => {
-                        try {
-                          await joinChannel.mutateAsync(ch.id)
-                          onSelectChannel?.(ch.id)
-                        } catch {}
-                      }}
-                      disabled={joinChannel.isPending}
-                      className="flex-shrink-0 flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-[12px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-                    >
-                      Join
-                      <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-                    </button>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function StoreView() {
-  return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
-      {/* Hero */}
-      <div className="relative overflow-hidden border-b border-border bg-gradient-to-br from-primary/10 via-background to-background px-8 py-10">
-        <div className="mx-auto max-w-3xl">
-          <div className="flex items-center gap-2 text-primary">
-            <Store className="h-5 w-5" />
-            <span className="text-[11px] font-bold uppercase tracking-widest">Twiky Store</span>
-          </div>
-          <h1 className="mt-2 text-[28px] font-black tracking-tight text-foreground">Personalize your workspace</h1>
-          <p className="mt-2 text-[14px] text-muted-foreground">Themes, stickers, frames, and more — make Twiky yours.</p>
-        </div>
-      </div>
-
-      <div className="mx-auto w-full max-w-3xl px-8 py-8">
-        <p className="mb-4 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Browse categories</p>
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-          {STORE_ITEMS.map((item) => (
-            <button
-              key={item.id}
-              className="group relative overflow-hidden rounded-2xl border border-border bg-card text-left transition-all hover:border-primary/30 hover:shadow-md"
-            >
-              <div className={`h-20 bg-gradient-to-br ${item.gradient} opacity-80`} />
-              <div className="p-3">
-                <div className="flex items-start justify-between gap-1">
-                  <p className="text-[13px] font-bold text-foreground">{item.label}</p>
-                  {item.tag ? (
-                    <span className="flex-shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-primary">
-                      {item.tag}
-                    </span>
-                  ) : null}
-                </div>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">{item.description}</p>
-                <p className="mt-2 text-[10px] font-semibold text-muted-foreground">{item.count} items</p>
-              </div>
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-10 rounded-2xl border border-primary/20 bg-primary/5 p-6 text-center">
-          <Sparkles className="mx-auto h-8 w-8 text-primary" />
-          <p className="mt-3 text-[15px] font-bold text-foreground">Twiky Premium unlocks everything</p>
-          <p className="mt-1.5 text-[13px] text-muted-foreground">Get all themes, sticker packs, and exclusive frames — free forever for early members.</p>
-          <button className="mt-4 inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-2.5 text-[13px] font-semibold text-primary-foreground transition-opacity hover:opacity-90">
-            <Sparkles className="h-4 w-4" />
-            Learn about Premium
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-export default function ChatPage() {
+export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps = {}) {
   const [viewStateReady, setViewStateReady] = useState(false)
   const [activeDirectChat, setActiveDirectChat] = useState<string | null>(null)
-  const [activeView, setActiveView] = useState<ActiveView>('chat')
+  const [activeViewState, setActiveViewState] = useState<ActiveView>(lockedView ?? 'chat')
+  const activeView = lockedView ?? activeViewState
+  const setActiveView = useCallback(
+    (view: ActiveView) => {
+      if (!lockedView) {
+        setActiveViewState(view)
+      }
+    },
+    [lockedView],
+  )
+
   const [settingsSection, setSettingsSection] = useState<string>('account')
   const [localAvatar, setLocalAvatar] = useState<string | null>(null)
   const [activeSurface, setActiveSurface] = useState<ChatSurface>('direct')
@@ -906,6 +238,7 @@ export default function ChatPage() {
   const [channelGroupsById, setChannelGroupsById] = useState<Record<string, MockChannelGroup[]>>({})
   const [activeChannelId, setActiveChannelId] = useState('')
   const [activeGroupId, setActiveGroupId] = useState('')
+  const [channelFeedClosed, setChannelFeedClosed] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [showDirectProfile, setShowDirectProfile] = useState(false)
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
@@ -1069,7 +402,7 @@ export default function ChatPage() {
     const persisted = readPersistedChatState()
 
     if (persisted.activeDirectChat !== undefined) setActiveDirectChat(persisted.activeDirectChat)
-    if (persisted.activeView) setActiveView(persisted.activeView)
+    if (!lockedView && persisted.activeView) setActiveViewState(persisted.activeView)
     if (persisted.settingsSection) setSettingsSection(persisted.settingsSection)
     if (persisted.activeSurface) setActiveSurface(persisted.activeSurface)
     if (persisted.channelGroupsById) setChannelGroupsById(persisted.channelGroupsById)
@@ -1082,7 +415,7 @@ export default function ChatPage() {
     if (persisted.activeGroupId) setActiveGroupId(persisted.activeGroupId)
 
     setViewStateReady(true)
-  }, [])
+  }, [lockedView])
 
   useEffect(() => {
     if (!viewStateReady) return
@@ -1167,9 +500,10 @@ export default function ChatPage() {
     : activeSurface === 'personal-goals' ? 'goals'
     : null
 
-  function handleAvatarClick() {
-    setSettingsSection('profile')
-    setActiveView('settings')
+  const router = useRouter()
+
+  const handleAvatarClick = () => {
+    router.push('/settings/profile')
   }
 
   const openDirectChat = useCallback((conversation: string | FeedDirectConversationTarget) => {
@@ -1259,6 +593,7 @@ export default function ChatPage() {
     setActiveSurface('channel')
     setActiveView('chat')
     setChannelTab('feed')
+    setChannelFeedClosed(false)
     setShowDirectProfile(false)
   }
 
@@ -1414,41 +749,53 @@ export default function ChatPage() {
 
   const channelContent =
     activeChannel && activeGroup ? (
-      <MainArea activeChannel={activeChannel} activeGroup={activeGroup} activeTab={channelTab} onTabChange={setChannelTab}>
-        <ChannelFeed
-          channel={activeChannel}
-          group={activeGroup}
-          members={activeGroupMembers}
-          myAvatarUrl={userAvatar}
-          onOpenDirectConversation={openDirectChat}
-          postsOverride={isRealGroupId ? groupPosts : undefined}
-          onSendPost={async ({ content, fileUrl, replyToId, entityMentions }) => {
-            if (!isRealGroupId) return
-            await groupsApi.sendGroupMessage(activeGroup.id, { content, entityMentions, fileUrl, replyToId: replyToId ?? null })
-            queryClient.invalidateQueries({ queryKey: GROUP_KEYS.messages(activeGroup.id) })
-          }}
+      channelFeedClosed ? (
+        <WorkspaceEmptyState
+          title="Group feed closed"
+          subtitle="Select a group on the left to reopen feed."
         />
-      </MainArea>
+      ) : (
+        <MainArea
+          activeChannel={activeChannel}
+          activeGroup={activeGroup}
+          activeTab={channelTab}
+          onTabChange={(tab) => {
+            setChannelTab(tab)
+            if (tab === 'feed') setChannelFeedClosed(false)
+          }}
+        >
+          <ChannelFeed
+            channel={activeChannel}
+            group={activeGroup}
+            members={activeGroupMembers}
+            myAvatarUrl={userAvatar}
+            onOpenDirectConversation={openDirectChat}
+            postsOverride={isRealGroupId ? groupPosts : undefined}
+            onSendPost={async ({ content, fileUrl, replyToId, entityMentions }) => {
+              if (!isRealGroupId) return
+              await groupsApi.sendGroupMessage(activeGroup.id, { content, entityMentions, fileUrl, replyToId: replyToId ?? null })
+              queryClient.invalidateQueries({ queryKey: GROUP_KEYS.messages(activeGroup.id) })
+            }}
+            onCloseFeedRequest={() => setChannelFeedClosed(true)}
+          />
+        </MainArea>
+      )
     ) : null
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <IconRail
-        activeView={activeView}
-        onViewChange={setActiveView}
-        onAvatarClick={handleAvatarClick}
-        userInitial={userInitial}
-        userAvatar={userAvatar}
-        notificationCount={unreadNotificationCount}
-      />
-
-      {activeView === 'settings' ? (
-        <SettingsView
-          initialSection={settingsSection}
-          onAvatarChange={(url) => setLocalAvatar(url)}
-          avatarUrl={userAvatar ?? null}
+    <div className="flex min-h-0 flex-1 overflow-hidden bg-background">
+      {!hideRail ? (
+        <IconRail
+          activeView={activeView}
+          onViewChange={setActiveView}
+          onAvatarClick={handleAvatarClick}
+          userInitial={userInitial}
+          userAvatar={userAvatar}
+          notificationCount={unreadNotificationCount}
         />
-      ) : activeView === 'discover-channels' ? (
+      ) : null}
+
+      {activeView === 'discover-channels' ? (
         <DiscoverChannelsView
           onSelectChannel={(channelId) => {
             openChannelSurface(channelId)
@@ -1504,6 +851,7 @@ export default function ChatPage() {
               setActiveSurface('channel')
               setActiveView('chat')
               setChannelTab('feed')
+              setChannelFeedClosed(false)
               setShowDirectProfile(false)
             }}
             visible={activeSurface === 'channel'}
@@ -1543,4 +891,8 @@ export default function ChatPage() {
       )}
     </div>
   )
+}
+
+export default function ChatPage() {
+  return <ChatPageContent lockedView="chat" hideRail />
 }
