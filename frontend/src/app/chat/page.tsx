@@ -800,11 +800,30 @@ function DiscoverChannelsView({ onSelectChannel }: { onSelectChannel?: (id: stri
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
       {/* Header */}
       <div className="border-b border-border bg-background px-5 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Compass className="h-4 w-4 text-primary" />
-            <span className="text-[13px] font-bold text-foreground">Browse Channels</span>
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">{channels.length}</span>
+        <div className="flex items-center gap-2">
+          <Compass className="h-4 w-4 text-primary" />
+          <span className="text-[13px] font-bold text-foreground">Browse Channels</span>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">{channels.length}</span>
+        </div>
+      </div>
+
+      <div className="p-4">
+        {/* Search + filters */}
+        <div className="mb-10 flex flex-wrap items-center gap-2">
+          <div className="relative min-w-0 flex-1">
+            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search channels…"
+              className="h-8 w-full rounded-xl border border-border bg-muted/50 pl-8 pr-8 text-[12px] text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:bg-background focus:outline-none focus:ring-1 focus:ring-primary/20"
+            />
+            {searchActive && (
+              <button onClick={() => setQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <X className="h-3 w-3" />
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-1.5">
             {DISCOVER_FILTERS.map(({ id, icon: Icon, label }) => {
@@ -813,7 +832,7 @@ function DiscoverChannelsView({ onSelectChannel }: { onSelectChannel?: (id: stri
                 <button
                   key={id}
                   onClick={() => setFilter(id)}
-                  className={`flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[11px] font-semibold transition-colors ${
+                  className={`flex h-8 items-center gap-1 rounded-xl border px-2.5 text-[11px] font-semibold transition-colors ${
                     isActive
                       ? 'border-primary/30 bg-primary/10 text-primary'
                       : 'border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground'
@@ -824,28 +843,10 @@ function DiscoverChannelsView({ onSelectChannel }: { onSelectChannel?: (id: stri
                 </button>
               )
             })}
-            <div className="relative ml-1">
-              <Search className="absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search…"
-                className="h-7 w-32 rounded-lg border border-border bg-muted/50 pl-7 pr-6 text-[12px] text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:bg-background focus:outline-none focus:ring-1 focus:ring-primary/20"
-              />
-              {searchActive && (
-                <button onClick={() => setQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                  <X className="h-3 w-3" />
-                </button>
-              )}
-            </div>
           </div>
         </div>
-      </div>
-
-      <div className="p-4">
         {isLoading ? (
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-6 gap-3">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="overflow-hidden rounded-2xl border border-border bg-card">
                 <div className="h-16 animate-pulse bg-muted" />
@@ -874,7 +875,7 @@ function DiscoverChannelsView({ onSelectChannel }: { onSelectChannel?: (id: stri
             <p className="mt-1 text-[12px] text-muted-foreground">Try a different search or filter.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-6 gap-3">
             {filtered.map((ch) => {
               const status = ch.membership_status ?? 'none'
               const isPrivate = ch.access_type === 'PRIVATE'
