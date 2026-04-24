@@ -7,6 +7,7 @@ import {
   MouseEvent,
   ReactNode,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -1788,14 +1789,17 @@ export function ChannelFeed({
   const useBackendUpload = Boolean(onSendPost)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const genericFileInputRef = useRef<HTMLInputElement>(null)
+  const feedScrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const blobUrlsRef = useRef<string[]>([])
+  const previousGroupIdRef = useRef<string | null>(null)
 
   const [postUploading, setPostUploading] = useState(false)
   const [pendingImageFile, setPendingImageFile] = useState<File | null>(null)
   const [pendingGenericFile, setPendingGenericFile] = useState<File | null>(null)
 
   const posts = postsByGroup[group.id] ?? postsOverride ?? buildFallbackPosts(channel, group)
+  const latestPostId = posts.at(-1)?.id
   const draft = drafts[group.id] ?? ''
   const mentionCursor = mentionCursorByGroup[group.id] ?? draft.length
   const draftImage = draftImages[group.id]
@@ -1862,6 +1866,27 @@ export function ChannelFeed({
     if (!postsOverride) return
     setPostsByGroup((prev) => ({ ...prev, [group.id]: postsOverride }))
   }, [group.id, postsOverride])
+
+  useLayoutEffect(() => {
+    if (!posts.length) return
+
+    const groupChanged = previousGroupIdRef.current !== group.id
+    previousGroupIdRef.current = group.id
+
+    const scrollToLatest = (behavior: ScrollBehavior) => {
+      const scroller = feedScrollRef.current
+      if (!scroller) return
+      scroller.scrollTo({ top: scroller.scrollHeight, behavior })
+    }
+
+    const frameId = requestAnimationFrame(() => scrollToLatest(groupChanged ? 'auto' : 'smooth'))
+    const timeoutId = window.setTimeout(() => scrollToLatest('auto'), 120)
+
+    return () => {
+      cancelAnimationFrame(frameId)
+      window.clearTimeout(timeoutId)
+    }
+  }, [group.id, latestPostId, posts.length])
 
   useEffect(() => {
     setActiveMentionIndex(0)
@@ -2233,7 +2258,7 @@ export function ChannelFeed({
     <div className="flex flex-1 overflow-hidden bg-background">
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
       {/* Messages list */}
-      <div className="flex-1 overflow-y-auto py-2">
+      <div ref={feedScrollRef} className="flex-1 overflow-y-auto py-2">
         <div className="pb-2">
           {/* Date separator */}
           <div className="flex items-center gap-3 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
