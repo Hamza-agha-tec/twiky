@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowRight, Bell, BookUser, CalendarDays, Check, Compass, Globe, ListTodo, Lock, MessageSquare, Search, Sparkles, Store, Target, UserPlus, Users, X } from 'lucide-react'
+import { ArrowRight, AtSign, Bell, BellRing, BookUser, CalendarDays, Check, Compass, Globe, Heart, ListTodo, Lock, MessageSquare, Search, Sparkles, Store, Target, UserPlus, Users, X } from 'lucide-react'
 
 import {
   ChannelFeed,
@@ -41,6 +41,7 @@ import { type ChatMessage } from '@/hooks/use-messaging'
 import { useProfile, useSearchUsers, useSendFollowRequest, useUserFollowing } from '@/hooks/use-user'
 import { useNotifications, useMarkAllAsRead, useMarkAsRead } from '@/hooks/use-notifications'
 import { usePendingInvitations, useRespondToInvitation } from '@/hooks/use-invitations'
+import type { Invitation } from '@/lib/invitations-api'
 import type { BackendChannel } from '@/lib/channel-api'
 import { filesApi } from '@/lib/files-api'
 import { type Chat } from '@/lib/mock-data'
@@ -337,6 +338,18 @@ function AddFriendsView() {
   )
 }
 
+function notifIcon(type: string) {
+  switch (type) {
+    case 'FOLLOW': return { icon: UserPlus, bg: 'bg-blue-500', color: 'text-white' }
+    case 'LIKE': return { icon: Heart, bg: 'bg-rose-500', color: 'text-white' }
+    case 'MENTION': return { icon: AtSign, bg: 'bg-violet-500', color: 'text-white' }
+    case 'INVITATION':
+    case 'INVITATION_ACCEPTED': return { icon: Users, bg: 'bg-emerald-500', color: 'text-white' }
+    case 'INVITATION_REJECTED': return { icon: X, bg: 'bg-muted', color: 'text-muted-foreground' }
+    default: return { icon: BellRing, bg: 'bg-primary', color: 'text-primary-foreground' }
+  }
+}
+
 function NotificationsView() {
   const { data: notifications = [], isLoading } = useNotifications()
   const { data: invitations = [] } = usePendingInvitations()
@@ -344,18 +357,22 @@ function NotificationsView() {
   const markAllAsRead = useMarkAllAsRead()
   const respondToInvitation = useRespondToInvitation()
 
-  const nonMentionNotifications = notifications.filter((n) => n.type !== 'MENTION')
+  const nonMentionNotifications = useMemo(
+    () => notifications.filter((n) => n.type !== 'MENTION'),
+    [notifications],
+  )
   const unreadCount = nonMentionNotifications.filter((n) => !n.is_read).length
-  const followInvitations = invitations.filter((inv) => inv.entity_type === 'FOLLOW')
-  const groupInvitations = invitations.filter((inv) => inv.entity_type === 'GROUP')
-  const channelInvitations = invitations.filter((inv) => inv.entity_type === 'CHANNEL')
+  const followInvitations = invitations.filter((i) => i.entity_type === 'FOLLOW')
+  const groupInvitations = invitations.filter((i) => i.entity_type === 'GROUP')
+  const channelInvitations = invitations.filter((i) => i.entity_type === 'CHANNEL')
+  const totalInvitations = invitations.length
 
   function formatTime(iso: string) {
     const d = new Date(iso)
     const diff = Date.now() - d.getTime()
     if (diff < 60000) return 'just now'
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m`
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`
     return d.toLocaleDateString('en', { month: 'short', day: 'numeric' })
   }
 
@@ -371,204 +388,182 @@ function NotificationsView() {
     }
   }
 
+  function requestCopy(invitation: Invitation) {
+    switch (invitation.entity_type) {
+      case 'GROUP': return 'invited you to a group'
+      case 'CHANNEL': return 'invited you to a channel'
+      case 'FOLLOW': return 'wants to follow you'
+      default: return 'sent you a request'
+    }
+  }
+
+  function renderInvitationRow(invitation: Invitation) {
+    const initial = invitation.inviter.username[0]?.toUpperCase() ?? '?'
+    return (
+      <div key={invitation.id} className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 transition-colors hover:bg-accent/50">
+        <div className="relative flex-shrink-0">
+          {invitation.inviter.avatar_url ? (
+            <img src={invitation.inviter.avatar_url} alt={invitation.inviter.username} className="h-10 w-10 rounded-xl object-cover" />
+          ) : (
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-[12px] font-bold text-foreground">
+              {initial}
+            </div>
+          )}
+          <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary ring-2 ring-card">
+            <UserPlus className="h-2.5 w-2.5 text-primary-foreground" />
+          </span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-semibold text-foreground">@{invitation.inviter.username}</p>
+          <p className="text-[12px] text-muted-foreground">{requestCopy(invitation)}</p>
+        </div>
+        <div className="flex flex-shrink-0 items-center gap-2">
+          <button
+            onClick={() => respondToInvitation.mutate({ invitationId: invitation.id, status: 'ACCEPTED' })}
+            disabled={respondToInvitation.isPending}
+            className="rounded-xl bg-primary px-3 py-1.5 text-[12px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            Accept
+          </button>
+          <button
+            onClick={() => respondToInvitation.mutate({ invitationId: invitation.id, status: 'REJECTED' })}
+            disabled={respondToInvitation.isPending}
+            className="rounded-xl border border-border px-3 py-1.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+          >
+            Decline
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
-      <div className="relative overflow-hidden border-b border-border bg-gradient-to-br from-primary/10 via-background to-background px-8 py-10">
-        <div className="mx-auto max-w-2xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2 text-primary">
-                <Bell className="h-5 w-5" />
-                <span className="text-[11px] font-bold uppercase tracking-widest">Notifications</span>
-              </div>
-              <h1 className="mt-2 text-[28px] font-black tracking-tight text-foreground">Activity</h1>
-              <p className="mt-2 text-[14px] text-muted-foreground">Follow requests and account activity.</p>
+      {/* Header */}
+      <div className="border-b border-border bg-background px-6 py-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
+              <Bell className="h-4 w-4 text-primary" />
             </div>
-            {unreadCount > 0 ? (
-              <button
-                onClick={() => markAllAsRead.mutate()}
-                className="flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
-              >
-                <Check className="h-3.5 w-3.5" />
-                Mark all read
-              </button>
-            ) : null}
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-[15px] font-bold text-foreground">Notifications</h1>
+                {unreadCount > 0 && (
+                  <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">
+                    {unreadCount}
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-muted-foreground">Activity and requests</p>
+            </div>
           </div>
+          {unreadCount > 0 && (
+            <button
+              onClick={() => markAllAsRead.mutate()}
+              disabled={markAllAsRead.isPending}
+              className="flex h-8 items-center gap-1.5 rounded-xl border border-border px-3 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+            >
+              <Check className="h-3 w-3" /> Mark all read
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-2xl px-8 py-8 space-y-8">
-        {/* Group invitations */}
-        {groupInvitations.length > 0 ? (
-          <div>
-            <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-              Group Invitations · {groupInvitations.length}
-            </p>
-            <div className="flex flex-col gap-3">
-              {groupInvitations.map((inv) => (
-                <div key={inv.id} className="flex items-center gap-4 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
-                  {inv.inviter.avatar_url ? (
-                    <img src={inv.inviter.avatar_url} alt={inv.inviter.username} className="h-11 w-11 flex-shrink-0 rounded-2xl object-cover" />
-                  ) : (
-                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-primary text-[15px] font-bold text-primary-foreground">
-                      {inv.inviter.username[0].toUpperCase()}
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[14px] font-semibold text-foreground">@{inv.inviter.username}</p>
-                    <p className="text-[12px] text-muted-foreground">invited you to a group · {formatTime(inv.created_at)}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => respondToInvitation.mutate({ invitationId: inv.id, status: 'ACCEPTED' })}
-                      disabled={respondToInvitation.isPending}
-                      className="rounded-xl bg-primary px-3 py-1.5 text-[12px] font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                    >
-                      Accept
-                    </button>
-                    <button
-                      onClick={() => respondToInvitation.mutate({ invitationId: inv.id, status: 'REJECTED' })}
-                      disabled={respondToInvitation.isPending}
-                      className="rounded-xl border border-border px-3 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-                    >
-                      Decline
-                    </button>
-                  </div>
-                </div>
-              ))}
+      <div className="mx-auto w-full max-w-2xl px-5 py-5 space-y-6">
+        {/* Invitations */}
+        {totalInvitations > 0 && (
+          <section>
+            <div className="mb-3 flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Requests</span>
+              <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">{totalInvitations}</span>
             </div>
-          </div>
-        ) : null}
-
-        {/* Channel invitations */}
-        {channelInvitations.length > 0 ? (
-          <div>
-            <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-              Channel Invitations · {channelInvitations.length}
-            </p>
-            <div className="flex flex-col gap-3">
-              {channelInvitations.map((inv) => (
-                <div key={inv.id} className="flex items-center gap-4 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
-                  {inv.inviter.avatar_url ? (
-                    <img src={inv.inviter.avatar_url} alt={inv.inviter.username} className="h-11 w-11 flex-shrink-0 rounded-2xl object-cover" />
-                  ) : (
-                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-primary text-[15px] font-bold text-primary-foreground">
-                      {inv.inviter.username[0].toUpperCase()}
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[14px] font-semibold text-foreground">@{inv.inviter.username}</p>
-                    <p className="text-[12px] text-muted-foreground">invited you to a channel · {formatTime(inv.created_at)}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => respondToInvitation.mutate({ invitationId: inv.id, status: 'ACCEPTED' })}
-                      disabled={respondToInvitation.isPending}
-                      className="rounded-xl bg-primary px-3 py-1.5 text-[12px] font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                    >
-                      Accept
-                    </button>
-                    <button
-                      onClick={() => respondToInvitation.mutate({ invitationId: inv.id, status: 'REJECTED' })}
-                      disabled={respondToInvitation.isPending}
-                      className="rounded-xl border border-border px-3 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-                    >
-                      Decline
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div className="space-y-2">
+              {[
+                { items: followInvitations },
+                { items: groupInvitations },
+                { items: channelInvitations },
+              ].flatMap(({ items }) => items.map(renderInvitationRow))}
             </div>
-          </div>
-        ) : null}
+          </section>
+        )}
 
-        {/* Pending follow requests */}
-        {followInvitations.length > 0 ? (
-          <div>
-            <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-              Follow Requests · {followInvitations.length}
-            </p>
-            <div className="flex flex-col gap-3">
-              {followInvitations.map((inv) => (
-                <div key={inv.id} className="flex items-center gap-4 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
-                  {inv.inviter.avatar_url ? (
-                    <img src={inv.inviter.avatar_url} alt={inv.inviter.username} className="h-11 w-11 flex-shrink-0 rounded-2xl object-cover" />
-                  ) : (
-                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-primary text-[15px] font-bold text-primary-foreground">
-                      {inv.inviter.username[0].toUpperCase()}
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[14px] font-semibold text-foreground">@{inv.inviter.username}</p>
-                    <p className="text-[12px] text-muted-foreground">wants to follow you · {formatTime(inv.created_at)}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => respondToInvitation.mutate({ invitationId: inv.id, status: 'ACCEPTED' })}
-                      disabled={respondToInvitation.isPending}
-                      className="rounded-xl bg-primary px-3 py-1.5 text-[12px] font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                    >
-                      Accept
-                    </button>
-                    <button
-                      onClick={() => respondToInvitation.mutate({ invitationId: inv.id, status: 'REJECTED' })}
-                      disabled={respondToInvitation.isPending}
-                      className="rounded-xl border border-border px-3 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-                    >
-                      Decline
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+        {/* Activity */}
+        <section>
+          <div className="mb-3 flex items-center gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Activity</span>
+            {nonMentionNotifications.length > 0 && (
+              <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">{nonMentionNotifications.length}</span>
+            )}
           </div>
-        ) : null}
 
-        {/* All notifications */}
-        <div>
-          <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Recent</p>
           {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <div className="space-y-2">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3 rounded-2xl border border-border px-4 py-3">
+                  <div className="h-10 w-10 animate-pulse rounded-xl bg-muted flex-shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3 w-40 animate-pulse rounded-full bg-muted" />
+                    <div className="h-2.5 w-20 animate-pulse rounded-full bg-muted" />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : nonMentionNotifications.length === 0 ? (
-            <div className="flex flex-col items-center py-12 text-center">
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-muted">
-                <Bell className="h-7 w-7 text-muted-foreground" />
+            <div className="flex flex-col items-center rounded-2xl border border-dashed border-border py-14 text-center">
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
+                <Bell className="h-5 w-5 text-muted-foreground" />
               </div>
-              <p className="text-[15px] font-semibold text-foreground">No notifications yet</p>
-              <p className="mt-1.5 text-[13px] text-muted-foreground">Activity will show up here.</p>
+              <p className="text-[14px] font-semibold text-foreground">All caught up</p>
+              <p className="mt-1 text-[12px] text-muted-foreground">Activity will appear here.</p>
             </div>
           ) : (
-            <div className="flex flex-col gap-2">
-              {nonMentionNotifications.map((notif) => (
-                <button
-                  key={notif.id}
-                  onClick={() => { if (!notif.is_read) markAsRead.mutate(notif.id) }}
-                  className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-left transition-all hover:bg-accent ${!notif.is_read ? 'border border-primary/20 bg-primary/5' : 'border border-border bg-card'}`}
-                >
-                  {notif.actor.avatar_url ? (
-                    <img src={notif.actor.avatar_url} alt={notif.actor.username} className="h-10 w-10 flex-shrink-0 rounded-xl object-cover" />
-                  ) : (
-                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-muted text-[13px] font-bold text-foreground">
-                      {notif.actor.username[0].toUpperCase()}
+            <div className="space-y-1.5">
+              {nonMentionNotifications.map((notification) => {
+                const { icon: Icon, bg, color } = notifIcon(notification.type)
+                return (
+                  <button
+                    key={notification.id}
+                    onClick={() => { if (!notification.is_read) markAsRead.mutate(notification.id) }}
+                    className={`group flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-all hover:shadow-sm ${
+                      !notification.is_read
+                        ? 'border-primary/20 bg-primary/[0.03] hover:bg-primary/[0.06]'
+                        : 'border-border bg-card hover:bg-accent/50'
+                    }`}
+                  >
+                    {/* Avatar + type icon */}
+                    <div className="relative flex-shrink-0">
+                      {notification.actor.avatar_url ? (
+                        <img src={notification.actor.avatar_url} alt={notification.actor.username} className="h-10 w-10 rounded-xl object-cover" />
+                      ) : (
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-[12px] font-bold text-foreground">
+                          {notification.actor.username[0]?.toUpperCase() ?? '?'}
+                        </div>
+                      )}
+                      <span className={`absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full ${bg} ring-2 ring-card`}>
+                        <Icon className={`h-2.5 w-2.5 ${color}`} />
+                      </span>
                     </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[13px] text-foreground">
-                      <span className="font-semibold">@{notif.actor.username}</span>{' '}
-                      {notificationLabel(notif.type)}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">{formatTime(notif.created_at)}</p>
-                  </div>
-                  {!notif.is_read ? (
-                    <span className="h-2 w-2 flex-shrink-0 rounded-full bg-primary" />
-                  ) : null}
-                </button>
-              ))}
+
+                    {/* Text */}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] text-foreground">
+                        <span className="font-semibold">@{notification.actor.username}</span>
+                        {' '}<span className="text-muted-foreground">{notificationLabel(notification.type)}</span>
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground/60">{formatTime(notification.created_at)}</p>
+                    </div>
+
+                    {/* Unread dot */}
+                    {!notification.is_read && (
+                      <span className="h-2 w-2 flex-shrink-0 rounded-full bg-primary" />
+                    )}
+                  </button>
+                )
+              })}
             </div>
           )}
-        </div>
+        </section>
       </div>
     </div>
   )
@@ -603,9 +598,141 @@ function getDiscoverChannelMonogram(label: string) {
   return label.slice(0, 2).toUpperCase() || 'CH'
 }
 
+function ChannelPopupCard({
+  ch,
+  onClose,
+  onSelectChannel,
+  joinChannel,
+  requestJoin,
+}: {
+  ch: NonNullable<ReturnType<typeof useDiscoverChannels>['data']>[number]
+  onClose: () => void
+  onSelectChannel?: (id: string) => void
+  joinChannel: ReturnType<typeof useJoinChannel>
+  requestJoin: ReturnType<typeof useRequestJoinChannel>
+}) {
+  const status = ch.membership_status ?? 'none'
+  const isPrivate = ch.access_type === 'PRIVATE'
+  const tone = getDiscoverChannelTone(ch.id)
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-[340px] overflow-hidden rounded-[24px] border border-border bg-card shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Banner */}
+        <div className={`relative h-[110px] w-full overflow-hidden bg-gradient-to-br ${tone}`}>
+          {ch.banner_url && (
+            <img src={ch.banner_url} alt="" className="absolute inset-0 h-full w-full object-cover object-center" />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+          <button
+            onClick={onClose}
+            className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-black/30 text-white/80 backdrop-blur-sm transition-colors hover:bg-black/50 hover:text-white"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        {/* Avatar */}
+        <div className="relative -mt-7 flex px-5">
+          <div className={`relative flex h-14 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br text-[13px] font-bold text-white shadow-lg ring-4 ring-card ${tone}`}>
+            {ch.avatar_url ? (
+              <img src={ch.avatar_url} alt={ch.name} className="block h-full w-full object-cover object-center" />
+            ) : getDiscoverChannelMonogram(ch.name)}
+          </div>
+        </div>
+
+        {/* Info */}
+        <div className="px-5 pb-5 pt-2">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="truncate text-[16px] font-bold text-foreground">{ch.name}</p>
+              <div className="mt-0.5 flex items-center gap-1.5">
+                {isPrivate ? (
+                  <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                    <Lock className="h-3 w-3" /> Private
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-muted-foreground">
+                    <Globe className="h-3 w-3" /> Public
+                  </span>
+                )}
+                {ch.member_count !== undefined && (
+                  <>
+                    <span className="text-muted-foreground/40">·</span>
+                    <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-muted-foreground">
+                      <Users className="h-3 w-3" /> {ch.member_count} {ch.member_count === 1 ? 'member' : 'members'}
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+            {status === 'member' && (
+              <span className="flex-shrink-0 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
+                Joined
+              </span>
+            )}
+            {status === 'requested' && (
+              <span className="flex-shrink-0 rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-600 dark:text-blue-400">
+                Pending
+              </span>
+            )}
+          </div>
+
+          {ch.description ? (
+            <p className="mt-3 text-[12.5px] leading-relaxed text-muted-foreground">{ch.description}</p>
+          ) : (
+            <p className="mt-3 text-[12.5px] italic text-muted-foreground/50">No description.</p>
+          )}
+
+          {/* Actions */}
+          <div className="mt-4 flex gap-2">
+            {status === 'member' ? (
+              <button
+                onClick={() => { onSelectChannel?.(ch.id); onClose() }}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary py-2 text-[13px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+              >
+                Open channel <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            ) : status === 'requested' ? (
+              <div className="flex flex-1 items-center justify-center rounded-xl border border-border bg-muted/60 py-2 text-[13px] font-semibold text-muted-foreground">
+                Request sent
+              </div>
+            ) : isPrivate ? (
+              <button
+                onClick={async () => { try { await requestJoin.mutateAsync(ch.id); onClose() } catch {} }}
+                disabled={requestJoin.isPending}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 py-2 text-[13px] font-semibold text-amber-600 transition-colors hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-400"
+              >
+                <Lock className="h-3.5 w-3.5" /> Request access
+              </button>
+            ) : (
+              <button
+                onClick={async () => {
+                  try { await joinChannel.mutateAsync(ch.id); onSelectChannel?.(ch.id); onClose() } catch {}
+                }}
+                disabled={joinChannel.isPending}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary py-2 text-[13px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                Join <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function DiscoverChannelsView({ onSelectChannel }: { onSelectChannel?: (id: string) => void }) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<DiscoverFilter>('all')
+  const [popup, setPopup] = useState<string | null>(null)
   const { data: channels = [], isLoading } = useDiscoverChannels()
   const joinChannel = useJoinChannel()
   const requestJoin = useRequestJoinChannel()
@@ -637,198 +764,203 @@ function DiscoverChannelsView({ onSelectChannel }: { onSelectChannel?: (id: stri
   }, [channels, filter, query])
 
   const searchActive = query.trim().length > 0
+  const popupChannel = popup ? channels.find((c) => c.id === popup) : null
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
-      <div className="relative overflow-hidden border-b border-border bg-gradient-to-br from-primary/10 via-background to-background px-8 py-10">
-        <div className="mx-auto max-w-2xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2 text-primary">
-                <Compass className="h-5 w-5" />
-                <span className="text-[11px] font-bold uppercase tracking-widest">Discover Channels</span>
-              </div>
-              <h1 className="mt-2 text-[28px] font-black tracking-tight text-foreground">Browse Channels</h1>
-              <p className="mt-2 text-[14px] text-muted-foreground">Find channels to join or request access.</p>
-            </div>
-            <div className="flex items-center gap-1.5 rounded-full border border-border bg-muted/50 px-3 py-1.5 text-[11px] font-semibold text-muted-foreground">
-              <Users className="h-3.5 w-3.5" />
-              {channels.length}
-            </div>
+      {/* Header */}
+      <div className="border-b border-border bg-background px-5 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Compass className="h-4 w-4 text-primary" />
+            <span className="text-[13px] font-bold text-foreground">Browse Channels</span>
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">{channels.length}</span>
           </div>
-
-          <div className="relative mt-6">
-            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by name or description…"
-              className="w-full rounded-2xl border border-border bg-card py-3 pl-11 pr-10 text-[14px] text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
-            {searchActive ? (
-              <button onClick={() => setQuery('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                <X className="h-4 w-4" />
-              </button>
-            ) : null}
-          </div>
-
-          <div className="mt-3 flex gap-2">
+          <div className="flex items-center gap-1.5">
             {DISCOVER_FILTERS.map(({ id, icon: Icon, label }) => {
               const isActive = filter === id
               return (
                 <button
                   key={id}
                   onClick={() => setFilter(id)}
-                  className={`flex h-8 items-center gap-1.5 rounded-xl border px-3 text-[12px] font-semibold transition-colors ${
+                  className={`flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[11px] font-semibold transition-colors ${
                     isActive
                       ? 'border-primary/30 bg-primary/10 text-primary'
                       : 'border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground'
                   }`}
                 >
-                  <Icon className="h-3 w-3" />
+                  <Icon className="h-2.5 w-2.5" />
                   {label}
-                  {id === 'joined' && (
-                    <span className={`rounded-full px-1 text-[9px] font-bold ${isActive ? 'bg-primary/20' : 'bg-muted'}`}>
-                      {channels.filter((c) => c.membership_status === 'member').length}
-                    </span>
-                  )}
-                  {id === 'private' && (
-                    <span className={`rounded-full px-1 text-[9px] font-bold ${isActive ? 'bg-primary/20' : 'bg-muted'}`}>
-                      {channels.filter((c) => c.access_type === 'PRIVATE').length}
-                    </span>
-                  )}
                 </button>
               )
             })}
+            <div className="relative ml-1">
+              <Search className="absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search…"
+                className="h-7 w-32 rounded-lg border border-border bg-muted/50 pl-7 pr-6 text-[12px] text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:bg-background focus:outline-none focus:ring-1 focus:ring-primary/20"
+              />
+              {searchActive && (
+                <button onClick={() => setQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-2xl px-8 py-6">
+      <div className="p-4">
         {isLoading ? (
-          <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-4 gap-3">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-3 rounded-2xl border border-border px-4 py-3">
-                <div className="h-11 w-11 animate-pulse rounded-2xl bg-muted flex-shrink-0" />
-                <div className="min-w-0 flex-1 space-y-2">
-                  <div className="h-3 w-28 animate-pulse rounded-full bg-muted" />
-                  <div className="h-2.5 w-40 animate-pulse rounded-full bg-muted" />
+              <div key={i} className="overflow-hidden rounded-2xl border border-border bg-card">
+                <div className="h-16 animate-pulse bg-muted" />
+                <div className="space-y-2 p-3">
+                  <div className="h-3 w-24 animate-pulse rounded-full bg-muted" />
+                  <div className="h-2 w-32 animate-pulse rounded-full bg-muted" />
+                  <div className="mt-3 h-7 w-full animate-pulse rounded-xl bg-muted" />
                 </div>
-                <div className="h-8 w-16 animate-pulse rounded-xl bg-muted flex-shrink-0" />
               </div>
             ))}
           </div>
         ) : channels.length === 0 ? (
-          <div className="flex flex-col items-center py-16 text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-muted">
-              <Globe className="h-7 w-7 text-muted-foreground" />
+          <div className="flex flex-col items-center py-14 text-center">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
+              <Globe className="h-5 w-5 text-muted-foreground" />
             </div>
-            <p className="text-[15px] font-semibold text-foreground">No channels yet</p>
-            <p className="mt-1.5 text-[13px] text-muted-foreground">Create the first channel to get started.</p>
+            <p className="text-[14px] font-semibold text-foreground">No channels yet</p>
+            <p className="mt-1 text-[12px] text-muted-foreground">Create the first channel to get started.</p>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center py-16 text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-muted">
-              <Search className="h-7 w-7 text-muted-foreground" />
+          <div className="flex flex-col items-center py-14 text-center">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
+              <Search className="h-5 w-5 text-muted-foreground" />
             </div>
-            <p className="text-[15px] font-semibold text-foreground">No matches</p>
-            <p className="mt-1.5 text-[13px] text-muted-foreground">Try a different search or filter.</p>
+            <p className="text-[14px] font-semibold text-foreground">No matches</p>
+            <p className="mt-1 text-[12px] text-muted-foreground">Try a different search or filter.</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-4 gap-3">
             {filtered.map((ch) => {
               const status = ch.membership_status ?? 'none'
               const isPrivate = ch.access_type === 'PRIVATE'
+              const tone = getDiscoverChannelTone(ch.id)
               return (
                 <div
                   key={ch.id}
-                  className={`group flex items-center gap-4 rounded-2xl border px-4 py-3 transition-all ${
-                    status === 'member'
-                      ? 'border-primary/20 bg-primary/5 hover:border-primary/30'
-                      : 'border-border bg-card hover:border-primary/20 hover:shadow-sm'
+                  className={`group overflow-hidden rounded-2xl border bg-card transition-all hover:shadow-md ${
+                    status === 'member' ? 'border-primary/20' : 'border-border hover:border-primary/20'
                   }`}
                 >
-                  <div
-                    className={`relative flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br text-[11px] font-bold text-white shadow-sm ${getDiscoverChannelTone(ch.id)}`}
+                  {/* Banner */}
+                  <button
+                    className={`relative h-16 w-full overflow-hidden bg-gradient-to-br ${tone}`}
+                    onClick={() => setPopup(ch.id)}
                   >
-                    {ch.avatar_url ? (
-                      <img src={ch.avatar_url} alt={ch.name} className="block h-full w-full object-cover object-center" />
-                    ) : getDiscoverChannelMonogram(ch.name)}
-                    {status === 'member' && (
-                      <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full border-2 border-background bg-emerald-500">
-                        <Check className="h-2 w-2 text-white" strokeWidth={3} />
+                    {ch.banner_url && (
+                      <img src={ch.banner_url} alt="" className="absolute inset-0 h-full w-full object-cover object-center" />
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
+                    {isPrivate && (
+                      <span className="absolute right-2 top-2 flex items-center gap-0.5 rounded-full bg-black/40 px-1.5 py-0.5 text-[9px] font-semibold text-white/90 backdrop-blur-sm">
+                        <Lock className="h-2.5 w-2.5" /> Private
                       </span>
                     )}
-                  </div>
+                    {status === 'member' && (
+                      <span className="absolute right-2 top-2 flex items-center gap-0.5 rounded-full bg-emerald-500/90 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+                        <Check className="h-2.5 w-2.5" strokeWidth={3} /> Joined
+                      </span>
+                    )}
+                  </button>
 
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate text-[14px] font-semibold text-foreground">{ch.name}</p>
-                      {isPrivate ? (
-                        <span className="inline-flex flex-shrink-0 items-center gap-0.5 rounded-lg bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
-                          <Lock className="h-2.5 w-2.5" />
-                          Private
-                        </span>
-                      ) : (
-                        <span className="inline-flex flex-shrink-0 items-center gap-0.5 rounded-lg bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                          <Globe className="h-2.5 w-2.5" />
-                          Public
-                        </span>
-                      )}
-                      {status === 'requested' && (
-                        <span className="inline-flex flex-shrink-0 items-center gap-0.5 rounded-lg bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 dark:text-blue-400">
-                          Pending
-                        </span>
-                      )}
+                  <div className="p-3">
+                    {/* Avatar + name */}
+                    <div className="flex items-start gap-2">
+                      <div
+                        className={`relative -mt-6 flex h-10 w-10 flex-shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br text-[10px] font-bold text-white shadow-md ring-2 ring-card ${tone}`}
+                        onClick={() => setPopup(ch.id)}
+                      >
+                        {ch.avatar_url ? (
+                          <img src={ch.avatar_url} alt={ch.name} className="block h-full w-full object-cover object-center" />
+                        ) : getDiscoverChannelMonogram(ch.name)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <button
+                          onClick={() => setPopup(ch.id)}
+                          className="block w-full truncate text-left text-[13px] font-semibold text-foreground transition-colors hover:text-primary"
+                        >
+                          {ch.name}
+                        </button>
+                        {ch.member_count !== undefined && (
+                          <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground/60">
+                            <Users className="h-2.5 w-2.5" />{ch.member_count} members
+                          </span>
+                        )}
+                      </div>
                     </div>
+
+                    {/* Description */}
                     {ch.description ? (
-                      <p className="mt-0.5 truncate text-[12px] text-muted-foreground">{ch.description}</p>
-                    ) : null}
-                  </div>
+                      <p className="mt-2 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">{ch.description}</p>
+                    ) : (
+                      <p className="mt-2 text-[11px] italic text-muted-foreground/40">No description</p>
+                    )}
 
-                  {status === 'member' ? (
-                    <button
-                      onClick={() => onSelectChannel?.(ch.id)}
-                      className="flex-shrink-0 flex items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-[12px] font-semibold text-primary transition-colors hover:bg-primary/20"
-                    >
-                      Open
-                      <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-                    </button>
-                  ) : status === 'requested' ? (
-                    <div className="flex-shrink-0 flex items-center rounded-xl border border-border bg-muted/60 px-3 py-2 text-[12px] font-semibold text-muted-foreground">
-                      Sent
+                    {/* Action */}
+                    <div className="mt-3">
+                      {status === 'member' ? (
+                        <button
+                          onClick={() => onSelectChannel?.(ch.id)}
+                          className="flex w-full items-center justify-center gap-1 rounded-xl border border-primary/30 bg-primary/10 py-1.5 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/20"
+                        >
+                          Open <ArrowRight className="h-3 w-3" />
+                        </button>
+                      ) : status === 'requested' ? (
+                        <div className="flex w-full items-center justify-center rounded-xl border border-border bg-muted/60 py-1.5 text-[11px] font-semibold text-muted-foreground">
+                          Request sent
+                        </div>
+                      ) : isPrivate ? (
+                        <button
+                          onClick={async () => { try { await requestJoin.mutateAsync(ch.id) } catch {} }}
+                          disabled={requestJoin.isPending}
+                          className="flex w-full items-center justify-center gap-1 rounded-xl border border-amber-500/30 bg-amber-500/10 py-1.5 text-[11px] font-semibold text-amber-600 transition-colors hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-400"
+                        >
+                          <Lock className="h-3 w-3" /> Request
+                        </button>
+                      ) : (
+                        <button
+                          onClick={async () => {
+                            try { await joinChannel.mutateAsync(ch.id); onSelectChannel?.(ch.id) } catch {}
+                          }}
+                          disabled={joinChannel.isPending}
+                          className="flex w-full items-center justify-center gap-1 rounded-xl bg-primary py-1.5 text-[11px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+                        >
+                          Join <ArrowRight className="h-3 w-3" />
+                        </button>
+                      )}
                     </div>
-                  ) : isPrivate ? (
-                    <button
-                      onClick={async () => { try { await requestJoin.mutateAsync(ch.id) } catch {} }}
-                      disabled={requestJoin.isPending}
-                      className="flex-shrink-0 flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] font-semibold text-amber-600 transition-colors hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-400"
-                    >
-                      <Lock className="h-3.5 w-3.5" />
-                      Request
-                    </button>
-                  ) : (
-                    <button
-                      onClick={async () => {
-                        try {
-                          await joinChannel.mutateAsync(ch.id)
-                          onSelectChannel?.(ch.id)
-                        } catch {}
-                      }}
-                      disabled={joinChannel.isPending}
-                      className="flex-shrink-0 flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-[12px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-                    >
-                      Join
-                      <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-                    </button>
-                  )}
+                  </div>
                 </div>
               )
             })}
           </div>
         )}
       </div>
+
+      {/* Channel popup */}
+      {popupChannel && (
+        <ChannelPopupCard
+          ch={popupChannel}
+          onClose={() => setPopup(null)}
+          onSelectChannel={onSelectChannel}
+          joinChannel={joinChannel}
+          requestJoin={requestJoin}
+        />
+      )}
     </div>
   )
 }

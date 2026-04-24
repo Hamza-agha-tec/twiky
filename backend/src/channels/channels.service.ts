@@ -199,13 +199,15 @@ export class ChannelsService {
         const { data, error } = await this.supabaseService
             .getClient()
             .from('channels')
-            .select('*')
+            .select('*, channel_members(count)')
             .order('created_at', { ascending: false });
 
         if (error) throw new Error(`Failed to discover channels: ${error.message}`);
 
         return (data ?? []).map((ch: any) => ({
             ...ch,
+            member_count: ch.channel_members?.[0]?.count ?? 0,
+            channel_members: undefined,
             membership_status: joinedIds.has(ch.id) ? 'member' : requestedIds.has(ch.id) ? 'requested' : 'none',
         }));
     }

@@ -37,6 +37,7 @@ export interface Channel {
   owner_id: string;
   created_at: string;
   membership_status?: 'member' | 'requested' | 'none';
+  member_count?: number;
 }
 
 export const channelsApi = {
