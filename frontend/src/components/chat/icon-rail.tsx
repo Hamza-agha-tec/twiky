@@ -45,30 +45,34 @@ export function IconRail({
         <div className="flex flex-1 flex-col items-center gap-2">
           {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
             const isActive = activeView === id
+            const content = (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onViewChange(id)}
+                className={cn(
+                  'relative h-11 w-11 rounded-2xl',
+                  isActive
+                    ? 'bg-primary/10 text-primary hover:bg-primary/10 hover:text-primary'
+                    : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                )}
+              >
+                {isActive ? (
+                  <span className="absolute left-0 top-1/2 h-7 w-1 -translate-y-1/2 rounded-r-full bg-primary" />
+                ) : null}
+                <Icon className="h-5 w-5" />
+                {id === 'notifications' && notificationCount > 0 ? (
+                  <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-white">
+                    {notificationCount > 9 ? '9+' : notificationCount}
+                  </span>
+                ) : null}
+              </Button>
+            )
+
             return (
               <Tooltip key={id}>
                 <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => onViewChange(id)}
-                    className={cn(
-                      'relative h-11 w-11 rounded-2xl',
-                      isActive
-                        ? 'bg-primary/10 text-primary hover:bg-primary/10 hover:text-primary'
-                        : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                    )}
-                  >
-                    {isActive ? (
-                      <span className="absolute left-0 top-1/2 h-7 w-1 -translate-y-1/2 rounded-r-full bg-primary" />
-                    ) : null}
-                    <Icon className="h-5 w-5" />
-                    {id === 'notifications' && notificationCount > 0 ? (
-                      <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-white">
-                        {notificationCount > 9 ? '9+' : notificationCount}
-                      </span>
-                    ) : null}
-                  </Button>
+                  {content}
                 </TooltipTrigger>
                 <TooltipContent side="right">{label}</TooltipContent>
               </Tooltip>

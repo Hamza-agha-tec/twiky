@@ -39,6 +39,14 @@ export function useUserById(id?: string) {
   });
 }
 
+export function useUserByUsername(username?: string) {
+  return useQuery<UserProfile>({
+    queryKey: username ? ['user', 'by-username', username] : ['user', 'by-username', 'missing'],
+    queryFn: () => userApi.getUserByUsername(username!),
+    enabled: Boolean(username),
+  });
+}
+
 export function useUpdateProfile() {
   const queryClient = useQueryClient();
   return useMutation({
