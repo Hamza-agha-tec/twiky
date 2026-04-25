@@ -67,6 +67,17 @@ export function useSendGroupMessage(groupId: string) {
   });
 }
 
+export function useToggleGroupMessageReaction(groupId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { messageId: string; emoji: string }) =>
+      groupsApi.toggleGroupMessageReaction(data.messageId, data.emoji),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: GROUP_KEYS.messages(groupId) });
+    },
+  });
+}
+
 export function useUpdateGroupMemberRole(groupId: string) {
   const queryClient = useQueryClient();
   return useMutation({

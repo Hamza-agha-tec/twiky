@@ -232,6 +232,7 @@ export class MessagingService {
     }
 
     async sendGroupMessage(userId: string, groupId: string, dto: SendGroupMessageDto) {
+        this.logger.debug(`sendGroupMessage dto=${JSON.stringify(dto)}`);
         // Verify user is in the group_members table
         const { data: member } = await this.supabaseService
             .getClient()
@@ -285,18 +286,26 @@ export class MessagingService {
             }
         }
 
+        const payload: any = {
+            group_id: groupId,
+            sender_id: userId,
+            content: dto.content ?? '',
+            file_url: dto.fileUrl || null,
+            type: dto.type ?? null,
+            mime: dto.mime ?? null,
+            duration: dto.duration ?? null,
+            size: dto.size ?? null,
+            file_urls: dto.fileUrls || [],
+            reply_to_id: dto.replyToId || null,
+            entity_mentions: dto.entityMentions || []
+        };
+
+        this.logger.debug(`sendGroupMessage payload=${JSON.stringify(payload)}`);
+
         const { data, error } = await this.supabaseService
             .getClient()
             .from('group_messages')
-            .insert({
-                group_id: groupId,
-                sender_id: userId,
-                content: dto.content,
-                file_url: dto.fileUrl || null,
-                file_urls: dto.fileUrls || [],
-                reply_to_id: dto.replyToId || null,
-                entity_mentions: dto.entityMentions || []
-            })
+            .insert(payload)
             .select('*, sender:users!group_messages_sender_id_fkey(id, username, fullname, avatar_url, sub_plan)')
             .single();
 
@@ -356,10 +365,49 @@ export class MessagingService {
     }
 
     async toggleDirectMessageReaction(userId: string, messageId: string, emoji: string) {
+        const { data: message, error } = await this.supabaseService
+            .getClient()
+            .from('direct_messages')
+            .select('conversation_id')
+            .eq('id', messageId)
+            .single();
+
+        if (error || !message) throw new NotFoundException('Message not found');
+
+        const { data: conv } = await this.supabaseService
+            .getClient()
+            .from('direct_conversations')
+            .select('user_one_id, user_two_id')
+            .eq('id', message.conversation_id)
+            .single();
+
+        if (!conv || (conv.user_one_id !== userId && conv.user_two_id !== userId)) {
+            throw new ForbiddenException('Access denied.');
+        }
+
         return this.toggleReactionInternal('direct_messages', userId, messageId, emoji);
     }
 
     async toggleGroupMessageReaction(userId: string, messageId: string, emoji: string) {
+        const { data: message, error } = await this.supabaseService
+            .getClient()
+            .from('group_messages')
+            .select('group_id')
+            .eq('id', messageId)
+            .single();
+
+        if (error || !message) throw new NotFoundException('Message not found');
+
+        const { data: member } = await this.supabaseService
+            .getClient()
+            .from('group_members')
+            .select('user_id')
+            .eq('group_id', message.group_id)
+            .eq('user_id', userId)
+            .single();
+
+        if (!member) throw new ForbiddenException('You are not a member of this group.');
+
         return this.toggleReactionInternal('group_messages', userId, messageId, emoji);
     }
 
@@ -400,9 +448,11 @@ export class MessagingService {
         if (fetchError || !message) throw new NotFoundException('Message not found');
 
         let reactions = message.reactions || [];
+        if (!Array.isArray(reactions)) reactions = [];
         const reactionIndex = reactions.findIndex((r: any) => r.emoji === emoji);
 
         if (reactionIndex > -1) {
+            if (!Array.isArray(reactions[reactionIndex].users)) reactions[reactionIndex].users = [];
             const userIndex = reactions[reactionIndex].users.indexOf(userId);
             if (userIndex > -1) {
                 // Remove reaction
