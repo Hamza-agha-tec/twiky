@@ -20,6 +20,37 @@ export class PaymentsService {
         });
     }
 
+    private getPlanTypeFromProductId(productId: string): 'PRO' | 'GEEK' {
+        const proId = this.configService.get<string>('DODO_PLAN_ID_PRO') || '';
+        const geekId = this.configService.get<string>('DODO_PLAN_ID_GEEK') || '';
+
+        if (geekId && productId === geekId) return 'GEEK';
+        if (proId && productId === proId) return 'PRO';
+
+        // Back-compat: allow passing literal markers in dev/test.
+        if (productId.toLowerCase() === 'geek') return 'GEEK';
+        return 'PRO';
+    }
+
+    private getPlanTypeFromDodoData(dodoData: any): 'PRO' | 'GEEK' {
+        const rawPlanType = String(dodoData?.metadata?.planType ?? '').trim().toLowerCase();
+        if (rawPlanType === 'geek') return 'GEEK';
+        if (rawPlanType === 'pro') return 'PRO';
+
+        const productIdCandidate =
+            dodoData?.product_id ||
+            dodoData?.product?.product_id ||
+            dodoData?.product?.id ||
+            dodoData?.items?.[0]?.product_id ||
+            dodoData?.product_cart?.[0]?.product_id;
+
+        if (typeof productIdCandidate === 'string' && productIdCandidate.trim()) {
+            return this.getPlanTypeFromProductId(productIdCandidate.trim());
+        }
+
+        return 'PRO';
+    }
+
     async getOrCreateCustomer(email: string, name?: string) {
         try {
             // Find existing customer
@@ -60,6 +91,7 @@ export class PaymentsService {
         }
 
         try {
+            const planType = this.getPlanTypeFromProductId(productId);
             const session = await this.client.checkoutSessions.create({
                 customer: customerId ? { customer_id: customerId } : { email: email },
                 product_cart: [
@@ -70,6 +102,7 @@ export class PaymentsService {
                 ],
                 metadata: {
                     userId: userId,
+                    planType,
                 },
                 return_url: redirectUrl || this.configService.get<string>('NEXT_PUBLIC_SITE_URL'),
             });
@@ -122,6 +155,7 @@ export class PaymentsService {
                 case 'subscription.created':
                 case 'subscription.active':
                 case 'subscription.renewed':
+                case 'subscription.updated':
                     await this.updateUserSubscription(userId, data, 'active');
                     break;
                 case 'subscription.cancelled':
@@ -153,7 +187,7 @@ export class PaymentsService {
             .maybeSingle();
 
         if (error) throw new Error(`Failed to fetch subscription: ${error.message}`);
-        return data || { plan_type: 'free', status: 'inactive' };
+        return data || { plan_type: 'FREE', status: 'inactive' };
     }
 
     private async updateUserSubscription(userId: string, dodoData: any, status: string) {
@@ -164,23 +198,42 @@ export class PaymentsService {
         const customerId = dodoData.customer_id || dodoData.customer?.customer_id || dodoData.customer?.id;
         const periodEnd = dodoData.current_period_end || dodoData.next_billing_date;
 
+        const planType = this.getPlanTypeFromDodoData(dodoData);
+
         // Update user_subscriptions table
-        await client.from('user_subscriptions').upsert({
+        const { error: subscriptionError } = await client.from('user_subscriptions').upsert({
             user_id: userId,
             dodo_subscription_id: subscriptionId,
             dodo_customer_id: customerId,
-            plan_type: 'pro',
+            plan_type: planType,
             status: status,
             current_period_end: periodEnd,
             updated_at: new Date().toISOString(),
         }, { onConflict: 'user_id' });
 
-        // Update users table: Simplified logic
-        const subPlan = status === 'active' ? 'PRO' : 'FREE';
+        if (subscriptionError) {
+            this.logger.error(
+                `Failed to upsert user_subscriptions (userId=${userId}, planType=${planType}, status=${status}): ${subscriptionError.message}`,
+            );
+        }
 
-        await client.from('users').update({
-            sub_plan: subPlan
-        }).eq('id', userId);
+        // Update users table: Simplified logic
+        const subPlan = status === 'active' ? planType : 'FREE';
+
+        const premiumActive = status === 'active';
+        const { error: userUpdateError } = await client
+            .from('users')
+            .update({
+                sub_plan: subPlan,
+                ...(premiumActive ? { is_verified: true } : {}),
+            })
+            .eq('id', userId);
+
+        if (userUpdateError) {
+            this.logger.error(
+                `Failed to update users plan (userId=${userId}, sub_plan=${subPlan}): ${userUpdateError.message}`,
+            );
+        }
 
         // Sync Dodo customer_id to metadata if we found it
         if (customerId) {

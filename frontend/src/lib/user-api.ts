@@ -118,6 +118,8 @@ export const userApi = {
     authedFetch<UserPost[]>(`/posts/users/${userId}`),
   searchUsers: (username: string) =>
     authedFetch<UserSearchResult[]>(`/users/search?username=${encodeURIComponent(username)}`),
+  getMutualFollowers: () =>
+    authedFetch<UserSummary[]>('/users/mutual-followers'),
   sendFollowRequest: (userId: string) =>
     authedFetch(`/users/follows/${userId}`, { method: 'POST' }),
 };

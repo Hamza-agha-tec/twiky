@@ -19,11 +19,11 @@ export class ProOnlyGuard implements CanActivate {
             .select('status, plan_type')
             .eq('user_id', userId)
             .eq('status', 'active')
-            .eq('plan_type', 'pro')
+            .in('plan_type', ['PRO', 'GEEK'])
             .maybeSingle();
 
         if (error || !data) {
-            throw new ForbiddenException('This feature is only available for Pro subscribers.');
+            throw new ForbiddenException('This feature is only available for Premium subscribers.');
         }
 
         return true;

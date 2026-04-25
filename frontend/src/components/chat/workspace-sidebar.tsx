@@ -20,7 +20,6 @@ import {
 import { CreateEntityDialog, type CreateEntityValues } from '@/components/chat/create-entity-dialog'
 import { type WorkspaceChannel } from '@/components/chat/channels-panel'
 import { ConversationContextMenu } from '@/components/chat/conversation-context-menu'
-import { VerifiedBadge, getVerifiedBadgeVariant } from '@/components/chat/verified-badge'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Chat } from '@/lib/mock-data'
@@ -35,6 +34,7 @@ interface WorkspaceSidebarProps {
   collapsed?: boolean
   mode: WorkspaceMode
   onCreateChannel?: (values: CreateEntityValues) => void
+  onNewDirectMessage?: () => void
   onModeChange: (mode: WorkspaceMode) => void
   onNavItem?: (tab: WorkspaceNavTarget) => void
   onSearchChange: (query: string) => void
@@ -117,6 +117,7 @@ export function WorkspaceSidebar({
   collapsed = false,
   mode,
   onCreateChannel,
+  onNewDirectMessage,
   onModeChange,
   onNavItem,
   onSearchChange,
@@ -175,7 +176,7 @@ export function WorkspaceSidebar({
     <>
       <div
         className={cn(
-          'z-10 flex h-full flex-shrink-0 flex-col border-r border-border bg-sidebar transition-[width] duration-300',
+          'z-10 flex h-full shrink-0 flex-col border-r border-border bg-sidebar transition-[width] duration-300',
           collapsed ? 'w-[78px]' : 'w-[248px]',
         )}
       >
@@ -320,6 +321,21 @@ export function WorkspaceSidebar({
         {mode === 'direct' && !collapsed ? (
           <>
             <div className="flex-1 overflow-y-auto px-2.5 py-2">
+              <div className="mb-2 flex items-center justify-between px-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">
+                  Conversations
+                </p>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-xl"
+                  onClick={onNewDirectMessage}
+                  disabled={!onNewDirectMessage}
+                  title="New message"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
               {visibleDirectChats.length > 0 ? (
                 visibleDirectChats.map((chat, index) => (
                   <motion.button
@@ -334,7 +350,7 @@ export function WorkspaceSidebar({
                       activeChat === chat.id ? 'bg-primary/10' : 'hover:bg-accent',
                     )}
                   >
-                    <div className="relative flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted text-[12px] font-semibold text-foreground">
+                    <div className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted text-[12px] font-semibold text-foreground">
                       {chat.avatar ? (
                         <img src={chat.avatar} alt={chat.name} className="block h-full w-full object-cover object-center" />
                       ) : (
@@ -350,7 +366,7 @@ export function WorkspaceSidebar({
                           <span className="truncate text-[12px] font-medium text-foreground">
                             {chat.name}
                           </span>
-                          {chat.isVerified ? <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(chat.subPlan)} /> : null}
+                          {null}
                         </span>
                         <span className="text-[10px] text-muted-foreground">
                           {chat.timestamp
@@ -418,7 +434,7 @@ export function WorkspaceSidebar({
                   >
                     <div
                       className={cn(
-                        'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-[10px] font-bold text-white shadow-sm overflow-hidden',
+                        'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-linear-to-br text-[10px] font-bold text-white shadow-sm overflow-hidden',
                         getChannelTone(channel.id),
                         isActive && 'ring-2 ring-primary/20 ring-offset-1 ring-offset-sidebar',
                       )}
@@ -431,9 +447,9 @@ export function WorkspaceSidebar({
                       {channel.label}
                     </span>
                     {channel.access_type === 'PRIVATE' ? (
-                      <Lock className="ml-auto h-3 w-3 flex-shrink-0 text-muted-foreground/60" />
+                      <Lock className="ml-auto h-3 w-3 shrink-0 text-muted-foreground/60" />
                     ) : (
-                      <Globe className="ml-auto h-3 w-3 flex-shrink-0 text-muted-foreground/40" />
+                      <Globe className="ml-auto h-3 w-3 shrink-0 text-muted-foreground/40" />
                     )}
                   </button>
                 )
@@ -481,7 +497,7 @@ export function WorkspaceSidebar({
                     key={channel.id}
                     onClick={() => onSelectChannel?.(channel.id)}
                     className={cn(
-                      'flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br text-[10px] font-bold text-white shadow-sm transition-transform hover:scale-[1.02] overflow-hidden',
+                      'flex h-8 w-8 items-center justify-center rounded-lg bg-linear-to-br text-[10px] font-bold text-white shadow-sm transition-transform hover:scale-[1.02] overflow-hidden',
                       getChannelTone(channel.id),
                       isActive && 'ring-2 ring-primary/30 ring-offset-2 ring-offset-sidebar',
                     )}

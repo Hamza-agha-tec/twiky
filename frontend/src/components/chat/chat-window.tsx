@@ -26,7 +26,15 @@ interface ChatWindowProps {
     subtitle?: string | null;
   };
   messages?: ChatMessage[];
-  onSendMessage?: (content: string, type?: string, replyToId?: string, fileUrl?: string) => void;
+  onSendMessage?: (payload: {
+    content?: string;
+    type?: string;
+    replyToId?: string | null;
+    fileUrl?: string | null;
+    mime?: string;
+    duration?: number;
+    size?: number;
+  }) => void;
   onTyping?: (isTyping: boolean) => void;
   otherIsTyping?: boolean;
   onReact?: (messageId: string, emoji: string) => void;
@@ -75,7 +83,12 @@ function toUiMessage(
       currentIdentity,
     ),
     avatar: m.sender.avatar_url ?? undefined,
-    content: m.file_url ?? m.content ?? '',
+    content:
+      m.type === 'voice'
+        ? (typeof (m.metadata as any)?.duration === 'number'
+            ? `${Math.round((m.metadata as any).duration)}s`
+            : 'Voice message')
+        : (m.file_url ?? m.content ?? ''),
     type: (m.type as Message['type']) ?? 'text',
     timestamp: m.created_at,
     isOwn: m.sender_id === currentIdentity.id,
@@ -107,7 +120,6 @@ export function ChatWindow({ chatOverride, messages: providedMessages = [], onSe
   }
   const messages = providedMessages
     .slice()
-    .reverse()
     .map((m) => toUiMessage(m, currentIdentity));
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const initialScrollDone = useRef(false);
@@ -170,14 +182,14 @@ export function ChatWindow({ chatOverride, messages: providedMessages = [], onSe
   return (
     <div className="flex-1 flex flex-col bg-sidebar h-full min-w-0">
       {/* Header */}
-      <div className="h-14 border-b border-border px-4 flex items-center justify-between bg-sidebar flex-shrink-0">
+      <div className="h-14 border-b border-border px-4 flex items-center justify-between bg-sidebar shrink-0">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={onProfileClick}
             disabled={!onProfileClick}
-            className="rounded-full hover:ring-2 ring-primary/40 transition-all flex-shrink-0 disabled:cursor-default disabled:hover:ring-0"
+            className="rounded-full hover:ring-2 ring-primary/40 transition-all shrink-0 disabled:cursor-default disabled:hover:ring-0"
           >
             <div className="relative">
               <Avatar className="h-9 w-9">
@@ -207,7 +219,7 @@ export function ChatWindow({ chatOverride, messages: providedMessages = [], onSe
           </div>
         </div>
 
-        <div className="flex gap-1 flex-shrink-0">
+        <div className="flex gap-1 shrink-0">
           <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
             <Search className="h-4 w-4" />
           </Button>
@@ -268,7 +280,7 @@ export function ChatWindow({ chatOverride, messages: providedMessages = [], onSe
               exit={{ opacity: 0, y: 8 }}
               className="flex gap-2 items-end"
             >
-              <Avatar className="h-7 w-7 flex-shrink-0">
+              <Avatar className="h-7 w-7 shrink-0">
                 <AvatarImage src={resolvedChatAvatar} alt={chatName} />
                 <AvatarFallback className="bg-primary text-primary-foreground text-xs">
                   {chatName[0]}
@@ -294,8 +306,9 @@ export function ChatWindow({ chatOverride, messages: providedMessages = [], onSe
       {/* Composer */}
       <Composer
         onTyping={onTyping}
-        onSendMessage={(content, type, replyToId, fileUrl) => {
-          onSendMessage?.(content, type, replyToId, fileUrl);
+        placeholder={chatOverride?.name ? `Message @${chatOverride.name}` : 'Message'}
+        onSendMessage={(payload) => {
+          onSendMessage?.(payload);
           setReplyTo(null);
         }}
         replyTo={replyTo}
