@@ -6,18 +6,28 @@ import {
   Archive,
   Bell,
   BellOff,
+  Check,
+  Copy,
   Globe,
   Hash,
+  Link,
   Lock,
   MoreHorizontal,
   Plus,
   Search,
   Trash2,
   Upload,
+  UserPlus,
   Volume2,
 } from 'lucide-react'
 import { CreateEntityDialog, type CreateEntityValues } from '@/components/chat/create-entity-dialog'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,7 +47,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import { useUpdateChannel } from '@/hooks/use-channels'
+import { useUpdateChannel, useChannelInviteLink } from '@/hooks/use-channels'
 import { useGroupMembers, useDeleteGroup, useGroupJoinRequests, useRespondToGroupJoinRequest, useRequestJoinGroup } from '@/hooks/use-groups'
 import { useSendGroupInvitation } from '@/hooks/use-invitations'
 import { useProfile, useUserFollowers } from '@/hooks/use-user'
@@ -640,22 +650,155 @@ function ChannelSettingsSheet({
   )
 }
 
+function InviteMembersDialog({
+  group,
+  channelId,
+  open,
+  onOpenChange,
+  invitedIds,
+  onInvited,
+}: {
+  group: MockChannelGroup
+  channelId?: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  invitedIds: Set<string>
+  onInvited: (userId: string) => void
+}) {
+  const [search, setSearch] = useState('')
+  const [inviteError, setInviteError] = useState<string | null>(null)
+  const [sending, setSending] = useState<Set<string>>(new Set())
+  const [copied, setCopied] = useState(false)
+  const sendInvitation = useSendGroupInvitation()
+  const { data: profile } = useProfile()
+  const { data: followers = [] } = useUserFollowers(profile?.id)
+  const { data: existingMembers = [] } = useGroupMembers(group.id)
+  const existingMemberIds = new Set(existingMembers.filter((m) => m.user).map((m) => m.user.id))
+  const { data: inviteLinkData } = useChannelInviteLink(channelId)
+
+  const channelLink = inviteLinkData
+    ? `${typeof window !== 'undefined' ? window.location.origin : ''}${inviteLinkData.path}`
+    : ''
+
+  const query = search.trim().toLowerCase()
+  const filtered = query
+    ? followers.filter((f) => f.users.username?.toLowerCase().startsWith(query))
+    : followers
+
+  function handleCopy() {
+    navigator.clipboard.writeText(channelLink).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) { setSearch(''); setInviteError(null); setSending(new Set()) } }}>
+      <DialogContent className="flex max-h-[80vh] flex-col gap-0 overflow-hidden border-border p-0 sm:max-w-[400px]">
+        <DialogHeader className="border-b border-border px-4 py-3">
+          <DialogTitle className="text-[13px]">
+            Invite to <span className="text-primary">#{group.label}</span>
+          </DialogTitle>
+        </DialogHeader>
+
+        {/* Search */}
+        <div className="border-b border-border px-4 py-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              autoFocus
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setInviteError(null) }}
+              placeholder="Search friends…"
+              className="h-9 rounded-xl pl-8 text-[12px]"
+            />
+          </div>
+          {inviteError && <p className="mt-1.5 text-[11px] text-destructive">{inviteError}</p>}
+        </div>
+
+        {/* Friends list */}
+        <div className="flex-1 overflow-y-auto px-2 py-2">
+          {!query && followers.length === 0 ? (
+            <p className="px-2 py-4 text-center text-[12px] text-muted-foreground">No friends yet</p>
+          ) : filtered.length === 0 ? (
+            <p className="px-2 py-4 text-center text-[12px] text-muted-foreground">No matches</p>
+          ) : filtered.map((f) => {
+            const user = f.users
+            const alreadyMember = existingMemberIds.has(user.id)
+            const alreadyInvited = invitedIds.has(user.id)
+            const isSending = sending.has(user.id)
+            return (
+              <div key={user.id} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-accent">
+                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-[12px] font-semibold text-primary">
+                  {user.avatar_url
+                    ? <img src={user.avatar_url} alt={user.username ?? ''} className="h-full w-full object-cover" />
+                    : user.username?.[0]?.toUpperCase() ?? '?'}
+                </div>
+                <p className="flex-1 truncate text-[13px] text-foreground">@{user.username}</p>
+                <button
+                  disabled={alreadyMember || alreadyInvited || isSending}
+                  onClick={() => {
+                    if (alreadyInvited || isSending) return
+                    setSending((prev) => new Set([...prev, user.id]))
+                    setInviteError(null)
+                    sendInvitation.mutate(
+                      { inviteeId: user.id, groupId: group.id },
+                      {
+                        onSuccess: () => {
+                          onInvited(user.id)
+                          setSending((prev) => { const next = new Set(prev); next.delete(user.id); return next })
+                        },
+                        onError: (e) => {
+                          setSending((prev) => { const next = new Set(prev); next.delete(user.id); return next })
+                          setInviteError(e instanceof Error ? e.message : 'Failed to send invite')
+                        },
+                      },
+                    )
+                  }}
+                  className="rounded-lg border border-border px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-40"
+                >
+                  {alreadyMember ? 'Member' : alreadyInvited ? 'Invited' : isSending ? '…' : 'Invite'}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Channel invite link */}
+        <div className="border-t border-border bg-muted/30 px-4 py-3 space-y-2">
+          <div className="flex items-center gap-1.5 text-muted-foreground">
+            <Link className="h-3.5 w-3.5" />
+            <p className="text-[10px] font-semibold uppercase tracking-[0.08em]">Channel invite link</p>
+          </div>
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-background px-3 py-2">
+            <p className="flex-1 truncate text-[11px] text-muted-foreground">{channelLink}</p>
+            <button
+              onClick={handleCopy}
+              className="flex flex-shrink-0 items-center gap-1 rounded-lg border border-border px-2 py-1 text-[10px] font-semibold text-foreground transition-colors hover:bg-accent"
+            >
+              {copied
+                ? <><Check className="h-3 w-3 text-primary" /> Copied</>
+                : <><Copy className="h-3 w-3" /> Copy</>}
+            </button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function GroupSettingsSheet({
   group,
   open,
   onOpenChange,
   channelId,
   onDeleted,
-  invitedIds,
-  onInvited,
 }: {
   group: MockChannelGroup
   open: boolean
   onOpenChange: (open: boolean) => void
   channelId?: string
   onDeleted?: () => void
-  invitedIds: Set<string>
-  onInvited: (userId: string) => void
 }) {
   const [name, setName] = useState(group.label)
   const [description, setDescription] = useState(group.description)
@@ -663,21 +806,9 @@ function GroupSettingsSheet({
   const [notifications, setNotifications] = useState(true)
   const [mentionsOnly, setMentionsOnly] = useState(false)
   const [slowMode, setSlowMode] = useState(false)
-  const [inviteError, setInviteError] = useState<string | null>(null)
-  const [sending, setSending] = useState<Set<string>>(new Set())
-  const [memberSearch, setMemberSearch] = useState('')
-  const sendInvitation = useSendGroupInvitation()
   const deleteGroup = useDeleteGroup(channelId ?? '')
   const { data: joinRequests = [] } = useGroupJoinRequests(group.access_type === 'PRIVATE' ? group.id : undefined)
   const respondToRequest = useRespondToGroupJoinRequest(group.id)
-  const { data: profile } = useProfile()
-  const { data: followers = [] } = useUserFollowers(profile?.id)
-  const { data: existingMembers = [] } = useGroupMembers(group.id)
-  const existingMemberIds = new Set(existingMembers.filter((m) => m.user).map((m) => m.user.id))
-  const memberSearchQuery = memberSearch.trim().toLowerCase()
-  const searchedFollowers = memberSearchQuery
-    ? followers.filter((f) => f.users.username?.toLowerCase().startsWith(memberSearchQuery))
-    : []
 
   useEffect(() => {
     setName(group.label)
@@ -686,9 +817,6 @@ function GroupSettingsSheet({
     setNotifications(true)
     setMentionsOnly(false)
     setSlowMode(false)
-    setMemberSearch('')
-    setInviteError(null)
-    setSending(new Set())
   }, [group.description, group.id, group.kind, group.label])
 
   return (
@@ -786,76 +914,6 @@ function GroupSettingsSheet({
             </div>
           </div>
 
-          {/* Invite Members */}
-          <div className="space-y-3 p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-              Invite Members
-            </p>
-            {inviteError ? <p className="text-[11px] text-destructive">{inviteError}</p> : null}
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={memberSearch}
-                onChange={(e) => {
-                  setMemberSearch(e.target.value)
-                  setInviteError(null)
-                }}
-                placeholder="Search followers"
-                className="h-9 rounded-xl pl-8 text-[12px]"
-              />
-            </div>
-            <div className="space-y-1 max-h-52 overflow-y-auto">
-              {!memberSearchQuery ? (
-                <p className="py-1 text-[11px] text-muted-foreground">Search followers to invite</p>
-              ) : followers.length === 0 ? (
-                <p className="py-1 text-[11px] text-muted-foreground">No followers to invite</p>
-              ) : searchedFollowers.length === 0 ? (
-                <p className="py-1 text-[11px] text-muted-foreground">No matching followers</p>
-              ) : searchedFollowers.map((f) => {
-                const user = f.users
-                const alreadyMember = existingMemberIds.has(user.id)
-                const alreadyInvited = invitedIds.has(user.id)
-                const isSending = sending.has(user.id)
-                return (
-                  <div key={user.id} className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 hover:bg-accent">
-                    <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
-                      {user.avatar_url ? (
-                        <img src={user.avatar_url} alt={user.username ?? 'User'} className="h-full w-full rounded-full object-cover" />
-                      ) : (
-                        user.username?.[0]?.toUpperCase() ?? '?'
-                      )}
-                    </div>
-                    <p className="flex-1 truncate text-[12px] text-foreground">@{user.username}</p>
-                    <button
-                      disabled={alreadyMember || alreadyInvited || isSending}
-                      onClick={() => {
-                        if (alreadyInvited || isSending) return
-                        setSending((prev) => new Set([...prev, user.id]))
-                        setInviteError(null)
-                        sendInvitation.mutate(
-                          { inviteeId: user.id, groupId: group.id },
-                          {
-                            onSuccess: () => {
-                              onInvited(user.id)
-                              setSending((prev) => { const next = new Set(prev); next.delete(user.id); return next })
-                            },
-                            onError: (e) => {
-                              setSending((prev) => { const next = new Set(prev); next.delete(user.id); return next })
-                              setInviteError(e instanceof Error ? e.message : 'Failed to send invite')
-                            },
-                          },
-                        )
-                      }}
-                      className="rounded-lg border border-border px-2 py-0.5 text-[10px] font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-40"
-                    >
-                      {alreadyMember ? 'Member' : alreadyInvited ? 'Invited' : isSending ? '…' : 'Invite'}
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
           {/* Join Requests — private groups only */}
           {group.access_type === 'PRIVATE' && (
             <div className="space-y-3 p-4">
@@ -948,6 +1006,7 @@ export function ChannelsPanel({
   const [showCreateGroup, setShowCreateGroup] = useState(false)
   const [channelSettingsOpen, setChannelSettingsOpen] = useState(false)
   const [groupSettingsTarget, setGroupSettingsTarget] = useState<MockChannelGroup | null>(null)
+  const [inviteTarget, setInviteTarget] = useState<MockChannelGroup | null>(null)
   const [invitedByGroup, setInvitedByGroup] = useState<Record<string, Set<string>>>({})
   const [requestedGroups, setRequestedGroups] = useState<Set<string>>(new Set())
   const requestJoin = useRequestJoinGroup()
@@ -1145,16 +1204,11 @@ export function ChannelsPanel({
                       <DropdownMenuItem onClick={() => setGroupSettingsTarget(group)}>
                         Group settings
                       </DropdownMenuItem>
-                      <DropdownMenuItem>Mark as read</DropdownMenuItem>
-                      <DropdownMenuItem>Copy link</DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem>
-                        {group.kind === 'voice' ? (
-                          <><Hash className="mr-2 h-3.5 w-3.5" /> Convert to text</>
-                        ) : (
-                          <><Volume2 className="mr-2 h-3.5 w-3.5" /> Convert to voice</>
-                        )}
+                      <DropdownMenuItem onClick={() => setInviteTarget(group)}>
+                        <UserPlus className="mr-2 h-3.5 w-3.5" />
+                        Invite members
                       </DropdownMenuItem>
+                      <DropdownMenuItem>Mark as read</DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem className="text-destructive focus:text-destructive">
                         Delete group
@@ -1201,11 +1255,21 @@ export function ChannelsPanel({
           onOpenChange={(open) => { if (!open) setGroupSettingsTarget(null) }}
           channelId={channel.id}
           onDeleted={() => setGroupSettingsTarget(null)}
-          invitedIds={invitedByGroup[groupSettingsTarget.id] ?? new Set()}
+        />
+      ) : null}
+
+      {inviteTarget ? (
+        <InviteMembersDialog
+          key={inviteTarget.id}
+          group={inviteTarget}
+          channelId={channel.id}
+          open={!!inviteTarget}
+          onOpenChange={(open) => { if (!open) setInviteTarget(null) }}
+          invitedIds={invitedByGroup[inviteTarget.id] ?? new Set()}
           onInvited={(userId) =>
             setInvitedByGroup((prev) => {
-              const existing = prev[groupSettingsTarget.id] ?? new Set<string>()
-              return { ...prev, [groupSettingsTarget.id]: new Set([...existing, userId]) }
+              const existing = prev[inviteTarget.id] ?? new Set<string>()
+              return { ...prev, [inviteTarget.id]: new Set([...existing, userId]) }
             })
           }
         />

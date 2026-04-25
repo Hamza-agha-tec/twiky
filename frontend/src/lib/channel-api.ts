@@ -13,6 +13,7 @@ export interface BackendChannel {
   role: 'OWNER' | 'ADMIN' | 'MEMBER' | string;
   access_type?: 'PUBLIC' | 'PRIVATE';
   type?: 'NORMAL' | 'WORKSPACE';
+  invite_code?: string;
 }
 
 export interface CreateChannelInput {
@@ -48,6 +49,13 @@ async function authedFetch<T>(path: string, init: RequestInit = {}): Promise<T> 
   return res.json();
 }
 
+export interface ChannelInviteLink {
+  channel_id: string;
+  channel_name: string;
+  invite_code: string;
+  path: string;
+}
+
 export const channelApi = {
   getChannels: () => authedFetch<BackendChannel[]>('/channels'),
   createChannel: (data: CreateChannelInput) =>
@@ -55,4 +63,6 @@ export const channelApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  getInviteLink: (channelId: string) =>
+    authedFetch<ChannelInviteLink>(`/channels/${channelId}/invite-link`),
 };

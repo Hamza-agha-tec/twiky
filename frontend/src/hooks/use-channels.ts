@@ -8,6 +8,7 @@ import { type Channel, channelsApi } from '@/lib/channels-api';
 export const CHANNEL_KEYS = {
   all: ['channels'] as const,
   detail: (id: string) => ['channels', id] as const,
+  inviteLink: (id: string) => ['channels', id, 'invite-link'] as const,
 };
 
 export function useChannels() {
@@ -61,6 +62,15 @@ export function useJoinChannel() {
       queryClient.invalidateQueries({ queryKey: CHANNEL_KEYS.all });
       queryClient.invalidateQueries({ queryKey: DISCOVER_KEYS.all });
     },
+  });
+}
+
+export function useChannelInviteLink(channelId: string | undefined) {
+  return useQuery({
+    queryKey: CHANNEL_KEYS.inviteLink(channelId ?? ''),
+    queryFn: () => channelApi.getInviteLink(channelId!),
+    enabled: !!channelId,
+    staleTime: 5 * 60 * 1000,
   });
 }
 
