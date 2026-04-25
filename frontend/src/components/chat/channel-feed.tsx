@@ -48,10 +48,11 @@ import type { MockChannelGroup, WorkspaceChannel } from '@/components/chat/chann
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { type ChatMessage } from '@/hooks/use-messaging'
 import { useRemoveGroupMember, useUpdateGroupMemberRole } from '@/hooks/use-groups'
-import { useProfile, usePrefetchUserProfile, useSendFollowRequest, useUserById, useUserFollowers, useUserFollowing, useUserPosts } from '@/hooks/use-user'
+import { useProfile, useSendFollowRequest, useUserById, useUserFollowers, useUserFollowing, useUserPosts } from '@/hooks/use-user'
 import { useAuth } from '@/context/AuthContext'
 import { filesApi } from '@/lib/files-api'
 import type { GroupMember, GroupMessageMention } from '@/lib/groups-api'
@@ -857,8 +858,6 @@ function MessageRow({
   const [profileOpen, setProfileOpen] = useState(false)
   const [isFollowing, setIsFollowing] = useState(false)
 
-  const prefetchUserProfile = usePrefetchUserProfile()
-  // Only fetch when profile card is open — prefetch on hover so data is ready by click time
   const { data: realUser } = useUserById(profileOpen ? memberProfile.id : undefined)
   const { data: followersData } = useUserFollowers(profileOpen ? memberProfile.id : undefined)
   const { data: followingData } = useUserFollowing(profileOpen ? memberProfile.id : undefined)
@@ -916,7 +915,6 @@ function MessageRow({
           <div className="mt-0.5 w-10 flex-shrink-0">
             <PopoverTrigger asChild>
               <button
-                onMouseEnter={() => memberProfile.id && prefetchUserProfile(memberProfile.id)}
                 className="flex h-10 w-10 cursor-pointer overflow-hidden rounded-full ring-2 ring-background focus:outline-none"
                 aria-label={`Open ${post.author} actions`}
               >
@@ -929,7 +927,6 @@ function MessageRow({
             {!isGrouped ? (
               <div className="mb-0.5 flex items-baseline gap-2">
                 <button
-                  onMouseEnter={() => memberProfile.id && prefetchUserProfile(memberProfile.id)}
                   onClick={() => setProfileOpen(true)}
                   className={cn('inline-flex items-center gap-1 text-[14px] font-semibold leading-none hover:underline', roleColor)}
                 >
@@ -1190,6 +1187,107 @@ function formatUserPostTime(value: string) {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }).toUpperCase()
 }
 
+function FeedMemberProfileSkeleton({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="flex flex-1 flex-col overflow-y-auto bg-background text-foreground" aria-busy="true">
+      <div className="relative h-[118px] flex-shrink-0 overflow-hidden">
+        <Skeleton className="absolute inset-0 h-full w-full rounded-none" />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-background/70" />
+        <button
+          type="button"
+          onClick={onBack}
+          className="absolute left-3 top-3 inline-flex h-7 items-center gap-1 rounded-full border border-white/20 bg-black/40 px-2.5 text-[10px] font-semibold text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
+        >
+          <ArrowLeft className="h-3 w-3" />
+          Back
+        </button>
+      </div>
+
+      <div className="px-4 pb-3">
+        <div className="-mt-9 mb-2.5 flex items-end justify-between">
+          <Skeleton className="h-[68px] w-[68px] rounded-full border-[3px] border-sidebar" />
+          <div className="flex items-center gap-2 pb-0.5">
+            <Skeleton className="h-7 w-20 rounded-md" />
+            <Skeleton className="h-7 w-16 rounded-md" />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-5 w-36" />
+          <Skeleton className="h-4 w-4 rounded-full" />
+          <Skeleton className="h-4 w-14 rounded" />
+        </div>
+        <Skeleton className="mt-1.5 h-3 w-24" />
+        <div className="mt-3 flex items-center gap-4">
+          <Skeleton className="h-3 w-20" />
+          <Skeleton className="h-3 w-20" />
+        </div>
+      </div>
+
+      <div className="mx-4 h-px bg-border" />
+
+      <div className="px-4 py-3">
+        <Skeleton className="mb-2 h-2.5 w-12" />
+        <div className="space-y-1.5">
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-11/12" />
+          <Skeleton className="h-3 w-2/3" />
+        </div>
+        <div className="mt-3 space-y-2">
+          <Skeleton className="h-3 w-28" />
+          <Skeleton className="h-3 w-36" />
+        </div>
+      </div>
+
+      <div className="mx-4 h-px bg-border" />
+
+      <div className="px-4 pt-3 pb-2.5">
+        <div className="grid grid-cols-4 gap-1 rounded-xl border border-border bg-card p-1">
+          {[0, 1, 2, 3].map((item) => (
+            <Skeleton key={item} className="h-7 rounded-lg" />
+          ))}
+        </div>
+      </div>
+
+      <div className="flex-1 space-y-2 px-4 pb-4">
+        <FeedProfilePostsSkeleton />
+      </div>
+    </div>
+  )
+}
+
+function FeedProfilePostsSkeleton() {
+  return (
+    <>
+      {[0, 1, 2].map((item) => (
+        <div key={item} className="overflow-hidden rounded-xl border border-border bg-card p-2.5">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <Skeleton className="h-6 w-6 flex-shrink-0 rounded-full" />
+              <div className="space-y-1.5">
+                <Skeleton className="h-3 w-28" />
+                <Skeleton className="h-2.5 w-16" />
+              </div>
+            </div>
+            <Skeleton className="h-4 w-4 rounded-full" />
+          </div>
+          <div className="mt-3 space-y-1.5">
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-4/5" />
+          </div>
+          <Skeleton className="mt-3 h-[84px] w-full rounded-[8px]" />
+          <div className="mt-3 flex items-center gap-3 border-t border-border pt-2">
+            <Skeleton className="h-3 w-10" />
+            <Skeleton className="h-3 w-10" />
+            <Skeleton className="h-3 w-10" />
+            <Skeleton className="ml-auto h-3 w-12" />
+          </div>
+        </div>
+      ))}
+    </>
+  )
+}
+
 export function FeedMemberProfileView({
   currentGroupLabel,
   isOwn,
@@ -1217,16 +1315,22 @@ export function FeedMemberProfileView({
 
   const { user: authUser } = useAuth()
   const { data: currentUser } = useProfile()
-  const { data: realUser } = useUserById(memberProfile.id)
-  const { data: followersData } = useUserFollowers(memberProfile.id)
-  const { data: followingData } = useUserFollowing(memberProfile.id)
+  const { data: realUser, isLoading: realUserLoading } = useUserById(memberProfile.id)
+  const { data: followersData, isLoading: followersLoading } = useUserFollowers(memberProfile.id)
+  const { data: followingData, isLoading: followingLoading } = useUserFollowing(memberProfile.id)
   const sendFollowRequest = useSendFollowRequest()
-  const prefetchUserProfile = usePrefetchUserProfile()
   const {
     data: backendPosts = [],
     isError: backendPostsError,
     isLoading: backendPostsLoading,
   } = useUserPosts(memberProfile.id)
+  const isInitialProfileLoading = Boolean(
+    memberProfile.id &&
+      ((realUserLoading && !realUser) ||
+        (followersLoading && !followersData) ||
+        (followingLoading && !followingData) ||
+        (backendPostsLoading && backendPosts.length === 0)),
+  )
 
   const resolvedProfile: FeedMemberProfile = {
     ...memberProfile,
@@ -1327,6 +1431,10 @@ export function FeedMemberProfileView({
     )
   }
 
+  if (isInitialProfileLoading) {
+    return <FeedMemberProfileSkeleton onBack={onBack} />
+  }
+
   if (followSheet !== null) {
     const title = followSheet === 'followers' ? 'Followers' : 'Following'
     const users = followSheet === 'followers'
@@ -1360,7 +1468,6 @@ export function FeedMemberProfileView({
               <button
                 key={u.id}
                 type="button"
-                onMouseEnter={() => prefetchUserProfile(u.id)}
                 onClick={() => setViewingUser(buildStandaloneFeedMemberProfile({ id: u.id, avatarUrl: u.avatar_url, name: u.username, handle: u.username, isVerified: u.is_verified }))}
                 className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-accent"
               >
@@ -1569,9 +1676,7 @@ export function FeedMemberProfileView({
             transition={{ duration: 0.22, ease: 'easeOut' }}
           >
             {backendPostsLoading ? (
-              <div className="rounded-xl border border-border bg-card p-3 text-[11px] text-muted-foreground">
-                Loading posts...
-              </div>
+              <FeedProfilePostsSkeleton />
             ) : backendPostsError ? (
               <div className="rounded-xl border border-border bg-card p-3 text-[11px] text-muted-foreground">
                 Posts could not be loaded.
@@ -1766,15 +1871,10 @@ function FeedProfileRow({
   onDelete: () => void
   onContextMenu: (e: MouseEvent) => void
 }) {
-  const prefetchUserProfile = usePrefetchUserProfile()
   const roleColor = ROLE_COLORS[post.role] ?? 'text-primary'
   const displayAvatar = post.isOwn
     ? (authorAvatarUrl ?? myAvatarUrl ?? memberProfile.avatarUrl ?? null)
     : (authorAvatarUrl ?? memberProfile.avatarUrl ?? null)
-
-  const handlePrefetch = () => {
-    if (memberProfile.id) prefetchUserProfile(memberProfile.id)
-  }
 
   return (
     <div
@@ -1788,7 +1888,6 @@ function FeedProfileRow({
       <div className="mt-0.5 w-10 flex-shrink-0">
         <button
           type="button"
-          onMouseEnter={handlePrefetch}
           onClick={onOpenProfile}
           className="flex h-10 w-10 cursor-pointer overflow-hidden rounded-full ring-2 ring-background focus:outline-none"
           aria-label={`Open ${post.author} profile`}
@@ -1809,7 +1908,6 @@ function FeedProfileRow({
           <div className="mb-0.5 flex items-baseline gap-2">
             <button
               type="button"
-              onMouseEnter={handlePrefetch}
               onClick={onOpenProfile}
               className={cn('inline-flex items-center gap-1 text-[14px] font-semibold leading-none hover:underline', roleColor)}
             >

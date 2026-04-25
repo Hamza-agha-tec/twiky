@@ -6,18 +6,28 @@ import {
   Archive,
   Bell,
   BellOff,
+  Check,
+  Copy,
   Globe,
   Hash,
+  Link,
   Lock,
   MoreHorizontal,
   Plus,
   Search,
   Trash2,
   Upload,
+  UserPlus,
   Volume2,
 } from 'lucide-react'
 import { CreateEntityDialog, type CreateEntityValues } from '@/components/chat/create-entity-dialog'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,8 +47,8 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import { useUpdateChannel } from '@/hooks/use-channels'
-import { useGroupMembers, useDeleteGroup } from '@/hooks/use-groups'
+import { useUpdateChannel, useChannelInviteLink, useDeleteChannel } from '@/hooks/use-channels'
+import { useGroupMembers, useDeleteGroup, useGroupJoinRequests, useRespondToGroupJoinRequest, useRequestJoinGroup } from '@/hooks/use-groups'
 import { useSendGroupInvitation } from '@/hooks/use-invitations'
 import { useProfile, useUserFollowers } from '@/hooks/use-user'
 import { filesApi } from '@/lib/files-api'
@@ -50,6 +60,8 @@ export interface MockChannelGroup {
   label: string
   description: string
   kind: 'text' | 'voice'
+  access_type?: 'PUBLIC' | 'PRIVATE'
+  is_general?: boolean
   membersLabel: string
   pinnedBy: string
   pinnedMessage: string
@@ -98,6 +110,7 @@ interface ChannelsPanelProps {
   channelAvatarUrl?: string | null
   channelBannerUrl?: string | null
   onAssetSave?: (channelId: string, avatar: string | null, banner: string | null) => void
+  onChannelDeleted?: () => void
   onCreateGroup?: (values: CreateEntityValues) => void
   onSelectGroup?: (groupId: string) => void
   visible?: boolean
@@ -348,12 +361,14 @@ function ChannelSettingsSheet({
   open,
   onOpenChange,
   onSave,
+  onDeleted,
   activeGroupId,
 }: {
   channel: WorkspaceChannel
   open: boolean
   onOpenChange: (open: boolean) => void
   onSave?: (avatarUrl: string | null, bannerUrl: string | null) => void
+  onDeleted?: () => void
   activeGroupId?: string
 }) {
   const [name, setName] = useState(channel.label)
@@ -362,7 +377,9 @@ function ChannelSettingsSheet({
   const [notifications, setNotifications] = useState(true)
   const [muteAll, setMuteAll] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
   const updateChannel = useUpdateChannel()
+  const deleteChannel = useDeleteChannel()
   const [bannerUrl, setBannerUrl] = useState<string | null>(channel.bannerUrl ?? null)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(channel.avatarUrl ?? null)
   const [bannerFile, setBannerFile] = useState<File | null>(null)
@@ -388,6 +405,7 @@ function ChannelSettingsSheet({
     setNotifications(true)
     setMuteAll(false)
     setSaveError(null)
+    setDeleteConfirm(false)
     setBannerUrl(channel.bannerUrl ?? null)
     setAvatarUrl(channel.avatarUrl ?? null)
     setBannerFile(null)
@@ -564,13 +582,42 @@ function ChannelSettingsSheet({
                   <p className="text-[11px] text-muted-foreground">Read-only, hidden from sidebar</p>
                 </div>
               </button>
-              <button className="flex w-full items-center gap-2.5 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-left transition-colors hover:bg-destructive/10">
-                <Trash2 className="h-4 w-4 text-destructive" />
-                <div>
-                  <p className="text-[12px] font-medium text-destructive">Delete channel</p>
-                  <p className="text-[11px] text-muted-foreground">Permanently remove all data</p>
+              {deleteConfirm ? (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-destructive">This cannot be undone. All groups and messages will be deleted.</p>
+                  <div className="flex gap-2">
+                    <button
+                      disabled={deleteChannel.isPending}
+                      onClick={() => {
+                        deleteChannel.mutate(channel.id, {
+                          onSuccess: () => { onOpenChange(false); onDeleted?.() },
+                          onError: (e) => setSaveError(e instanceof Error ? e.message : 'Failed to delete'),
+                        })
+                      }}
+                      className="flex-1 rounded-xl bg-destructive px-3 py-2 text-[12px] font-semibold text-destructive-foreground hover:opacity-90 disabled:opacity-50"
+                    >
+                      {deleteChannel.isPending ? 'Deleting…' : 'Confirm delete'}
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirm(false)}
+                      className="flex-1 rounded-xl border border-border px-3 py-2 text-[12px] font-medium hover:bg-accent"
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
-              </button>
+              ) : (
+                <button
+                  onClick={() => setDeleteConfirm(true)}
+                  className="flex w-full items-center gap-2.5 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-left transition-colors hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                  <div>
+                    <p className="text-[12px] font-medium text-destructive">Delete channel</p>
+                    <p className="text-[11px] text-muted-foreground">Permanently remove all data</p>
+                  </div>
+                </button>
+              )}
             </div>
           </div>
 
@@ -639,22 +686,155 @@ function ChannelSettingsSheet({
   )
 }
 
+function InviteMembersDialog({
+  group,
+  channelId,
+  open,
+  onOpenChange,
+  invitedIds,
+  onInvited,
+}: {
+  group: MockChannelGroup
+  channelId?: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  invitedIds: Set<string>
+  onInvited: (userId: string) => void
+}) {
+  const [search, setSearch] = useState('')
+  const [inviteError, setInviteError] = useState<string | null>(null)
+  const [sending, setSending] = useState<Set<string>>(new Set())
+  const [copied, setCopied] = useState(false)
+  const sendInvitation = useSendGroupInvitation()
+  const { data: profile } = useProfile()
+  const { data: followers = [] } = useUserFollowers(profile?.id)
+  const { data: existingMembers = [] } = useGroupMembers(group.id)
+  const existingMemberIds = new Set(existingMembers.filter((m) => m.user).map((m) => m.user.id))
+  const { data: inviteLinkData } = useChannelInviteLink(channelId)
+
+  const channelLink = inviteLinkData
+    ? `${typeof window !== 'undefined' ? window.location.origin : ''}${inviteLinkData.path}`
+    : ''
+
+  const query = search.trim().toLowerCase()
+  const filtered = query
+    ? followers.filter((f) => f.users.username?.toLowerCase().startsWith(query))
+    : followers
+
+  function handleCopy() {
+    navigator.clipboard.writeText(channelLink).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) { setSearch(''); setInviteError(null); setSending(new Set()) } }}>
+      <DialogContent className="flex max-h-[80vh] flex-col gap-0 overflow-hidden border-border p-0 sm:max-w-[400px]">
+        <DialogHeader className="border-b border-border px-4 py-3">
+          <DialogTitle className="text-[13px]">
+            Invite to <span className="text-primary">#{group.label}</span>
+          </DialogTitle>
+        </DialogHeader>
+
+        {/* Search */}
+        <div className="border-b border-border px-4 py-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              autoFocus
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setInviteError(null) }}
+              placeholder="Search friends…"
+              className="h-9 rounded-xl pl-8 text-[12px]"
+            />
+          </div>
+          {inviteError && <p className="mt-1.5 text-[11px] text-destructive">{inviteError}</p>}
+        </div>
+
+        {/* Friends list */}
+        <div className="flex-1 overflow-y-auto px-2 py-2">
+          {!query && followers.length === 0 ? (
+            <p className="px-2 py-4 text-center text-[12px] text-muted-foreground">No friends yet</p>
+          ) : filtered.length === 0 ? (
+            <p className="px-2 py-4 text-center text-[12px] text-muted-foreground">No matches</p>
+          ) : filtered.map((f) => {
+            const user = f.users
+            const alreadyMember = existingMemberIds.has(user.id)
+            const alreadyInvited = invitedIds.has(user.id)
+            const isSending = sending.has(user.id)
+            return (
+              <div key={user.id} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-accent">
+                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-[12px] font-semibold text-primary">
+                  {user.avatar_url
+                    ? <img src={user.avatar_url} alt={user.username ?? ''} className="h-full w-full object-cover" />
+                    : user.username?.[0]?.toUpperCase() ?? '?'}
+                </div>
+                <p className="flex-1 truncate text-[13px] text-foreground">@{user.username}</p>
+                <button
+                  disabled={alreadyMember || alreadyInvited || isSending}
+                  onClick={() => {
+                    if (alreadyInvited || isSending) return
+                    setSending((prev) => new Set([...prev, user.id]))
+                    setInviteError(null)
+                    sendInvitation.mutate(
+                      { inviteeId: user.id, groupId: group.id },
+                      {
+                        onSuccess: () => {
+                          onInvited(user.id)
+                          setSending((prev) => { const next = new Set(prev); next.delete(user.id); return next })
+                        },
+                        onError: (e) => {
+                          setSending((prev) => { const next = new Set(prev); next.delete(user.id); return next })
+                          setInviteError(e instanceof Error ? e.message : 'Failed to send invite')
+                        },
+                      },
+                    )
+                  }}
+                  className="rounded-lg border border-border px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-40"
+                >
+                  {alreadyMember ? 'Member' : alreadyInvited ? 'Invited' : isSending ? '…' : 'Invite'}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Channel invite link */}
+        <div className="border-t border-border bg-muted/30 px-4 py-3 space-y-2">
+          <div className="flex items-center gap-1.5 text-muted-foreground">
+            <Link className="h-3.5 w-3.5" />
+            <p className="text-[10px] font-semibold uppercase tracking-[0.08em]">Channel invite link</p>
+          </div>
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-background px-3 py-2">
+            <p className="flex-1 truncate text-[11px] text-muted-foreground">{channelLink}</p>
+            <button
+              onClick={handleCopy}
+              className="flex flex-shrink-0 items-center gap-1 rounded-lg border border-border px-2 py-1 text-[10px] font-semibold text-foreground transition-colors hover:bg-accent"
+            >
+              {copied
+                ? <><Check className="h-3 w-3 text-primary" /> Copied</>
+                : <><Copy className="h-3 w-3" /> Copy</>}
+            </button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function GroupSettingsSheet({
   group,
   open,
   onOpenChange,
   channelId,
   onDeleted,
-  invitedIds,
-  onInvited,
 }: {
   group: MockChannelGroup
   open: boolean
   onOpenChange: (open: boolean) => void
   channelId?: string
   onDeleted?: () => void
-  invitedIds: Set<string>
-  onInvited: (userId: string) => void
 }) {
   const [name, setName] = useState(group.label)
   const [description, setDescription] = useState(group.description)
@@ -662,19 +842,9 @@ function GroupSettingsSheet({
   const [notifications, setNotifications] = useState(true)
   const [mentionsOnly, setMentionsOnly] = useState(false)
   const [slowMode, setSlowMode] = useState(false)
-  const [inviteError, setInviteError] = useState<string | null>(null)
-  const [sending, setSending] = useState<Set<string>>(new Set())
-  const [memberSearch, setMemberSearch] = useState('')
-  const sendInvitation = useSendGroupInvitation()
   const deleteGroup = useDeleteGroup(channelId ?? '')
-  const { data: profile } = useProfile()
-  const { data: followers = [] } = useUserFollowers(profile?.id)
-  const { data: existingMembers = [] } = useGroupMembers(group.id)
-  const existingMemberIds = new Set(existingMembers.filter((m) => m.user).map((m) => m.user.id))
-  const memberSearchQuery = memberSearch.trim().toLowerCase()
-  const searchedFollowers = memberSearchQuery
-    ? followers.filter((f) => f.users.username?.toLowerCase().startsWith(memberSearchQuery))
-    : []
+  const { data: joinRequests = [] } = useGroupJoinRequests(group.access_type === 'PRIVATE' ? group.id : undefined)
+  const respondToRequest = useRespondToGroupJoinRequest(group.id)
 
   useEffect(() => {
     setName(group.label)
@@ -683,9 +853,6 @@ function GroupSettingsSheet({
     setNotifications(true)
     setMentionsOnly(false)
     setSlowMode(false)
-    setMemberSearch('')
-    setInviteError(null)
-    setSending(new Set())
   }, [group.description, group.id, group.kind, group.label])
 
   return (
@@ -783,95 +950,75 @@ function GroupSettingsSheet({
             </div>
           </div>
 
-          {/* Invite Members */}
-          <div className="space-y-3 p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-              Invite Members
-            </p>
-            {inviteError ? <p className="text-[11px] text-destructive">{inviteError}</p> : null}
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={memberSearch}
-                onChange={(e) => {
-                  setMemberSearch(e.target.value)
-                  setInviteError(null)
-                }}
-                placeholder="Search followers"
-                className="h-9 rounded-xl pl-8 text-[12px]"
-              />
-            </div>
-            <div className="space-y-1 max-h-52 overflow-y-auto">
-              {!memberSearchQuery ? (
-                <p className="py-1 text-[11px] text-muted-foreground">Search followers to invite</p>
-              ) : followers.length === 0 ? (
-                <p className="py-1 text-[11px] text-muted-foreground">No followers to invite</p>
-              ) : searchedFollowers.length === 0 ? (
-                <p className="py-1 text-[11px] text-muted-foreground">No matching followers</p>
-              ) : searchedFollowers.map((f) => {
-                const user = f.users
-                const alreadyMember = existingMemberIds.has(user.id)
-                const alreadyInvited = invitedIds.has(user.id)
-                const isSending = sending.has(user.id)
-                return (
-                  <div key={user.id} className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 hover:bg-accent">
-                    <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
-                      {user.avatar_url ? (
-                        <img src={user.avatar_url} alt={user.username ?? 'User'} className="h-full w-full rounded-full object-cover" />
-                      ) : (
-                        user.username?.[0]?.toUpperCase() ?? '?'
-                      )}
-                    </div>
-                    <p className="flex-1 truncate text-[12px] text-foreground">@{user.username}</p>
-                    <button
-                      disabled={alreadyMember || alreadyInvited || isSending}
-                      onClick={() => {
-                        if (alreadyInvited || isSending) return
-                        setSending((prev) => new Set([...prev, user.id]))
-                        setInviteError(null)
-                        sendInvitation.mutate(
-                          { inviteeId: user.id, groupId: group.id },
-                          {
-                            onSuccess: () => {
-                              onInvited(user.id)
-                              setSending((prev) => { const next = new Set(prev); next.delete(user.id); return next })
-                            },
-                            onError: (e) => {
-                              setSending((prev) => { const next = new Set(prev); next.delete(user.id); return next })
-                              setInviteError(e instanceof Error ? e.message : 'Failed to send invite')
-                            },
-                          },
-                        )
-                      }}
-                      className="rounded-lg border border-border px-2 py-0.5 text-[10px] font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-40"
-                    >
-                      {alreadyMember ? 'Member' : alreadyInvited ? 'Invited' : isSending ? '…' : 'Invite'}
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Danger */}
-          <div className="space-y-3 p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-destructive">
-              Danger zone
-            </p>
-            <button
-              disabled={deleteGroup.isPending}
-              onClick={() => deleteGroup.mutate(group.id, { onSuccess: () => { onOpenChange(false); onDeleted?.() } })}
-              className="flex w-full items-center gap-2.5 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-left transition-colors hover:bg-destructive/10 disabled:opacity-50"
-            >
-              <Trash2 className="h-4 w-4 text-destructive" />
-              <div>
-                <p className="text-[12px] font-medium text-destructive">
-                  {deleteGroup.isPending ? 'Deleting…' : 'Delete group'}
+          {/* Join Requests — private groups only */}
+          {group.access_type === 'PRIVATE' && (
+            <div className="space-y-3 p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  Join Requests
                 </p>
-                <p className="text-[11px] text-muted-foreground">Remove group and all messages</p>
+                {joinRequests.length > 0 && (
+                  <span className="rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-bold text-primary-foreground">
+                    {joinRequests.length}
+                  </span>
+                )}
               </div>
-            </button>
-          </div>
+              {joinRequests.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground">No pending requests</p>
+              ) : (
+                <div className="space-y-2">
+                  {joinRequests.map((req) => (
+                    <div key={req.id} className="flex items-center gap-2.5 rounded-xl border border-border bg-card px-3 py-2">
+                      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
+                        {req.user.avatar_url ? (
+                          <img src={req.user.avatar_url} alt={req.user.username ?? ''} className="h-full w-full rounded-full object-cover" />
+                        ) : (
+                          req.user.username?.[0]?.toUpperCase() ?? '?'
+                        )}
+                      </div>
+                      <p className="flex-1 truncate text-[12px] text-foreground">@{req.user.username}</p>
+                      <button
+                        disabled={respondToRequest.isPending}
+                        onClick={() => respondToRequest.mutate({ requestId: req.id, status: 'ACCEPTED' })}
+                        className="rounded-lg bg-primary px-2 py-1 text-[10px] font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        disabled={respondToRequest.isPending}
+                        onClick={() => respondToRequest.mutate({ requestId: req.id, status: 'REJECTED' })}
+                        className="rounded-lg border border-border px-2 py-1 text-[10px] font-medium text-muted-foreground hover:bg-accent disabled:opacity-50"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Danger — hidden for #general */}
+          {!group.is_general && (
+            <div className="space-y-3 p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-destructive">
+                Danger zone
+              </p>
+              <button
+                disabled={deleteGroup.isPending}
+                onClick={() => deleteGroup.mutate(group.id, { onSuccess: () => { onOpenChange(false); onDeleted?.() } })}
+                className="flex w-full items-center gap-2.5 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-left transition-colors hover:bg-destructive/10 disabled:opacity-50"
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+                <div>
+                  <p className="text-[12px] font-medium text-destructive">
+                    {deleteGroup.isPending ? 'Deleting…' : 'Delete group'}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">Remove group and all messages</p>
+                </div>
+              </button>
+            </div>
+          )}
 
           <div className="p-4">
             <Button className="w-full rounded-xl text-[12px]" onClick={() => onOpenChange(false)}>
@@ -890,6 +1037,7 @@ export function ChannelsPanel({
   channelAvatarUrl,
   channelBannerUrl,
   onAssetSave,
+  onChannelDeleted,
   onCreateGroup,
   onSelectGroup,
   visible = true,
@@ -897,7 +1045,11 @@ export function ChannelsPanel({
   const [showCreateGroup, setShowCreateGroup] = useState(false)
   const [channelSettingsOpen, setChannelSettingsOpen] = useState(false)
   const [groupSettingsTarget, setGroupSettingsTarget] = useState<MockChannelGroup | null>(null)
+  const [inviteTarget, setInviteTarget] = useState<MockChannelGroup | null>(null)
   const [invitedByGroup, setInvitedByGroup] = useState<Record<string, Set<string>>>({})
+  const [requestedGroups, setRequestedGroups] = useState<Set<string>>(new Set())
+  const requestJoin = useRequestJoinGroup()
+  const deleteGroup = useDeleteGroup(channel?.id ?? '')
 
   if (!visible || !channel) return null
 
@@ -910,7 +1062,7 @@ export function ChannelsPanel({
   return (
     <>
       <motion.div
-        className="hidden h-full w-[216px] flex-shrink-0 flex-col border-r border-border bg-sidebar lg:flex"
+        className="flex h-full w-[216px] flex-shrink-0 flex-col border-r border-border bg-sidebar"
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.28, ease: 'easeOut' }}
@@ -998,6 +1150,9 @@ export function ChannelsPanel({
               const isActive = activeGroup === group.id
               const isDefault = group.label.toLowerCase() === 'general'
               const GroupIcon = group.kind === 'voice' ? Volume2 : Hash
+              const isPrivate = group.access_type === 'PRIVATE'
+              const hasRequested = requestedGroups.has(group.id)
+              const memberCanRequest = !canManage && isPrivate
 
               return (
                 <motion.div
@@ -1008,12 +1163,17 @@ export function ChannelsPanel({
                   transition={{ delay: idx * 0.05, duration: 0.2, ease: 'easeOut' }}
                 >
                   <button
-                    onClick={() => onSelectGroup?.(group.id)}
+                    onClick={() => {
+                      if (memberCanRequest) return
+                      onSelectGroup?.(group.id)
+                    }}
                     className={cn(
                       'relative flex w-full items-center gap-2 rounded-xl px-2.5 py-2 pr-9 text-left transition-all',
                       isActive
                         ? 'bg-primary/10 text-foreground'
-                        : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground',
+                        : memberCanRequest
+                          ? 'cursor-default text-muted-foreground/50'
+                          : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground',
                     )}
                   >
                     {isActive ? (
@@ -1028,6 +1188,9 @@ export function ChannelsPanel({
                     />
                     <div className="flex min-w-0 flex-1 items-center gap-1.5">
                       <span className="truncate text-[12px] font-medium">{group.label}</span>
+                      {isPrivate && (
+                        <Lock className="h-2.5 w-2.5 flex-shrink-0 text-muted-foreground/60" />
+                      )}
                       {isDefault ? (
                         <span className="rounded-full border border-border px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
                           Default
@@ -1047,6 +1210,22 @@ export function ChannelsPanel({
                     </div>
                   </button>
 
+                  {/* Request to join — non-admin members on private groups */}
+                  {memberCanRequest && (
+                    <button
+                      disabled={hasRequested || requestJoin.isPending}
+                      onClick={() => {
+                        if (hasRequested) return
+                        requestJoin.mutate(group.id, {
+                          onSuccess: () => setRequestedGroups((prev) => new Set([...prev, group.id])),
+                        })
+                      }}
+                      className="absolute right-1.5 top-1/2 z-10 -translate-y-1/2 rounded-lg border border-border px-1.5 py-0.5 text-[9px] font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
+                    >
+                      {hasRequested ? 'Requested' : 'Request'}
+                    </button>
+                  )}
+
                   {/* Group 3-dot menu — admins/owners only */}
                   {canManage ? (
                   <DropdownMenu>
@@ -1065,20 +1244,26 @@ export function ChannelsPanel({
                       <DropdownMenuItem onClick={() => setGroupSettingsTarget(group)}>
                         Group settings
                       </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setInviteTarget(group)}>
+                        <UserPlus className="mr-2 h-3.5 w-3.5" />
+                        Invite members
+                      </DropdownMenuItem>
                       <DropdownMenuItem>Mark as read</DropdownMenuItem>
-                      <DropdownMenuItem>Copy link</DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem>
-                        {group.kind === 'voice' ? (
-                          <><Hash className="mr-2 h-3.5 w-3.5" /> Convert to text</>
-                        ) : (
-                          <><Volume2 className="mr-2 h-3.5 w-3.5" /> Convert to voice</>
-                        )}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive focus:text-destructive">
-                        Delete group
-                      </DropdownMenuItem>
+                      {!group.is_general && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => deleteGroup.mutate(group.id, {
+                              onSuccess: () => {
+                                if (groupSettingsTarget?.id === group.id) setGroupSettingsTarget(null)
+                              },
+                            })}
+                          >
+                            Delete group
+                          </DropdownMenuItem>
+                        </>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                   ) : null}
@@ -1110,6 +1295,7 @@ export function ChannelsPanel({
         open={channelSettingsOpen}
         onOpenChange={setChannelSettingsOpen}
         onSave={(avatarUrl, bannerUrl) => onAssetSave?.(channel.id, avatarUrl, bannerUrl)}
+        onDeleted={onChannelDeleted}
         activeGroupId={activeGroup}
       />
 
@@ -1121,11 +1307,21 @@ export function ChannelsPanel({
           onOpenChange={(open) => { if (!open) setGroupSettingsTarget(null) }}
           channelId={channel.id}
           onDeleted={() => setGroupSettingsTarget(null)}
-          invitedIds={invitedByGroup[groupSettingsTarget.id] ?? new Set()}
+        />
+      ) : null}
+
+      {inviteTarget ? (
+        <InviteMembersDialog
+          key={inviteTarget.id}
+          group={inviteTarget}
+          channelId={channel.id}
+          open={!!inviteTarget}
+          onOpenChange={(open) => { if (!open) setInviteTarget(null) }}
+          invitedIds={invitedByGroup[inviteTarget.id] ?? new Set()}
           onInvited={(userId) =>
             setInvitedByGroup((prev) => {
-              const existing = prev[groupSettingsTarget.id] ?? new Set<string>()
-              return { ...prev, [groupSettingsTarget.id]: new Set([...existing, userId]) }
+              const existing = prev[inviteTarget.id] ?? new Set<string>()
+              return { ...prev, [inviteTarget.id]: new Set([...existing, userId]) }
             })
           }
         />

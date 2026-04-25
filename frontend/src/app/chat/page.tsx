@@ -698,7 +698,12 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   function handleCreateGroup(values: CreateEntityValues) {
     if (!activeChannel) return
     createGroup.mutate(
-      { name: values.name, description: values.description || undefined },
+      {
+        name: values.name,
+        description: values.description || undefined,
+        group_type: values.group_type ?? 'text',
+        access_type: values.access_type ?? 'PUBLIC',
+      },
       {
         onSuccess: (group) => {
           const newGroup = backendGroupToMock(group)
@@ -890,6 +895,12 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                 : null
             }
             onAssetSave={handleChannelAssetSave}
+            onChannelDeleted={() => {
+              setActiveChannelId('')
+              setActiveGroupId('')
+              setActiveSurface('direct')
+              setWorkspaceMode('direct')
+            }}
             onCreateGroup={handleCreateGroup}
             onSelectGroup={(groupId) => {
               setActiveGroupId(groupId)

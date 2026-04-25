@@ -13,10 +13,11 @@ export class ChannelsService {
     ) {}
 
     async createChannel(ownerId: string, createChannelDto: CreateChannelDto) {
+        const { randomUUID } = await import('crypto');
         const { data, error } = await this.supabaseService
             .getClient()
             .from('channels')
-            .insert({ owner_id: ownerId, ...createChannelDto })
+            .insert({ owner_id: ownerId, invite_code: randomUUID(), ...createChannelDto })
             .select()
             .single();
 
@@ -66,6 +67,23 @@ export class ChannelsService {
 
         if (error || !data) throw new NotFoundException(`Channel not found`);
         return data;
+    }
+
+    async getInviteLink(channelId: string) {
+        const { data, error } = await this.supabaseService
+            .getClient()
+            .from('channels')
+            .select('id, name, invite_code')
+            .eq('id', channelId)
+            .single();
+
+        if (error || !data) throw new NotFoundException(`Channel not found`);
+        return {
+            channel_id: data.id,
+            channel_name: data.name,
+            invite_code: data.invite_code,
+            path: `/join/${data.invite_code}`,
+        };
     }
 
     async updateChannel(channelId: string, updateChannelDto: UpdateChannelDto) {

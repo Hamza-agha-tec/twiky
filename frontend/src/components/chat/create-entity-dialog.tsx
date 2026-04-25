@@ -1,7 +1,7 @@
 'use client'
 
 import { type ChangeEvent, FormEvent, useRef, useState } from 'react'
-import { Globe, Hash, ImagePlus, Lock, MessagesSquare, UserCircle2 } from 'lucide-react'
+import { Globe, Hash, ImagePlus, Lock, MessagesSquare, UserCircle2, Volume2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -23,6 +23,7 @@ export interface CreateEntityValues {
   avatarFile?: File | null
   bannerFile?: File | null
   access_type?: 'PUBLIC' | 'PRIVATE'
+  group_type?: 'text' | 'voice'
 }
 
 interface CreateEntityDialogProps {
@@ -61,6 +62,8 @@ export function CreateEntityDialog({
   const [name, setName] = useState(defaultName)
   const [details, setDetails] = useState(defaultDescription)
   const [accessType, setAccessType] = useState<'PUBLIC' | 'PRIVATE'>('PUBLIC')
+  const [groupType, setGroupType] = useState<'text' | 'voice'>('text')
+  const [groupAccess, setGroupAccess] = useState<'PUBLIC' | 'PRIVATE'>('PUBLIC')
   const [bannerUrl, setBannerUrl] = useState<string | null>(null)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [bannerFile, setBannerFile] = useState<File | null>(null)
@@ -77,6 +80,8 @@ export function CreateEntityDialog({
     setName(defaultName)
     setDetails(defaultDescription)
     setAccessType('PUBLIC')
+    setGroupType('text')
+    setGroupAccess('PUBLIC')
     setBannerUrl(null)
     setAvatarUrl(null)
     setBannerFile(null)
@@ -98,7 +103,8 @@ export function CreateEntityDialog({
         description: details.trim(),
         avatarFile: entityKind === 'channel' ? avatarFile : null,
         bannerFile: entityKind === 'channel' ? bannerFile : null,
-        access_type: entityKind === 'channel' ? accessType : undefined,
+        access_type: entityKind === 'channel' ? accessType : groupAccess,
+        group_type: entityKind === 'group' ? groupType : undefined,
       })
       handleOpenChange(false)
     } catch (err) {
@@ -189,30 +195,81 @@ export function CreateEntityDialog({
               </div>
             </div>
           ) : (
-            <div className="rounded-2xl border border-border bg-sidebar/50 p-2.5">
-              <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                Preview
-              </p>
-              <div className="mt-2 flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-[10px] font-bold text-white">
-                  <Hash className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[12px] font-semibold text-foreground">
-                    #{previewName}
-                  </p>
-                  <p className="mt-0.5 text-[10px] leading-4 text-muted-foreground">
-                    {contextLabel
-                      ? `This group will live inside ${contextLabel}.`
-                      : 'This group will be added to the current channel.'}
-                  </p>
+            <div className="space-y-2.5">
+              {/* Preview */}
+              <div className="rounded-2xl border border-border bg-sidebar/50 p-2.5">
+                <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Preview</p>
+                <div className="mt-2 flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-white">
+                    {groupType === 'voice' ? <Volume2 className="h-4 w-4" /> : <Hash className="h-4 w-4" />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <p className="truncate text-[12px] font-semibold text-foreground">
+                        {groupType === 'voice' ? '🔊' : '#'}{previewName}
+                      </p>
+                      {groupAccess === 'PRIVATE' && (
+                        <Lock className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-[10px] leading-4 text-muted-foreground">
+                      {contextLabel ? `Inside ${contextLabel}` : 'Added to current channel'}
+                      {' · '}{groupAccess === 'PRIVATE' ? 'Private' : 'Public'}
+                    </p>
+                  </div>
                 </div>
               </div>
-              <div className="mt-2 flex items-center gap-2 rounded-xl border border-border bg-background px-2 py-1.5">
-                <Hash className="h-3.5 w-3.5 text-primary" />
-                <span className="text-[10px] text-muted-foreground">
-                  Tasks, notes, and goals will belong to this group only
+
+              {/* Type selector */}
+              <div className="grid grid-cols-2 gap-1.5">
+                {([
+                  { value: 'text', icon: Hash, label: 'Text', desc: 'Messages & threads' },
+                  { value: 'voice', icon: Volume2, label: 'Voice', desc: 'Audio conversations' },
+                ] as const).map(({ value, icon: Icon, label, desc }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setGroupType(value)}
+                    className={cn(
+                      'flex flex-col items-start gap-1 rounded-xl border p-2.5 text-left transition-colors',
+                      groupType === value ? 'border-primary bg-primary/5' : 'border-border hover:bg-accent',
+                    )}
+                  >
+                    <Icon className={cn('h-3.5 w-3.5', groupType === value ? 'text-primary' : 'text-muted-foreground')} />
+                    <span className="text-[11px] font-semibold text-foreground">{label}</span>
+                    <span className="text-[9px] leading-3 text-muted-foreground">{desc}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Access toggle */}
+              <div className="flex items-center gap-2 rounded-xl border border-border bg-background px-2.5 py-2">
+                {groupAccess === 'PRIVATE' ? (
+                  <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                ) : (
+                  <Globe className="h-3.5 w-3.5 text-muted-foreground" />
+                )}
+                <span className="flex-1 text-[11px] font-medium text-foreground">
+                  {groupAccess === 'PRIVATE' ? 'Private' : 'Public'}
                 </span>
+                <span className="text-[10px] text-muted-foreground">
+                  {groupAccess === 'PRIVATE' ? 'Request to join' : 'Open to members'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setGroupAccess((v) => (v === 'PUBLIC' ? 'PRIVATE' : 'PUBLIC'))}
+                  className={cn(
+                    'relative ml-1 inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none',
+                    groupAccess === 'PRIVATE' ? 'bg-primary' : 'bg-muted',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                      groupAccess === 'PRIVATE' ? 'translate-x-4' : 'translate-x-0',
+                    )}
+                  />
+                </button>
               </div>
             </div>
           )}
