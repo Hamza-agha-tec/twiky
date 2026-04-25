@@ -1062,7 +1062,7 @@ export function ChannelsPanel({
   return (
     <>
       <motion.div
-        className="hidden h-full w-[216px] flex-shrink-0 flex-col border-r border-border bg-sidebar lg:flex"
+        className="flex h-full w-[216px] flex-shrink-0 flex-col border-r border-border bg-sidebar"
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.28, ease: 'easeOut' }}
