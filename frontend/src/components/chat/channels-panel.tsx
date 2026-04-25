@@ -65,6 +65,7 @@ export interface MockChannelGroup {
   kind: 'text' | 'voice'
   access_type?: 'PUBLIC' | 'PRIVATE'
   is_general?: boolean
+  is_member?: boolean
   membersLabel: string
   pinnedBy: string
   pinnedMessage: string
@@ -1285,7 +1286,7 @@ export function ChannelsPanel({
               const GroupIcon = group.kind === 'voice' ? Volume2 : Hash
               const isPrivate = group.access_type === 'PRIVATE'
               const hasRequested = requestedGroups.has(group.id)
-              const memberCanRequest = !canManage && isPrivate
+              const memberCanRequest = !canManage && isPrivate && !group.is_member
               const participants = group.kind === 'voice' ? (voiceParticipants[group.id] ?? []) : []
 
               return (

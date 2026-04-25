@@ -19,8 +19,8 @@ export class GroupsController {
     }
 
     @Get('channels/:channelId/groups')
-    async getChannelGroups(@Param('channelId') channelId: string) {
-        return this.groupsService.getGroupsInChannel(channelId);
+    async getChannelGroups(@Request() req: any, @Param('channelId') channelId: string) {
+        return this.groupsService.getGroupsInChannel(channelId, req.user?.userId);
     }
 
     @Get('groups/:groupId/members')

@@ -34,6 +34,7 @@ export interface BackendGroup {
   group_type: 'text' | 'voice';
   access_type: 'PUBLIC' | 'PRIVATE';
   created_at: string;
+  is_member?: boolean;
 }
 
 export interface GroupJoinRequest {

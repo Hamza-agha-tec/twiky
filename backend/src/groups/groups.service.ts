@@ -49,7 +49,7 @@ export class GroupsService {
         return data;
     }
 
-    async getGroupsInChannel(channelId: string) {
+    async getGroupsInChannel(channelId: string, userId?: string) {
         const { data, error } = await this.supabaseService
             .getClient()
             .from('groups')
@@ -58,7 +58,19 @@ export class GroupsService {
             .order('created_at', { ascending: true });
 
         if (error) throw new Error(`Failed to fetch groups: ${error.message}`);
-        return data;
+
+        if (!userId || !data?.length) return data;
+
+        const groupIds = data.map((g: any) => g.id);
+        const { data: memberships } = await this.supabaseService
+            .getClient()
+            .from('group_members')
+            .select('group_id')
+            .eq('user_id', userId)
+            .in('group_id', groupIds);
+
+        const memberSet = new Set((memberships ?? []).map((m: any) => m.group_id));
+        return data.map((g: any) => ({ ...g, is_member: memberSet.has(g.id) }));
     }
 
     async getGroupMembers(groupId: string) {
