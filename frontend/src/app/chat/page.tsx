@@ -261,6 +261,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const toggleGroupReaction = useToggleGroupMessageReaction(activeGroupId)
   const { data: activeGroupMembers = [] } = useGroupMembers(isRealGroupId ? activeGroupId : undefined)
 
+  const groupPosts: FeedPost[] = useMemo(() => {
   const groupMessageById = new Map((rawMessages ?? []).map((msg) => [msg.id, msg]))
   const groupMemberRoleByUserId = new Map(
     activeGroupMembers
@@ -280,7 +281,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     counts.set(msg.reply_to_id, (counts.get(msg.reply_to_id) ?? 0) + 1)
     return counts
   }, new Map<string, number>())
-  const groupPosts: FeedPost[] = (rawMessages ?? []).map((msg: GroupMessage) => {
+  return (rawMessages ?? []).map((msg: GroupMessage) => {
     const isSystem = !msg.sender_id
     const replySource = msg.reply_to_id ? groupMessageById.get(msg.reply_to_id) : null
     const replyBody = replySource?.content?.trim()
@@ -332,6 +333,9 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         : undefined,
     }
   })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawMessages, activeGroupMembers, profile?.id])
+
   const activeSyntheticChat = activeDirectChat ? (syntheticDirectChats[activeDirectChat] ?? null) : null
 
   const mentionedGroupIds = useMemo(
@@ -823,9 +827,9 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             })
               queryClient.invalidateQueries({ queryKey: GROUP_KEYS.messages(activeGroup.id) })
             }}
-            onToggleReaction={async (postId, emoji) => {
+            onToggleReaction={(postId, emoji) => {
               if (!isRealGroupId) return
-              await toggleGroupReaction.mutateAsync({ messageId: postId, emoji })
+              toggleGroupReaction.mutate({ messageId: postId, emoji })
             }}
             onCloseFeedRequest={() => setChannelFeedClosed(true)}
           />

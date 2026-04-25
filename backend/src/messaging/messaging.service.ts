@@ -447,28 +447,27 @@ export class MessagingService {
 
         if (fetchError || !message) throw new NotFoundException('Message not found');
 
-        let reactions = message.reactions || [];
+        let reactions: { emoji: string; users: string[] }[] = message.reactions || [];
         if (!Array.isArray(reactions)) reactions = [];
-        const reactionIndex = reactions.findIndex((r: any) => r.emoji === emoji);
 
-        if (reactionIndex > -1) {
-            if (!Array.isArray(reactions[reactionIndex].users)) reactions[reactionIndex].users = [];
-            const userIndex = reactions[reactionIndex].users.indexOf(userId);
-            if (userIndex > -1) {
-                // Remove reaction
-                reactions[reactionIndex].users.splice(userIndex, 1);
-                // If no users left for this emoji, remove the emoji entry entirely
-                if (reactions[reactionIndex].users.length === 0) {
-                    reactions.splice(reactionIndex, 1);
-                }
+        const reactionIndex = reactions.findIndex((r) => r.emoji === emoji);
+        const alreadyReacted = reactionIndex > -1 && reactions[reactionIndex].users.includes(userId);
+
+        // Remove user from all emoji groups (enforce one reaction per user)
+        reactions = reactions
+            .map((r) => ({ ...r, users: r.users.filter((u: string) => u !== userId) }))
+            .filter((r) => r.users.length > 0);
+
+        if (!alreadyReacted) {
+            // Add user to the target emoji (toggle on)
+            const idx = reactions.findIndex((r) => r.emoji === emoji);
+            if (idx > -1) {
+                reactions[idx].users.push(userId);
             } else {
-                // Add user to existing emoji
-                reactions[reactionIndex].users.push(userId);
+                reactions.push({ emoji, users: [userId] });
             }
-        } else {
-            // Add new emoji reaction
-            reactions.push({ emoji, users: [userId] });
         }
+        // If alreadyReacted, user's reaction is now fully removed (toggle off)
 
         const { data: updated, error: updateError } = await this.supabaseService
             .getClient()

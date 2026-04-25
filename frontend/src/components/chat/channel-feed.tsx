@@ -582,70 +582,6 @@ function EmojiPickerPopover({
   )
 }
 
-function HoverActionBar({
-  onQuickReact,
-  onReply,
-  onPin,
-  onDelete,
-  isPinned,
-  isOwn,
-}: {
-  onQuickReact: (emoji: string) => void
-  onReply: () => void
-  onPin: () => void
-  onDelete?: () => void
-  isPinned?: boolean
-  isOwn?: boolean
-}) {
-  return (
-    <div className="absolute -top-5 right-3 z-10 flex items-center overflow-hidden rounded-xl border border-border bg-background shadow-lg">
-      {QUICK_EMOJIS.map((emoji) => (
-        <button
-          key={emoji}
-          onClick={() => onQuickReact(emoji)}
-          className="flex h-8 w-8 items-center justify-center text-[16px] transition-colors hover:bg-accent"
-        >
-          {emoji}
-        </button>
-      ))}
-      <div className="mx-1 h-5 w-px bg-border" />
-      <button
-        onClick={onReply}
-        title="Reply"
-        className="flex h-8 w-8 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-      >
-        <Reply className="h-3.5 w-3.5" />
-      </button>
-      <button
-        onClick={onPin}
-        title={isPinned ? 'Unpin' : 'Pin'}
-        className="flex h-8 w-8 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-      >
-        {isPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
-      </button>
-      {isOwn ? (
-        <button
-          onClick={onDelete}
-          title="Delete"
-          className="flex h-8 w-8 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-destructive"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
-      ) : null}
-      <EmojiPickerPopover
-        onSelect={onQuickReact}
-        trigger={
-          <button
-            title="More reactions"
-            className="flex h-8 w-8 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <SmilePlus className="h-3.5 w-3.5" />
-          </button>
-        }
-      />
-    </div>
-  )
-}
 
 function ReactionsBar({
   reactions,
@@ -654,174 +590,40 @@ function ReactionsBar({
   reactions: FeedReaction[]
   onReact: (emoji: string) => void
 }) {
-  const { data: profile } = useProfile()
-  const [detailsOpen, setDetailsOpen] = useState(false)
-  const [activeEmoji, setActiveEmoji] = useState<string>('all')
-
-  const totalReactions = reactions.reduce((total, reaction) => total + reaction.count, 0)
-  const selectedUsers = activeEmoji === 'all'
-    ? reactions.flatMap((reaction) => (reaction.users ?? []).map((entry) => ({ emoji: reaction.emoji, ...entry })))
-    : (reactions.find((reaction) => reaction.emoji === activeEmoji)?.users ?? []).map((entry) => ({ emoji: activeEmoji, ...entry }))
-
-  useEffect(() => {
-    if (!detailsOpen) return
-    const onEsc = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setDetailsOpen(false)
-    }
-    window.addEventListener('keydown', onEsc)
-    return () => window.removeEventListener('keydown', onEsc)
-  }, [detailsOpen])
 
   return (
-    <>
-      <div className="flex flex-wrap items-center gap-1.5">
-        {reactions.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-1.5">
-            {reactions.map((reaction) => (
-              <button
-                key={reaction.emoji}
-                type="button"
-                onClick={() => onReact(reaction.emoji)}
-                className={cn(
-                  'inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[12px] font-medium transition-colors',
-                  reaction.mine
-                    ? 'border-primary/40 bg-primary/10 text-primary hover:bg-primary/15'
-                    : 'border-border bg-background text-foreground hover:border-primary/30 hover:bg-primary/5',
-                )}
-                title={reaction.mine ? 'Click to remove your reaction' : 'Click to react'}
-              >
-                {reaction.emoji}
-                <span className="text-[10px] text-muted-foreground">{reaction.count}</span>
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => setDetailsOpen(true)}
-              className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-semibold text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
-            >
-              View all
-            </button>
-          </div>
-        ) : null}
+    <div className="flex flex-wrap items-center gap-1.5">
+      {reactions.map((reaction) => (
+          <button
+            key={reaction.emoji}
+            type="button"
+            onClick={() => onReact(reaction.emoji)}
+            className={cn(
+              'inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[12px] font-medium transition-colors duration-100',
+              reaction.mine
+                ? 'border-primary/50 bg-primary/10 text-primary'
+                : 'border-border bg-background text-foreground hover:border-primary/40 hover:bg-primary/5',
+            )}
+            title={reaction.mine ? 'Click to remove your reaction' : 'Click to react'}
+          >
+            <span className="leading-none">{reaction.emoji}</span>
+            <span className="text-[10px] tabular-nums text-muted-foreground">{reaction.count}</span>
+          </button>
+        ))}
 
         <EmojiPickerPopover
           onSelect={onReact}
           trigger={
             <button
               type="button"
-              className="rounded-full border border-dashed border-border bg-background px-2.5 py-1 text-[12px] font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
+              className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-border bg-background px-2.5 py-1 text-[12px] font-medium text-muted-foreground transition-colors duration-100 hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
             >
-              {reactions.length > 0 ? 'Add reaction' : 'React'}
+              <SmilePlus className="h-3.5 w-3.5" />
+              {reactions.length > 0 ? 'Add' : 'React'}
             </button>
           }
         />
-      </div>
-
-      <AnimatePresence>
-        {detailsOpen ? (
-          <motion.div
-            className="fixed inset-0 z-[70] flex items-end justify-center bg-black/35 p-4 sm:items-center"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setDetailsOpen(false)}
-          >
-            <motion.div
-              className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
-              initial={{ opacity: 0, y: 16, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 16, scale: 0.98 }}
-              transition={{ duration: 0.18, ease: 'easeOut' }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                <div>
-                  <p className="text-[13px] font-semibold text-foreground">Reactions</p>
-                  <p className="text-[11px] text-muted-foreground">{totalReactions} total</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setDetailsOpen(false)}
-                  className="rounded-lg p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                  aria-label="Close reactions modal"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-
-              <div className="border-b border-border px-4 py-2.5">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setActiveEmoji('all')}
-                    className={cn(
-                      'rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors',
-                      activeEmoji === 'all'
-                        ? 'border-primary/30 bg-primary/10 text-primary'
-                        : 'border-border bg-background text-muted-foreground hover:text-foreground',
-                    )}
-                  >
-                    All
-                  </button>
-                  {reactions.map((reaction) => (
-                    <button
-                      key={reaction.emoji}
-                      type="button"
-                      onClick={() => setActiveEmoji(reaction.emoji)}
-                      className={cn(
-                        'rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors',
-                        activeEmoji === reaction.emoji
-                          ? 'border-primary/30 bg-primary/10 text-primary'
-                          : 'border-border bg-background text-muted-foreground hover:text-foreground',
-                      )}
-                    >
-                      {reaction.emoji} {reaction.count}
-                    </button>
-                  ))}
-                </div>
-                <div className="mt-2">
-                  <EmojiPickerPopover
-                    onSelect={onReact}
-                    trigger={
-                      <button
-                        type="button"
-                        className="rounded-full border border-dashed border-border bg-background px-2.5 py-1 text-[11px] font-semibold text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
-                      >
-                        Add more reactions
-                      </button>
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="max-h-[45vh] overflow-y-auto px-4 py-3">
-                {selectedUsers.length === 0 ? (
-                  <p className="text-[12px] text-muted-foreground">No users found for this filter.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {selectedUsers.map((entry, index) => (
-                      <div key={`${entry.emoji}-${entry.name}-${index}`} className="flex items-center gap-2 rounded-xl bg-muted/50 px-3 py-2">
-                        <span className="text-[15px]">{entry.emoji}</span>
-                        <span className="flex-1 text-[12px] font-medium text-foreground">{entry.name}</span>
-                        {entry.id === profile?.id ? (
-                          <button
-                            type="button"
-                            onClick={() => onReact(entry.emoji)}
-                            className="rounded-lg border border-border bg-background px-2 py-1 text-[10px] font-semibold text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
-                          >
-                            Remove
-                          </button>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-    </>
+    </div>
   )
 }
 
@@ -1010,16 +812,6 @@ function MessageRow({
             </div>
           </div>
 
-          <div className="absolute -top-5 right-3 z-10 hidden group-hover:block">
-            <HoverActionBar
-              onQuickReact={onReact}
-              onReply={onReply}
-              onPin={onPin}
-              onDelete={onDelete}
-              isPinned={post.pinned}
-              isOwn={post.isOwn}
-            />
-          </div>
         </div>
 
         <PopoverContent
@@ -1991,16 +1783,6 @@ function FeedProfileRow({
         </div>
       </div>
 
-      <div className="absolute -top-5 right-3 z-10 hidden group-hover:block">
-        <HoverActionBar
-          onQuickReact={onReact}
-          onReply={onReply}
-          onPin={onPin}
-          onDelete={onDelete}
-          isPinned={post.pinned}
-          isOwn={post.isOwn}
-        />
-      </div>
     </div>
   )
 }
@@ -2661,32 +2443,40 @@ export function ChannelFeed({
   }
 
   function handleReact(postId: string, emoji: string) {
-    if (onSendPost && onToggleReaction) {
-      void onToggleReaction(postId, emoji)
-      return
-    }
     updatePosts((current) =>
       current.map((post) => {
         if (post.id !== postId) return post
-        const existing = post.reactions.find((r) => r.emoji === emoji)
-        if (existing) {
-          if (existing.mine) {
-            const next = post.reactions
+
+        const clickedReaction = post.reactions.find((r) => r.emoji === emoji)
+
+        // Toggle off if already reacted with this emoji
+        if (clickedReaction?.mine) {
+          return {
+            ...post,
+            reactions: post.reactions
               .map((r) => r.emoji === emoji ? { ...r, count: r.count - 1, mine: false } : r)
-              .filter((r) => r.count > 0)
-            return { ...post, reactions: next }
-          } else {
-            return {
-              ...post,
-              reactions: post.reactions.map((r) =>
-                r.emoji === emoji ? { ...r, count: r.count + 1, mine: true } : r,
-              ),
-            }
+              .filter((r) => r.count > 0),
           }
         }
-        return { ...post, reactions: [...post.reactions, { emoji, count: 1, mine: true }] }
+
+        // Remove user's previous reaction on this message (one reaction per user)
+        const stripped = post.reactions
+          .map((r) => r.mine ? { ...r, count: r.count - 1, mine: false } : r)
+          .filter((r) => r.count > 0)
+
+        if (clickedReaction) {
+          return {
+            ...post,
+            reactions: stripped.map((r) =>
+              r.emoji === emoji ? { ...r, count: r.count + 1, mine: true } : r,
+            ),
+          }
+        }
+
+        return { ...post, reactions: [...stripped, { emoji, count: 1, mine: true }] }
       }),
     )
+    if (onToggleReaction) void onToggleReaction(postId, emoji)
   }
 
   function handleTogglePin(postId: string) {
