@@ -38,7 +38,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { useUpdateChannel } from '@/hooks/use-channels'
-import { useGroupMembers, useDeleteGroup } from '@/hooks/use-groups'
+import { useGroupMembers, useDeleteGroup, useGroupJoinRequests, useRespondToGroupJoinRequest, useRequestJoinGroup } from '@/hooks/use-groups'
 import { useSendGroupInvitation } from '@/hooks/use-invitations'
 import { useProfile, useUserFollowers } from '@/hooks/use-user'
 import { filesApi } from '@/lib/files-api'
@@ -50,6 +50,7 @@ export interface MockChannelGroup {
   label: string
   description: string
   kind: 'text' | 'voice'
+  access_type?: 'PUBLIC' | 'PRIVATE'
   membersLabel: string
   pinnedBy: string
   pinnedMessage: string
@@ -667,6 +668,8 @@ function GroupSettingsSheet({
   const [memberSearch, setMemberSearch] = useState('')
   const sendInvitation = useSendGroupInvitation()
   const deleteGroup = useDeleteGroup(channelId ?? '')
+  const { data: joinRequests = [] } = useGroupJoinRequests(group.access_type === 'PRIVATE' ? group.id : undefined)
+  const respondToRequest = useRespondToGroupJoinRequest(group.id)
   const { data: profile } = useProfile()
   const { data: followers = [] } = useUserFollowers(profile?.id)
   const { data: existingMembers = [] } = useGroupMembers(group.id)
@@ -853,6 +856,54 @@ function GroupSettingsSheet({
             </div>
           </div>
 
+          {/* Join Requests — private groups only */}
+          {group.access_type === 'PRIVATE' && (
+            <div className="space-y-3 p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  Join Requests
+                </p>
+                {joinRequests.length > 0 && (
+                  <span className="rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-bold text-primary-foreground">
+                    {joinRequests.length}
+                  </span>
+                )}
+              </div>
+              {joinRequests.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground">No pending requests</p>
+              ) : (
+                <div className="space-y-2">
+                  {joinRequests.map((req) => (
+                    <div key={req.id} className="flex items-center gap-2.5 rounded-xl border border-border bg-card px-3 py-2">
+                      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
+                        {req.user.avatar_url ? (
+                          <img src={req.user.avatar_url} alt={req.user.username ?? ''} className="h-full w-full rounded-full object-cover" />
+                        ) : (
+                          req.user.username?.[0]?.toUpperCase() ?? '?'
+                        )}
+                      </div>
+                      <p className="flex-1 truncate text-[12px] text-foreground">@{req.user.username}</p>
+                      <button
+                        disabled={respondToRequest.isPending}
+                        onClick={() => respondToRequest.mutate({ requestId: req.id, status: 'ACCEPTED' })}
+                        className="rounded-lg bg-primary px-2 py-1 text-[10px] font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        disabled={respondToRequest.isPending}
+                        onClick={() => respondToRequest.mutate({ requestId: req.id, status: 'REJECTED' })}
+                        className="rounded-lg border border-border px-2 py-1 text-[10px] font-medium text-muted-foreground hover:bg-accent disabled:opacity-50"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Danger */}
           <div className="space-y-3 p-4">
             <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-destructive">
@@ -898,6 +949,8 @@ export function ChannelsPanel({
   const [channelSettingsOpen, setChannelSettingsOpen] = useState(false)
   const [groupSettingsTarget, setGroupSettingsTarget] = useState<MockChannelGroup | null>(null)
   const [invitedByGroup, setInvitedByGroup] = useState<Record<string, Set<string>>>({})
+  const [requestedGroups, setRequestedGroups] = useState<Set<string>>(new Set())
+  const requestJoin = useRequestJoinGroup()
 
   if (!visible || !channel) return null
 
@@ -998,6 +1051,9 @@ export function ChannelsPanel({
               const isActive = activeGroup === group.id
               const isDefault = group.label.toLowerCase() === 'general'
               const GroupIcon = group.kind === 'voice' ? Volume2 : Hash
+              const isPrivate = group.access_type === 'PRIVATE'
+              const hasRequested = requestedGroups.has(group.id)
+              const memberCanRequest = !canManage && isPrivate
 
               return (
                 <motion.div
@@ -1008,12 +1064,17 @@ export function ChannelsPanel({
                   transition={{ delay: idx * 0.05, duration: 0.2, ease: 'easeOut' }}
                 >
                   <button
-                    onClick={() => onSelectGroup?.(group.id)}
+                    onClick={() => {
+                      if (memberCanRequest) return
+                      onSelectGroup?.(group.id)
+                    }}
                     className={cn(
                       'relative flex w-full items-center gap-2 rounded-xl px-2.5 py-2 pr-9 text-left transition-all',
                       isActive
                         ? 'bg-primary/10 text-foreground'
-                        : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground',
+                        : memberCanRequest
+                          ? 'cursor-default text-muted-foreground/50'
+                          : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground',
                     )}
                   >
                     {isActive ? (
@@ -1028,6 +1089,9 @@ export function ChannelsPanel({
                     />
                     <div className="flex min-w-0 flex-1 items-center gap-1.5">
                       <span className="truncate text-[12px] font-medium">{group.label}</span>
+                      {isPrivate && (
+                        <Lock className="h-2.5 w-2.5 flex-shrink-0 text-muted-foreground/60" />
+                      )}
                       {isDefault ? (
                         <span className="rounded-full border border-border px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
                           Default
@@ -1046,6 +1110,22 @@ export function ChannelsPanel({
                       ) : null}
                     </div>
                   </button>
+
+                  {/* Request to join — non-admin members on private groups */}
+                  {memberCanRequest && (
+                    <button
+                      disabled={hasRequested || requestJoin.isPending}
+                      onClick={() => {
+                        if (hasRequested) return
+                        requestJoin.mutate(group.id, {
+                          onSuccess: () => setRequestedGroups((prev) => new Set([...prev, group.id])),
+                        })
+                      }}
+                      className="absolute right-1.5 top-1/2 z-10 -translate-y-1/2 rounded-lg border border-border px-1.5 py-0.5 text-[9px] font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
+                    >
+                      {hasRequested ? 'Requested' : 'Request'}
+                    </button>
+                  )}
 
                   {/* Group 3-dot menu — admins/owners only */}
                   {canManage ? (

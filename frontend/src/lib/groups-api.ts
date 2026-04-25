@@ -31,7 +31,16 @@ export interface BackendGroup {
   name: string;
   description: string | null;
   is_general: boolean;
+  group_type: 'text' | 'voice';
+  access_type: 'PUBLIC' | 'PRIVATE';
   created_at: string;
+}
+
+export interface GroupJoinRequest {
+  id: string;
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
+  created_at: string;
+  user: { id: string; username: string | null; avatar_url: string | null };
 }
 
 export interface GroupMember {
@@ -69,10 +78,22 @@ export const groupsApi = {
   getChannelGroups: (channelId: string) =>
     authedFetch<BackendGroup[]>(`/channels/${channelId}/groups`),
 
-  createGroup: (channelId: string, data: { name: string; description?: string; is_general?: boolean }) =>
+  createGroup: (channelId: string, data: { name: string; description?: string; is_general?: boolean; group_type?: 'text' | 'voice'; access_type?: 'PUBLIC' | 'PRIVATE' }) =>
     authedFetch<BackendGroup>(`/channels/${channelId}/groups`, {
       method: 'POST',
       body: JSON.stringify(data),
+    }),
+
+  requestJoinGroup: (groupId: string) =>
+    authedFetch(`/groups/${groupId}/join-requests`, { method: 'POST' }),
+
+  getGroupJoinRequests: (groupId: string) =>
+    authedFetch<GroupJoinRequest[]>(`/groups/${groupId}/join-requests`),
+
+  respondToJoinRequest: (groupId: string, requestId: string, status: 'ACCEPTED' | 'REJECTED') =>
+    authedFetch(`/groups/${groupId}/join-requests/${requestId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
     }),
 
   getGroupMembers: (groupId: string) =>

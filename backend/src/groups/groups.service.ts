@@ -12,7 +12,6 @@ export class GroupsService {
     ) { }
 
     async createGroup(channelId: string, creatorUserId: string, createGroupDto: CreateGroupDto) {
-        // Enforce channel OWNER/ADMIN restriction for creating groups
         const { data: member } = await this.supabaseService
             .getClient()
             .from('channel_members')
@@ -28,7 +27,14 @@ export class GroupsService {
         const { data, error } = await this.supabaseService
             .getClient()
             .from('groups')
-            .insert({ channel_id: channelId, ...createGroupDto })
+            .insert({
+                channel_id: channelId,
+                name: createGroupDto.name,
+                description: createGroupDto.description,
+                is_general: createGroupDto.is_general,
+                group_type: createGroupDto.group_type ?? 'text',
+                access_type: createGroupDto.access_type ?? 'PUBLIC',
+            })
             .select()
             .single();
 
@@ -188,6 +194,113 @@ export class GroupsService {
 
         if (error) throw new Error(`Failed to remove user from group: ${error.message}`);
         return { success: true };
+    }
+
+    async requestJoinGroup(groupId: string, userId: string) {
+        const { data: group } = await this.supabaseService
+            .getClient()
+            .from('groups')
+            .select('channel_id, access_type')
+            .eq('id', groupId)
+            .single();
+
+        if (!group) throw new NotFoundException('Group not found');
+        if (group.access_type !== 'PRIVATE') throw new ForbiddenException('Group is public — join directly');
+
+        const { data: channelMember } = await this.supabaseService
+            .getClient()
+            .from('channel_members')
+            .select('role')
+            .eq('channel_id', group.channel_id)
+            .eq('user_id', userId)
+            .single();
+
+        if (!channelMember) throw new UnauthorizedException('Must be a channel member to request joining');
+
+        const alreadyMember = await this.supabaseService
+            .getClient()
+            .from('group_members')
+            .select('user_id')
+            .eq('group_id', groupId)
+            .eq('user_id', userId)
+            .single();
+
+        if (alreadyMember.data) throw new ForbiddenException('Already a member of this group');
+
+        const { data, error } = await this.supabaseService
+            .getClient()
+            .from('group_join_requests')
+            .upsert({ group_id: groupId, user_id: userId, status: 'PENDING' }, { onConflict: 'group_id,user_id' })
+            .select()
+            .single();
+
+        if (error) throw new Error(`Failed to create join request: ${error.message}`);
+        return data;
+    }
+
+    async getJoinRequests(groupId: string, adminUserId: string) {
+        const { data: member } = await this.supabaseService
+            .getClient()
+            .from('group_members')
+            .select('role')
+            .eq('group_id', groupId)
+            .eq('user_id', adminUserId)
+            .single();
+
+        if (!member || (member.role !== 'OWNER' && member.role !== 'ADMIN')) {
+            throw new UnauthorizedException('Only group admins can view join requests');
+        }
+
+        const { data, error } = await this.supabaseService
+            .getClient()
+            .from('group_join_requests')
+            .select('id, status, created_at, users!group_join_requests_user_id_fkey(id, username, avatar_url)')
+            .eq('group_id', groupId)
+            .eq('status', 'PENDING')
+            .order('created_at', { ascending: true });
+
+        if (error) throw new Error(`Failed to fetch join requests: ${error.message}`);
+        return data.map(r => ({ id: r.id, status: r.status, created_at: r.created_at, user: r.users }));
+    }
+
+    async respondToJoinRequest(groupId: string, requestId: string, status: 'ACCEPTED' | 'REJECTED', adminUserId: string) {
+        const { data: member } = await this.supabaseService
+            .getClient()
+            .from('group_members')
+            .select('role')
+            .eq('group_id', groupId)
+            .eq('user_id', adminUserId)
+            .single();
+
+        if (!member || (member.role !== 'OWNER' && member.role !== 'ADMIN')) {
+            throw new UnauthorizedException('Only group admins can respond to join requests');
+        }
+
+        const { data: request, error: fetchErr } = await this.supabaseService
+            .getClient()
+            .from('group_join_requests')
+            .select('user_id')
+            .eq('id', requestId)
+            .eq('group_id', groupId)
+            .single();
+
+        if (fetchErr || !request) throw new NotFoundException('Join request not found');
+
+        await this.supabaseService
+            .getClient()
+            .from('group_join_requests')
+            .update({ status })
+            .eq('id', requestId);
+
+        if (status === 'ACCEPTED') {
+            await this.supabaseService
+                .getClient()
+                .from('group_members')
+                .insert({ group_id: groupId, user_id: request.user_id, role: 'MEMBER' });
+            await this.notifyMemberJoined(groupId, request.user_id);
+        }
+
+        return { success: true, status };
     }
 
     async notifyMemberJoined(groupId: string, userId: string) {

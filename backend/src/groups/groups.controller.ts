@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Param, Body, UseGuards, Request, Patch } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Body, UseGuards, Request, Patch, HttpCode } from '@nestjs/common';
 import { GroupsService } from './groups.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateGroupDto } from './dto/create-group.dto';
@@ -58,5 +58,26 @@ export class GroupsController {
         @Param('memberId') memberId: string
     ) {
         return this.groupsService.deleteGroupMember(groupId, req.user.userId, memberId);
+    }
+
+    @Post('groups/:groupId/join-requests')
+    @HttpCode(200)
+    async requestJoin(@Request() req: any, @Param('groupId') groupId: string) {
+        return this.groupsService.requestJoinGroup(groupId, req.user.userId);
+    }
+
+    @Get('groups/:groupId/join-requests')
+    async getJoinRequests(@Request() req: any, @Param('groupId') groupId: string) {
+        return this.groupsService.getJoinRequests(groupId, req.user.userId);
+    }
+
+    @Patch('groups/:groupId/join-requests/:requestId')
+    async respondToJoinRequest(
+        @Request() req: any,
+        @Param('groupId') groupId: string,
+        @Param('requestId') requestId: string,
+        @Body() body: { status: 'ACCEPTED' | 'REJECTED' }
+    ) {
+        return this.groupsService.respondToJoinRequest(groupId, requestId, body.status, req.user.userId);
     }
 }
