@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Archive,
@@ -131,9 +131,11 @@ interface ChannelsPanelProps {
   onVoiceLeave?: () => void
   onVoiceToggleMute?: () => void
   onVoiceReturn?: (groupId: string) => void
+  onMoveVoiceParticipant?: (move: { userId: string; fromGroupId: string; toGroupId: string }) => void
 }
 
 const MEMBER_LABELS = ['26 online', '18 online', '12 online', '9 online', '6 online']
+const VOICE_PARTICIPANT_DRAG_TYPE = 'application/x-twiky-voice-participant'
 
 const CHANNEL_TONES = [
   'from-sky-500 via-cyan-500 to-blue-600',
@@ -1132,6 +1134,7 @@ export function ChannelsPanel({
   onVoiceLeave,
   onVoiceToggleMute,
   onVoiceReturn,
+  onMoveVoiceParticipant,
 }: ChannelsPanelProps) {
   const [showCreateGroup, setShowCreateGroup] = useState(false)
   const [channelSettingsOpen, setChannelSettingsOpen] = useState(false)
@@ -1139,6 +1142,7 @@ export function ChannelsPanel({
   const [inviteTarget, setInviteTarget] = useState<MockChannelGroup | null>(null)
   const [invitedByGroup, setInvitedByGroup] = useState<Record<string, Set<string>>>({})
   const [requestedGroups, setRequestedGroups] = useState<Set<string>>(new Set())
+  const [dragOverVoiceGroupId, setDragOverVoiceGroupId] = useState<string | null>(null)
   const requestJoin = useRequestJoinGroup()
   const deleteGroup = useDeleteGroup(channel?.id ?? '')
 
@@ -1149,6 +1153,44 @@ export function ChannelsPanel({
   const displayAvatar = channelAvatarUrl ?? channel.avatarUrl ?? null
   const displayBanner = channelBannerUrl ?? channel.bannerUrl ?? null
   const canManage = channel.role === 'OWNER' || channel.role === 'ADMIN'
+
+  function parseVoiceDrag(event: DragEvent<HTMLElement>) {
+    const raw =
+      event.dataTransfer.getData(VOICE_PARTICIPANT_DRAG_TYPE) ||
+      event.dataTransfer.getData('text/plain')
+    if (!raw) return null
+
+    try {
+      const payload = JSON.parse(raw) as Partial<{
+        type: string
+        userId: string
+        fromGroupId: string
+      }>
+      if (
+        payload.type === 'voice-participant' &&
+        typeof payload.userId === 'string' &&
+        typeof payload.fromGroupId === 'string'
+      ) {
+        return { userId: payload.userId, fromGroupId: payload.fromGroupId }
+      }
+    } catch {}
+
+    return null
+  }
+
+  function handleVoiceParticipantDrop(event: DragEvent<HTMLElement>, toGroupId: string) {
+    if (!canManage) return
+    event.preventDefault()
+    event.stopPropagation()
+    setDragOverVoiceGroupId(null)
+    const payload = parseVoiceDrag(event)
+    if (!payload || payload.fromGroupId === toGroupId) return
+    onMoveVoiceParticipant?.({
+      userId: payload.userId,
+      fromGroupId: payload.fromGroupId,
+      toGroupId,
+    })
+  }
 
   return (
     <>
@@ -1253,9 +1295,47 @@ export function ChannelsPanel({
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: idx * 0.05, duration: 0.2, ease: 'easeOut' }}
+                  onDragOver={(event) => {
+                    if (!canManage || group.kind !== 'voice') return
+                    event.preventDefault()
+                    event.dataTransfer.dropEffect = 'move'
+                    setDragOverVoiceGroupId(group.id)
+                  }}
+                  onDragLeave={(event) => {
+                    const nextTarget = event.relatedTarget
+                    if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
+                      setDragOverVoiceGroupId(null)
+                    }
+                  }}
+                  onDrop={(event) => {
+                    if (group.kind === 'voice') handleVoiceParticipantDrop(event, group.id)
+                  }}
                 >
                   {/* Row — relative container so 3-dot stays within the button height */}
-                  <div className="relative">
+                  <div
+                    className={cn(
+                      'relative rounded-xl',
+                      canManage &&
+                        group.kind === 'voice' &&
+                        dragOverVoiceGroupId === group.id &&
+                        'ring-1 ring-primary/60 ring-offset-1 ring-offset-sidebar',
+                    )}
+                    onDragOver={(event) => {
+                      if (!canManage || group.kind !== 'voice') return
+                      event.preventDefault()
+                      event.dataTransfer.dropEffect = 'move'
+                      setDragOverVoiceGroupId(group.id)
+                    }}
+                    onDragLeave={(event) => {
+                      const nextTarget = event.relatedTarget
+                      if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
+                        setDragOverVoiceGroupId(null)
+                      }
+                    }}
+                    onDrop={(event) => {
+                      if (group.kind === 'voice') handleVoiceParticipantDrop(event, group.id)
+                    }}
+                  >
                   <button
                     onClick={() => {
                       if (memberCanRequest) return
@@ -1374,10 +1454,35 @@ export function ChannelsPanel({
                   {group.kind === 'voice' && participants.length > 0 && (
                     <div className="ml-6 mb-1 space-y-0.5">
                       {participants.map((p) => (
-                        <div key={p.id} className="flex items-center gap-2 px-2 py-0.5">
+                        <div
+                          key={p.id}
+                          draggable={canManage}
+                          title={canManage ? 'Drag to move to another voice group' : undefined}
+                          className={cn(
+                            'flex items-center gap-2 rounded-lg px-2 py-0.5',
+                            canManage && 'cursor-grab transition-colors hover:bg-accent/60 active:cursor-grabbing',
+                          )}
+                          onDragStart={(event) => {
+                            if (!canManage) return
+                            const payload = JSON.stringify({
+                              type: 'voice-participant',
+                              userId: p.id,
+                              fromGroupId: group.id,
+                            })
+                            event.dataTransfer.effectAllowed = 'move'
+                            event.dataTransfer.setData(VOICE_PARTICIPANT_DRAG_TYPE, payload)
+                            event.dataTransfer.setData('text/plain', payload)
+                          }}
+                          onDragEnd={() => setDragOverVoiceGroupId(null)}
+                        >
                           <div className="relative flex-shrink-0">
                             {p.avatarUrl ? (
-                              <img src={p.avatarUrl} alt={p.name} className="h-5 w-5 rounded-full object-cover" />
+                              <img
+                                src={p.avatarUrl}
+                                alt={p.name}
+                                draggable={false}
+                                className="h-5 w-5 rounded-full object-cover"
+                              />
                             ) : (
                               <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/15 text-[8px] font-bold text-primary">
                                 {p.name[0]?.toUpperCase()}
@@ -1397,8 +1502,15 @@ export function ChannelsPanel({
         </div>
 
         {/* Persistent voice status bar — shown when user is connected to voice */}
+        <AnimatePresence initial={false}>
         {activeVoiceGroupId && (
-          <div className="flex-shrink-0 border-t border-border bg-sidebar">
+          <motion.div
+            className="flex-shrink-0 overflow-hidden border-t border-border bg-sidebar"
+            initial={{ height: 0, opacity: 0, y: 8 }}
+            animate={{ height: 'auto', opacity: 1, y: 0 }}
+            exit={{ height: 0, opacity: 0, y: 8 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+          >
             <div className="flex items-center gap-2 px-3 py-2">
               <span className="flex h-2 w-2 flex-shrink-0 rounded-full bg-green-500" />
               <div className="min-w-0 flex-1">
@@ -1436,8 +1548,9 @@ export function ChannelsPanel({
                 <PhoneOff className="h-3 w-3" />
               </button>
             </div>
-          </div>
+          </motion.div>
         )}
+        </AnimatePresence>
       </motion.div>
 
       <CreateEntityDialog

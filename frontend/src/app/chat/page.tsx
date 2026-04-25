@@ -265,7 +265,6 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const voiceMyInfo = profile
     ? { id: profile.id, name: profile.fullname ?? profile.username ?? 'You', avatarUrl: profile.avatar_url }
     : null
-  const voice = useVoicePresence(voiceMyInfo)
   const { data: directConversations = [] } = useDirectConversations()
   const { data: mutualFollowers = [] } = useMutualFollowers()
   const createDirectConversation = useCreateDirectConversation()
@@ -395,6 +394,34 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       }),
     [backendChannels, channelGroupsById, mentionedGroupIds],
   )
+
+  const voiceGroupIds = useMemo(
+    () => workspaceChannels.flatMap((channel) =>
+      channel.groups.filter((group) => group.kind === 'voice').map((group) => group.id),
+    ),
+    [workspaceChannels],
+  )
+
+  const voice = useVoicePresence(voiceMyInfo, voiceGroupIds)
+
+  useEffect(() => {
+    setActiveVoiceGroupId(voice.currentGroupId)
+    if (!voice.currentGroupId) return
+
+    const voiceChannel = workspaceChannels.find((channel) =>
+      channel.groups.some((group) => group.id === voice.currentGroupId),
+    )
+    if (!voiceChannel) return
+
+    setActiveChannelId(voiceChannel.id)
+    setActiveGroupId(voice.currentGroupId)
+    setWorkspaceMode('channels')
+    setActiveSurface('channel')
+    setActiveView('chat')
+    setChannelTab('feed')
+    setChannelFeedClosed(false)
+    setShowDirectProfile(false)
+  }, [setActiveView, voice.currentGroupId, workspaceChannels])
 
   // Sync real backend groups into channelGroupsById when they load
   useEffect(() => {
@@ -913,9 +940,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     return () => { if (voiceElapsedRef.current) clearInterval(voiceElapsedRef.current) }
   }, [voice.isJoined, voice.joinedAt])
 
-  const voiceParticipants: Record<string, VoiceParticipant[]> = activeVoiceGroupId && voice.participants.length > 0
-    ? { [activeVoiceGroupId]: voice.participants }
-    : {}
+  const voiceParticipants: Record<string, VoiceParticipant[]> = voice.participantsByGroup
 
   const channelContent =
     activeChannel && activeGroup ? (
@@ -924,8 +949,8 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           <VoiceGroupView
             key={activeGroup.id}
             group={activeGroup}
-            participants={activeVoiceGroupId === activeGroup.id ? voice.participants : []}
-            isJoined={voice.isJoined && activeVoiceGroupId === activeGroup.id}
+            participants={voice.participantsByGroup[activeGroup.id] ?? []}
+            isJoined={voice.isJoined && voice.joinedGroupId === activeGroup.id}
             isMuted={voice.isMuted}
             joinedAt={voice.joinedAt}
             myId={profile?.id}
@@ -1109,12 +1134,16 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             voiceParticipants={voiceParticipants}
             activeVoiceGroupId={activeVoiceGroupId}
             voiceIsMuted={voice.isMuted}
+            voiceTimer={voiceElapsed}
             onVoiceLeave={async () => { await voice.leave(); setActiveVoiceGroupId(null) }}
             onVoiceToggleMute={voice.toggleMute}
             onVoiceReturn={(groupId) => {
               setActiveGroupId(groupId)
               setWorkspaceMode('channels')
               setActiveSurface('channel')
+            }}
+            onMoveVoiceParticipant={({ userId, fromGroupId, toGroupId }) => {
+              void voice.moveUser(userId, fromGroupId, toGroupId)
             }}
           />
 

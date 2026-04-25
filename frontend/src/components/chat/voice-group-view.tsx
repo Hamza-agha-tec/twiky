@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Camera,
   CameraOff,
@@ -11,7 +11,6 @@ import {
   MonitorUp,
   MonitorOff,
   PhoneOff,
-  Settings2,
   Volume2,
   UserMinus,
   VolumeX,
@@ -79,13 +78,10 @@ export function VoiceGroupView({
   const [deafened, setDeafened] = useState(false)
   const [videoOn, setVideoOn] = useState(false)
   const [sharing, setSharing] = useState(false)
-  const [exitReason, setExitReason] = useState<'left' | 'kicked' | null>(null)
-  const hasJoinedRef = useRef(false)
-  const exitReasonRef = useRef<'left' | 'kicked' | null>(null)
+  const [exitReason, setExitReason] = useState<'left' | null>(null)
   const timer = useElapsedTime(joinedAt, isJoined)
 
-  const setExit = (reason: 'left' | 'kicked' | null) => {
-    exitReasonRef.current = reason
+  const setExit = (reason: 'left' | null) => {
     setExitReason(reason)
   }
 
@@ -93,15 +89,6 @@ export function VoiceGroupView({
     onJoin()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  useEffect(() => {
-    if (isJoined) {
-      hasJoinedRef.current = true
-    } else if (hasJoinedRef.current && exitReasonRef.current === null) {
-      setExit('kicked')
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isJoined])
 
   const cols =
     participants.length === 0
@@ -120,7 +107,12 @@ export function VoiceGroupView({
     participants.length <= 1 ? 'max-w-xs mx-auto w-full' : participants.length <= 2 ? 'max-w-xl mx-auto w-full' : 'w-full'
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
+    <motion.div
+      className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background"
+      initial={{ opacity: 0, y: 8, scale: 0.995 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+    >
       {/* Header */}
       <div className="flex h-12 flex-shrink-0 items-center gap-2.5 border-b border-border bg-sidebar px-4">
         <Volume2 className="h-4 w-4 flex-shrink-0 text-primary" />
@@ -137,17 +129,17 @@ export function VoiceGroupView({
 
       {/* Participants grid */}
       <div className="flex flex-1 flex-col overflow-hidden p-4">
-        {!isJoined ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
-            {exitReason === 'kicked' ? (
-              <>
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10">
-                  <UserMinus className="h-6 w-6 text-destructive" />
-                </div>
-                <p className="text-[13px] font-semibold text-foreground">You were removed from this call</p>
-                <p className="text-[11px] text-muted-foreground">A moderator kicked you out</p>
-              </>
-            ) : exitReason === 'left' ? (
+        <AnimatePresence mode="wait" initial={false}>
+          {!isJoined ? (
+          <motion.div
+            key={exitReason === 'left' ? 'left' : 'connecting'}
+            className="flex flex-1 flex-col items-center justify-center gap-4 text-center"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.16, ease: 'easeOut' }}
+          >
+            {exitReason === 'left' ? (
               <>
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
                   <PhoneOff className="h-6 w-6 text-muted-foreground" />
@@ -169,9 +161,16 @@ export function VoiceGroupView({
                 <p className="text-[13px] font-semibold text-foreground">Connecting…</p>
               </>
             )}
-          </div>
+          </motion.div>
         ) : (
-          <div className={cn('grid gap-2.5 h-full', cols, tileSizeClass)}>
+          <motion.div
+            key="participants"
+            className={cn('grid gap-2.5 h-full', cols, tileSizeClass)}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.16, ease: 'easeOut' }}
+          >
             <AnimatePresence>
               {participants.map((member) => {
                 const isMe = member.id === myId
@@ -259,12 +258,19 @@ export function VoiceGroupView({
                 )
               })}
             </AnimatePresence>
-          </div>
+          </motion.div>
         )}
+        </AnimatePresence>
       </div>
 
       {/* Controls */}
-      {exitReason === null && <div className="flex flex-shrink-0 items-center justify-between border-t border-border bg-sidebar px-6 py-3">
+      {exitReason === null && <motion.div
+        className="flex flex-shrink-0 items-center justify-between border-t border-border bg-sidebar px-6 py-3"
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.18, ease: 'easeOut' }}
+        layout
+      >
         {/* Left: voice info */}
         <div className="flex items-center gap-2">
           <span className="flex h-2 w-2 rounded-full bg-green-500" />
@@ -320,8 +326,8 @@ export function VoiceGroupView({
           <PhoneOff className="h-3.5 w-3.5" />
           <span className="text-[11px] font-semibold">Leave</span>
         </button>
-      </div>}
-    </div>
+      </motion.div>}
+    </motion.div>
   )
 }
 
