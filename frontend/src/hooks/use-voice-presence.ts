@@ -1,0 +1,109 @@
+'use client'
+
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { RealtimeChannel } from '@supabase/supabase-js'
+import { createClient } from '@/utils/supabase/client'
+
+export interface VoicePresenceUser {
+  id: string
+  name: string
+  avatarUrl: string | null
+  isMuted: boolean
+  isSpeaking?: boolean
+  joinedAt: number
+}
+
+export function useVoicePresence(
+  myInfo: { id: string; name: string; avatarUrl: string | null } | null,
+) {
+  const [participants, setParticipants] = useState<VoicePresenceUser[]>([])
+  const [isJoined, setIsJoined] = useState(false)
+  const [isMuted, setIsMuted] = useState(false)
+  const channelRef = useRef<RealtimeChannel | null>(null)
+  const joinedAtRef = useRef<number>(0)
+  const myInfoRef = useRef(myInfo)
+  myInfoRef.current = myInfo
+
+  const syncParticipants = useCallback((ch: RealtimeChannel) => {
+    const state = ch.presenceState<VoicePresenceUser>()
+    // Each key maps to an array (multiple tabs / track() calls accumulate).
+    // Take only the last payload per key so one user = one card.
+    const users = Object.values(state).map(
+      (arr) => (arr as VoicePresenceUser[]).at(-1)!
+    ).filter(Boolean)
+    setParticipants(users)
+  }, [])
+
+  const join = useCallback(
+    async (groupId: string, muted = false) => {
+      if (!groupId || !myInfoRef.current || channelRef.current) return
+      const info = myInfoRef.current
+      const supabase = createClient()
+      joinedAtRef.current = Date.now()
+      const ch = supabase.channel(`voice:${groupId}`, {
+        config: { presence: { key: info.id } },
+      })
+
+      // Set ref immediately — prevents double-join if called again before subscribe resolves
+      channelRef.current = ch
+
+      ch.on('presence', { event: 'sync' }, () => syncParticipants(ch))
+      ch.on('presence', { event: 'join' }, () => syncParticipants(ch))
+      ch.on('presence', { event: 'leave' }, () => syncParticipants(ch))
+
+      ch.subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await ch.track({
+            id: info.id,
+            name: info.name,
+            avatarUrl: info.avatarUrl,
+            isMuted: muted,
+            joinedAt: joinedAtRef.current,
+          } satisfies VoicePresenceUser)
+          setIsMuted(muted)
+          setIsJoined(true)
+        }
+      })
+    },
+    [syncParticipants],
+  )
+
+  const leave = useCallback(async () => {
+    const ch = channelRef.current
+    if (!ch) return
+    await ch.untrack()
+    await ch.unsubscribe()
+    const supabase = createClient()
+    supabase.removeChannel(ch)
+    channelRef.current = null
+    setIsJoined(false)
+    setParticipants([])
+  }, [])
+
+  const toggleMute = useCallback(async () => {
+    if (!channelRef.current || !myInfoRef.current) return
+    const info = myInfoRef.current
+    const next = !isMuted
+    await channelRef.current.track({
+      id: info.id,
+      name: info.name,
+      avatarUrl: info.avatarUrl,
+      isMuted: next,
+      joinedAt: joinedAtRef.current,
+    } satisfies VoicePresenceUser)
+    setIsMuted(next)
+  }, [isMuted])
+
+  useEffect(() => {
+    return () => {
+      const ch = channelRef.current
+      if (ch) {
+        ch.untrack()
+        ch.unsubscribe()
+        channelRef.current = null
+      }
+    }
+  }, [])
+
+  return { participants, isJoined, isMuted, joinedAt: joinedAtRef.current, join, leave, toggleMute }
+}

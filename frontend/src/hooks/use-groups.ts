@@ -97,6 +97,17 @@ export function useRemoveGroupMember(groupId: string) {
   });
 }
 
+export function useUpdateGroup(channelId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ groupId, data }: { groupId: string; data: { name?: string; description?: string; group_type?: 'text' | 'voice'; access_type?: 'PUBLIC' | 'PRIVATE' } }) =>
+      groupsApi.updateGroup(groupId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: GROUP_KEYS.byChannel(channelId) });
+    },
+  });
+}
+
 export function useDeleteGroup(channelId: string) {
   const queryClient = useQueryClient();
   return useMutation({
