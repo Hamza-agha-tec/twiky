@@ -5,7 +5,7 @@ import { Link2, Trash2, Upload, ImageIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { SectionHeader, SectionBlock, SettingRow, versionedImageUrl } from '../shared'
-import { VerifiedBadge, isVerifiedAccountIdentity } from '@/components/chat/verified-badge'
+import { VerifiedBadge, getVerifiedBadgeVariant, isVerifiedAccountIdentity } from '@/components/chat/verified-badge'
 import { useAuth } from '@/context/AuthContext'
 import { useUpdateProfile } from '@/hooks/use-user'
 import type { UserPost, UserProfile } from '@/lib/user-api'
@@ -18,7 +18,6 @@ export function ProfileSection({
   bannerUrl,
   followersCount,
   followingCount,
-  isPro,
   posts,
   profile,
   profileLoading,
@@ -29,7 +28,6 @@ export function ProfileSection({
   bannerUrl: string | null
   followersCount: number
   followingCount: number
-  isPro: boolean
   posts: UserPost[]
   profile?: UserProfile
   profileLoading: boolean
@@ -276,7 +274,7 @@ export function ProfileSection({
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <p className="text-[17px] font-bold text-foreground">{fullname || 'Your Name'}</p>
-                {isVerified ? <VerifiedBadge size="sm" variant={isPro ? 'pro' : 'standard'} /> : null}
+                {isVerified ? <VerifiedBadge size="sm" variant={getVerifiedBadgeVariant(profile?.sub_plan)} /> : null}
                 {status ? <span className="text-[13px]">{statusEmoji}</span> : null}
               </div>
               <p className="text-[12px] text-muted-foreground">@{username}</p>

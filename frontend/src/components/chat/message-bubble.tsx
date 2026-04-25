@@ -8,7 +8,7 @@ import { format } from 'date-fns';
 import { useState, useEffect, useRef } from 'react';
 import { MessageContextMenu } from './message-context-menu';
 import { useChatThemeContext } from '@/context/ChatThemeContext';
-import { VerifiedBadge } from '@/components/chat/verified-badge';
+import { VerifiedBadge, getVerifiedBadgeVariant } from '@/components/chat/verified-badge';
 
 interface MessageBubbleProps {
   message: Message;
@@ -257,7 +257,7 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
         {/* Timestamp + Read Status */}
         <div className="flex items-center gap-1 mt-1 px-1 text-[11px] text-muted-foreground">
           {isMounted && <span>{format(new Date(message.timestamp), 'HH:mm')}</span>}
-          {message.senderIsVerified ? <VerifiedBadge size="xs" variant={message.senderIsPro ? 'pro' : 'standard'} /> : null}
+          {message.senderIsVerified ? <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(message.senderSubPlan)} /> : null}
           {message.isOwn && (
             <>
               {message.isRead ? (

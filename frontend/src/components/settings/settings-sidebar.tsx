@@ -20,7 +20,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { VerifiedBadge } from '@/components/chat/verified-badge'
+import { VerifiedBadge, getVerifiedBadgeVariant } from '@/components/chat/verified-badge'
 import { cn } from '@/lib/utils'
 import { getInitial } from './shared'
 import type { UserProfile } from '@/lib/user-api'
@@ -76,10 +76,9 @@ export const NAV: NavCategory[] = [
   },
 ]
 
-export function SettingsSidebar({ profile, isVerified, isPro, avatarUrl }: {
+export function SettingsSidebar({ profile, isVerified, avatarUrl }: {
   profile?: UserProfile
   isVerified: boolean
-  isPro: boolean
   avatarUrl?: string | null
 }) {
   const pathname = usePathname()
@@ -103,7 +102,7 @@ export function SettingsSidebar({ profile, isVerified, isPro, avatarUrl }: {
               <p className="truncate text-[12px] font-semibold text-foreground">
                 {profile?.fullname || profile?.username || 'Loading profile'}
               </p>
-              {isVerified ? <VerifiedBadge size="xs" variant={isPro ? 'pro' : 'standard'} /> : null}
+              {isVerified ? <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(profile?.sub_plan)} /> : null}
             </div>
             <p className="truncate text-[10.5px] text-muted-foreground">
               {profile?.username ? `@${profile.username}` : 'Backend profile'}

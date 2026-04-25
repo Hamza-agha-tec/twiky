@@ -6,7 +6,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Pin, BellOff, Star } from 'lucide-react';
 import { Chat } from '@/lib/mock-data';
 import { format, isToday, isYesterday } from 'date-fns';
-import { VerifiedBadge } from '@/components/chat/verified-badge';
+import { VerifiedBadge, getVerifiedBadgeVariant } from '@/components/chat/verified-badge';
 
 interface ChatItemProps {
   chat: Chat;
@@ -82,7 +82,7 @@ export function ChatItem({ chat, isActive, isFavorite, onClick, isOnline }: Chat
                 {chat.name}
               </h3>
               {chat.isVerified && (
-                <VerifiedBadge size="xs" variant={chat.isPro ? 'pro' : 'standard'} />
+                <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(chat.subPlan)} />
               )}
               {isFavorite && (
                 <Star className="h-3 w-3 text-amber-400 fill-amber-400 flex-shrink-0" />

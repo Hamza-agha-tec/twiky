@@ -13,14 +13,14 @@ import { ChatMessage } from '@/hooks/use-messaging';
 import { useProfile } from '@/hooks/use-user';
 import { useChatThemeContext } from '@/context/ChatThemeContext';
 import { useAuth } from '@/context/AuthContext';
-import { VerifiedBadge, isProPlan, isVerifiedAccountIdentity } from '@/components/chat/verified-badge';
+import { VerifiedBadge, getVerifiedBadgeVariant, isVerifiedAccountIdentity } from '@/components/chat/verified-badge';
 
 interface ChatWindowProps {
   activeChat: string;
   chatOverride?: {
     avatarUrl?: string | null;
     isOnline?: boolean;
-    isPro?: boolean;
+    subPlan?: string | null;
     isVerified?: boolean;
     name: string;
     subtitle?: string | null;
@@ -60,14 +60,11 @@ function toUiMessage(
   const reactions = Object.entries(reactionMap).map(([emoji, { count, reactedByMe }]) => ({ emoji, count, reactedByMe }));
   const myReaction = (m.reactions ?? []).find((r) => r.userId === currentIdentity.id)?.emoji ?? null;
 
-  const senderIsPro = isProPlan(m.sender.sub_plan) ||
-    Boolean(m.sender.id === currentIdentity.id && isProPlan(currentIdentity.sub_plan));
-
   return {
     id: m.id,
     senderId: m.sender_id,
     senderName: m.sender.username,
-    senderIsPro,
+    senderSubPlan: m.sender.sub_plan ?? (m.sender.id === currentIdentity.id ? currentIdentity.sub_plan : null) ?? null,
     senderIsVerified: isVerifiedAccountIdentity(
       {
         email: m.sender.email,
@@ -195,7 +192,7 @@ export function ChatWindow({ chatOverride, messages: providedMessages = [], onSe
           <div className="flex-1 min-w-0">
             <div className="flex min-w-0 items-center gap-1.5">
               <h2 className="truncate text-sm font-semibold leading-tight text-foreground">{chatName}</h2>
-              {chatOverride?.isVerified ? <VerifiedBadge size="sm" variant={chatOverride.isPro ? 'pro' : 'standard'} /> : null}
+              {chatOverride?.isVerified ? <VerifiedBadge size="sm" variant={getVerifiedBadgeVariant(chatOverride.subPlan)} /> : null}
             </div>
             {conv?.is_group ? (
               <p className="text-xs text-muted-foreground">

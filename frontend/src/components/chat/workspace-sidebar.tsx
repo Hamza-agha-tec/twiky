@@ -20,7 +20,7 @@ import {
 import { CreateEntityDialog, type CreateEntityValues } from '@/components/chat/create-entity-dialog'
 import { type WorkspaceChannel } from '@/components/chat/channels-panel'
 import { ConversationContextMenu } from '@/components/chat/conversation-context-menu'
-import { VerifiedBadge } from '@/components/chat/verified-badge'
+import { VerifiedBadge, getVerifiedBadgeVariant } from '@/components/chat/verified-badge'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Chat } from '@/lib/mock-data'
@@ -350,7 +350,7 @@ export function WorkspaceSidebar({
                           <span className="truncate text-[12px] font-medium text-foreground">
                             {chat.name}
                           </span>
-                          {chat.isVerified ? <VerifiedBadge size="xs" variant={chat.isPro ? 'pro' : 'standard'} /> : null}
+                          {chat.isVerified ? <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(chat.subPlan)} /> : null}
                         </span>
                         <span className="text-[10px] text-muted-foreground">
                           {chat.timestamp

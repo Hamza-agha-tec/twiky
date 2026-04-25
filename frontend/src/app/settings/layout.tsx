@@ -2,7 +2,7 @@
 
 import { useProfile } from '@/hooks/use-user'
 import { useAuth } from '@/context/AuthContext'
-import { isVerifiedAccountIdentity, isProPlan } from '@/components/chat/verified-badge'
+import { isVerifiedAccountIdentity } from '@/components/chat/verified-badge'
 import { WorkspaceShellLayout } from '@/components/chat/workspace-shell-layout'
 import { SettingsSidebar } from '@/components/settings/settings-sidebar'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -23,7 +23,6 @@ export default function SettingsLayout({
     is_verified: profile?.is_verified,
     sub_plan: profile?.sub_plan,
   })
-  const isPro = isProPlan(profile?.sub_plan)
 
   return (
     <WorkspaceShellLayout>
@@ -31,7 +30,6 @@ export default function SettingsLayout({
         <SettingsSidebar
           profile={profile}
           isVerified={isVerified}
-          isPro={isPro}
           avatarUrl={profile?.avatar_url}
         />
         <div className="relative flex-1 overflow-y-auto bg-background px-8 py-7">

@@ -9,7 +9,7 @@ export interface Chat {
   isPinned?: boolean;
   isMuted?: boolean;
   isOnline?: boolean;
-  isPro?: boolean;
+  subPlan?: string | null;
   isVerified?: boolean;
   pinnedMessage?: string;
 }
@@ -18,7 +18,7 @@ export interface Message {
   id: string;
   senderId: string;
   senderName: string;
-  senderIsPro?: boolean;
+  senderSubPlan?: string | null;
   senderIsVerified?: boolean;
   avatar?: string;
   content: string;

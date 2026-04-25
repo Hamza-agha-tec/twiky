@@ -313,7 +313,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       authorId: msg.sender_id,
       authorAvatarUrl: isSystem ? null : (msg.sender?.avatar_url ?? null),
       authorIsVerified: Boolean(msg.sender?.is_verified || msg.sender?.sub_plan === 'PRO' || msg.sender?.sub_plan === 'GEEK'),
-      authorIsPro: msg.sender?.sub_plan === 'PRO' || msg.sender?.sub_plan === 'GEEK',
+      authorSubPlan: msg.sender?.sub_plan ?? null,
       isSystem,
       role: isSystem ? 'Automation' : (groupMemberRoleByUserId.get(msg.sender_id) ?? 'Member'),
       time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -521,7 +521,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             unread: unreadCounts[chat.id] ?? 0,
             isGroup: false,
             isOnline: chat.isOnline ?? false,
-            isPro: chat.isPro ?? false,
+            subPlan: chat.subPlan ?? null,
             isVerified: chat.isVerified ?? false,
           }
         })
@@ -734,7 +734,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             ? {
                 avatarUrl: activeSyntheticChat.avatarUrl,
                 isOnline: activeSyntheticChat.isOnline,
-                isPro: activeSyntheticChat.isPro,
+                subPlan: activeSyntheticChat.subPlan,
                 isVerified: activeSyntheticChat.isVerified,
                 name: activeSyntheticChat.name,
                 subtitle: activeSyntheticChat.status,
@@ -939,7 +939,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                           ? {
                               avatarUrl: activeSyntheticChat.avatarUrl,
                               isOnline: activeSyntheticChat.isOnline,
-                              isPro: activeSyntheticChat.isPro,
+                              subPlan: activeSyntheticChat.subPlan,
                               isVerified: activeSyntheticChat.isVerified,
                               name: activeSyntheticChat.name,
                               subtitle: activeSyntheticChat.status,

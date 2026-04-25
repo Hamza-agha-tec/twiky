@@ -43,7 +43,7 @@ import {
 
 import { FeedPostContextMenu } from '@/components/chat/feed-post-context-menu'
 import { VoiceMessagePlayer } from '@/components/chat/voice-message-player'
-import { VerifiedBadge, isVerifiedAccountIdentity, isProPlan } from '@/components/chat/verified-badge'
+import { VerifiedBadge, getVerifiedBadgeVariant, hasPremiumPlan, isVerifiedAccountIdentity } from '@/components/chat/verified-badge'
 import type { MockChannelGroup, WorkspaceChannel } from '@/components/chat/channels-panel'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -66,6 +66,7 @@ interface FeedMedia {
 }
 
 const fallbackAvatar = '/placeholder-user.jpg'
+export type FeedSubPlan = 'FREE' | 'PRO' | 'GEEK'
 
 function isProbablyImageUrl(url: string): boolean {
   try {
@@ -123,7 +124,7 @@ export interface FeedPost {
   authorId?: string
   authorAvatarUrl?: string | null
   authorIsVerified?: boolean
-  authorIsPro?: boolean
+  authorSubPlan?: FeedSubPlan | null
   isSystem?: boolean
   role: string
   time: string
@@ -166,7 +167,7 @@ export interface FeedMemberProfile {
   followers: number
   following: number
   handle: string
-  isPro?: boolean
+  subPlan?: FeedSubPlan | null
   location: string
   name: string
   posts: number
@@ -182,7 +183,7 @@ export interface FeedDirectConversationTarget {
   id: string
   initialMessages?: ChatMessage[]
   isOnline?: boolean
-  isPro?: boolean
+  subPlan?: FeedSubPlan | null
   isVerified?: boolean
   name: string
   status: string
@@ -379,7 +380,7 @@ function buildFeedMemberProfile(post: FeedPost, avatarUrl: string | null, handle
     name: post.author,
     role: post.role,
     isVerified: post.authorIsVerified ?? false,
-    isPro: post.authorIsPro ?? false,
+    subPlan: post.authorSubPlan ?? null,
     websiteUrl: null,
     xUrl: null,
   }
@@ -393,7 +394,7 @@ export function buildStandaloneFeedMemberProfile({
   role = 'Member',
   status,
   isVerified = false,
-  isPro = false,
+  subPlan = null,
   followers,
   following,
   posts,
@@ -405,7 +406,7 @@ export function buildStandaloneFeedMemberProfile({
   role?: string
   status?: string
   isVerified?: boolean
-  isPro?: boolean
+  subPlan?: FeedSubPlan | null
   followers?: number
   following?: number
   posts?: number
@@ -434,7 +435,7 @@ export function buildStandaloneFeedMemberProfile({
     following: following ?? defaults.following,
     posts: posts ?? defaults.posts,
     isVerified,
-    isPro,
+    subPlan,
     websiteUrl: null,
     xUrl: null,
   }
@@ -688,8 +689,9 @@ function MessageRow({
       id: realUser?.id ?? memberProfile.id,
       is_verified: realUser?.is_verified,
       isVerified: memberProfile.isVerified,
-      sub_plan: realUser?.sub_plan ?? (memberProfile.isPro ? 'PRO' : null),
+      sub_plan: realUser?.sub_plan ?? memberProfile.subPlan ?? null,
     }),
+    subPlan: realUser?.sub_plan ?? memberProfile.subPlan ?? null,
   }
 
   const roleColor = ROLE_COLORS[post.role] ?? 'text-primary'
@@ -737,7 +739,7 @@ function MessageRow({
                   className={cn('inline-flex items-center gap-1 text-[14px] font-semibold leading-none hover:underline', roleColor)}
                 >
                   {post.author}
-                  {resolvedProfile.isVerified ? <VerifiedBadge size="xs" variant={isProPlan(realUser?.sub_plan) || memberProfile.isPro ? 'pro' : 'standard'} /> : null}
+                  {resolvedProfile.isVerified ? <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(resolvedProfile.subPlan)} /> : null}
                 </button>
                 <RoleBadge role={post.role} />
                 <span className="text-[11px] text-muted-foreground">{post.time}</span>
@@ -1150,7 +1152,7 @@ export function FeedMemberProfileView({
         id: realUser?.id ?? memberProfile.id,
         is_verified: realUser?.is_verified,
         isVerified: memberProfile.isVerified,
-        sub_plan: realUser?.sub_plan ?? (memberProfile.isPro ? 'PRO' : null),
+        sub_plan: realUser?.sub_plan ?? memberProfile.subPlan ?? null,
       },
       {
         email: currentUser?.email ?? authUser?.email,
@@ -1159,11 +1161,12 @@ export function FeedMemberProfileView({
         sub_plan: currentUser?.sub_plan,
       },
     ),
+    subPlan: realUser?.sub_plan ?? memberProfile.subPlan ?? null,
   }
 
   const bannerImage = realUser?.banner ?? null
   const avatarImage = resolvedProfile.avatarUrl ?? null
-  const isProfilePro = isProPlan(realUser?.sub_plan) || Boolean(memberProfile.isPro)
+  const profileBadgeVariant = getVerifiedBadgeVariant(resolvedProfile.subPlan)
 
   const fallbackPosts = posts.slice(0, 3)
   const profilePosts = memberProfile.id
@@ -1264,7 +1267,7 @@ export function FeedMemberProfileView({
               <button
                 key={u.id}
                 type="button"
-                onClick={() => setViewingUser(buildStandaloneFeedMemberProfile({ id: u.id, avatarUrl: u.avatar_url, name: u.username, handle: u.username, isVerified: u.is_verified, isPro: isProPlan(u.sub_plan) }))}
+                onClick={() => setViewingUser(buildStandaloneFeedMemberProfile({ id: u.id, avatarUrl: u.avatar_url, name: u.username, handle: u.username, isVerified: Boolean(u.is_verified || hasPremiumPlan(u.sub_plan)), subPlan: u.sub_plan }))}
                 className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-accent"
               >
                 <div className="h-9 w-9 flex-shrink-0 overflow-hidden rounded-full bg-muted">
@@ -1276,7 +1279,7 @@ export function FeedMemberProfileView({
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-1 truncate text-[12px] font-semibold text-foreground">
                     @{u.username}
-                    {u.is_verified ? <VerifiedBadge size="xs" variant={isProPlan(u.sub_plan) ? 'pro' : 'standard'} /> : null}
+                    {(u.is_verified || hasPremiumPlan(u.sub_plan)) ? <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(u.sub_plan)} /> : null}
                   </p>
                   {u.bio ? <p className="truncate text-[11px] text-muted-foreground">{u.bio}</p> : null}
                 </div>
@@ -1353,7 +1356,7 @@ export function FeedMemberProfileView({
 
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-[19px] font-black leading-none tracking-tight text-foreground">{resolvedProfile.name}</h1>
-          {resolvedProfile.isVerified ? <VerifiedBadge size="sm" variant={isProfilePro ? 'pro' : 'standard'} /> : null}
+          {resolvedProfile.isVerified ? <VerifiedBadge size="sm" variant={profileBadgeVariant} /> : null}
           <RoleBadge role={resolvedProfile.role} variant="profile" />
         </div>
         <p className="mt-0.5 text-[11px] text-muted-foreground">@{resolvedProfile.handle}</p>
@@ -1710,7 +1713,7 @@ function FeedProfileRow({
               className={cn('inline-flex items-center gap-1 text-[14px] font-semibold leading-none hover:underline', roleColor)}
             >
               {post.author}
-              {memberProfile.isVerified ? <VerifiedBadge size="xs" variant={memberProfile.isPro ? 'pro' : 'standard'} /> : null}
+              {memberProfile.isVerified ? <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(memberProfile.subPlan)} /> : null}
             </button>
             <RoleBadge role={post.role} />
             <span className="text-[11px] text-muted-foreground">{post.time}</span>
@@ -2046,7 +2049,7 @@ export function ChannelFeed({
       return {
         canMessage: false,
         profile: buildFeedMemberProfile(
-          { ...post, authorIsVerified: post.authorIsVerified || currentIsVerified, authorIsPro: post.authorIsPro || isProPlan(profile?.sub_plan) },
+          { ...post, authorIsVerified: post.authorIsVerified || currentIsVerified, authorSubPlan: post.authorSubPlan ?? profile?.sub_plan },
           post.authorAvatarUrl ?? myAvatarUrl ?? profile?.avatar_url ?? null,
           profile?.username ?? 'you',
           profile?.id,
@@ -2095,12 +2098,12 @@ export function ChannelFeed({
             username: memberProfile.name,
             avatar_url: memberProfile.avatarUrl,
             is_verified: memberProfile.isVerified ?? false,
-            sub_plan: memberProfile.isPro ? 'PRO' : null,
+            sub_plan: memberProfile.subPlan ?? null,
           },
         },
       ],
       isOnline: true,
-      isPro: memberProfile.isPro ?? false,
+      subPlan: memberProfile.subPlan ?? null,
       isVerified: memberProfile.isVerified ?? false,
       name: memberProfile.name,
       status: memberProfile.status,

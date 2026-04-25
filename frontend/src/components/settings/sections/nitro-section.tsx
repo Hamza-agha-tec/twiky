@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import { Sparkles, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SectionHeader, SectionBlock } from '../shared'
-import { VerifiedBadge } from '@/components/chat/verified-badge'
+import { VerifiedBadge, getVerifiedBadgeVariant, hasPremiumPlan } from '@/components/chat/verified-badge'
 import { cn } from '@/lib/utils'
 
 const PRO_FEATURES = [
@@ -19,16 +19,20 @@ const PRO_FEATURES = [
   { label: 'Standard file uploads', description: 'Up to 10 MB per file', pro: true, free: true },
 ]
 
-export function NitroSection({ isPro }: { isPro: boolean }) {
+export function NitroSection({ subPlan }: { subPlan?: string | null }) {
+  const hasPremium = hasPremiumPlan(subPlan)
+  const planLabel = subPlan === 'GEEK' ? 'Geek' : 'Pro'
+  const badgeVariant = getVerifiedBadgeVariant(subPlan)
+
   return (
     <>
       <SectionHeader
         title="Twiky Premium"
-        description={isPro ? 'You are on the Pro plan. Thank you for supporting Twiky.' : 'Unlock the full Twiky experience.'}
+        description={hasPremium ? `You are on the ${planLabel} plan. Thank you for supporting Twiky.` : 'Unlock the full Twiky experience.'}
       />
 
       {/* Current plan banner */}
-      {isPro ? (
+      {hasPremium ? (
         <motion.div
           className="mb-6 overflow-hidden rounded-[22px] border border-orange-400/30 bg-[linear-gradient(135deg,rgba(249,115,22,0.18),rgba(234,88,12,0.12),rgba(194,65,12,0.08))] p-5 shadow-[0_0_32px_rgba(249,115,22,0.12)]"
           initial={{ opacity: 0, y: 10 }}
@@ -41,7 +45,7 @@ export function NitroSection({ isPro }: { isPro: boolean }) {
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <p className="text-[16px] font-bold text-foreground">Pro Plan</p>
+                <p className="text-[16px] font-bold text-foreground">{planLabel} Plan</p>
                 <span className="rounded-full border border-orange-400/40 bg-orange-500/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-orange-600 dark:text-orange-300">
                   Active
                 </span>
@@ -49,7 +53,7 @@ export function NitroSection({ isPro }: { isPro: boolean }) {
               <p className="mt-0.5 text-[12px] text-muted-foreground">elbidali.zakaria@gmail.com · Renews monthly</p>
               <div className="mt-3 grid grid-cols-3 gap-3">
                 {[
-                  { label: 'Plan', value: 'Pro' },
+                  { label: 'Plan', value: planLabel },
                   { label: 'Since', value: 'Apr 2026' },
                   { label: 'Next bill', value: 'May 23' },
                 ].map(({ label, value }) => (
@@ -141,12 +145,12 @@ export function NitroSection({ isPro }: { isPro: boolean }) {
       </SectionBlock>
 
       {/* Pro badge preview */}
-      {isPro && (
-        <SectionBlock title="Your Pro badge">
+      {hasPremium && (
+        <SectionBlock title={`Your ${planLabel} badge`}>
           <div className="flex items-center gap-4 py-3 px-1">
-            <VerifiedBadge size="md" variant="pro" />
+            <VerifiedBadge size="md" variant={badgeVariant} />
             <div>
-              <p className="text-[13px] font-semibold text-foreground">Gold shield badge</p>
+              <p className="text-[13px] font-semibold text-foreground">{subPlan === 'GEEK' ? 'Red shield badge' : 'Gold shield badge'}</p>
               <p className="text-[11.5px] text-muted-foreground">Shows on your profile, posts, and messages.</p>
             </div>
           </div>
@@ -154,7 +158,7 @@ export function NitroSection({ isPro }: { isPro: boolean }) {
       )}
 
       {/* Invoice history */}
-      {isPro && (
+      {hasPremium && (
         <SectionBlock title="Billing history">
           <div className="space-y-0">
             {[

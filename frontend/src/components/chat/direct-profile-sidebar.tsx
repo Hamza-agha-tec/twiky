@@ -4,13 +4,14 @@ import {
   FeedMemberProfileView,
   buildStandaloneFeedMemberProfile,
   type FeedPost,
+  type FeedSubPlan,
 } from '@/components/chat/channel-feed'
 interface DirectProfileSidebarProps {
   activeChat: string
   chatOverride?: {
     avatarUrl?: string | null
     isOnline?: boolean
-    isPro?: boolean
+    subPlan?: FeedSubPlan | null
     isVerified?: boolean
     name: string
     subtitle?: string | null
@@ -27,7 +28,7 @@ export function DirectProfileSidebar({ activeChat, chatOverride, onClose }: Dire
     name,
     role: 'Member',
     status: chatOverride?.subtitle ?? (chatOverride?.isOnline ? 'Online now' : 'Direct chat'),
-    isPro: chatOverride?.isPro ?? false,
+    subPlan: chatOverride?.subPlan ?? null,
     isVerified: chatOverride?.isVerified ?? false,
   })
   const directPosts: FeedPost[] = [
