@@ -82,7 +82,7 @@ export function ChatItem({ chat, isActive, isFavorite, onClick, isOnline }: Chat
                 {chat.name}
               </h3>
               {chat.isVerified && (
-                <VerifiedBadge size="xs" />
+                <VerifiedBadge size="xs" variant={chat.isPro ? 'pro' : 'standard'} />
               )}
               {isFavorite && (
                 <Star className="h-3 w-3 text-amber-400 fill-amber-400 flex-shrink-0" />

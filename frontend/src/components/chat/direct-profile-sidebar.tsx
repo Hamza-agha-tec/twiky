@@ -10,6 +10,7 @@ interface DirectProfileSidebarProps {
   chatOverride?: {
     avatarUrl?: string | null
     isOnline?: boolean
+    isPro?: boolean
     isVerified?: boolean
     name: string
     subtitle?: string | null
@@ -26,6 +27,7 @@ export function DirectProfileSidebar({ activeChat, chatOverride, onClose }: Dire
     name,
     role: 'Member',
     status: chatOverride?.subtitle ?? (chatOverride?.isOnline ? 'Online now' : 'Direct chat'),
+    isPro: chatOverride?.isPro ?? false,
     isVerified: chatOverride?.isVerified ?? false,
   })
   const directPosts: FeedPost[] = [

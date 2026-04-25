@@ -182,6 +182,7 @@ export interface FeedDirectConversationTarget {
   id: string
   initialMessages?: ChatMessage[]
   isOnline?: boolean
+  isPro?: boolean
   isVerified?: boolean
   name: string
   status: string
@@ -392,6 +393,7 @@ export function buildStandaloneFeedMemberProfile({
   role = 'Member',
   status,
   isVerified = false,
+  isPro = false,
   followers,
   following,
   posts,
@@ -403,6 +405,7 @@ export function buildStandaloneFeedMemberProfile({
   role?: string
   status?: string
   isVerified?: boolean
+  isPro?: boolean
   followers?: number
   following?: number
   posts?: number
@@ -431,6 +434,7 @@ export function buildStandaloneFeedMemberProfile({
     following: following ?? defaults.following,
     posts: posts ?? defaults.posts,
     isVerified,
+    isPro,
     websiteUrl: null,
     xUrl: null,
   }
@@ -684,7 +688,7 @@ function MessageRow({
       id: realUser?.id ?? memberProfile.id,
       is_verified: realUser?.is_verified,
       isVerified: memberProfile.isVerified,
-      sub_plan: realUser?.sub_plan,
+      sub_plan: realUser?.sub_plan ?? (memberProfile.isPro ? 'PRO' : null),
     }),
   }
 
@@ -733,7 +737,7 @@ function MessageRow({
                   className={cn('inline-flex items-center gap-1 text-[14px] font-semibold leading-none hover:underline', roleColor)}
                 >
                   {post.author}
-                  {resolvedProfile.isVerified ? <VerifiedBadge size="xs" variant={isProPlan(realUser?.sub_plan) ? 'pro' : 'standard'} /> : null}
+                  {resolvedProfile.isVerified ? <VerifiedBadge size="xs" variant={isProPlan(realUser?.sub_plan) || memberProfile.isPro ? 'pro' : 'standard'} /> : null}
                 </button>
                 <RoleBadge role={post.role} />
                 <span className="text-[11px] text-muted-foreground">{post.time}</span>
@@ -1146,7 +1150,7 @@ export function FeedMemberProfileView({
         id: realUser?.id ?? memberProfile.id,
         is_verified: realUser?.is_verified,
         isVerified: memberProfile.isVerified,
-        sub_plan: realUser?.sub_plan,
+        sub_plan: realUser?.sub_plan ?? (memberProfile.isPro ? 'PRO' : null),
       },
       {
         email: currentUser?.email ?? authUser?.email,
@@ -1159,7 +1163,7 @@ export function FeedMemberProfileView({
 
   const bannerImage = realUser?.banner ?? null
   const avatarImage = resolvedProfile.avatarUrl ?? null
-  const isProfilePro = isProPlan(realUser?.sub_plan)
+  const isProfilePro = isProPlan(realUser?.sub_plan) || Boolean(memberProfile.isPro)
 
   const fallbackPosts = posts.slice(0, 3)
   const profilePosts = memberProfile.id
@@ -1260,7 +1264,7 @@ export function FeedMemberProfileView({
               <button
                 key={u.id}
                 type="button"
-                onClick={() => setViewingUser(buildStandaloneFeedMemberProfile({ id: u.id, avatarUrl: u.avatar_url, name: u.username, handle: u.username, isVerified: u.is_verified }))}
+                onClick={() => setViewingUser(buildStandaloneFeedMemberProfile({ id: u.id, avatarUrl: u.avatar_url, name: u.username, handle: u.username, isVerified: u.is_verified, isPro: isProPlan(u.sub_plan) }))}
                 className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-accent"
               >
                 <div className="h-9 w-9 flex-shrink-0 overflow-hidden rounded-full bg-muted">
@@ -1678,21 +1682,23 @@ function FeedProfileRow({
       onContextMenu={onContextMenu}
     >
       <div className="mt-0.5 w-10 flex-shrink-0">
-        <button
-          type="button"
-          onClick={onOpenProfile}
-          className="flex h-10 w-10 cursor-pointer overflow-hidden rounded-full ring-2 ring-background focus:outline-none"
-          aria-label={`Open ${post.author} profile`}
-        >
-          <img
-            src={displayAvatar ?? fallbackAvatar}
-            alt={post.author}
-            className="h-full w-full object-cover"
-            onError={(e) => {
-              if (!e.currentTarget.src.endsWith(fallbackAvatar)) e.currentTarget.src = fallbackAvatar
-            }}
-          />
-        </button>
+        {!isGrouped ? (
+          <button
+            type="button"
+            onClick={onOpenProfile}
+            className="flex h-10 w-10 cursor-pointer overflow-hidden rounded-full ring-2 ring-background focus:outline-none"
+            aria-label={`Open ${post.author} profile`}
+          >
+            <img
+              src={displayAvatar ?? fallbackAvatar}
+              alt={post.author}
+              className="h-full w-full object-cover"
+              onError={(e) => {
+                if (!e.currentTarget.src.endsWith(fallbackAvatar)) e.currentTarget.src = fallbackAvatar
+              }}
+            />
+          </button>
+        ) : null}
       </div>
 
       <div className="min-w-0 flex-1">
@@ -2089,10 +2095,12 @@ export function ChannelFeed({
             username: memberProfile.name,
             avatar_url: memberProfile.avatarUrl,
             is_verified: memberProfile.isVerified ?? false,
+            sub_plan: memberProfile.isPro ? 'PRO' : null,
           },
         },
       ],
       isOnline: true,
+      isPro: memberProfile.isPro ?? false,
       isVerified: memberProfile.isVerified ?? false,
       name: memberProfile.name,
       status: memberProfile.status,

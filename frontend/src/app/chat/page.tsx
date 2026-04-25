@@ -298,7 +298,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
               emoji: reaction.emoji,
               count: users.length,
               mine: users.includes(profile?.id ?? ''),
-              users: users.map((id) => ({
+              users: users.map((id: string) => ({
                 id,
                 name: groupMemberNameByUserId.get(id) ?? 'Unknown',
               })),
@@ -312,7 +312,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       author: isSystem ? 'System' : (msg.sender?.fullname ?? msg.sender?.full_name ?? msg.sender?.username ?? 'Unknown'),
       authorId: msg.sender_id,
       authorAvatarUrl: isSystem ? null : (msg.sender?.avatar_url ?? null),
-      authorIsVerified: msg.sender?.sub_plan === 'PRO' || msg.sender?.sub_plan === 'GEEK',
+      authorIsVerified: Boolean(msg.sender?.is_verified || msg.sender?.sub_plan === 'PRO' || msg.sender?.sub_plan === 'GEEK'),
       authorIsPro: msg.sender?.sub_plan === 'PRO' || msg.sender?.sub_plan === 'GEEK',
       isSystem,
       role: isSystem ? 'Automation' : (groupMemberRoleByUserId.get(msg.sender_id) ?? 'Member'),
@@ -521,6 +521,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             unread: unreadCounts[chat.id] ?? 0,
             isGroup: false,
             isOnline: chat.isOnline ?? false,
+            isPro: chat.isPro ?? false,
             isVerified: chat.isVerified ?? false,
           }
         })
@@ -604,6 +605,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           id: senderId,
           username: profile?.username ?? 'You',
           avatar_url: userAvatar ?? null,
+          sub_plan: profile?.sub_plan ?? null,
         },
       }
 
@@ -612,7 +614,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         [conversationId]: [nextMessage, ...(prev[conversationId] ?? [])],
       }))
     },
-    [profile?.id, profile?.username, syntheticDirectMessages, userAvatar],
+    [profile?.id, profile?.sub_plan, profile?.username, syntheticDirectMessages, userAvatar],
   )
 
   const activeDirectMessages = activeSyntheticChat
@@ -732,6 +734,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             ? {
                 avatarUrl: activeSyntheticChat.avatarUrl,
                 isOnline: activeSyntheticChat.isOnline,
+                isPro: activeSyntheticChat.isPro,
                 isVerified: activeSyntheticChat.isVerified,
                 name: activeSyntheticChat.name,
                 subtitle: activeSyntheticChat.status,
@@ -936,6 +939,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                           ? {
                               avatarUrl: activeSyntheticChat.avatarUrl,
                               isOnline: activeSyntheticChat.isOnline,
+                              isPro: activeSyntheticChat.isPro,
                               isVerified: activeSyntheticChat.isVerified,
                               name: activeSyntheticChat.name,
                               subtitle: activeSyntheticChat.status,

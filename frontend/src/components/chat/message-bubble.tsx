@@ -257,7 +257,7 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
         {/* Timestamp + Read Status */}
         <div className="flex items-center gap-1 mt-1 px-1 text-[11px] text-muted-foreground">
           {isMounted && <span>{format(new Date(message.timestamp), 'HH:mm')}</span>}
-          {message.senderIsVerified ? <VerifiedBadge size="xs" /> : null}
+          {message.senderIsVerified ? <VerifiedBadge size="xs" variant={message.senderIsPro ? 'pro' : 'standard'} /> : null}
           {message.isOwn && (
             <>
               {message.isRead ? (

@@ -13,13 +13,14 @@ import { ChatMessage } from '@/hooks/use-messaging';
 import { useProfile } from '@/hooks/use-user';
 import { useChatThemeContext } from '@/context/ChatThemeContext';
 import { useAuth } from '@/context/AuthContext';
-import { VerifiedBadge, isVerifiedAccountIdentity } from '@/components/chat/verified-badge';
+import { VerifiedBadge, isProPlan, isVerifiedAccountIdentity } from '@/components/chat/verified-badge';
 
 interface ChatWindowProps {
   activeChat: string;
   chatOverride?: {
     avatarUrl?: string | null;
     isOnline?: boolean;
+    isPro?: boolean;
     isVerified?: boolean;
     name: string;
     subtitle?: string | null;
@@ -45,34 +46,42 @@ function getDisabledConversationMetadata(): { is_group: boolean; participants: u
   return null;
 }
 
-function toUiMessage(m: ChatMessage, myId: string, myIsVerified: boolean): Message {
+function toUiMessage(
+  m: ChatMessage,
+  currentIdentity: { id?: string | null; isVerified: boolean; sub_plan?: string | null },
+): Message {
   // Group reactions: [{ userId, emoji }] → [{ emoji, count, reactedByMe }]
   const reactionMap: Record<string, { count: number; reactedByMe: boolean }> = {};
   for (const r of m.reactions ?? []) {
     if (!reactionMap[r.emoji]) reactionMap[r.emoji] = { count: 0, reactedByMe: false };
     reactionMap[r.emoji].count += 1;
-    if (r.userId === myId) reactionMap[r.emoji].reactedByMe = true;
+    if (r.userId === currentIdentity.id) reactionMap[r.emoji].reactedByMe = true;
   }
   const reactions = Object.entries(reactionMap).map(([emoji, { count, reactedByMe }]) => ({ emoji, count, reactedByMe }));
-  const myReaction = (m.reactions ?? []).find((r) => r.userId === myId)?.emoji ?? null;
+  const myReaction = (m.reactions ?? []).find((r) => r.userId === currentIdentity.id)?.emoji ?? null;
+
+  const senderIsPro = isProPlan(m.sender.sub_plan) ||
+    Boolean(m.sender.id === currentIdentity.id && isProPlan(currentIdentity.sub_plan));
 
   return {
     id: m.id,
     senderId: m.sender_id,
     senderName: m.sender.username,
+    senderIsPro,
     senderIsVerified: isVerifiedAccountIdentity(
       {
         email: m.sender.email,
         id: m.sender.id,
         is_verified: m.sender.is_verified,
+        sub_plan: m.sender.sub_plan,
       },
-      { id: myId, isVerified: myIsVerified },
+      currentIdentity,
     ),
     avatar: m.sender.avatar_url ?? undefined,
     content: m.file_url ?? m.content ?? '',
     type: (m.type as Message['type']) ?? 'text',
     timestamp: m.created_at,
-    isOwn: m.sender_id === myId,
+    isOwn: m.sender_id === currentIdentity.id,
     isRead: m.status === 'read',
     isDelivered: m.status === 'delivered' || m.status === 'read',
     reactions: reactions.length ? reactions : undefined,
@@ -92,11 +101,17 @@ export function ChatWindow({ chatOverride, messages: providedMessages = [], onSe
     email: profile?.email ?? user?.email,
     id: profile?.id,
     is_verified: profile?.is_verified,
+    sub_plan: profile?.sub_plan,
   });
+  const currentIdentity = {
+    id: profile?.id,
+    isVerified: currentIsVerified,
+    sub_plan: profile?.sub_plan,
+  }
   const messages = providedMessages
     .slice()
     .reverse()
-    .map((m) => toUiMessage(m, profile?.id ?? '', currentIsVerified));
+    .map((m) => toUiMessage(m, currentIdentity));
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const initialScrollDone = useRef(false);
   const [replyTo, setReplyTo] = useState<ReplyTo | null>(null);
@@ -180,7 +195,7 @@ export function ChatWindow({ chatOverride, messages: providedMessages = [], onSe
           <div className="flex-1 min-w-0">
             <div className="flex min-w-0 items-center gap-1.5">
               <h2 className="truncate text-sm font-semibold leading-tight text-foreground">{chatName}</h2>
-              {chatOverride?.isVerified ? <VerifiedBadge size="sm" /> : null}
+              {chatOverride?.isVerified ? <VerifiedBadge size="sm" variant={chatOverride.isPro ? 'pro' : 'standard'} /> : null}
             </div>
             {conv?.is_group ? (
               <p className="text-xs text-muted-foreground">

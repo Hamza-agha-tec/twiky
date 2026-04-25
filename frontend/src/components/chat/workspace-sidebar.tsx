@@ -350,7 +350,7 @@ export function WorkspaceSidebar({
                           <span className="truncate text-[12px] font-medium text-foreground">
                             {chat.name}
                           </span>
-                          {chat.isVerified ? <VerifiedBadge size="xs" /> : null}
+                          {chat.isVerified ? <VerifiedBadge size="xs" variant={chat.isPro ? 'pro' : 'standard'} /> : null}
                         </span>
                         <span className="text-[10px] text-muted-foreground">
                           {chat.timestamp
