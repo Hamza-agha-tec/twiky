@@ -18,6 +18,8 @@ import {
   Crown,
   Heart,
   ImagePlus,
+  Mic,
+  Square,
   MessageSquare,
   MessageCircle,
   MoreHorizontal,
@@ -39,6 +41,7 @@ import {
 } from 'lucide-react'
 
 import { FeedPostContextMenu } from '@/components/chat/feed-post-context-menu'
+import { VoiceMessagePlayer } from '@/components/chat/voice-message-player'
 import { VerifiedBadge, isVerifiedAccountIdentity, isProPlan } from '@/components/chat/verified-badge'
 import type { MockChannelGroup, WorkspaceChannel } from '@/components/chat/channels-panel'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -72,10 +75,30 @@ function isProbablyImageUrl(url: string): boolean {
   }
 }
 
+function isProbablyAudioUrl(url: string): boolean {
+  try {
+    const pathname = new URL(url, typeof window !== 'undefined' ? window.location.origin : 'http://localhost')
+      .pathname.toLowerCase()
+    return /\.(wav|mp3|m4a|aac|ogg|webm)$/i.test(pathname)
+  } catch {
+    return /\.(wav|mp3|m4a|aac|ogg|webm)(\?|$)/i.test(url)
+  }
+}
+
+function formatDuration(seconds?: number | null) {
+  if (seconds === null || seconds === undefined) return null
+  if (!Number.isFinite(seconds)) return null
+  const total = Math.max(0, Math.floor(seconds))
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
 interface FeedReaction {
   emoji: string
   count: number
   mine: boolean
+  users?: Array<{ id: string; name: string }>
 }
 
 interface MentionOption {
@@ -106,6 +129,9 @@ export interface FeedPost {
   isOwn?: boolean
   media?: FeedMedia[]
   imageUrl?: string
+  attachmentType?: 'voice' | 'image' | 'file'
+  attachmentMime?: string | null
+  attachmentDuration?: number | null
   pinned?: boolean
   reactions: FeedReaction[]
   replyCount: number
@@ -619,6 +645,184 @@ function HoverActionBar({
   )
 }
 
+function ReactionsBar({
+  reactions,
+  onReact,
+}: {
+  reactions: FeedReaction[]
+  onReact: (emoji: string) => void
+}) {
+  const { data: profile } = useProfile()
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [activeEmoji, setActiveEmoji] = useState<string>('all')
+
+  const totalReactions = reactions.reduce((total, reaction) => total + reaction.count, 0)
+  const selectedUsers = activeEmoji === 'all'
+    ? reactions.flatMap((reaction) => (reaction.users ?? []).map((entry) => ({ emoji: reaction.emoji, ...entry })))
+    : (reactions.find((reaction) => reaction.emoji === activeEmoji)?.users ?? []).map((entry) => ({ emoji: activeEmoji, ...entry }))
+
+  useEffect(() => {
+    if (!detailsOpen) return
+    const onEsc = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setDetailsOpen(false)
+    }
+    window.addEventListener('keydown', onEsc)
+    return () => window.removeEventListener('keydown', onEsc)
+  }, [detailsOpen])
+
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {reactions.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {reactions.map((reaction) => (
+              <button
+                key={reaction.emoji}
+                type="button"
+                onClick={() => onReact(reaction.emoji)}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[12px] font-medium transition-colors',
+                  reaction.mine
+                    ? 'border-primary/40 bg-primary/10 text-primary hover:bg-primary/15'
+                    : 'border-border bg-background text-foreground hover:border-primary/30 hover:bg-primary/5',
+                )}
+                title={reaction.mine ? 'Click to remove your reaction' : 'Click to react'}
+              >
+                {reaction.emoji}
+                <span className="text-[10px] text-muted-foreground">{reaction.count}</span>
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setDetailsOpen(true)}
+              className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-semibold text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+            >
+              View all
+            </button>
+          </div>
+        ) : null}
+
+        <EmojiPickerPopover
+          onSelect={onReact}
+          trigger={
+            <button
+              type="button"
+              className="rounded-full border border-dashed border-border bg-background px-2.5 py-1 text-[12px] font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
+            >
+              {reactions.length > 0 ? 'Add reaction' : 'React'}
+            </button>
+          }
+        />
+      </div>
+
+      <AnimatePresence>
+        {detailsOpen ? (
+          <motion.div
+            className="fixed inset-0 z-[70] flex items-end justify-center bg-black/35 p-4 sm:items-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setDetailsOpen(false)}
+          >
+            <motion.div
+              className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+              initial={{ opacity: 0, y: 16, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 16, scale: 0.98 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                <div>
+                  <p className="text-[13px] font-semibold text-foreground">Reactions</p>
+                  <p className="text-[11px] text-muted-foreground">{totalReactions} total</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDetailsOpen(false)}
+                  className="rounded-lg p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  aria-label="Close reactions modal"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="border-b border-border px-4 py-2.5">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setActiveEmoji('all')}
+                    className={cn(
+                      'rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors',
+                      activeEmoji === 'all'
+                        ? 'border-primary/30 bg-primary/10 text-primary'
+                        : 'border-border bg-background text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    All
+                  </button>
+                  {reactions.map((reaction) => (
+                    <button
+                      key={reaction.emoji}
+                      type="button"
+                      onClick={() => setActiveEmoji(reaction.emoji)}
+                      className={cn(
+                        'rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors',
+                        activeEmoji === reaction.emoji
+                          ? 'border-primary/30 bg-primary/10 text-primary'
+                          : 'border-border bg-background text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      {reaction.emoji} {reaction.count}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2">
+                  <EmojiPickerPopover
+                    onSelect={onReact}
+                    trigger={
+                      <button
+                        type="button"
+                        className="rounded-full border border-dashed border-border bg-background px-2.5 py-1 text-[11px] font-semibold text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+                      >
+                        Add more reactions
+                      </button>
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="max-h-[45vh] overflow-y-auto px-4 py-3">
+                {selectedUsers.length === 0 ? (
+                  <p className="text-[12px] text-muted-foreground">No users found for this filter.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {selectedUsers.map((entry, index) => (
+                      <div key={`${entry.emoji}-${entry.name}-${index}`} className="flex items-center gap-2 rounded-xl bg-muted/50 px-3 py-2">
+                        <span className="text-[15px]">{entry.emoji}</span>
+                        <span className="flex-1 text-[12px] font-medium text-foreground">{entry.name}</span>
+                        {entry.id === profile?.id ? (
+                          <button
+                            type="button"
+                            onClick={() => onReact(entry.emoji)}
+                            className="rounded-lg border border-border bg-background px-2 py-1 text-[10px] font-semibold text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+                          >
+                            Remove
+                          </button>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </>
+  )
+}
+
 
 function MessageRow({
   authorAvatarUrl,
@@ -748,7 +952,9 @@ function MessageRow({
             {(post.media?.length || post.imageUrl) ? (
               <div className={cn('mt-2 flex flex-wrap gap-2')}>
                 {post.imageUrl ? (
-                  isProbablyImageUrl(post.imageUrl) ? (
+                  post.attachmentType === 'voice' || isProbablyAudioUrl(post.imageUrl) ? (
+                    <VoiceMessagePlayer src={post.imageUrl} durationSeconds={post.attachmentDuration ?? undefined} />
+                  ) : isProbablyImageUrl(post.imageUrl) ? (
                     <img
                       src={post.imageUrl}
                       alt="Uploaded"
@@ -788,31 +994,7 @@ function MessageRow({
             ) : null}
 
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              {post.reactions.map((r) => (
-                <motion.button
-                  key={r.emoji}
-                  whileTap={{ scale: 0.85 }}
-                  onClick={() => onReact(r.emoji)}
-                  className={cn(
-                    'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[13px] transition-colors',
-                    r.mine
-                      ? 'border-primary/40 bg-primary/10 text-primary'
-                      : 'border-border bg-background hover:border-primary/30 hover:bg-primary/5',
-                  )}
-                >
-                  {r.emoji}
-                  <span className="text-[11px] font-semibold">{r.count}</span>
-                </motion.button>
-              ))}
-
-              <EmojiPickerPopover
-                onSelect={onReact}
-                trigger={
-                  <button className="flex items-center gap-1 rounded-full border border-dashed border-border px-2.5 py-1 text-[12px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:border-primary/30 hover:bg-primary/5 hover:text-primary">
-                    <SmilePlus className="h-3.5 w-3.5" />
-                  </button>
-                }
-              />
+              <ReactionsBar reactions={post.reactions} onReact={onReact} />
 
               {post.replyCount > 0 ? (
                 <button
@@ -1620,7 +1802,9 @@ function FeedProfileRow({
         {(post.media?.length || post.imageUrl) ? (
           <div className="mt-2 flex flex-wrap gap-2">
             {post.imageUrl ? (
-              isProbablyImageUrl(post.imageUrl) ? (
+              post.attachmentType === 'voice' || isProbablyAudioUrl(post.imageUrl) ? (
+                <VoiceMessagePlayer src={post.imageUrl} durationSeconds={post.attachmentDuration ?? undefined} />
+              ) : isProbablyImageUrl(post.imageUrl) ? (
                 <img
                   src={post.imageUrl}
                   alt="Uploaded"
@@ -1660,31 +1844,7 @@ function FeedProfileRow({
         ) : null}
 
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-          {post.reactions.map((r) => (
-            <motion.button
-              key={r.emoji}
-              whileTap={{ scale: 0.85 }}
-              onClick={() => onReact(r.emoji)}
-              className={cn(
-                'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[13px] transition-colors',
-                r.mine
-                  ? 'border-primary/40 bg-primary/10 text-primary'
-                  : 'border-border bg-background hover:border-primary/30 hover:bg-primary/5',
-              )}
-            >
-              {r.emoji}
-              <span className="text-[11px] font-semibold">{r.count}</span>
-            </motion.button>
-          ))}
-
-          <EmojiPickerPopover
-            onSelect={onReact}
-            trigger={
-              <button className="flex items-center gap-1 rounded-full border border-dashed border-border px-2.5 py-1 text-[12px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:border-primary/30 hover:bg-primary/5 hover:text-primary">
-                <SmilePlus className="h-3.5 w-3.5" />
-              </button>
-            }
-          />
+          <ReactionsBar reactions={post.reactions} onReact={onReact} />
 
           {post.replyCount > 0 ? (
             <button
@@ -1725,19 +1885,30 @@ export function ChannelFeed({
   onProfileSidebarContentChange,
   onProfileCloseRequestChange,
   onCloseFeedRequest,
+  onToggleReaction,
 }: {
   channel: WorkspaceChannel
   group: MockChannelGroup
   members?: GroupMember[]
   myAvatarUrl?: string | null
   postsOverride?: FeedPost[]
-  onSendPost?: (input: { content: string; fileUrl?: string; replyToId?: string; entityMentions?: GroupMessageMention[] }) => Promise<void>
+  onSendPost?: (input: {
+    content: string
+    fileUrl?: string
+    replyToId?: string
+    entityMentions?: GroupMessageMention[]
+    type?: 'voice' | 'image' | 'file'
+    mime?: string
+    duration?: number
+    size?: number
+  }) => Promise<void>
   sendingPost?: boolean
   onOpenDirectConversation?: (conversation: string | FeedDirectConversationTarget) => void
   onProfilePanelWidthChange?: (width: number) => void
   onProfileSidebarContentChange?: (content: ReactNode | null) => void
   onProfileCloseRequestChange?: (closeFn: (() => void) | null) => void
   onCloseFeedRequest?: () => void
+  onToggleReaction?: (postId: string, emoji: string) => Promise<void> | void
 }) {
   const [postsByGroup, setPostsByGroup] = useState<Record<string, FeedPost[]>>({})
   const [drafts, setDrafts] = useState<Record<string, string>>({})
@@ -1771,6 +1942,10 @@ export function ChannelFeed({
   const [postUploading, setPostUploading] = useState(false)
   const [pendingImageFile, setPendingImageFile] = useState<File | null>(null)
   const [pendingGenericFile, setPendingGenericFile] = useState<File | null>(null)
+  const [voiceRecording, setVoiceRecording] = useState(false)
+  const [voiceUploading, setVoiceUploading] = useState(false)
+  const [voiceSeconds, setVoiceSeconds] = useState(0)
+  const voiceStopRef = useRef<(() => Promise<void>) | null>(null)
 
   const posts = postsByGroup[group.id] ?? postsOverride ?? buildFallbackPosts(channel, group)
   const draft = drafts[group.id] ?? ''
@@ -2153,6 +2328,149 @@ export function ChannelFeed({
     setReplyingTo(null)
   }
 
+  function isSafari() {
+    if (typeof navigator === 'undefined') return false
+    const ua = navigator.userAgent.toLowerCase()
+    return ua.includes('safari') && !ua.includes('chrome') && !ua.includes('chromium') && !ua.includes('android')
+  }
+
+  function encodeWav(samples: Float32Array[], sampleRate: number) {
+    const totalLength = samples.reduce((t, arr) => t + arr.length, 0)
+    const buffer = new ArrayBuffer(44 + totalLength * 2)
+    const view = new DataView(buffer)
+    let offset = 0
+
+    function writeString(str: string) {
+      for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i))
+      offset += str.length
+    }
+
+    writeString('RIFF')
+    view.setUint32(offset, 36 + totalLength * 2, true); offset += 4
+    writeString('WAVE')
+    writeString('fmt ')
+    view.setUint32(offset, 16, true); offset += 4 // PCM
+    view.setUint16(offset, 1, true); offset += 2 // PCM
+    view.setUint16(offset, 1, true); offset += 2 // mono
+    view.setUint32(offset, sampleRate, true); offset += 4
+    view.setUint32(offset, sampleRate * 2, true); offset += 4
+    view.setUint16(offset, 2, true); offset += 2
+    view.setUint16(offset, 16, true); offset += 2
+    writeString('data')
+    view.setUint32(offset, totalLength * 2, true); offset += 4
+
+    let writeIndex = offset
+    for (const chunk of samples) {
+      for (let i = 0; i < chunk.length; i++) {
+        const s = Math.max(-1, Math.min(1, chunk[i]))
+        view.setInt16(writeIndex, s < 0 ? s * 0x8000 : s * 0x7fff, true)
+        writeIndex += 2
+      }
+    }
+
+    return new Blob([buffer], { type: 'audio/wav' })
+  }
+
+  async function startVoiceRecording() {
+    if (voiceRecording || voiceUploading) return
+
+    setContextMenu(null)
+    setSelectedProfile(null)
+    setReplyingTo(null)
+    if (draftImage) clearQueuedImage()
+    if (pendingGenericFile) clearQueuedGeneric()
+    if (!useBackendUpload && draftAttachment) setAttachment(undefined)
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const startedAt = Date.now()
+    setVoiceSeconds(0)
+    setVoiceRecording(true)
+
+    const timer = window.setInterval(() => {
+      setVoiceSeconds(Math.floor((Date.now() - startedAt) / 1000))
+    }, 250)
+
+    if (!isSafari() && typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
+      const chunks: BlobPart[] = []
+      recorder.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data) }
+      recorder.start()
+
+      voiceStopRef.current = async () => {
+        await new Promise<void>((resolve) => {
+          recorder.onstop = () => resolve()
+          recorder.stop()
+        })
+        window.clearInterval(timer)
+        stream.getTracks().forEach((t) => t.stop())
+
+        const blob = new Blob(chunks, { type: 'audio/webm' })
+        const duration = Math.max(0, Math.floor((Date.now() - startedAt) / 1000))
+        await uploadAndSendVoice(blob, 'audio/webm', duration)
+      }
+      return
+    }
+
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+    const ctx: AudioContext = new AudioCtx()
+    const source = ctx.createMediaStreamSource(stream)
+    const processor = ctx.createScriptProcessor(4096, 1, 1)
+    const chunks: Float32Array[] = []
+    processor.onaudioprocess = (e) => {
+      const input = e.inputBuffer.getChannelData(0)
+      chunks.push(new Float32Array(input))
+    }
+    source.connect(processor)
+    processor.connect(ctx.destination)
+
+    voiceStopRef.current = async () => {
+      window.clearInterval(timer)
+      setVoiceRecording(false)
+      try {
+        processor.disconnect()
+        source.disconnect()
+      } catch {}
+      try { ctx.close() } catch {}
+      stream.getTracks().forEach((t) => t.stop())
+
+      const duration = Math.max(0, Math.floor((Date.now() - startedAt) / 1000))
+      const wav = encodeWav(chunks, ctx.sampleRate || 44100)
+      await uploadAndSendVoice(wav, 'audio/wav', duration)
+    }
+  }
+
+  async function stopVoiceRecording() {
+    if (!voiceRecording) return
+    const stop = voiceStopRef.current
+    voiceStopRef.current = null
+    setVoiceRecording(false)
+    if (!stop) return
+    await stop()
+  }
+
+  async function uploadAndSendVoice(blob: Blob, mime: string, durationSeconds: number) {
+    if (!useBackendUpload || !onSendPost) return
+    setVoiceUploading(true)
+    try {
+      const ext = mime.includes('wav') ? 'wav' : 'webm'
+      const file = new File([blob], `voice-${Date.now()}.${ext}`, { type: mime })
+      const { publicUrl } = await filesApi.uploadGroupExtra(group.id, file)
+      await onSendPost({
+        content: '',
+        fileUrl: publicUrl,
+        entityMentions: [],
+        replyToId: undefined,
+        type: 'voice',
+        mime,
+        duration: durationSeconds,
+        size: file.size,
+      })
+    } finally {
+      setVoiceUploading(false)
+      setVoiceSeconds(0)
+    }
+  }
+
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (showMentionMenu) {
       if (e.key === 'ArrowDown') {
@@ -2186,6 +2504,10 @@ export function ChannelFeed({
   }
 
   function handleReact(postId: string, emoji: string) {
+    if (onSendPost && onToggleReaction) {
+      void onToggleReaction(postId, emoji)
+      return
+    }
     updatePosts((current) =>
       current.map((post) => {
         if (post.id !== postId) return post
@@ -2389,6 +2711,20 @@ export function ChannelFeed({
                   type="button"
                   variant="ghost"
                   size="icon"
+                  disabled={postUploading || sendingPost || voiceUploading}
+                  className={cn(
+                    'h-8 w-8 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground',
+                    voiceRecording && 'bg-primary/10 text-primary',
+                  )}
+                  onClick={() => { voiceRecording ? void stopVoiceRecording() : void startVoiceRecording() }}
+                  title={voiceRecording ? 'Stop recording' : 'Record voice'}
+                >
+                  {voiceRecording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
                   className={cn(
                     'h-8 w-8 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground',
                     (useBackendUpload ? pendingGenericFile : draftAttachment) && 'bg-primary/10 text-primary',
@@ -2409,6 +2745,21 @@ export function ChannelFeed({
 
               {/* Text input */}
               <div className="relative flex-1">
+                {voiceRecording ? (
+                  <div className="mb-2 flex items-center justify-between rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-[11px]">
+                    <div className="flex items-center gap-2 text-primary">
+                      <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
+                      Recording… {voiceSeconds}s
+                    </div>
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-foreground"
+                      onClick={() => void stopVoiceRecording()}
+                    >
+                      Stop
+                    </button>
+                  </div>
+                ) : null}
                 {showMentionMenu ? (
                   <div className="absolute bottom-full left-0 z-30 mb-2 w-[min(22rem,calc(100vw-4rem))] overflow-hidden rounded-xl border border-border bg-popover p-1 shadow-xl">
                     {filteredMentionOptions.map((option, index) => {

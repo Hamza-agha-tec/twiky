@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsUUID, IsArray, ValidateNested } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, IsUUID, IsArray, ValidateNested, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class EntityMentionDto {
@@ -10,12 +10,32 @@ export class EntityMentionDto {
 }
 
 export class SendGroupMessageDto {
+    @IsOptional()
     @IsString()
-    content: string;
+    content?: string;
 
     @IsOptional()
     @IsString()
     fileUrl?: string;
+
+    @IsOptional()
+    @IsIn(['voice', 'image', 'file'])
+    type?: 'voice' | 'image' | 'file';
+
+    @IsOptional()
+    @IsString()
+    mime?: string;
+
+    @IsOptional()
+    @IsInt()
+    @Min(0)
+    duration?: number;
+
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    @Min(0)
+    size?: number;
 
     @IsOptional()
     @IsArray()

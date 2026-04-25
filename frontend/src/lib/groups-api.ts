@@ -55,6 +55,10 @@ export interface GroupMessage {
   sender_id: string;
   content: string;
   file_url: string | null;
+  type?: 'voice' | 'image' | 'file' | null;
+  mime?: string | null;
+  duration?: number | null;
+  size?: number | null;
   reply_to_id: string | null;
   created_at: string;
   sender?: { id: string; email?: string | null; fullname?: string | null; full_name?: string | null; username: string | null; avatar_url: string | null; sub_plan?: 'FREE' | 'PRO' | 'GEEK' | null };
@@ -96,10 +100,25 @@ export const groupsApi = {
   getGroupMessages: (groupId: string) =>
     authedFetch<GroupMessage[]>(`/groups/${groupId}/messages`),
 
-  sendGroupMessage: (groupId: string, data: { content: string; fileUrl?: string; replyToId?: string | null; entityMentions?: GroupMessageMention[] }) =>
+  sendGroupMessage: (groupId: string, data: {
+    content?: string;
+    fileUrl?: string;
+    replyToId?: string | null;
+    entityMentions?: GroupMessageMention[];
+    type?: 'voice' | 'image' | 'file';
+    mime?: string;
+    duration?: number;
+    size?: number;
+  }) =>
     authedFetch<GroupMessage>(`/groups/${groupId}/messages`, {
       method: 'POST',
       body: JSON.stringify(data),
+    }),
+
+  toggleGroupMessageReaction: (messageId: string, emoji: string) =>
+    authedFetch(`/groups/messages/${messageId}/reactions`, {
+      method: 'POST',
+      body: JSON.stringify({ emoji }),
     }),
 
   deleteGroup: (groupId: string) =>

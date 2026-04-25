@@ -37,6 +37,7 @@ import {
 import type { CreateEntityValues } from '@/components/chat/create-entity-dialog'
 import { useChannels, useCreateChannel, useUpdateChannel } from '@/hooks/use-channels'
 import { useChannelGroups, useCreateGroup, useGroupMembers, useGroupMessages, backendGroupToMock } from '@/hooks/use-groups'
+import { useToggleGroupMessageReaction } from '@/hooks/use-groups'
 import { groupsApi, type GroupMessage } from '@/lib/groups-api'
 import { useQueryClient } from '@tanstack/react-query'
 import { GROUP_KEYS } from '@/hooks/use-groups'
@@ -257,6 +258,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const createGroup = useCreateGroup(activeChannelId)
   const isRealGroupId = /^[0-9a-f-]{36}$/i.test(activeGroupId)
   const { data: rawMessages } = useGroupMessages(isRealGroupId ? activeGroupId : undefined)
+  const toggleGroupReaction = useToggleGroupMessageReaction(activeGroupId)
   const { data: activeGroupMembers = [] } = useGroupMembers(isRealGroupId ? activeGroupId : undefined)
 
   const groupMessageById = new Map((rawMessages ?? []).map((msg) => [msg.id, msg]))
@@ -264,6 +266,14 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     activeGroupMembers
       .filter((member) => member.user)
       .map((member) => [member.user.id, getChannelRoleLabel(member.role)]),
+  )
+  const groupMemberNameByUserId = new Map(
+    activeGroupMembers
+      .filter((member) => member.user)
+      .map((member) => [
+        member.user.id,
+        member.user.fullname ?? member.user.full_name ?? member.user.username ?? 'Unknown',
+      ]),
   )
   const groupReplyCounts = (rawMessages ?? []).reduce((counts, msg) => {
     if (!msg.reply_to_id) return counts
@@ -275,6 +285,26 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     const replySource = msg.reply_to_id ? groupMessageById.get(msg.reply_to_id) : null
     const replyBody = replySource?.content?.trim()
       || (replySource?.file_url ? 'Attachment' : '')
+
+    const normalizedReactions = Array.isArray((msg as any).reactions)
+      ? (msg as any).reactions
+          .filter((reaction: any) => reaction && typeof reaction.emoji === 'string')
+          .map((reaction: any) => {
+            const users = Array.isArray(reaction.users)
+              ? reaction.users.filter((id: unknown): id is string => typeof id === 'string')
+              : []
+            return {
+              emoji: reaction.emoji,
+              count: users.length,
+              mine: users.includes(profile?.id ?? ''),
+              users: users.map((id) => ({
+                id,
+                name: groupMemberNameByUserId.get(id) ?? 'Unknown',
+              })),
+            }
+          })
+          .filter((reaction: { count: number }) => reaction.count > 0)
+      : []
 
     return {
       id: msg.id,
@@ -289,7 +319,10 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       body: msg.content,
       isOwn: msg.sender_id === profile?.id,
       imageUrl: msg.file_url ?? undefined,
-      reactions: [],
+      attachmentType: (msg as any).type ?? undefined,
+      attachmentMime: (msg as any).mime ?? undefined,
+      attachmentDuration: (msg as any).duration ?? undefined,
+      reactions: normalizedReactions,
       replyCount: groupReplyCounts.get(msg.id) ?? 0,
       replyTo: replySource
         ? {
@@ -771,10 +804,23 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             myAvatarUrl={userAvatar}
             onOpenDirectConversation={openDirectChat}
             postsOverride={isRealGroupId ? groupPosts : undefined}
-            onSendPost={async ({ content, fileUrl, replyToId, entityMentions }) => {
+          onSendPost={async ({ content, fileUrl, replyToId, entityMentions, type, mime, duration, size }) => {
               if (!isRealGroupId) return
-              await groupsApi.sendGroupMessage(activeGroup.id, { content, entityMentions, fileUrl, replyToId: replyToId ?? null })
+            await groupsApi.sendGroupMessage(activeGroup.id, {
+              content,
+              entityMentions,
+              fileUrl,
+              replyToId: replyToId ?? null,
+              type,
+              mime,
+              duration,
+              size,
+            })
               queryClient.invalidateQueries({ queryKey: GROUP_KEYS.messages(activeGroup.id) })
+            }}
+            onToggleReaction={async (postId, emoji) => {
+              if (!isRealGroupId) return
+              await toggleGroupReaction.mutateAsync({ messageId: postId, emoji })
             }}
             onCloseFeedRequest={() => setChannelFeedClosed(true)}
           />
