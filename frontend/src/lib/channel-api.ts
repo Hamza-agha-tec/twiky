@@ -65,4 +65,6 @@ export const channelApi = {
     }),
   getInviteLink: (channelId: string) =>
     authedFetch<ChannelInviteLink>(`/channels/${channelId}/invite-link`),
+  deleteChannel: (channelId: string) =>
+    authedFetch<{ success: boolean }>(`/channels/${channelId}`, { method: 'DELETE' }),
 };

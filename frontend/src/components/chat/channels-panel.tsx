@@ -47,7 +47,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import { useUpdateChannel, useChannelInviteLink } from '@/hooks/use-channels'
+import { useUpdateChannel, useChannelInviteLink, useDeleteChannel } from '@/hooks/use-channels'
 import { useGroupMembers, useDeleteGroup, useGroupJoinRequests, useRespondToGroupJoinRequest, useRequestJoinGroup } from '@/hooks/use-groups'
 import { useSendGroupInvitation } from '@/hooks/use-invitations'
 import { useProfile, useUserFollowers } from '@/hooks/use-user'
@@ -61,6 +61,7 @@ export interface MockChannelGroup {
   description: string
   kind: 'text' | 'voice'
   access_type?: 'PUBLIC' | 'PRIVATE'
+  is_general?: boolean
   membersLabel: string
   pinnedBy: string
   pinnedMessage: string
@@ -109,6 +110,7 @@ interface ChannelsPanelProps {
   channelAvatarUrl?: string | null
   channelBannerUrl?: string | null
   onAssetSave?: (channelId: string, avatar: string | null, banner: string | null) => void
+  onChannelDeleted?: () => void
   onCreateGroup?: (values: CreateEntityValues) => void
   onSelectGroup?: (groupId: string) => void
   visible?: boolean
@@ -359,12 +361,14 @@ function ChannelSettingsSheet({
   open,
   onOpenChange,
   onSave,
+  onDeleted,
   activeGroupId,
 }: {
   channel: WorkspaceChannel
   open: boolean
   onOpenChange: (open: boolean) => void
   onSave?: (avatarUrl: string | null, bannerUrl: string | null) => void
+  onDeleted?: () => void
   activeGroupId?: string
 }) {
   const [name, setName] = useState(channel.label)
@@ -373,7 +377,9 @@ function ChannelSettingsSheet({
   const [notifications, setNotifications] = useState(true)
   const [muteAll, setMuteAll] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
   const updateChannel = useUpdateChannel()
+  const deleteChannel = useDeleteChannel()
   const [bannerUrl, setBannerUrl] = useState<string | null>(channel.bannerUrl ?? null)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(channel.avatarUrl ?? null)
   const [bannerFile, setBannerFile] = useState<File | null>(null)
@@ -399,6 +405,7 @@ function ChannelSettingsSheet({
     setNotifications(true)
     setMuteAll(false)
     setSaveError(null)
+    setDeleteConfirm(false)
     setBannerUrl(channel.bannerUrl ?? null)
     setAvatarUrl(channel.avatarUrl ?? null)
     setBannerFile(null)
@@ -575,13 +582,42 @@ function ChannelSettingsSheet({
                   <p className="text-[11px] text-muted-foreground">Read-only, hidden from sidebar</p>
                 </div>
               </button>
-              <button className="flex w-full items-center gap-2.5 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-left transition-colors hover:bg-destructive/10">
-                <Trash2 className="h-4 w-4 text-destructive" />
-                <div>
-                  <p className="text-[12px] font-medium text-destructive">Delete channel</p>
-                  <p className="text-[11px] text-muted-foreground">Permanently remove all data</p>
+              {deleteConfirm ? (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-destructive">This cannot be undone. All groups and messages will be deleted.</p>
+                  <div className="flex gap-2">
+                    <button
+                      disabled={deleteChannel.isPending}
+                      onClick={() => {
+                        deleteChannel.mutate(channel.id, {
+                          onSuccess: () => { onOpenChange(false); onDeleted?.() },
+                          onError: (e) => setSaveError(e instanceof Error ? e.message : 'Failed to delete'),
+                        })
+                      }}
+                      className="flex-1 rounded-xl bg-destructive px-3 py-2 text-[12px] font-semibold text-destructive-foreground hover:opacity-90 disabled:opacity-50"
+                    >
+                      {deleteChannel.isPending ? 'Deleting…' : 'Confirm delete'}
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirm(false)}
+                      className="flex-1 rounded-xl border border-border px-3 py-2 text-[12px] font-medium hover:bg-accent"
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
-              </button>
+              ) : (
+                <button
+                  onClick={() => setDeleteConfirm(true)}
+                  className="flex w-full items-center gap-2.5 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-left transition-colors hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                  <div>
+                    <p className="text-[12px] font-medium text-destructive">Delete channel</p>
+                    <p className="text-[11px] text-muted-foreground">Permanently remove all data</p>
+                  </div>
+                </button>
+              )}
             </div>
           </div>
 
@@ -962,25 +998,27 @@ function GroupSettingsSheet({
             </div>
           )}
 
-          {/* Danger */}
-          <div className="space-y-3 p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-destructive">
-              Danger zone
-            </p>
-            <button
-              disabled={deleteGroup.isPending}
-              onClick={() => deleteGroup.mutate(group.id, { onSuccess: () => { onOpenChange(false); onDeleted?.() } })}
-              className="flex w-full items-center gap-2.5 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-left transition-colors hover:bg-destructive/10 disabled:opacity-50"
-            >
-              <Trash2 className="h-4 w-4 text-destructive" />
-              <div>
-                <p className="text-[12px] font-medium text-destructive">
-                  {deleteGroup.isPending ? 'Deleting…' : 'Delete group'}
-                </p>
-                <p className="text-[11px] text-muted-foreground">Remove group and all messages</p>
-              </div>
-            </button>
-          </div>
+          {/* Danger — hidden for #general */}
+          {!group.is_general && (
+            <div className="space-y-3 p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-destructive">
+                Danger zone
+              </p>
+              <button
+                disabled={deleteGroup.isPending}
+                onClick={() => deleteGroup.mutate(group.id, { onSuccess: () => { onOpenChange(false); onDeleted?.() } })}
+                className="flex w-full items-center gap-2.5 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-left transition-colors hover:bg-destructive/10 disabled:opacity-50"
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+                <div>
+                  <p className="text-[12px] font-medium text-destructive">
+                    {deleteGroup.isPending ? 'Deleting…' : 'Delete group'}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">Remove group and all messages</p>
+                </div>
+              </button>
+            </div>
+          )}
 
           <div className="p-4">
             <Button className="w-full rounded-xl text-[12px]" onClick={() => onOpenChange(false)}>
@@ -999,6 +1037,7 @@ export function ChannelsPanel({
   channelAvatarUrl,
   channelBannerUrl,
   onAssetSave,
+  onChannelDeleted,
   onCreateGroup,
   onSelectGroup,
   visible = true,
@@ -1010,6 +1049,7 @@ export function ChannelsPanel({
   const [invitedByGroup, setInvitedByGroup] = useState<Record<string, Set<string>>>({})
   const [requestedGroups, setRequestedGroups] = useState<Set<string>>(new Set())
   const requestJoin = useRequestJoinGroup()
+  const deleteGroup = useDeleteGroup(channel?.id ?? '')
 
   if (!visible || !channel) return null
 
@@ -1209,10 +1249,21 @@ export function ChannelsPanel({
                         Invite members
                       </DropdownMenuItem>
                       <DropdownMenuItem>Mark as read</DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive focus:text-destructive">
-                        Delete group
-                      </DropdownMenuItem>
+                      {!group.is_general && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => deleteGroup.mutate(group.id, {
+                              onSuccess: () => {
+                                if (groupSettingsTarget?.id === group.id) setGroupSettingsTarget(null)
+                              },
+                            })}
+                          >
+                            Delete group
+                          </DropdownMenuItem>
+                        </>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                   ) : null}
@@ -1244,6 +1295,7 @@ export function ChannelsPanel({
         open={channelSettingsOpen}
         onOpenChange={setChannelSettingsOpen}
         onSave={(avatarUrl, bannerUrl) => onAssetSave?.(channel.id, avatarUrl, bannerUrl)}
+        onDeleted={onChannelDeleted}
         activeGroupId={activeGroup}
       />
 

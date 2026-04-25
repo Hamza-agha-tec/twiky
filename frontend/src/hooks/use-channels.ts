@@ -74,6 +74,16 @@ export function useChannelInviteLink(channelId: string | undefined) {
   });
 }
 
+export function useDeleteChannel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (channelId: string) => channelApi.deleteChannel(channelId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: CHANNEL_KEYS.all });
+    },
+  });
+}
+
 export function useRequestJoinChannel() {
   const queryClient = useQueryClient();
 

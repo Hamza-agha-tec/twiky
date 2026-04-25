@@ -849,6 +849,12 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                 : null
             }
             onAssetSave={handleChannelAssetSave}
+            onChannelDeleted={() => {
+              setActiveChannelId('')
+              setActiveGroupId('')
+              setActiveSurface('direct')
+              setWorkspaceMode('direct')
+            }}
             onCreateGroup={handleCreateGroup}
             onSelectGroup={(groupId) => {
               setActiveGroupId(groupId)

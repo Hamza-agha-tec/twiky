@@ -133,6 +133,7 @@ export function backendGroupToMock(group: BackendGroup) {
     description: group.description ?? '',
     kind: (group.group_type ?? 'text') as 'text' | 'voice',
     access_type: (group.access_type ?? 'PUBLIC') as 'PUBLIC' | 'PRIVATE',
+    is_general: group.is_general,
     membersLabel: '',
     pinnedBy: '',
     pinnedMessage: '',
