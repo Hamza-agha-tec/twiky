@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Camera,
   CameraOff,
@@ -79,7 +79,29 @@ export function VoiceGroupView({
   const [deafened, setDeafened] = useState(false)
   const [videoOn, setVideoOn] = useState(false)
   const [sharing, setSharing] = useState(false)
+  const [exitReason, setExitReason] = useState<'left' | 'kicked' | null>(null)
+  const hasJoinedRef = useRef(false)
+  const exitReasonRef = useRef<'left' | 'kicked' | null>(null)
   const timer = useElapsedTime(joinedAt, isJoined)
+
+  const setExit = (reason: 'left' | 'kicked' | null) => {
+    exitReasonRef.current = reason
+    setExitReason(reason)
+  }
+
+  useEffect(() => {
+    if (!isJoined) onJoin()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (isJoined) {
+      hasJoinedRef.current = true
+    } else if (hasJoinedRef.current && exitReasonRef.current === null) {
+      setExit('kicked')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isJoined])
 
   const cols =
     participants.length === 0
@@ -117,10 +139,36 @@ export function VoiceGroupView({
       <div className="flex flex-1 flex-col overflow-hidden p-4">
         {!isJoined ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
-              <Volume2 className="h-6 w-6 text-muted-foreground" />
-            </div>
-            <p className="text-[13px] font-semibold text-foreground">Connecting…</p>
+            {exitReason === 'kicked' ? (
+              <>
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10">
+                  <UserMinus className="h-6 w-6 text-destructive" />
+                </div>
+                <p className="text-[13px] font-semibold text-foreground">You were removed from this call</p>
+                <p className="text-[11px] text-muted-foreground">A moderator kicked you out</p>
+              </>
+            ) : exitReason === 'left' ? (
+              <>
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
+                  <PhoneOff className="h-6 w-6 text-muted-foreground" />
+                </div>
+                <p className="text-[13px] font-semibold text-foreground">You left the call</p>
+                <p className="text-[11px] text-muted-foreground">Click join to reconnect</p>
+                <button
+                  onClick={() => { setExit(null); onJoin() }}
+                  className="mt-1 rounded-xl bg-primary px-4 py-2 text-[12px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                >
+                  Rejoin
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
+                  <Volume2 className="h-6 w-6 text-muted-foreground" />
+                </div>
+                <p className="text-[13px] font-semibold text-foreground">Connecting…</p>
+              </>
+            )}
           </div>
         ) : (
           <div className={cn('grid gap-2.5 h-full', cols, tileSizeClass)}>
@@ -216,7 +264,7 @@ export function VoiceGroupView({
       </div>
 
       {/* Controls */}
-      <div className="flex flex-shrink-0 items-center justify-between border-t border-border bg-sidebar px-6 py-3">
+      {exitReason === null && <div className="flex flex-shrink-0 items-center justify-between border-t border-border bg-sidebar px-6 py-3">
         {/* Left: voice info */}
         <div className="flex items-center gap-2">
           <span className="flex h-2 w-2 rounded-full bg-green-500" />
@@ -265,14 +313,14 @@ export function VoiceGroupView({
 
         {/* Right: leave */}
         <button
-          onClick={onLeave}
+          onClick={() => { if (isJoined) setExit('left'); onLeave() }}
           title="Leave"
           className="flex items-center gap-1.5 rounded-2xl bg-destructive/10 px-3 py-2 text-destructive transition-colors hover:bg-destructive/20"
         >
           <PhoneOff className="h-3.5 w-3.5" />
           <span className="text-[11px] font-semibold">Leave</span>
         </button>
-      </div>
+      </div>}
     </div>
   )
 }
