@@ -109,6 +109,40 @@ export class GroupsService {
         return { success: true };
     }
 
+    async updateGroup(groupId: string, userId: string, data: { name?: string; description?: string; group_type?: 'text' | 'voice'; access_type?: 'PUBLIC' | 'PRIVATE' }) {
+        const { data: group, error: groupError } = await this.supabaseService
+            .getClient()
+            .from('groups')
+            .select('channel_id')
+            .eq('id', groupId)
+            .single();
+
+        if (groupError || !group) throw new NotFoundException('Group not found');
+
+        const { data: member } = await this.supabaseService
+            .getClient()
+            .from('channel_members')
+            .select('role')
+            .eq('channel_id', group.channel_id)
+            .eq('user_id', userId)
+            .single();
+
+        if (!member || (member.role !== 'OWNER' && member.role !== 'ADMIN')) {
+            throw new UnauthorizedException('Only channel Admins or Owners can update groups');
+        }
+
+        const { data: updated, error } = await this.supabaseService
+            .getClient()
+            .from('groups')
+            .update(data)
+            .eq('id', groupId)
+            .select()
+            .single();
+
+        if (error) throw new Error(`Failed to update group: ${error.message}`);
+        return updated;
+    }
+
     async addMemberToGroup(groupId: string, creatorUserId: string, addGroupMemberDto: AddGroupMemberDto) {
 
         const { data: member } = await this.supabaseService

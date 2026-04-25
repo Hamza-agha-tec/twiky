@@ -1,10 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BookUser, ListTodo, MessageSquare, Target } from 'lucide-react'
 
 import {
   ChannelFeed,
+  buildStandaloneFeedMemberProfile,
+  FeedMemberProfileView,
   type FeedDirectConversationTarget,
 } from '@/components/chat/channel-feed'
 import {
@@ -14,9 +16,12 @@ import {
   getMockChannel,
   getMockGroup,
   type MockChannelGroup,
+  type VoiceParticipant,
   type WorkspaceChannel,
 } from '@/components/chat/channels-panel'
 import { ChatWindow } from '@/components/chat/chat-window'
+import { VoiceGroupView } from '@/components/chat/voice-group-view'
+import { useVoicePresence, type VoicePresenceUser } from '@/hooks/use-voice-presence'
 import { DirectProfileSidebar } from '@/components/chat/direct-profile-sidebar'
 import { FeedProfileSidebarDock } from '@/components/chat/feed-profile-sidebar-dock'
 import { GoalsPanel } from '@/components/chat/goals-panel'
@@ -243,6 +248,10 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const [activeChannelId, setActiveChannelId] = useState('')
   const [activeGroupId, setActiveGroupId] = useState('')
   const [channelFeedClosed, setChannelFeedClosed] = useState(false)
+  const [activeVoiceGroupId, setActiveVoiceGroupId] = useState<string | null>(null)
+  const [voiceProfileTarget, setVoiceProfileTarget] = useState<VoicePresenceUser | null>(null)
+  const [voiceElapsed, setVoiceElapsed] = useState<string | null>(null)
+  const voiceElapsedRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [showDirectProfile, setShowDirectProfile] = useState(false)
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
@@ -252,6 +261,11 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
 
   const queryClient = useQueryClient()
   const { data: profile } = useProfile()
+
+  const voiceMyInfo = profile
+    ? { id: profile.id, name: profile.fullname ?? profile.username ?? 'You', avatarUrl: profile.avatar_url }
+    : null
+  const voice = useVoicePresence(voiceMyInfo)
   const { data: directConversations = [] } = useDirectConversations()
   const { data: mutualFollowers = [] } = useMutualFollowers()
   const createDirectConversation = useCreateDirectConversation()
@@ -753,6 +767,17 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     setShowDirectProfile(false)
   }
 
+  function handleGroupUpdated(groupId: string, updates: Partial<MockChannelGroup>) {
+    if (!activeChannelId) return
+    setChannelGroupsById((prev) => {
+      const groups = prev[activeChannelId] ?? []
+      return {
+        ...prev,
+        [activeChannelId]: groups.map((g) => g.id === groupId ? { ...g, ...updates } : g),
+      }
+    })
+  }
+
   function handleCreateGroup(values: CreateEntityValues) {
     if (!activeChannel) return
     createGroup.mutate(
@@ -870,9 +895,78 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     )
   }
 
+  useEffect(() => {
+    if (!voice.isJoined || !voice.joinedAt) {
+      if (voiceElapsedRef.current) clearInterval(voiceElapsedRef.current)
+      setVoiceElapsed(null)
+      return
+    }
+    const tick = () => {
+      const s = Math.floor((Date.now() - voice.joinedAt) / 1000)
+      const h = Math.floor(s / 3600)
+      const m = Math.floor((s % 3600) / 60).toString().padStart(2, '0')
+      const sec = (s % 60).toString().padStart(2, '0')
+      setVoiceElapsed(h > 0 ? `${h}:${m}:${sec}` : `${m}:${sec}`)
+    }
+    tick()
+    voiceElapsedRef.current = setInterval(tick, 1000)
+    return () => { if (voiceElapsedRef.current) clearInterval(voiceElapsedRef.current) }
+  }, [voice.isJoined, voice.joinedAt])
+
+  const voiceParticipants: Record<string, VoiceParticipant[]> = activeVoiceGroupId && voice.participants.length > 0
+    ? { [activeVoiceGroupId]: voice.participants }
+    : {}
+
   const channelContent =
     activeChannel && activeGroup ? (
-      channelFeedClosed ? (
+      activeGroup.kind === 'voice' ? (
+        <div className="flex min-w-0 flex-1 overflow-hidden">
+          <VoiceGroupView
+            group={activeGroup}
+            participants={voice.participants}
+            isJoined={voice.isJoined}
+            isMuted={voice.isMuted}
+            joinedAt={voice.joinedAt}
+            myId={profile?.id}
+            onJoin={() => {
+              setActiveVoiceGroupId(activeGroup.id)
+              voice.join(activeGroup.id)
+            }}
+            onLeave={async () => {
+              await voice.leave()
+              setActiveVoiceGroupId(null)
+              setVoiceProfileTarget(null)
+            }}
+            onToggleMute={voice.toggleMute}
+            onViewProfile={(p) => setVoiceProfileTarget(p)}
+            onKick={(userId) => voice.kick(userId)}
+          />
+          <FeedProfileSidebarDock
+            open={!!voiceProfileTarget}
+            width={320}
+            onBack={() => setVoiceProfileTarget(null)}
+          >
+            {voiceProfileTarget && (
+              <FeedMemberProfileView
+                currentGroupLabel={activeGroup.label}
+                isOwn={voiceProfileTarget.id === profile?.id}
+                memberProfile={buildStandaloneFeedMemberProfile({
+                  id: voiceProfileTarget.id,
+                  avatarUrl: voiceProfileTarget.avatarUrl,
+                  name: voiceProfileTarget.name,
+                  handle: voiceProfileTarget.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+                  role: 'Member',
+                })}
+                messagePending={false}
+                onBack={() => setVoiceProfileTarget(null)}
+                onMessage={() => {}}
+                posts={[]}
+                showMessageAction={false}
+              />
+            )}
+          </FeedProfileSidebarDock>
+        </div>
+      ) : channelFeedClosed ? (
         <WorkspaceEmptyState
           title="Group feed closed"
           subtitle="Select a group on the left to reopen feed."
@@ -980,38 +1074,38 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
               unreadCounts={unreadCounts}
             />
 
-            <ChannelsPanel
-              activeGroup={activeGroup?.id}
-              channel={activeChannel}
-              channelAvatarUrl={
-                activeChannel
-                  ? (channelAssets[activeChannel.id]?.avatar ?? activeChannel.avatarUrl ?? null)
-                  : null
-              }
-              channelBannerUrl={
-                activeChannel
-                  ? (channelAssets[activeChannel.id]?.banner ?? activeChannel.bannerUrl ?? null)
-                  : null
-              }
-              onAssetSave={handleChannelAssetSave}
-              onChannelDeleted={() => {
-                setActiveChannelId('')
-                setActiveGroupId('')
-                setActiveSurface('direct')
-                setWorkspaceMode('direct')
-              }}
-              onCreateGroup={handleCreateGroup}
-              onSelectGroup={(groupId) => {
-                setActiveGroupId(groupId)
-                setWorkspaceMode('channels')
-                setActiveSurface('channel')
-                setActiveView('chat')
-                setChannelTab('feed')
-                setChannelFeedClosed(false)
-                setShowDirectProfile(false)
-              }}
-              visible={activeSurface === 'channel'}
-            />
+          <ChannelsPanel
+            activeGroup={activeGroup?.id}
+            channel={activeChannel}
+            channelAvatarUrl={
+              activeChannel
+                ? (channelAssets[activeChannel.id]?.avatar ?? activeChannel.avatarUrl ?? null)
+                : null
+            }
+            channelBannerUrl={
+              activeChannel
+                ? (channelAssets[activeChannel.id]?.banner ?? activeChannel.bannerUrl ?? null)
+                : null
+            }
+            onAssetSave={handleChannelAssetSave}
+            onChannelDeleted={() => {
+              setActiveChannelId('')
+              setActiveGroupId('')
+              setActiveSurface('direct')
+              setWorkspaceMode('direct')
+            }}
+            onCreateGroup={handleCreateGroup}
+            onSelectGroup={(groupId) => {
+              setActiveGroupId(groupId)
+              setWorkspaceMode('channels')
+              setActiveSurface('channel')
+              setActiveView('chat')
+              setChannelTab('feed')
+              setChannelFeedClosed(false)
+              setShowDirectProfile(false)
+            }}
+            visible={activeSurface === 'channel'}
+          />
 
             {activeSurface === 'channel'
               ? channelContent

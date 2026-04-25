@@ -143,6 +143,12 @@ export const groupsApi = {
       body: JSON.stringify({ emoji }),
     }),
 
+  updateGroup: (groupId: string, data: { name?: string; description?: string; group_type?: 'text' | 'voice'; access_type?: 'PUBLIC' | 'PRIVATE' }) =>
+    authedFetch<BackendGroup>(`/groups/${groupId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
   deleteGroup: (groupId: string) =>
     authedFetch(`/groups/${groupId}`, { method: 'DELETE' }),
 };
