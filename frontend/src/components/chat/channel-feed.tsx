@@ -7,6 +7,7 @@ import {
   MouseEvent,
   ReactNode,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -50,7 +51,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Textarea } from '@/components/ui/textarea'
 import { type ChatMessage } from '@/hooks/use-messaging'
 import { useRemoveGroupMember, useUpdateGroupMemberRole } from '@/hooks/use-groups'
-import { useProfile, useSendFollowRequest, useUserById, useUserFollowers, useUserFollowing, useUserPosts } from '@/hooks/use-user'
+import { useProfile, usePrefetchUserProfile, useSendFollowRequest, useUserById, useUserFollowers, useUserFollowing, useUserPosts } from '@/hooks/use-user'
 import { useAuth } from '@/context/AuthContext'
 import { filesApi } from '@/lib/files-api'
 import type { GroupMember, GroupMessageMention } from '@/lib/groups-api'
@@ -856,9 +857,11 @@ function MessageRow({
   const [profileOpen, setProfileOpen] = useState(false)
   const [isFollowing, setIsFollowing] = useState(false)
 
-  const { data: realUser } = useUserById(memberProfile.id)
-  const { data: followersData } = useUserFollowers(memberProfile.id)
-  const { data: followingData } = useUserFollowing(memberProfile.id)
+  const prefetchUserProfile = usePrefetchUserProfile()
+  // Only fetch when profile card is open — prefetch on hover so data is ready by click time
+  const { data: realUser } = useUserById(profileOpen ? memberProfile.id : undefined)
+  const { data: followersData } = useUserFollowers(profileOpen ? memberProfile.id : undefined)
+  const { data: followingData } = useUserFollowing(profileOpen ? memberProfile.id : undefined)
 
   const resolvedProfile: FeedMemberProfile = {
     ...memberProfile,
@@ -913,6 +916,7 @@ function MessageRow({
           <div className="mt-0.5 w-10 flex-shrink-0">
             <PopoverTrigger asChild>
               <button
+                onMouseEnter={() => memberProfile.id && prefetchUserProfile(memberProfile.id)}
                 className="flex h-10 w-10 cursor-pointer overflow-hidden rounded-full ring-2 ring-background focus:outline-none"
                 aria-label={`Open ${post.author} actions`}
               >
@@ -925,6 +929,7 @@ function MessageRow({
             {!isGrouped ? (
               <div className="mb-0.5 flex items-baseline gap-2">
                 <button
+                  onMouseEnter={() => memberProfile.id && prefetchUserProfile(memberProfile.id)}
                   onClick={() => setProfileOpen(true)}
                   className={cn('inline-flex items-center gap-1 text-[14px] font-semibold leading-none hover:underline', roleColor)}
                 >
@@ -1208,6 +1213,7 @@ export function FeedMemberProfileView({
   const [followRequested, setFollowRequested] = useState(false)
   const [pixelRoomLiked, setPixelRoomLiked] = useState(false)
   const [followSheet, setFollowSheet] = useState<'followers' | 'following' | null>(null)
+  const [viewingUser, setViewingUser] = useState<FeedMemberProfile | null>(null)
 
   const { user: authUser } = useAuth()
   const { data: currentUser } = useProfile()
@@ -1215,6 +1221,7 @@ export function FeedMemberProfileView({
   const { data: followersData } = useUserFollowers(memberProfile.id)
   const { data: followingData } = useUserFollowing(memberProfile.id)
   const sendFollowRequest = useSendFollowRequest()
+  const prefetchUserProfile = usePrefetchUserProfile()
   const {
     data: backendPosts = [],
     isError: backendPostsError,
@@ -1305,6 +1312,21 @@ export function FeedMemberProfileView({
     }
   }
 
+  if (viewingUser !== null) {
+    return (
+      <FeedMemberProfileView
+        currentGroupLabel={currentGroupLabel}
+        isOwn={false}
+        memberProfile={viewingUser}
+        messagePending={false}
+        onBack={() => setViewingUser(null)}
+        onMessage={() => {}}
+        posts={[]}
+        showMessageAction={showMessageAction}
+      />
+    )
+  }
+
   if (followSheet !== null) {
     const title = followSheet === 'followers' ? 'Followers' : 'Following'
     const users = followSheet === 'followers'
@@ -1335,7 +1357,13 @@ export function FeedMemberProfileView({
         ) : (
           <div className="divide-y divide-border">
             {users.map((u) => (
-              <div key={u.id} className="flex items-center gap-3 px-4 py-2.5">
+              <button
+                key={u.id}
+                type="button"
+                onMouseEnter={() => prefetchUserProfile(u.id)}
+                onClick={() => setViewingUser(buildStandaloneFeedMemberProfile({ id: u.id, avatarUrl: u.avatar_url, name: u.username, handle: u.username, isVerified: u.is_verified }))}
+                className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-accent"
+              >
                 <div className="h-9 w-9 flex-shrink-0 overflow-hidden rounded-full bg-muted">
                   {u.avatar_url
                     ? <img src={u.avatar_url} alt={u.username} className="h-full w-full object-cover" />
@@ -1349,7 +1377,7 @@ export function FeedMemberProfileView({
                   </p>
                   {u.bio ? <p className="truncate text-[11px] text-muted-foreground">{u.bio}</p> : null}
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         )}
@@ -1738,10 +1766,15 @@ function FeedProfileRow({
   onDelete: () => void
   onContextMenu: (e: MouseEvent) => void
 }) {
+  const prefetchUserProfile = usePrefetchUserProfile()
   const roleColor = ROLE_COLORS[post.role] ?? 'text-primary'
   const displayAvatar = post.isOwn
     ? (authorAvatarUrl ?? myAvatarUrl ?? memberProfile.avatarUrl ?? null)
     : (authorAvatarUrl ?? memberProfile.avatarUrl ?? null)
+
+  const handlePrefetch = () => {
+    if (memberProfile.id) prefetchUserProfile(memberProfile.id)
+  }
 
   return (
     <div
@@ -1755,6 +1788,7 @@ function FeedProfileRow({
       <div className="mt-0.5 w-10 flex-shrink-0">
         <button
           type="button"
+          onMouseEnter={handlePrefetch}
           onClick={onOpenProfile}
           className="flex h-10 w-10 cursor-pointer overflow-hidden rounded-full ring-2 ring-background focus:outline-none"
           aria-label={`Open ${post.author} profile`}
@@ -1775,6 +1809,7 @@ function FeedProfileRow({
           <div className="mb-0.5 flex items-baseline gap-2">
             <button
               type="button"
+              onMouseEnter={handlePrefetch}
               onClick={onOpenProfile}
               className={cn('inline-flex items-center gap-1 text-[14px] font-semibold leading-none hover:underline', roleColor)}
             >
@@ -1936,8 +1971,10 @@ export function ChannelFeed({
   const useBackendUpload = Boolean(onSendPost)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const genericFileInputRef = useRef<HTMLInputElement>(null)
+  const feedScrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const blobUrlsRef = useRef<string[]>([])
+  const previousGroupIdRef = useRef<string | null>(null)
 
   const [postUploading, setPostUploading] = useState(false)
   const [pendingImageFile, setPendingImageFile] = useState<File | null>(null)
@@ -1948,6 +1985,7 @@ export function ChannelFeed({
   const voiceStopRef = useRef<(() => Promise<void>) | null>(null)
 
   const posts = postsByGroup[group.id] ?? postsOverride ?? buildFallbackPosts(channel, group)
+  const latestPostId = posts.at(-1)?.id
   const draft = drafts[group.id] ?? ''
   const mentionCursor = mentionCursorByGroup[group.id] ?? draft.length
   const draftImage = draftImages[group.id]
@@ -2014,6 +2052,27 @@ export function ChannelFeed({
     if (!postsOverride) return
     setPostsByGroup((prev) => ({ ...prev, [group.id]: postsOverride }))
   }, [group.id, postsOverride])
+
+  useLayoutEffect(() => {
+    if (!posts.length) return
+
+    const groupChanged = previousGroupIdRef.current !== group.id
+    previousGroupIdRef.current = group.id
+
+    const scrollToLatest = (behavior: ScrollBehavior) => {
+      const scroller = feedScrollRef.current
+      if (!scroller) return
+      scroller.scrollTo({ top: scroller.scrollHeight, behavior })
+    }
+
+    const frameId = requestAnimationFrame(() => scrollToLatest(groupChanged ? 'auto' : 'smooth'))
+    const timeoutId = window.setTimeout(() => scrollToLatest('auto'), 120)
+
+    return () => {
+      cancelAnimationFrame(frameId)
+      window.clearTimeout(timeoutId)
+    }
+  }, [group.id, latestPostId, posts.length])
 
   useEffect(() => {
     setActiveMentionIndex(0)
@@ -2565,7 +2624,7 @@ export function ChannelFeed({
     <div className="flex flex-1 overflow-hidden bg-background">
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
       {/* Messages list */}
-      <div className="flex-1 overflow-y-auto py-2">
+      <div ref={feedScrollRef} className="flex-1 overflow-y-auto py-2">
         <div className="pb-2">
           {/* Date separator */}
           <div className="flex items-center gap-3 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
