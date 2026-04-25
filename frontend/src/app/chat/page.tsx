@@ -1105,6 +1105,16 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
               setShowDirectProfile(false)
             }}
             visible={activeSurface === 'channel'}
+            voiceParticipants={voiceParticipants}
+            activeVoiceGroupId={activeVoiceGroupId}
+            voiceIsMuted={voice.isMuted}
+            onVoiceLeave={async () => { await voice.leave(); setActiveVoiceGroupId(null) }}
+            onVoiceToggleMute={voice.toggleMute}
+            onVoiceReturn={(groupId) => {
+              setActiveGroupId(groupId)
+              setWorkspaceMode('channels')
+              setActiveSurface('channel')
+            }}
           />
 
             {activeSurface === 'channel'
