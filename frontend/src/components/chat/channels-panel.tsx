@@ -12,7 +12,10 @@ import {
   Hash,
   Link,
   Lock,
+  Mic,
+  MicOff,
   MoreHorizontal,
+  PhoneOff,
   Plus,
   Search,
   Trash2,
@@ -48,7 +51,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { useUpdateChannel, useChannelInviteLink, useDeleteChannel } from '@/hooks/use-channels'
-import { useGroupMembers, useDeleteGroup, useGroupJoinRequests, useRespondToGroupJoinRequest, useRequestJoinGroup } from '@/hooks/use-groups'
+import { useGroupMembers, useDeleteGroup, useUpdateGroup, useGroupJoinRequests, useRespondToGroupJoinRequest, useRequestJoinGroup } from '@/hooks/use-groups'
 import { useSendGroupInvitation } from '@/hooks/use-invitations'
 import { useProfile, useUserFollowers } from '@/hooks/use-user'
 import { filesApi } from '@/lib/files-api'
@@ -104,6 +107,12 @@ interface BuildWorkspaceChannelInput {
   type?: 'NORMAL' | 'WORKSPACE'
 }
 
+export interface VoiceParticipant {
+  id: string
+  name: string
+  avatarUrl: string | null
+}
+
 interface ChannelsPanelProps {
   activeGroup?: string
   channel?: WorkspaceChannel | null
@@ -112,8 +121,16 @@ interface ChannelsPanelProps {
   onAssetSave?: (channelId: string, avatar: string | null, banner: string | null) => void
   onChannelDeleted?: () => void
   onCreateGroup?: (values: CreateEntityValues) => void
+  onGroupUpdated?: (groupId: string, updates: Partial<MockChannelGroup>) => void
   onSelectGroup?: (groupId: string) => void
   visible?: boolean
+  voiceParticipants?: Record<string, VoiceParticipant[]>
+  activeVoiceGroupId?: string | null
+  voiceIsMuted?: boolean
+  voiceTimer?: string | null
+  onVoiceLeave?: () => void
+  onVoiceToggleMute?: () => void
+  onVoiceReturn?: (groupId: string) => void
 }
 
 const MEMBER_LABELS = ['26 online', '18 online', '12 online', '9 online', '6 online']
@@ -829,31 +846,38 @@ function GroupSettingsSheet({
   onOpenChange,
   channelId,
   onDeleted,
+  onGroupUpdated,
 }: {
   group: MockChannelGroup
   open: boolean
   onOpenChange: (open: boolean) => void
   channelId?: string
   onDeleted?: () => void
+  onGroupUpdated?: (groupId: string, updates: Partial<MockChannelGroup>) => void
 }) {
   const [name, setName] = useState(group.label)
   const [description, setDescription] = useState(group.description)
   const [kind, setKind] = useState<'text' | 'voice'>(group.kind)
+  const [accessType, setAccessType] = useState<'PUBLIC' | 'PRIVATE'>(group.access_type ?? 'PUBLIC')
   const [notifications, setNotifications] = useState(true)
   const [mentionsOnly, setMentionsOnly] = useState(false)
   const [slowMode, setSlowMode] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const deleteGroup = useDeleteGroup(channelId ?? '')
-  const { data: joinRequests = [] } = useGroupJoinRequests(group.access_type === 'PRIVATE' ? group.id : undefined)
+  const updateGroup = useUpdateGroup(channelId ?? '')
+  const { data: joinRequests = [] } = useGroupJoinRequests(accessType === 'PRIVATE' ? group.id : undefined)
   const respondToRequest = useRespondToGroupJoinRequest(group.id)
 
   useEffect(() => {
     setName(group.label)
     setDescription(group.description)
     setKind(group.kind)
+    setAccessType(group.access_type ?? 'PUBLIC')
     setNotifications(true)
     setMentionsOnly(false)
     setSlowMode(false)
-  }, [group.description, group.id, group.kind, group.label])
+    setSaveError(null)
+  }, [group.description, group.id, group.kind, group.label, group.access_type])
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -950,8 +974,36 @@ function GroupSettingsSheet({
             </div>
           </div>
 
+          {/* Privacy */}
+          <div className="space-y-3 p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              Privacy
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { value: 'PUBLIC', icon: Globe, label: 'Public', desc: 'Anyone can join' },
+                { value: 'PRIVATE', icon: Lock, label: 'Private', desc: 'Invite only' },
+              ] as const).map(({ value, icon: Icon, label, desc }) => (
+                <button
+                  key={value}
+                  onClick={() => setAccessType(value)}
+                  className={cn(
+                    'flex flex-col items-start gap-1.5 rounded-2xl border p-3 text-left transition-colors',
+                    accessType === value
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover:bg-accent',
+                  )}
+                >
+                  <Icon className="h-4 w-4 text-primary" />
+                  <span className="text-[11px] font-semibold text-foreground">{label}</span>
+                  <span className="text-[10px] leading-4 text-muted-foreground">{desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Join Requests — private groups only */}
-          {group.access_type === 'PRIVATE' && (
+          {accessType === 'PRIVATE' && (
             <div className="space-y-3 p-4">
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
@@ -1020,9 +1072,40 @@ function GroupSettingsSheet({
             </div>
           )}
 
-          <div className="p-4">
-            <Button className="w-full rounded-xl text-[12px]" onClick={() => onOpenChange(false)}>
-              Done
+          <div className="space-y-2 p-4">
+            {saveError ? (
+              <p className="text-[11px] text-destructive">{saveError}</p>
+            ) : null}
+            <Button
+              className="w-full rounded-xl text-[12px]"
+              disabled={updateGroup.isPending}
+              onClick={async () => {
+                setSaveError(null)
+                try {
+                  await updateGroup.mutateAsync({
+                    groupId: group.id,
+                    data: {
+                      name: name.trim() || group.label,
+                      description: description.trim() || undefined,
+                      group_type: kind,
+                      access_type: accessType,
+                    },
+                  })
+                  onGroupUpdated?.(group.id, {
+                    label: name.trim() || group.label,
+                    description: description.trim(),
+                    kind,
+                    access_type: accessType,
+                  })
+                  onOpenChange(false)
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : 'Failed to save'
+                  setSaveError(msg)
+                  toast.error(msg)
+                }
+              }}
+            >
+              {updateGroup.isPending ? 'Saving…' : 'Save'}
             </Button>
           </div>
         </div>
@@ -1039,8 +1122,16 @@ export function ChannelsPanel({
   onAssetSave,
   onChannelDeleted,
   onCreateGroup,
+  onGroupUpdated,
   onSelectGroup,
   visible = true,
+  voiceParticipants = {},
+  activeVoiceGroupId,
+  voiceIsMuted,
+  voiceTimer,
+  onVoiceLeave,
+  onVoiceToggleMute,
+  onVoiceReturn,
 }: ChannelsPanelProps) {
   const [showCreateGroup, setShowCreateGroup] = useState(false)
   const [channelSettingsOpen, setChannelSettingsOpen] = useState(false)
@@ -1153,15 +1244,18 @@ export function ChannelsPanel({
               const isPrivate = group.access_type === 'PRIVATE'
               const hasRequested = requestedGroups.has(group.id)
               const memberCanRequest = !canManage && isPrivate
+              const participants = group.kind === 'voice' ? (voiceParticipants[group.id] ?? []) : []
 
               return (
                 <motion.div
                   key={group.id}
-                  className="group relative"
+                  className="group"
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: idx * 0.05, duration: 0.2, ease: 'easeOut' }}
                 >
+                  {/* Row — relative container so 3-dot stays within the button height */}
+                  <div className="relative">
                   <button
                     onClick={() => {
                       if (memberCanRequest) return
@@ -1196,17 +1290,24 @@ export function ChannelsPanel({
                           Default
                         </span>
                       ) : null}
-                      {group.hasMention ? (
-                        <span className="ml-auto flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-primary text-[9px] font-black text-primary-foreground">
-                          @
-                        </span>
-                      ) : group.unreadCount ? (
-                        <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-bold text-primary-foreground">
-                          {group.unreadCount}
-                        </span>
-                      ) : group.hasUnread ? (
-                        <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary" />
-                      ) : null}
+                      {group.kind !== 'voice' && (
+                        <>
+                          {group.hasMention ? (
+                            <span className="ml-auto flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-primary text-[9px] font-black text-primary-foreground">
+                              @
+                            </span>
+                          ) : group.unreadCount ? (
+                            <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-bold text-primary-foreground">
+                              {group.unreadCount}
+                            </span>
+                          ) : group.hasUnread ? (
+                            <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary" />
+                          ) : null}
+                        </>
+                      )}
+                      {group.kind === 'voice' && participants.length > 0 && (
+                        <span className="ml-auto text-[9px] font-semibold text-primary">{participants.length}</span>
+                      )}
                     </div>
                   </button>
 
@@ -1267,11 +1368,76 @@ export function ChannelsPanel({
                     </DropdownMenuContent>
                   </DropdownMenu>
                   ) : null}
+                  </div>{/* end row */}
+
+                  {/* Voice participants — Discord-style list below, outside the row div */}
+                  {group.kind === 'voice' && participants.length > 0 && (
+                    <div className="ml-6 mb-1 space-y-0.5">
+                      {participants.map((p) => (
+                        <div key={p.id} className="flex items-center gap-2 px-2 py-0.5">
+                          <div className="relative flex-shrink-0">
+                            {p.avatarUrl ? (
+                              <img src={p.avatarUrl} alt={p.name} className="h-5 w-5 rounded-full object-cover" />
+                            ) : (
+                              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/15 text-[8px] font-bold text-primary">
+                                {p.name[0]?.toUpperCase()}
+                              </div>
+                            )}
+                            <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-background bg-green-500" />
+                          </div>
+                          <span className="truncate text-[11px] text-muted-foreground">{p.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </motion.div>
               )
             })}
           </div>
         </div>
+
+        {/* Persistent voice status bar — shown when user is connected to voice */}
+        {activeVoiceGroupId && (
+          <div className="flex-shrink-0 border-t border-border bg-sidebar">
+            <div className="flex items-center gap-2 px-3 py-2">
+              <span className="flex h-2 w-2 flex-shrink-0 rounded-full bg-green-500" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-semibold text-green-500">Voice Connected</p>
+                {voiceTimer && (
+                  <p className="text-[9px] font-mono text-muted-foreground">{voiceTimer}</p>
+                )}
+              </div>
+              <button
+                title={voiceIsMuted ? 'Unmute' : 'Mute'}
+                onClick={onVoiceToggleMute}
+                className={cn(
+                  'flex h-6 w-6 items-center justify-center rounded-lg transition-colors',
+                  voiceIsMuted
+                    ? 'bg-destructive/10 text-destructive hover:bg-destructive/20'
+                    : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                )}
+              >
+                {voiceIsMuted ? <MicOff className="h-3 w-3" /> : <Mic className="h-3 w-3" />}
+              </button>
+              {activeGroup !== activeVoiceGroupId && (
+                <button
+                  title="Return to voice"
+                  onClick={() => onVoiceReturn?.(activeVoiceGroupId)}
+                  className="flex h-6 w-6 items-center justify-center rounded-lg text-primary transition-colors hover:bg-primary/10"
+                >
+                  <Volume2 className="h-3 w-3" />
+                </button>
+              )}
+              <button
+                title="Leave voice"
+                onClick={onVoiceLeave}
+                className="flex h-6 w-6 items-center justify-center rounded-lg text-destructive transition-colors hover:bg-destructive/10"
+              >
+                <PhoneOff className="h-3 w-3" />
+              </button>
+            </div>
+          </div>
+        )}
       </motion.div>
 
       <CreateEntityDialog
@@ -1307,6 +1473,7 @@ export function ChannelsPanel({
           onOpenChange={(open) => { if (!open) setGroupSettingsTarget(null) }}
           channelId={channel.id}
           onDeleted={() => setGroupSettingsTarget(null)}
+          onGroupUpdated={onGroupUpdated}
         />
       ) : null}
 
