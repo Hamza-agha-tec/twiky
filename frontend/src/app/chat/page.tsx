@@ -43,12 +43,15 @@ import { useQueryClient } from '@tanstack/react-query'
 import { GROUP_KEYS } from '@/hooks/use-groups'
 import type { FeedPost } from '@/components/chat/channel-feed'
 import { type ChatMessage } from '@/hooks/use-messaging'
-import { useProfile } from '@/hooks/use-user'
+import { useMutualFollowers, useProfile } from '@/hooks/use-user'
 import { useNotifications, useMarkAsRead } from '@/hooks/use-notifications'
 import type { BackendChannel } from '@/lib/channel-api'
 import { filesApi } from '@/lib/files-api'
 import { type Chat } from '@/lib/mock-data'
 import { useRouter } from 'next/navigation'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { useCreateDirectConversation, useDirectConversations, useDirectMessages, useSendDirectMessage } from '@/hooks/use-direct-conversations'
 
 type ChatSurface =
   | 'channel'
@@ -249,6 +252,12 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
 
   const queryClient = useQueryClient()
   const { data: profile } = useProfile()
+  const { data: directConversations = [] } = useDirectConversations()
+  const { data: mutualFollowers = [] } = useMutualFollowers()
+  const createDirectConversation = useCreateDirectConversation()
+
+  const [startDmOpen, setStartDmOpen] = useState(false)
+  const [startDmQuery, setStartDmQuery] = useState('')
   const { data: allNotifications = [] } = useNotifications()
   const unreadNotificationCount = allNotifications.filter((n) => !n.is_read && n.type !== 'MENTION').length
   const { data: backendChannels = [] } = useChannels()
@@ -337,6 +346,9 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   }, [rawMessages, activeGroupMembers, profile?.id])
 
   const activeSyntheticChat = activeDirectChat ? (syntheticDirectChats[activeDirectChat] ?? null) : null
+  const activeIsRealDirect = Boolean(activeDirectChat && /^[0-9a-f-]{36}$/i.test(activeDirectChat))
+  const { data: activeDirectRealMessages = [] } = useDirectMessages(activeIsRealDirect ? activeDirectChat : null)
+  const sendDirectMessage = useSendDirectMessage(activeDirectChat ?? '')
 
   const mentionedGroupIds = useMemo(
     () => new Set(
@@ -530,6 +542,46 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
         ),
     [syntheticDirectChats, syntheticDirectMessages, unreadCounts],
+  )
+
+  const backendDirectChats = useMemo<Chat[]>(
+    () => {
+      const myId = profile?.id
+      if (!myId) return []
+      return (directConversations ?? []).map((conv: any) => {
+        const other =
+          conv.user_one_id === myId ? conv.user_two : conv.user_one
+        const name = other?.username ?? 'Unknown'
+        const last = Array.isArray(conv.last_message) ? conv.last_message[0] : null
+        const lastContent = typeof last?.content === 'string' ? last.content.trim() : ''
+        const lastPrefix =
+          last?.sender_id && last.sender_id === myId ? 'You' : (name || 'User')
+        const lastLine = lastContent ? `${lastPrefix}: ${lastContent}` : 'Say hi'
+        return {
+          id: conv.id,
+          name,
+          avatar: other?.avatar_url ?? '',
+          lastMessage: lastLine,
+          timestamp: last?.created_at ?? conv.created_at ?? new Date().toISOString(),
+          unread: unreadCounts[conv.id] ?? 0,
+          isGroup: false,
+          isOnline: false,
+          subPlan: other?.sub_plan ?? null,
+          isVerified: other?.is_verified ?? false,
+        }
+      })
+    },
+    [directConversations, profile?.id, unreadCounts],
+  )
+
+  const directSidebarChats = useMemo<Chat[]>(
+    () => {
+      const merged = [...backendDirectChats, ...syntheticSidebarChats]
+      return merged.filter((chat, index, items) =>
+        items.findIndex((c) => c.id === chat.id) === index,
+      )
+    },
+    [backendDirectChats, syntheticSidebarChats],
   )
 
   const activeNav: WorkspaceNavTarget | null =
@@ -739,12 +791,38 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                 name: activeSyntheticChat.name,
                 subtitle: activeSyntheticChat.status,
               }
+            : activeIsRealDirect
+              ? (() => {
+                  const myId = profile?.id
+                  const conv = (directConversations ?? []).find((c: any) => c.id === activeDirectChat)
+                  const other = conv
+                    ? (conv.user_one_id === myId ? conv.user_two : conv.user_one)
+                    : null
+                  return {
+                    avatarUrl: other?.avatar_url ?? null,
+                    isOnline: false,
+                    subPlan: other?.sub_plan ?? null,
+                    isVerified: other?.is_verified ?? false,
+                    name: other?.username ?? 'Direct message',
+                    subtitle: null,
+                  }
+                })()
             : undefined
         }
-        messages={activeDirectMessages}
-        onSendMessage={(content, type, replyToId, fileUrl) => {
+        messages={activeIsRealDirect ? activeDirectRealMessages : activeDirectMessages}
+        onSendMessage={(payload) => {
           if (!activeDirectChat) return
-          handleSyntheticSendMessage(activeDirectChat, content, type, replyToId, fileUrl)
+          if (activeIsRealDirect) {
+            sendDirectMessage.mutate(payload)
+            return
+          }
+          handleSyntheticSendMessage(
+            activeDirectChat,
+            payload.content ?? '',
+            payload.type,
+            payload.replyToId ?? undefined,
+            payload.fileUrl ?? undefined,
+          )
         }}
         otherIsTyping={false}
         onProfileClick={() => setShowDirectProfile((v) => !v)}
@@ -840,121 +918,197 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       )
     ) : null
 
+  function normalizedUserLabel(user: any) {
+    return user.fullname ?? user.full_name ?? user.username ?? 'Unknown'
+  }
+
+  const mutualFiltered = startDmQuery.trim()
+    ? mutualFollowers.filter((u: any) =>
+        String(u.username ?? '')
+          .toLowerCase()
+          .includes(startDmQuery.trim().toLowerCase()),
+      )
+    : mutualFollowers
+
   return (
-    <div className="flex min-h-0 flex-1 overflow-hidden bg-background">
-      {!hideRail ? (
-        <IconRail
-          activeView={activeView}
-          onViewChange={setActiveView}
-          onAvatarClick={handleAvatarClick}
-          userInitial={userInitial}
-          userAvatar={userAvatar}
-          notificationCount={unreadNotificationCount}
-        />
-      ) : null}
-
-      {activeView === 'discover-channels' ? (
-        <DiscoverChannelsView
-          onSelectChannel={(channelId) => {
-            openChannelSurface(channelId)
-            setActiveView('chat')
-          }}
-        />
-      ) : activeView === 'store' ? (
-        <StoreView />
-      ) : activeView === 'add-friends' ? (
-        <AddFriendsView />
-      ) : activeView === 'notifications' ? (
-        <NotificationsView />
-      ) : (
-        <>
-          <WorkspaceSidebar
-            activeChannelId={activeChannel?.id}
-            activeChat={activeDirectChat ?? ''}
-            activeNav={activeNav}
-            channelAssets={channelAssets}
-            channels={workspaceChannels}
-            collapsed={workspaceCollapsed}
-            mode={workspaceMode}
-            onCreateChannel={handleCreateChannel}
-            onModeChange={handleModeChange}
-            onNavItem={handleNavItem}
-            onSearchChange={setSearchQuery}
-            onSelectChannel={(channelId) => openChannelSurface(channelId)}
-            onSelectChat={openDirectChat}
-            syntheticDirectChats={syntheticSidebarChats}
-            onToggleCollapse={() => setWorkspaceCollapsed((prev) => !prev)}
-            searchQuery={searchQuery}
-            unreadCounts={unreadCounts}
+    <>
+      <div className="flex min-h-0 flex-1 overflow-hidden bg-background">
+        {!hideRail ? (
+          <IconRail
+            activeView={activeView}
+            onViewChange={setActiveView}
+            onAvatarClick={handleAvatarClick}
+            userInitial={userInitial}
+            userAvatar={userAvatar}
+            notificationCount={unreadNotificationCount}
           />
+        ) : null}
 
-          <ChannelsPanel
-            activeGroup={activeGroup?.id}
-            channel={activeChannel}
-            channelAvatarUrl={
-              activeChannel
-                ? (channelAssets[activeChannel.id]?.avatar ?? activeChannel.avatarUrl ?? null)
-                : null
-            }
-            channelBannerUrl={
-              activeChannel
-                ? (channelAssets[activeChannel.id]?.banner ?? activeChannel.bannerUrl ?? null)
-                : null
-            }
-            onAssetSave={handleChannelAssetSave}
-            onChannelDeleted={() => {
-              setActiveChannelId('')
-              setActiveGroupId('')
-              setActiveSurface('direct')
-              setWorkspaceMode('direct')
-            }}
-            onCreateGroup={handleCreateGroup}
-            onSelectGroup={(groupId) => {
-              setActiveGroupId(groupId)
-              setWorkspaceMode('channels')
-              setActiveSurface('channel')
+        {activeView === 'discover-channels' ? (
+          <DiscoverChannelsView
+            onSelectChannel={(channelId) => {
+              openChannelSurface(channelId)
               setActiveView('chat')
-              setChannelTab('feed')
-              setChannelFeedClosed(false)
-              setShowDirectProfile(false)
             }}
-            visible={activeSurface === 'channel'}
           />
+        ) : activeView === 'store' ? (
+          <StoreView />
+        ) : activeView === 'add-friends' ? (
+          <AddFriendsView />
+        ) : activeView === 'notifications' ? (
+          <NotificationsView />
+        ) : (
+          <>
+            <WorkspaceSidebar
+              activeChannelId={activeChannel?.id}
+              activeChat={activeDirectChat ?? ''}
+              activeNav={activeNav}
+              channelAssets={channelAssets}
+              channels={workspaceChannels}
+              collapsed={workspaceCollapsed}
+              mode={workspaceMode}
+              onCreateChannel={handleCreateChannel}
+              onModeChange={handleModeChange}
+              onNavItem={handleNavItem}
+              onSearchChange={setSearchQuery}
+              onSelectChannel={(channelId) => openChannelSurface(channelId)}
+              onSelectChat={openDirectChat}
+              syntheticDirectChats={directSidebarChats}
+              onNewDirectMessage={() => setStartDmOpen(true)}
+              onToggleCollapse={() => setWorkspaceCollapsed((prev) => !prev)}
+              searchQuery={searchQuery}
+              unreadCounts={unreadCounts}
+            />
 
-          {activeSurface === 'channel'
-            ? channelContent
-            : activeSurface === 'direct'
-              ? (
-                <div className="flex min-w-0 flex-1 overflow-hidden bg-background">
-                  {directFeedContent}
-                  <FeedProfileSidebarDock
-                    open={showDirectProfile && !!activeDirectChat}
-                    width={360}
-                    onBack={() => setShowDirectProfile(false)}
-                  >
-                    {showDirectProfile && activeDirectChat ? (
-                      <DirectProfileSidebar
-                        activeChat={activeDirectChat}
-                        chatOverride={activeSyntheticChat
-                          ? {
-                              avatarUrl: activeSyntheticChat.avatarUrl,
-                              isOnline: activeSyntheticChat.isOnline,
-                              subPlan: activeSyntheticChat.subPlan,
-                              isVerified: activeSyntheticChat.isVerified,
-                              name: activeSyntheticChat.name,
-                              subtitle: activeSyntheticChat.status,
-                            }
-                          : undefined}
-                        onClose={() => setShowDirectProfile(false)}
-                      />
-                    ) : null}
-                  </FeedProfileSidebarDock>
-                </div>
-              )
-              : renderPersonalSurface()}
-        </>
-      )}
-    </div>
+            <ChannelsPanel
+              activeGroup={activeGroup?.id}
+              channel={activeChannel}
+              channelAvatarUrl={
+                activeChannel
+                  ? (channelAssets[activeChannel.id]?.avatar ?? activeChannel.avatarUrl ?? null)
+                  : null
+              }
+              channelBannerUrl={
+                activeChannel
+                  ? (channelAssets[activeChannel.id]?.banner ?? activeChannel.bannerUrl ?? null)
+                  : null
+              }
+              onAssetSave={handleChannelAssetSave}
+              onChannelDeleted={() => {
+                setActiveChannelId('')
+                setActiveGroupId('')
+                setActiveSurface('direct')
+                setWorkspaceMode('direct')
+              }}
+              onCreateGroup={handleCreateGroup}
+              onSelectGroup={(groupId) => {
+                setActiveGroupId(groupId)
+                setWorkspaceMode('channels')
+                setActiveSurface('channel')
+                setActiveView('chat')
+                setChannelTab('feed')
+                setChannelFeedClosed(false)
+                setShowDirectProfile(false)
+              }}
+              visible={activeSurface === 'channel'}
+            />
+
+            {activeSurface === 'channel'
+              ? channelContent
+              : activeSurface === 'direct'
+                ? (
+                  <div className="flex min-w-0 flex-1 overflow-hidden bg-background">
+                    {directFeedContent}
+                    <FeedProfileSidebarDock
+                      open={showDirectProfile && !!activeDirectChat}
+                      width={360}
+                      onBack={() => setShowDirectProfile(false)}
+                    >
+                      {showDirectProfile && activeDirectChat ? (
+                        <DirectProfileSidebar
+                          activeChat={activeDirectChat}
+                          chatOverride={activeSyntheticChat
+                            ? {
+                                avatarUrl: activeSyntheticChat.avatarUrl,
+                                isOnline: activeSyntheticChat.isOnline,
+                                subPlan: activeSyntheticChat.subPlan,
+                                isVerified: activeSyntheticChat.isVerified,
+                                name: activeSyntheticChat.name,
+                                subtitle: activeSyntheticChat.status,
+                              }
+                            : undefined}
+                          onClose={() => setShowDirectProfile(false)}
+                        />
+                      ) : null}
+                    </FeedProfileSidebarDock>
+                  </div>
+                )
+                : renderPersonalSurface()}
+          </>
+        )}
+      </div>
+
+      <Dialog open={startDmOpen} onOpenChange={setStartDmOpen}>
+        <DialogContent className="sm:max-w-[420px] p-0 overflow-hidden">
+          <DialogHeader className="border-b border-border px-4 py-3">
+            <DialogTitle className="text-[13px]">New message</DialogTitle>
+          </DialogHeader>
+          <div className="border-b border-border px-4 py-3">
+            <Input
+              value={startDmQuery}
+              onChange={(e) => setStartDmQuery(e.target.value)}
+              placeholder="Search mutual followers…"
+              className="h-9 rounded-xl text-[12px]"
+            />
+            <p className="mt-1.5 text-[10px] text-muted-foreground">
+              Only mutual followers can be messaged.
+            </p>
+          </div>
+          <div className="max-h-[360px] overflow-y-auto px-2 py-2">
+            {mutualFiltered.length === 0 ? (
+              <p className="px-2 py-6 text-center text-[12px] text-muted-foreground">
+                No mutual followers found
+              </p>
+            ) : (
+              mutualFiltered.map((u: any) => (
+                <button
+                  key={u.id}
+                  className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-accent"
+                  onClick={async () => {
+                    try {
+                      const conv = await createDirectConversation.mutateAsync(u.id)
+                      setStartDmOpen(false)
+                      setStartDmQuery('')
+                      openDirectChat(conv.id)
+                    } catch (e) {
+                      const msg = e instanceof Error ? e.message : 'Failed to start conversation'
+                      // eslint-disable-next-line no-console
+                      console.error(msg)
+                    }
+                  }}
+                >
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-[12px] font-semibold text-primary">
+                    {u.avatar_url ? (
+                      <img src={u.avatar_url} alt={u.username ?? ''} className="h-full w-full object-cover" />
+                    ) : (
+                      (u.username?.[0] ?? '?').toUpperCase()
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-medium text-foreground">
+                      {normalizedUserLabel(u)}
+                    </p>
+                    <p className="truncate text-[11px] text-muted-foreground">
+                      @{u.username}
+                    </p>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 

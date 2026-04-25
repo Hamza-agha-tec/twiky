@@ -20,6 +20,7 @@ export const USER_KEYS = {
   following: (userId: string) => ['user', userId, 'following'] as const,
   posts: (userId: string) => ['user', userId, 'posts'] as const,
   search: (q: string) => ['user', 'search', q] as const,
+  mutualFollowers: ['user', 'mutual-followers'] as const,
 };
 
 export function useProfile() {
@@ -104,6 +105,14 @@ export function useSearchUsers(query: string) {
 export function useSendFollowRequest() {
   return useMutation({
     mutationFn: (userId: string) => userApi.sendFollowRequest(userId),
+  });
+}
+
+export function useMutualFollowers() {
+  return useQuery({
+    queryKey: USER_KEYS.mutualFollowers,
+    queryFn: userApi.getMutualFollowers,
+    staleTime: PROFILE_STALE_TIME,
   });
 }
 

@@ -70,9 +70,12 @@ export class MessagingService {
             .select(`
                 *,
                 user_one:users!direct_conversations_user_one_id_fkey(id, username, avatar_url),
-                user_two:users!direct_conversations_user_two_id_fkey(id, username, avatar_url)
+                user_two:users!direct_conversations_user_two_id_fkey(id, username, avatar_url),
+                last_message:direct_messages!direct_messages_conversation_id_fkey(id, content, sender_id, created_at)
             `)
             .or(`user_one_id.eq.${userId},user_two_id.eq.${userId}`)
+            .order('created_at', { foreignTable: 'direct_messages', ascending: false })
+            .limit(1, { foreignTable: 'direct_messages' })
             .order('created_at', { ascending: false });
 
         if (error) throw new Error(`Failed to fetch inboxes: ${error.message}`);
@@ -98,8 +101,12 @@ export class MessagingService {
             .insert({
                 conversation_id: conversationId,
                 sender_id: userId,
-                content: dto.content,
+                content: dto.content ?? '',
+                type: dto.type ?? null,
                 file_url: dto.fileUrl || null,
+                mime: dto.mime ?? null,
+                duration: dto.duration ?? null,
+                size: dto.size ?? null,
                 file_urls: dto.fileUrls || [],
                 reply_to_id: dto.replyToId || null,
                 entity_mentions: dto.entityMentions || []

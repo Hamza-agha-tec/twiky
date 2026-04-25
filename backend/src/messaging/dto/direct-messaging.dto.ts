@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsUUID, IsArray, ValidateNested } from 'class-validator';
+import { IsString, IsOptional, IsUUID, IsArray, ValidateNested, IsIn, IsNumber } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class EntityMentionDto {
@@ -15,12 +15,30 @@ export class StartDirectConversationDto {
 }
 
 export class SendDirectMessageDto {
+    @IsOptional()
     @IsString()
-    content: string;
+    content?: string;
+
+    @IsOptional()
+    @IsString()
+    @IsIn(['text', 'image', 'file', 'voice'])
+    type?: 'text' | 'image' | 'file' | 'voice';
 
     @IsOptional()
     @IsString()
     fileUrl?: string;
+
+    @IsOptional()
+    @IsString()
+    mime?: string;
+
+    @IsOptional()
+    @IsNumber()
+    duration?: number;
+
+    @IsOptional()
+    @IsNumber()
+    size?: number;
 
     @IsOptional()
     @IsArray()

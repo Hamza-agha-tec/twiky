@@ -8,7 +8,6 @@ import { format } from 'date-fns';
 import { useState, useEffect, useRef } from 'react';
 import { MessageContextMenu } from './message-context-menu';
 import { useChatThemeContext } from '@/context/ChatThemeContext';
-import { VerifiedBadge, getVerifiedBadgeVariant } from '@/components/chat/verified-badge';
 
 interface MessageBubbleProps {
   message: Message;
@@ -63,7 +62,7 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
       className={`flex gap-2 group relative ${message.isOwn ? 'justify-end' : 'justify-start'}`}
     >
       {!message.isOwn && (
-        <div className="flex-shrink-0 self-end">
+        <div className="shrink-0 self-end">
           {showAvatar ? (
             <Avatar className="h-8 w-8">
               <AvatarImage src={message.avatar} alt={message.senderName} />
@@ -142,7 +141,7 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
 
           {/* Text */}
           {message.type === 'text' && (
-            <p className="text-sm break-words whitespace-pre-wrap leading-relaxed">{message.content}</p>
+            <p className="text-sm wrap-break-word whitespace-pre-wrap leading-relaxed">{message.content}</p>
           )}
 
           {/* Image */}
@@ -162,7 +161,7 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
                 alt="Video thumbnail"
                 className="max-h-64 w-full object-cover group-hover/video:scale-105 transition-transform duration-300"
               />
-              <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/50" />
+              <div className="absolute inset-0 bg-linear-to-b from-transparent via-transparent to-black/50" />
               <div className="absolute inset-0 flex items-center justify-center">
                 <motion.button
                   whileHover={{ scale: 1.12 }}
@@ -187,7 +186,7 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
                 whileHover={{ scale: 1.08 }}
                 whileTap={{ scale: 0.92 }}
                 onClick={handlePlayToggle}
-                className={`h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${
                   message.isOwn ? 'bg-white/20 hover:bg-white/30' : 'bg-primary/15 hover:bg-primary/25'
                 } transition-colors`}
               >
@@ -203,7 +202,7 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
                 {WAVEFORM.map((h, i) => (
                   <motion.div
                     key={i}
-                    className={`w-1 rounded-full flex-shrink-0 ${
+                    className={`w-1 rounded-full shrink-0 ${
                       message.isOwn ? 'bg-white/70' : 'bg-primary/60'
                     }`}
                     style={{ height: `${h}%` }}
@@ -257,7 +256,6 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
         {/* Timestamp + Read Status */}
         <div className="flex items-center gap-1 mt-1 px-1 text-[11px] text-muted-foreground">
           {isMounted && <span>{format(new Date(message.timestamp), 'HH:mm')}</span>}
-          {message.senderIsVerified ? <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(message.senderSubPlan)} /> : null}
           {message.isOwn && (
             <>
               {message.isRead ? (
