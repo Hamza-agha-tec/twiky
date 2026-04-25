@@ -4,6 +4,42 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/utils/supabase/client'
 
+function playVoiceSound(type: 'join' | 'leave') {
+  try {
+    const ctx = new AudioContext()
+    const gain = ctx.createGain()
+    gain.connect(ctx.destination)
+    gain.gain.setValueAtTime(0.18, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.5)
+
+    if (type === 'join') {
+      // Two ascending tones
+      const freqs = [660, 880]
+      freqs.forEach((freq, i) => {
+        const osc = ctx.createOscillator()
+        osc.type = 'sine'
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.12)
+        osc.connect(gain)
+        osc.start(ctx.currentTime + i * 0.12)
+        osc.stop(ctx.currentTime + i * 0.12 + 0.18)
+      })
+    } else {
+      // Two descending tones
+      const freqs = [660, 440]
+      freqs.forEach((freq, i) => {
+        const osc = ctx.createOscillator()
+        osc.type = 'sine'
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.12)
+        osc.connect(gain)
+        osc.start(ctx.currentTime + i * 0.12)
+        osc.stop(ctx.currentTime + i * 0.12 + 0.18)
+      })
+    }
+
+    setTimeout(() => ctx.close(), 800)
+  } catch {}
+}
+
 export interface VoicePresenceUser {
   id: string
   name: string
@@ -48,8 +84,27 @@ export function useVoicePresence(
       channelRef.current = ch
 
       ch.on('presence', { event: 'sync' }, () => syncParticipants(ch))
-      ch.on('presence', { event: 'join' }, () => syncParticipants(ch))
-      ch.on('presence', { event: 'leave' }, () => syncParticipants(ch))
+      ch.on('presence', { event: 'join' }, ({ newPresences }) => {
+        syncParticipants(ch)
+        const isOwnJoin = (newPresences as unknown as VoicePresenceUser[]).some((p) => p.id === info.id)
+        if (!isOwnJoin) playVoiceSound('join')
+      })
+      ch.on('presence', { event: 'leave' }, ({ leftPresences }) => {
+        syncParticipants(ch)
+        const isOwnLeave = (leftPresences as unknown as VoicePresenceUser[]).some((p) => p.id === info.id)
+        if (!isOwnLeave) playVoiceSound('leave')
+      })
+      // Listen for kick broadcasts targeting this user
+      ch.on('broadcast', { event: 'kick' }, ({ payload }) => {
+        if (payload?.targetId === info.id) {
+          ch.untrack()
+          ch.unsubscribe()
+          createClient().removeChannel(ch)
+          channelRef.current = null
+          setIsJoined(false)
+          setParticipants([])
+        }
+      })
 
       ch.subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
@@ -80,6 +135,15 @@ export function useVoicePresence(
     setParticipants([])
   }, [])
 
+  const kick = useCallback(async (targetId: string) => {
+    if (!channelRef.current) return
+    await channelRef.current.send({
+      type: 'broadcast',
+      event: 'kick',
+      payload: { targetId },
+    })
+  }, [])
+
   const toggleMute = useCallback(async () => {
     if (!channelRef.current || !myInfoRef.current) return
     const info = myInfoRef.current
@@ -105,5 +169,5 @@ export function useVoicePresence(
     }
   }, [])
 
-  return { participants, isJoined, isMuted, joinedAt: joinedAtRef.current, join, leave, toggleMute }
+  return { participants, isJoined, isMuted, joinedAt: joinedAtRef.current, join, leave, toggleMute, kick }
 }

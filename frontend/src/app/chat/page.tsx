@@ -5,6 +5,8 @@ import { BookUser, ListTodo, MessageSquare, Target } from 'lucide-react'
 
 import {
   ChannelFeed,
+  buildStandaloneFeedMemberProfile,
+  FeedMemberProfileView,
   type FeedDirectConversationTarget,
 } from '@/components/chat/channel-feed'
 import {
@@ -19,7 +21,7 @@ import {
 } from '@/components/chat/channels-panel'
 import { ChatWindow } from '@/components/chat/chat-window'
 import { VoiceGroupView } from '@/components/chat/voice-group-view'
-import { useVoicePresence } from '@/hooks/use-voice-presence'
+import { useVoicePresence, type VoicePresenceUser } from '@/hooks/use-voice-presence'
 import { DirectProfileSidebar } from '@/components/chat/direct-profile-sidebar'
 import { FeedProfileSidebarDock } from '@/components/chat/feed-profile-sidebar-dock'
 import { GoalsPanel } from '@/components/chat/goals-panel'
@@ -244,6 +246,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const [activeGroupId, setActiveGroupId] = useState('')
   const [channelFeedClosed, setChannelFeedClosed] = useState(false)
   const [activeVoiceGroupId, setActiveVoiceGroupId] = useState<string | null>(null)
+  const [voiceProfileTarget, setVoiceProfileTarget] = useState<VoicePresenceUser | null>(null)
   const [voiceElapsed, setVoiceElapsed] = useState<string | null>(null)
   const voiceElapsedRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -839,23 +842,52 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const channelContent =
     activeChannel && activeGroup ? (
       activeGroup.kind === 'voice' ? (
-        <VoiceGroupView
-          group={activeGroup}
-          participants={voice.participants}
-          isJoined={voice.isJoined}
-          isMuted={voice.isMuted}
-          joinedAt={voice.joinedAt}
-          myId={profile?.id}
-          onJoin={() => {
-            setActiveVoiceGroupId(activeGroup.id)
-            voice.join(activeGroup.id)
-          }}
-          onLeave={async () => {
-            await voice.leave()
-            setActiveVoiceGroupId(null)
-          }}
-          onToggleMute={voice.toggleMute}
-        />
+        <div className="flex min-w-0 flex-1 overflow-hidden">
+          <VoiceGroupView
+            group={activeGroup}
+            participants={voice.participants}
+            isJoined={voice.isJoined}
+            isMuted={voice.isMuted}
+            joinedAt={voice.joinedAt}
+            myId={profile?.id}
+            onJoin={() => {
+              setActiveVoiceGroupId(activeGroup.id)
+              voice.join(activeGroup.id)
+            }}
+            onLeave={async () => {
+              await voice.leave()
+              setActiveVoiceGroupId(null)
+              setVoiceProfileTarget(null)
+            }}
+            onToggleMute={voice.toggleMute}
+            onViewProfile={(p) => setVoiceProfileTarget(p)}
+            onKick={(userId) => voice.kick(userId)}
+          />
+          <FeedProfileSidebarDock
+            open={!!voiceProfileTarget}
+            width={320}
+            onBack={() => setVoiceProfileTarget(null)}
+          >
+            {voiceProfileTarget && (
+              <FeedMemberProfileView
+                currentGroupLabel={activeGroup.label}
+                isOwn={voiceProfileTarget.id === profile?.id}
+                memberProfile={buildStandaloneFeedMemberProfile({
+                  id: voiceProfileTarget.id,
+                  avatarUrl: voiceProfileTarget.avatarUrl,
+                  name: voiceProfileTarget.name,
+                  handle: voiceProfileTarget.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+                  role: 'Member',
+                })}
+                messagePending={false}
+                onBack={() => setVoiceProfileTarget(null)}
+                onMessage={() => {}}
+                posts={[]}
+                showMessageAction={false}
+              />
+            )}
+          </FeedProfileSidebarDock>
+        </div>
       ) : channelFeedClosed ? (
         <WorkspaceEmptyState
           title="Group feed closed"

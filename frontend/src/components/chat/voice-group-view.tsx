@@ -43,6 +43,8 @@ interface VoiceGroupViewProps {
   onJoin: () => void
   onLeave: () => void
   onToggleMute: () => void
+  onViewProfile?: (participant: VoicePresenceUser) => void
+  onKick?: (userId: string) => void
 }
 
 function useElapsedTime(startMs: number, active: boolean) {
@@ -71,6 +73,8 @@ export function VoiceGroupView({
   onJoin,
   onLeave,
   onToggleMute,
+  onViewProfile,
+  onKick,
 }: VoiceGroupViewProps) {
   const [deafened, setDeafened] = useState(false)
   const [videoOn, setVideoOn] = useState(false)
@@ -180,6 +184,11 @@ export function VoiceGroupView({
 
                     {!isMe && (
                       <ContextMenuContent className="w-44">
+                        <ContextMenuItem onClick={() => onViewProfile?.(member)}>
+                          <Shield className="mr-2 h-3.5 w-3.5" />
+                          View profile
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
                         <ContextMenuItem>
                           <Volume1 className="mr-2 h-3.5 w-3.5" />
                           Adjust volume
@@ -189,12 +198,10 @@ export function VoiceGroupView({
                           Mute for me
                         </ContextMenuItem>
                         <ContextMenuSeparator />
-                        <ContextMenuItem>
-                          <Shield className="mr-2 h-3.5 w-3.5" />
-                          View profile
-                        </ContextMenuItem>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem className="text-destructive focus:text-destructive">
+                        <ContextMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => onKick?.(member.id)}
+                        >
                           <UserMinus className="mr-2 h-3.5 w-3.5" />
                           Kick from voice
                         </ContextMenuItem>
