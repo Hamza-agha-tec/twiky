@@ -72,7 +72,16 @@ export function useVoicePresence(
 
   const join = useCallback(
     async (groupId: string, muted = false) => {
-      if (!groupId || !myInfoRef.current || channelRef.current) return
+      if (!groupId || !myInfoRef.current) return
+      if (channelRef.current) {
+        const old = channelRef.current
+        channelRef.current = null
+        old.untrack()
+        old.unsubscribe()
+        createClient().removeChannel(old)
+        setIsJoined(false)
+        setParticipants([])
+      }
       const info = myInfoRef.current
       const supabase = createClient()
       joinedAtRef.current = Date.now()

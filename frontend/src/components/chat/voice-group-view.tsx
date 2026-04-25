@@ -90,7 +90,7 @@ export function VoiceGroupView({
   }
 
   useEffect(() => {
-    if (!isJoined) onJoin()
+    onJoin()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

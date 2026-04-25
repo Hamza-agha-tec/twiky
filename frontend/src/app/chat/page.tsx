@@ -922,9 +922,10 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       activeGroup.kind === 'voice' ? (
         <div className="flex min-w-0 flex-1 overflow-hidden">
           <VoiceGroupView
+            key={activeGroup.id}
             group={activeGroup}
-            participants={voice.participants}
-            isJoined={voice.isJoined}
+            participants={activeVoiceGroupId === activeGroup.id ? voice.participants : []}
+            isJoined={voice.isJoined && activeVoiceGroupId === activeGroup.id}
             isMuted={voice.isMuted}
             joinedAt={voice.joinedAt}
             myId={profile?.id}
