@@ -26,7 +26,7 @@ function notificationLabel(type: string) {
   }
 }
 
-export function NotificationsView() {
+export function NotificationsView({ onAcceptGroupInvitation }: { onAcceptGroupInvitation?: (groupId: string) => void }) {
   const { data: notifications = [], isLoading } = useNotifications()
   const { data: invitations = [] } = usePendingInvitations()
   const markAsRead = useMarkAsRead()
@@ -73,7 +73,7 @@ export function NotificationsView() {
             </p>
             <div className="flex flex-col gap-3">
               {groupInvitations.map((inv) => (
-                <InvitationRow key={inv.id} inv={inv} label={`invited you to a group · ${formatTime(inv.created_at)}`} onRespond={respondToInvitation.mutate} pending={respondToInvitation.isPending} />
+                <InvitationRow key={inv.id} inv={inv} label={`invited you to a group · ${formatTime(inv.created_at)}`} onRespond={respondToInvitation.mutate} pending={respondToInvitation.isPending} onAccepted={() => onAcceptGroupInvitation?.(inv.entity_id)} />
               ))}
             </div>
           </div>
@@ -157,15 +157,18 @@ function InvitationRow({
   label,
   pending,
   onRespond,
+  onAccepted,
 }: {
   inv: {
     id: string
+    entity_id: string
     created_at: string
     inviter: { username: string; avatar_url?: string | null }
   }
   label: string
   pending: boolean
   onRespond: (vars: { invitationId: string; status: 'ACCEPTED' | 'REJECTED' }) => void
+  onAccepted?: () => void
 }) {
   return (
     <div className="flex items-center gap-4 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
@@ -182,7 +185,7 @@ function InvitationRow({
       </div>
       <div className="flex gap-2">
         <button
-          onClick={() => onRespond({ invitationId: inv.id, status: 'ACCEPTED' })}
+          onClick={() => { onRespond({ invitationId: inv.id, status: 'ACCEPTED' }); onAccepted?.() }}
           disabled={pending}
           className="rounded-xl bg-primary px-3 py-1.5 text-[12px] font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
         >

@@ -27,6 +27,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import type { MockChannelGroup } from '@/components/chat/channels-panel'
 import type { VoicePresenceUser } from '@/hooks/use-voice-presence'
+import { useSearchUsers, useUserFollowing, useProfile } from '@/hooks/use-user'
+import { useSendGroupInvitation } from '@/hooks/use-invitations'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -101,6 +104,9 @@ export function VoiceGroupView({
   const [chatMessages, setChatMessages] = useState<{ id: string; userId: string; name: string; avatar: string | null; text: string; ts: number }[]>([])
   const chatEndRef = useRef<HTMLDivElement | null>(null)
   const chatInputRef = useRef<HTMLInputElement | null>(null)
+  const [inviteOpen, setInviteOpen] = useState(false)
+  const [inviteSearch, setInviteSearch] = useState('')
+  const [sentInvites, setSentInvites] = useState<Set<string>>(new Set())
 
   const videoStreamRef = useRef<MediaStream | null>(null)
   const screenStreamRef = useRef<MediaStream | null>(null)
@@ -181,6 +187,26 @@ export function VoiceGroupView({
     }])
     setChatInput('')
   }, [chatInput, me])
+
+  const { data: profile } = useProfile()
+  const { data: following = [] } = useUserFollowing(profile?.id)
+  const { data: searchResults = [] } = useSearchUsers(inviteSearch)
+  const sendInvite = useSendGroupInvitation()
+
+  const participantIds = new Set(participants.map((p) => p.id))
+
+  const inviteSuggestions = inviteSearch.trim()
+    ? searchResults
+    : following
+        .map((f) => f.users)
+        .filter((u) => u && !participantIds.has(u.id))
+
+  const handleInvite = (userId: string) => {
+    sendInvite.mutate(
+      { inviteeId: userId, groupId: group.id },
+      { onSuccess: () => setSentInvites((prev) => new Set(prev).add(userId)) },
+    )
+  }
 
   const sounds = [
     { label: '😂 Faaa', file: 'faaa sound.mpeg' },
@@ -409,7 +435,10 @@ export function VoiceGroupView({
             </div>
 
             {/* Invite friends */}
-            <button className="mx-auto flex items-center gap-2 rounded-xl border border-dashed border-border/50 px-5 py-2 text-[12px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary">
+            <button
+              onClick={() => { setInviteSearch(''); setSentInvites(new Set()); setInviteOpen(true) }}
+              className="mx-auto flex items-center gap-2 rounded-xl border border-dashed border-border/50 px-5 py-2 text-[12px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+            >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>
               </svg>
@@ -625,6 +654,81 @@ export function VoiceGroupView({
         </motion.div>
       )}
     </AnimatePresence>
+    {/* Invite Friends dialog */}
+    <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+      <DialogContent className="max-w-sm p-0 gap-0 overflow-hidden bg-background border-border">
+        <DialogHeader className="px-5 pt-5 pb-3 border-b border-border">
+          <DialogTitle className="text-[14px] font-semibold">Invite to {group.label}</DialogTitle>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Invite friends to join this voice channel</p>
+        </DialogHeader>
+
+        {/* Search */}
+        <div className="px-4 pt-3">
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 focus-within:border-primary/40 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input
+              autoFocus
+              value={inviteSearch}
+              onChange={(e) => setInviteSearch(e.target.value)}
+              placeholder="Search by username…"
+              className="flex-1 bg-transparent text-[12px] text-foreground placeholder:text-muted-foreground outline-none"
+            />
+          </div>
+        </div>
+
+        {/* User list */}
+        <div className="flex flex-col gap-0.5 overflow-y-auto px-2 py-3" style={{ maxHeight: 320 }}>
+          {inviteSuggestions.length === 0 ? (
+            <p className="py-8 text-center text-[12px] text-muted-foreground">
+              {inviteSearch ? 'No users found' : 'No friends to invite yet'}
+            </p>
+          ) : (
+            inviteSuggestions.map((user) => {
+              if (!user) return null
+              const alreadyIn = participantIds.has(user.id)
+              const sent = sentInvites.has(user.id)
+              return (
+                <div
+                  key={user.id}
+                  className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-muted/50 transition-colors"
+                >
+                  {/* Avatar */}
+                  {user.avatar_url ? (
+                    <img src={user.avatar_url} alt={user.username} className="h-8 w-8 rounded-full object-cover shrink-0" />
+                  ) : (
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[13px] font-bold text-primary">
+                      {user.username[0]?.toUpperCase()}
+                    </div>
+                  )}
+
+                  {/* Name */}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[12px] font-semibold text-foreground">{user.username}</p>
+                    {alreadyIn && <p className="text-[10px] text-green-500">Already in call</p>}
+                  </div>
+
+                  {/* Action */}
+                  <button
+                    disabled={alreadyIn || sent || sendInvite.isPending}
+                    onClick={() => handleInvite(user.id)}
+                    className={cn(
+                      'shrink-0 rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all',
+                      alreadyIn
+                        ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                        : sent
+                        ? 'bg-green-500/10 text-green-500 cursor-default'
+                        : 'bg-primary text-primary-foreground hover:bg-primary/90 active:scale-95',
+                    )}
+                  >
+                    {alreadyIn ? 'In call' : sent ? '✓ Sent' : 'Invite'}
+                  </button>
+                </div>
+              )
+            })
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
     </motion.div>
   )
 }

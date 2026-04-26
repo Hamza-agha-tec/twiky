@@ -57,6 +57,9 @@ import { useRouter } from 'next/navigation'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { useCreateDirectConversation, useDirectConversations, useDirectMessages, useSendDirectMessage, useToggleDirectMessageReaction } from '@/hooks/use-direct-conversations'
+import { useVoiceInvitationListener } from '@/hooks/use-voice-invitation-listener'
+import { invitationsApi, type Invitation } from '@/lib/invitations-api'
+import { toast } from 'sonner'
 
 type ChatSurface =
   | 'channel'
@@ -406,6 +409,69 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   )
 
   const voice = useVoicePresence(voiceMyInfo, voiceGroupIds)
+
+  const handleJoinVoiceGroup = useCallback((groupId: string) => {
+    const channelForGroup = workspaceChannels.find((ch) => ch.groups.some((g) => g.id === groupId))
+    if (channelForGroup) {
+      setActiveChannelId(channelForGroup.id)
+      setActiveGroupId(groupId)
+    }
+    setActiveVoiceGroupId(groupId)
+    void voice.join(groupId)
+  }, [workspaceChannels, voice])
+
+  useVoiceInvitationListener(profile?.id, (invitation: Invitation) => {
+    const groupId = invitation.entity_id
+    const inviterName = invitation.inviter?.username ?? 'Someone'
+
+    const allGroups = workspaceChannels.flatMap((ch) => ch.groups)
+    const group = allGroups.find((g) => g.id === groupId)
+    const groupName = group?.label ?? 'a voice channel'
+
+    toast.custom(
+      (t) => (
+        <div className="flex w-80 items-start gap-3 rounded-2xl border border-border bg-popover p-4 shadow-xl">
+          {invitation.inviter?.avatar_url ? (
+            <img src={invitation.inviter.avatar_url} alt={inviterName} className="h-9 w-9 shrink-0 rounded-full object-cover" />
+          ) : (
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[13px] font-bold text-primary">
+              {inviterName[0]?.toUpperCase()}
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="text-[12px] font-semibold text-foreground">
+              <span className="text-primary">{inviterName}</span> invited you to join
+            </p>
+            <p className="text-[11px] text-muted-foreground">#{groupName}</p>
+            <div className="mt-2.5 flex gap-2">
+              <button
+                onClick={async () => {
+                  toast.dismiss(t)
+                  try {
+                    await invitationsApi.respond(invitation.id, 'ACCEPTED')
+                    handleJoinVoiceGroup(groupId)
+                  } catch {}
+                }}
+                className="rounded-lg bg-primary px-3 py-1.5 text-[11px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                Accept
+              </button>
+              <button
+                onClick={async () => {
+                  toast.dismiss(t)
+                  try { await invitationsApi.respond(invitation.id, 'REJECTED') } catch {}
+                }}
+                className="rounded-lg bg-muted px-3 py-1.5 text-[11px] font-semibold text-foreground transition-colors hover:bg-accent"
+              >
+                Decline
+              </button>
+            </div>
+          </div>
+        </div>
+      ),
+      { duration: 30000, id: invitation.id },
+    )
+  })
 
   useEffect(() => {
     setActiveVoiceGroupId(voice.currentGroupId)
@@ -1093,7 +1159,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         ) : activeView === 'add-friends' ? (
           <AddFriendsView />
         ) : activeView === 'notifications' ? (
-          <NotificationsView />
+          <NotificationsView onAcceptGroupInvitation={handleJoinVoiceGroup} />
         ) : (
           <>
             <WorkspaceSidebar
