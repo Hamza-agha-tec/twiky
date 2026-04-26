@@ -45,6 +45,8 @@ export interface VoicePresenceUser {
   isMuted: boolean
   isSpeaking?: boolean
   joinedAt: number
+  soundboardFile?: string
+  soundboardStartedAt?: number
 }
 
 type MyVoiceInfo = {
@@ -98,6 +100,8 @@ export function useVoicePresence(
   const soundboardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const analyserRafRef = useRef<number | null>(null)
   const analyserCtxRef = useRef<AudioContext | null>(null)
+  const playedPresenceSoundsRef = useRef<Set<string>>(new Set())
+  const activeSoundAudioRef = useRef<HTMLAudioElement | null>(null)
   const channelsRef = useRef<Map<string, VoiceChannelEntry>>(new Map())
   const currentGroupIdRef = useRef<string | null>(null)
   const myInfoRef = useRef<MyVoiceInfo | null>(myInfo)
@@ -107,7 +111,23 @@ export function useVoicePresence(
   const pendingJoinRef = useRef<{ groupId: string; muted: boolean } | null>(null)
   const joinSeqRef = useRef(0)
 
-  const startSoundboardAnalyser = useCallback((audio: HTMLAudioElement, senderId: string) => {
+  const stopActiveSound = useCallback(() => {
+    if (activeSoundAudioRef.current) {
+      activeSoundAudioRef.current.pause()
+      activeSoundAudioRef.current.currentTime = 0
+      activeSoundAudioRef.current = null
+    }
+    if (analyserRafRef.current) cancelAnimationFrame(analyserRafRef.current)
+    void analyserCtxRef.current?.close()
+    setSoundboardIntensity(0)
+    setSoundboardUserId(null)
+  }, [])
+
+  const startSoundboardAnalyser = useCallback((audio: HTMLAudioElement, senderId: string, onStop?: () => void) => {
+    if (activeSoundAudioRef.current && activeSoundAudioRef.current !== audio) {
+      activeSoundAudioRef.current.pause()
+    }
+    activeSoundAudioRef.current = audio
     if (analyserRafRef.current) cancelAnimationFrame(analyserRafRef.current)
     void analyserCtxRef.current?.close()
     setSoundboardUserId(senderId)
@@ -135,6 +155,8 @@ export function useVoicePresence(
       setSoundboardIntensity(0)
       setSoundboardUserId(null)
       void ctx.close()
+      activeSoundAudioRef.current = null
+      onStop?.()
     }
     audio.onended = stop
     audio.onerror = stop
@@ -209,6 +231,27 @@ export function useVoicePresence(
     }
 
     setParticipantsByGroup((prev) => ({ ...prev, [groupId]: users }))
+
+    if (groupId === currentGroupIdRef.current) {
+      const myId = myInfoRef.current?.id
+      for (const u of users) {
+        if (!u.soundboardFile || !u.soundboardStartedAt) continue
+        if (u.id === myId) continue
+        const key = `${u.id}:${u.soundboardStartedAt}`
+        if (playedPresenceSoundsRef.current.has(key)) continue
+        playedPresenceSoundsRef.current.add(key)
+        const elapsedSec = (Date.now() - u.soundboardStartedAt) / 1000
+        const audio = new Audio(`/sounds/${u.soundboardFile}`)
+        audio.volume = 0.8
+        audio.addEventListener('loadedmetadata', () => {
+          if (elapsedSec < audio.duration) {
+            audio.currentTime = elapsedSec
+            startSoundboardAnalyser(audio, u.id)
+            void audio.play().catch(() => { setSoundboardUserId(null); setSoundboardIntensity(0) })
+          }
+        }, { once: true })
+      }
+    }
   }, [])
 
   const waitForSubscribed = useCallback((entry: VoiceChannelEntry, timeoutMs = 2500) => {
@@ -292,6 +335,7 @@ export function useVoicePresence(
         }
       })
       channel.on('broadcast', { event: 'soundboard' }, ({ payload }) => {
+        if (currentGroupIdRef.current !== groupId) return
         if (typeof payload?.sound === 'string' && typeof payload?.senderId === 'string') {
           const audio = new Audio(`/sounds/${payload.sound}`)
           audio.volume = 0.8
@@ -325,6 +369,7 @@ export function useVoicePresence(
   const leave = useCallback(async () => {
     const groupId = currentGroupIdRef.current
     if (!groupId) return
+    stopActiveSound()
     const entry = channelsRef.current.get(groupId)
     const myId = myInfoRef.current?.id
     currentGroupIdRef.current = null
@@ -343,7 +388,7 @@ export function useVoicePresence(
     setJoinedGroupId(null)
     setIsJoined(false)
     setJoinedAt(0)
-  }, [syncParticipants])
+  }, [syncParticipants, stopActiveSound])
 
   const join = useCallback(
     async (groupId: string, muted = false) => {
@@ -370,6 +415,8 @@ export function useVoicePresence(
         joinedAt: nextJoinedAt,
       }
 
+      stopActiveSound()
+      playedPresenceSoundsRef.current.clear()
       currentGroupIdRef.current = groupId
       currentSelfRef.current = optimisticUser
       setCurrentGroupId(groupId)
@@ -427,19 +474,29 @@ export function useVoicePresence(
     if (!groupId) return
     const entry = channelsRef.current.get(groupId)
     if (!entry) return
-    const senderId = myInfoRef.current?.id
+    const self = currentSelfRef.current
+    if (!self) return
+    const soundboardStartedAt = Date.now()
+    const updatedSelf: VoicePresenceUser = { ...self, soundboardFile: sound, soundboardStartedAt }
+    currentSelfRef.current = updatedSelf
+    void entry.channel.track(updatedSelf)
+
     const audio = new Audio(`/sounds/${sound}`)
     audio.volume = 0.8
-    if (senderId) {
-      startSoundboardAnalyser(audio, senderId)
-      void audio.play().catch(() => { setSoundboardUserId(null); setSoundboardIntensity(0) })
-    } else {
-      void audio.play().catch(() => {})
+    const clearPresence = () => {
+      const cur = currentSelfRef.current
+      if (!cur) return
+      const cleared: VoicePresenceUser = { ...cur, soundboardFile: undefined, soundboardStartedAt: undefined }
+      currentSelfRef.current = cleared
+      void entry.channel.track(cleared)
     }
+    startSoundboardAnalyser(audio, self.id, clearPresence)
+    void audio.play().catch(() => { setSoundboardUserId(null); setSoundboardIntensity(0); clearPresence() })
+
     await entry.channel.send({
       type: 'broadcast',
       event: 'soundboard',
-      payload: { sound, senderId },
+      payload: { sound, senderId: self.id },
     })
   }, [startSoundboardAnalyser])
 
