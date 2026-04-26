@@ -282,6 +282,8 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const { data: rawMessages } = useGroupMessages(isRealGroupId ? activeGroupId : undefined)
   const toggleGroupReaction = useToggleGroupMessageReaction(activeGroupId)
   const { data: activeGroupMembers = [] } = useGroupMembers(isRealGroupId ? activeGroupId : undefined)
+  const isRealVoiceGroupId = /^[0-9a-f-]{36}$/i.test(activeVoiceGroupId ?? '')
+  const { data: voiceGroupMembers = [] } = useGroupMembers(isRealVoiceGroupId ? (activeVoiceGroupId ?? undefined) : undefined)
 
   const groupPosts: FeedPost[] = useMemo(() => {
   const groupMessageById = new Map((rawMessages ?? []).map((msg) => [msg.id, msg]))
@@ -981,7 +983,11 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                   avatarUrl: voiceProfileTarget.avatarUrl,
                   name: voiceProfileTarget.name,
                   handle: voiceProfileTarget.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-                  role: 'Member',
+                  role: (() => {
+                    const m = voiceGroupMembers.find((m) => m.user?.id === voiceProfileTarget.id)
+                    if (!m) return 'Member'
+                    return m.role.charAt(0) + m.role.slice(1).toLowerCase()
+                  })(),
                 })}
                 messagePending={false}
                 onBack={() => setVoiceProfileTarget(null)}
@@ -1145,6 +1151,10 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             onMoveVoiceParticipant={({ userId, fromGroupId, toGroupId }) => {
               void voice.moveUser(userId, fromGroupId, toGroupId)
             }}
+            myId={profile?.id}
+            onKickVoiceParticipant={(userId) => voice.kick(userId)}
+            onMuteVoiceParticipant={(userId, _groupId, muted) => voice.muteUser(userId, muted)}
+            onViewVoiceParticipantProfile={(p) => setVoiceProfileTarget(p as VoicePresenceUser)}
           />
 
             {activeSurface === 'channel'

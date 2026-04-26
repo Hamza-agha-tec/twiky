@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Camera,
   CameraOff,
@@ -80,6 +80,14 @@ export function VoiceGroupView({
   const [sharing, setSharing] = useState(false)
   const [exitReason, setExitReason] = useState<'left' | null>(null)
   const timer = useElapsedTime(joinedAt, isJoined)
+
+  const prevJoinedRef = useRef(isJoined)
+  useEffect(() => {
+    if (prevJoinedRef.current && !isJoined) {
+      setExitReason('left')
+    }
+    prevJoinedRef.current = isJoined
+  }, [isJoined])
 
   const setExit = (reason: 'left' | null) => {
     setExitReason(reason)
@@ -230,7 +238,7 @@ export function VoiceGroupView({
                     </ContextMenuTrigger>
 
                     {!isMe && (
-                      <ContextMenuContent className="w-44">
+                      <ContextMenuContent className="w-44 bg-sidebar border-border">
                         <ContextMenuItem onClick={() => onViewProfile?.(member)}>
                           <Shield className="mr-2 h-3.5 w-3.5" />
                           View profile

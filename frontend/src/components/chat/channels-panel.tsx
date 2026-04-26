@@ -20,6 +20,8 @@ import {
   Search,
   Trash2,
   Upload,
+  User,
+  UserMinus,
   UserPlus,
   Volume2,
 } from 'lucide-react'
@@ -31,6 +33,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -112,6 +121,7 @@ export interface VoiceParticipant {
   id: string
   name: string
   avatarUrl: string | null
+  isMuted?: boolean
 }
 
 interface ChannelsPanelProps {
@@ -133,6 +143,10 @@ interface ChannelsPanelProps {
   onVoiceToggleMute?: () => void
   onVoiceReturn?: (groupId: string) => void
   onMoveVoiceParticipant?: (move: { userId: string; fromGroupId: string; toGroupId: string }) => void
+  myId?: string
+  onKickVoiceParticipant?: (userId: string, groupId: string) => void
+  onMuteVoiceParticipant?: (userId: string, groupId: string, muted: boolean) => void
+  onViewVoiceParticipantProfile?: (participant: VoiceParticipant) => void
 }
 
 const MEMBER_LABELS = ['26 online', '18 online', '12 online', '9 online', '6 online']
@@ -1136,6 +1150,10 @@ export function ChannelsPanel({
   onVoiceToggleMute,
   onVoiceReturn,
   onMoveVoiceParticipant,
+  myId,
+  onKickVoiceParticipant,
+  onMuteVoiceParticipant,
+  onViewVoiceParticipantProfile,
 }: ChannelsPanelProps) {
   const [showCreateGroup, setShowCreateGroup] = useState(false)
   const [channelSettingsOpen, setChannelSettingsOpen] = useState(false)
@@ -1280,7 +1298,12 @@ export function ChannelsPanel({
           </div>
 
           <div className="space-y-0.5">
-            {channel.groups.map((group, idx) => {
+            {(() => {
+              const textGroups = channel.groups.filter((g) => g.kind !== 'voice')
+              const voiceGroups = channel.groups.filter((g) => g.kind === 'voice')
+              const sorted = [...textGroups, ...voiceGroups]
+              const voiceStart = textGroups.length
+              return sorted.map((group, idx) => {
               const isActive = activeGroup === group.id
               const isDefault = group.label.toLowerCase() === 'general'
               const GroupIcon = group.kind === 'voice' ? Volume2 : Hash
@@ -1289,9 +1312,16 @@ export function ChannelsPanel({
               const memberCanRequest = !canManage && isPrivate && !group.is_member
               const participants = group.kind === 'voice' ? (voiceParticipants[group.id] ?? []) : []
 
+              const isFirstVoice = idx === voiceStart && voiceStart > 0 && voiceGroups.length > 0
               return (
+                <div key={group.id}>
+                {isFirstVoice && (
+                  <div className="flex items-center gap-2 px-1 pb-1 pt-2">
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50">Voice</span>
+                    <div className="flex-1 border-t border-border/50" />
+                  </div>
+                )}
                 <motion.div
-                  key={group.id}
                   className="group"
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -1422,7 +1452,7 @@ export function ChannelsPanel({
                         <MoreHorizontal className="h-3.5 w-3.5" />
                       </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuContent align="end" className="w-48 bg-sidebar border-border">
                       <DropdownMenuItem onClick={() => setGroupSettingsTarget(group)}>
                         Group settings
                       </DropdownMenuItem>
@@ -1454,51 +1484,87 @@ export function ChannelsPanel({
                   {/* Voice participants — Discord-style list below, outside the row div */}
                   {group.kind === 'voice' && participants.length > 0 && (
                     <div className="ml-6 mb-1 space-y-0.5">
-                      {participants.map((p) => (
-                        <div
-                          key={p.id}
-                          draggable={canManage}
-                          title={canManage ? 'Drag to move to another voice group' : undefined}
-                          className={cn(
-                            'flex items-center gap-2 rounded-lg px-2 py-0.5',
-                            canManage && 'cursor-grab transition-colors hover:bg-accent/60 active:cursor-grabbing',
-                          )}
-                          onDragStart={(event) => {
-                            if (!canManage) return
-                            const payload = JSON.stringify({
-                              type: 'voice-participant',
-                              userId: p.id,
-                              fromGroupId: group.id,
-                            })
-                            event.dataTransfer.effectAllowed = 'move'
-                            event.dataTransfer.setData(VOICE_PARTICIPANT_DRAG_TYPE, payload)
-                            event.dataTransfer.setData('text/plain', payload)
-                          }}
-                          onDragEnd={() => setDragOverVoiceGroupId(null)}
-                        >
-                          <div className="relative flex-shrink-0">
-                            {p.avatarUrl ? (
-                              <img
-                                src={p.avatarUrl}
-                                alt={p.name}
-                                draggable={false}
-                                className="h-5 w-5 rounded-full object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/15 text-[8px] font-bold text-primary">
-                                {p.name[0]?.toUpperCase()}
+                      {participants.map((p) => {
+                        const isSelf = p.id === myId
+                        return (
+                          <ContextMenu key={p.id}>
+                            <ContextMenuTrigger asChild>
+                              <div
+                                draggable={canManage}
+                                title={canManage ? 'Drag to move to another voice group' : undefined}
+                                className={cn(
+                                  'flex items-center gap-2 rounded-lg px-2 py-0.5',
+                                  canManage && 'cursor-grab transition-colors hover:bg-accent/60 active:cursor-grabbing',
+                                  !canManage && 'hover:bg-accent/40 transition-colors',
+                                )}
+                                onDragStart={(event) => {
+                                  if (!canManage) return
+                                  const payload = JSON.stringify({
+                                    type: 'voice-participant',
+                                    userId: p.id,
+                                    fromGroupId: group.id,
+                                  })
+                                  event.dataTransfer.effectAllowed = 'move'
+                                  event.dataTransfer.setData(VOICE_PARTICIPANT_DRAG_TYPE, payload)
+                                  event.dataTransfer.setData('text/plain', payload)
+                                }}
+                                onDragEnd={() => setDragOverVoiceGroupId(null)}
+                              >
+                                <div className="relative flex-shrink-0">
+                                  {p.avatarUrl ? (
+                                    <img
+                                      src={p.avatarUrl}
+                                      alt={p.name}
+                                      draggable={false}
+                                      className="h-5 w-5 rounded-full object-cover"
+                                    />
+                                  ) : (
+                                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/15 text-[8px] font-bold text-primary">
+                                      {p.name[0]?.toUpperCase()}
+                                    </div>
+                                  )}
+                                  <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-background bg-green-500" />
+                                </div>
+                                <span className={cn('truncate text-[11px]', p.isMuted ? 'text-muted-foreground/50' : 'text-muted-foreground')}>
+                                  {p.name}{isSelf ? ' (You)' : ''}
+                                </span>
+                                {p.isMuted && <MicOff className="ml-auto h-2.5 w-2.5 flex-shrink-0 text-muted-foreground/40" />}
                               </div>
-                            )}
-                            <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-background bg-green-500" />
-                          </div>
-                          <span className="truncate text-[11px] text-muted-foreground">{p.name}</span>
-                        </div>
-                      ))}
+                            </ContextMenuTrigger>
+                            <ContextMenuContent className="w-44 bg-sidebar border-border">
+                              <ContextMenuItem onClick={() => onViewVoiceParticipantProfile?.(p)}>
+                                <User className="mr-2 h-3.5 w-3.5" />
+                                View profile
+                              </ContextMenuItem>
+                              {!isSelf && canManage && (
+                                <>
+                                  <ContextMenuSeparator />
+                                  <ContextMenuItem onClick={() => onMuteVoiceParticipant?.(p.id, group.id, !p.isMuted)}>
+                                    {p.isMuted
+                                      ? <><Mic className="mr-2 h-3.5 w-3.5" />Unmute</>
+                                      : <><MicOff className="mr-2 h-3.5 w-3.5" />Mute</>
+                                    }
+                                  </ContextMenuItem>
+                                  <ContextMenuItem
+                                    className="text-destructive focus:text-destructive"
+                                    onClick={() => onKickVoiceParticipant?.(p.id, group.id)}
+                                  >
+                                    <UserMinus className="mr-2 h-3.5 w-3.5" />
+                                    Kick from voice
+                                  </ContextMenuItem>
+                                </>
+                              )}
+                            </ContextMenuContent>
+                          </ContextMenu>
+                        )
+                      })}
                     </div>
                   )}
                 </motion.div>
+                </div>
               )
-            })}
+              })
+            })()}
           </div>
         </div>
 

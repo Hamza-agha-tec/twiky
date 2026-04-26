@@ -195,6 +195,18 @@ export function useVoicePresence(
           }))
         }
       })
+      channel.on('broadcast', { event: 'server-mute' }, ({ payload }) => {
+        if (payload?.targetId === myInfoRef.current?.id) {
+          const muted: boolean = !!payload.muted
+          const prev = currentSelfRef.current
+          if (!prev) return
+          const nextSelf: VoicePresenceUser = { ...prev, isMuted: muted }
+          currentSelfRef.current = nextSelf
+          void channel.track(nextSelf)
+          setIsMuted(muted)
+          syncParticipants(groupId, channel)
+        }
+      })
       channel.on('broadcast', { event: 'move' }, ({ payload }) => {
         if (
           payload?.targetId === myInfoRef.current?.id &&
@@ -329,6 +341,17 @@ export function useVoicePresence(
     })
   }, [ensureChannel, waitForSubscribed])
 
+  const muteUser = useCallback(async (targetId: string, muted: boolean, groupId = currentGroupIdRef.current) => {
+    if (!groupId) return
+    const entry = ensureChannel(groupId)
+    await waitForSubscribed(entry)
+    await entry.channel.send({
+      type: 'broadcast',
+      event: 'server-mute',
+      payload: { targetId, muted },
+    })
+  }, [ensureChannel, waitForSubscribed])
+
   const moveUser = useCallback(
     async (targetId: string, fromGroupId: string, targetGroupId: string) => {
       if (!targetId || !fromGroupId || !targetGroupId || fromGroupId === targetGroupId) return
@@ -438,6 +461,7 @@ export function useVoicePresence(
     leave,
     toggleMute,
     kick,
+    muteUser,
     moveUser,
   }
 }
