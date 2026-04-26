@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Camera,
   CameraOff,
@@ -93,6 +93,62 @@ export function VoiceGroupView({
   const [sharing, setSharing] = useState(false)
   const [exitReason, setExitReason] = useState<'left' | null>(null)
 
+  const videoStreamRef = useRef<MediaStream | null>(null)
+  const screenStreamRef = useRef<MediaStream | null>(null)
+  const localVideoRef = useRef<HTMLVideoElement | null>(null)
+  const screenVideoRef = useRef<HTMLVideoElement | null>(null)
+
+  useEffect(() => {
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = videoOn ? (videoStreamRef.current ?? null) : null
+    }
+  }, [videoOn])
+
+  useEffect(() => {
+    if (screenVideoRef.current) {
+      screenVideoRef.current.srcObject = sharing ? (screenStreamRef.current ?? null) : null
+    }
+  }, [sharing])
+
+  useEffect(() => {
+    return () => {
+      videoStreamRef.current?.getTracks().forEach((t) => t.stop())
+      screenStreamRef.current?.getTracks().forEach((t) => t.stop())
+    }
+  }, [])
+
+  const handleToggleCamera = useCallback(async () => {
+    if (videoOn) {
+      videoStreamRef.current?.getTracks().forEach((t) => t.stop())
+      videoStreamRef.current = null
+      setVideoOn(false)
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        videoStreamRef.current = stream
+        setVideoOn(true)
+      } catch {}
+    }
+  }, [videoOn])
+
+  const handleToggleSharing = useCallback(async () => {
+    if (sharing) {
+      screenStreamRef.current?.getTracks().forEach((t) => t.stop())
+      screenStreamRef.current = null
+      setSharing(false)
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true })
+        screenStreamRef.current = stream
+        stream.getVideoTracks()[0].onended = () => {
+          screenStreamRef.current = null
+          setSharing(false)
+        }
+        setSharing(true)
+      } catch {}
+    }
+  }, [sharing])
+
   const sounds = [
     { label: '😂 Faaa', file: 'faaa sound.mpeg' },
   ]
@@ -151,6 +207,32 @@ export function VoiceGroupView({
           {participants.length} {participants.length === 1 ? 'participant' : 'participants'}
         </span>
       </div>
+
+      {/* Screen share preview */}
+      <AnimatePresence>
+        {sharing && (
+          <motion.div
+            key="screen-share"
+            className="relative mx-4 mt-4 overflow-hidden rounded-2xl border border-border bg-black"
+            style={{ maxHeight: '40%' }}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <video
+              ref={screenVideoRef}
+              autoPlay
+              muted
+              playsInline
+              className="h-full w-full object-contain"
+            />
+            <span className="absolute left-2 top-2 rounded-lg bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
+              Your screen
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Participants grid */}
       <div className="flex flex-1 flex-col overflow-hidden p-4">
@@ -219,32 +301,57 @@ export function VoiceGroupView({
                           <span className="absolute inset-0 animate-pulse rounded-2xl bg-primary/5" />
                         )}
 
-                        {/* Avatar */}
-                        <div className="relative z-10">
-                          {member.avatarUrl ? (
-                            <img
-                              src={member.avatarUrl}
-                              alt={member.name}
-                              className="h-20 w-20 rounded-full object-cover shadow"
-                            />
-                          ) : (
-                            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/15 text-[28px] font-bold text-primary shadow">
-                              {member.name[0]?.toUpperCase()}
-                            </div>
-                          )}
+                        {/* Full-card camera video */}
+                        {isMe && videoOn && (
+                          <video
+                            ref={localVideoRef}
+                            autoPlay
+                            muted
+                            playsInline
+                            className="absolute inset-0 h-full w-full rounded-2xl object-cover"
+                          />
+                        )}
 
-                          {/* Mute badge */}
-                          {member.isMuted && (
-                            <span className="absolute -bottom-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-background bg-destructive shadow">
-                              <MicOff className="h-2.5 w-2.5 text-white" />
-                            </span>
-                          )}
-                        </div>
+                        {/* Avatar (hidden when camera is on for me) */}
+                        {!(isMe && videoOn) && (
+                          <div className="relative z-10">
+                            {member.avatarUrl ? (
+                              <img
+                                src={member.avatarUrl}
+                                alt={member.name}
+                                className="h-20 w-20 rounded-full object-cover shadow"
+                              />
+                            ) : (
+                              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/15 text-[28px] font-bold text-primary shadow">
+                                {member.name[0]?.toUpperCase()}
+                              </div>
+                            )}
 
-                        {/* Name */}
-                        <p className="relative z-10 max-w-full truncate text-[12px] font-semibold text-foreground">
+                            {/* Mute badge */}
+                            {member.isMuted && (
+                              <span className="absolute -bottom-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-background bg-destructive shadow">
+                                <MicOff className="h-2.5 w-2.5 text-white" />
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Name — always visible, pinned to bottom */}
+                        <p className={cn(
+                          'relative z-10 max-w-full truncate text-[12px] font-semibold',
+                          isMe && videoOn
+                            ? 'absolute bottom-2 left-0 right-0 text-center text-white drop-shadow'
+                            : 'text-foreground',
+                        )}>
                           {isMe ? `${member.name} (You)` : member.name}
                         </p>
+
+                        {/* Mute badge overlay when camera on */}
+                        {isMe && videoOn && member.isMuted && (
+                          <span className="absolute bottom-6 right-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 border-background bg-destructive shadow">
+                            <MicOff className="h-2.5 w-2.5 text-white" />
+                          </span>
+                        )}
 
                         {/* Hover 3-dot */}
                         {!isMe && (
@@ -330,7 +437,7 @@ export function VoiceGroupView({
           <VoiceCtrlBtn
             active={videoOn}
             title={videoOn ? 'Stop camera' : 'Start camera'}
-            onClick={() => setVideoOn((v) => !v)}
+            onClick={handleToggleCamera}
           >
             {videoOn ? <Camera className="h-4 w-4" /> : <CameraOff className="h-4 w-4" />}
           </VoiceCtrlBtn>
@@ -338,7 +445,7 @@ export function VoiceGroupView({
           <VoiceCtrlBtn
             active={sharing}
             title={sharing ? 'Stop sharing' : 'Share screen'}
-            onClick={() => setSharing((v) => !v)}
+            onClick={handleToggleSharing}
           >
             {sharing ? <MonitorOff className="h-4 w-4" /> : <MonitorUp className="h-4 w-4" />}
           </VoiceCtrlBtn>
@@ -371,7 +478,16 @@ export function VoiceGroupView({
         {/* Right: leave */}
         <div className="flex w-32 shrink-0 justify-end">
         <button
-          onClick={() => { if (isJoined) setExit('left'); onLeave() }}
+          onClick={() => {
+            videoStreamRef.current?.getTracks().forEach((t) => t.stop())
+            videoStreamRef.current = null
+            setVideoOn(false)
+            screenStreamRef.current?.getTracks().forEach((t) => t.stop())
+            screenStreamRef.current = null
+            setSharing(false)
+            if (isJoined) setExit('left')
+            onLeave()
+          }}
           title="Leave"
           className="flex items-center gap-1.5 rounded-2xl bg-destructive/10 px-3 py-2 text-destructive transition-colors hover:bg-destructive/20"
         >
