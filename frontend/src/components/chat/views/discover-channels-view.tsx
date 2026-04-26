@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { ArrowRight, CalendarDays, Check, Compass, Globe, Lock, Search, Sparkles, Users, X } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { useDiscoverChannels, useJoinChannel, useRequestJoinChannel } from '@/hooks/use-channels'
 
@@ -139,7 +140,7 @@ function ChannelPopupCard({
               </div>
             ) : isPrivate ? (
               <button
-                onClick={async () => { try { await requestJoin.mutateAsync(ch.id); onClose() } catch {} }}
+                onClick={async () => { try { await requestJoin.mutateAsync(ch.id); toast.success(`Request sent to join ${ch.name}`); onClose() } catch {} }}
                 disabled={requestJoin.isPending}
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 py-2 text-[13px] font-semibold text-amber-600 transition-colors hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-400"
               >
@@ -354,7 +355,7 @@ export function DiscoverChannelsView({ onSelectChannel }: { onSelectChannel?: (i
                         </div>
                       ) : isPrivate ? (
                         <button
-                          onClick={async () => { try { await requestJoin.mutateAsync(ch.id) } catch {} }}
+                          onClick={async () => { try { await requestJoin.mutateAsync(ch.id); toast.success(`Request sent to join ${ch.name}`) } catch {} }}
                           disabled={requestJoin.isPending}
                           className="flex w-full items-center justify-center gap-1 rounded-xl border border-amber-500/30 bg-amber-500/10 py-1.5 text-[11px] font-semibold text-amber-600 transition-colors hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-400"
                         >

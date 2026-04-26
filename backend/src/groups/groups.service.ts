@@ -3,12 +3,14 @@ import { SupabaseService } from '../supabase/supabase.module';
 import { CreateGroupDto } from './dto/create-group.dto';
  import { AddGroupMemberDto } from './dto/add-group-member.dto';
 import { MessagingService } from '../messaging/messaging.service';
+import { ChatGateway } from '../messaging/gateway/chat.gateway';
 
 @Injectable()
 export class GroupsService {
     constructor(
         private readonly supabaseService: SupabaseService,
-        private readonly messagingService: MessagingService
+        private readonly messagingService: MessagingService,
+        private readonly chatGateway: ChatGateway,
     ) { }
 
     async createGroup(channelId: string, creatorUserId: string, createGroupDto: CreateGroupDto) {
@@ -246,7 +248,7 @@ export class GroupsService {
         const { data: group } = await this.supabaseService
             .getClient()
             .from('groups')
-            .select('channel_id, access_type')
+            .select('channel_id, access_type, name')
             .eq('id', groupId)
             .single();
 
@@ -281,6 +283,31 @@ export class GroupsService {
             .single();
 
         if (error) throw new Error(`Failed to create join request: ${error.message}`);
+
+        // Emit real-time event to group admins (no DB notification)
+        const [{ data: admins }, { data: requestUser }] = await Promise.all([
+            this.supabaseService.getClient()
+                .from('group_members')
+                .select('user_id')
+                .eq('group_id', groupId)
+                .in('role', ['OWNER', 'ADMIN']),
+            this.supabaseService.getClient()
+                .from('users')
+                .select('id, username, avatar_url')
+                .eq('id', userId)
+                .single(),
+        ]);
+
+        for (const admin of (admins ?? [])) {
+            this.chatGateway.server?.to(`user_${admin.user_id}`).emit('groupJoinRequest', {
+                requestId: data.id,
+                groupId,
+                groupName: (group as any).name ?? 'Unknown',
+                user: requestUser,
+                createdAt: data.created_at,
+            });
+        }
+
         return data;
     }
 
@@ -344,6 +371,18 @@ export class GroupsService {
                 .from('group_members')
                 .insert({ group_id: groupId, user_id: request.user_id, role: 'MEMBER' });
             await this.notifyMemberJoined(groupId, request.user_id);
+
+            const { data: groupData } = await this.supabaseService
+                .getClient()
+                .from('groups')
+                .select('channel_id')
+                .eq('id', groupId)
+                .single();
+
+            this.chatGateway.server?.to(`user_${request.user_id}`).emit('groupJoinAccepted', {
+                groupId,
+                channelId: groupData?.channel_id ?? null,
+            });
         }
 
         return { success: true, status };

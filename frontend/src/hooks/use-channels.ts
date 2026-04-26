@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { type BackendChannel, channelApi } from '@/lib/channel-api';
-import { type Channel, channelsApi } from '@/lib/channels-api';
+import { type Channel, type ChannelMember, type ChannelJoinRequest, channelsApi } from '@/lib/channels-api';
 
 export const CHANNEL_KEYS = {
   all: ['channels'] as const,
@@ -91,6 +91,61 @@ export function useRequestJoinChannel() {
     mutationFn: (channelId: string) => channelsApi.requestJoinChannel(channelId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: DISCOVER_KEYS.all });
+    },
+  });
+}
+
+export const CHANNEL_MEMBER_KEYS = {
+  members: (channelId: string) => ['channel-members', channelId] as const,
+  joinRequests: (channelId: string) => ['channel-join-requests', channelId] as const,
+};
+
+export function useChannelMembers(channelId: string | undefined) {
+  return useQuery<ChannelMember[]>({
+    queryKey: CHANNEL_MEMBER_KEYS.members(channelId ?? ''),
+    queryFn: () => channelsApi.getMembers(channelId!),
+    enabled: !!channelId,
+  });
+}
+
+export function useAddChannelMember(channelId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, role = 'MEMBER' }: { userId: string; role?: 'ADMIN' | 'MEMBER' }) =>
+      channelsApi.addMember(channelId, userId, role),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: CHANNEL_MEMBER_KEYS.members(channelId) });
+    },
+  });
+}
+
+export function useKickChannelMember(channelId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => channelsApi.kickMember(channelId, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: CHANNEL_MEMBER_KEYS.members(channelId) });
+    },
+  });
+}
+
+export function useChannelJoinRequests(channelId: string | undefined) {
+  return useQuery<ChannelJoinRequest[]>({
+    queryKey: CHANNEL_MEMBER_KEYS.joinRequests(channelId ?? ''),
+    queryFn: () => channelsApi.getJoinRequests(channelId!),
+    enabled: !!channelId,
+    refetchInterval: 30000,
+  });
+}
+
+export function useRespondToChannelJoinRequest(channelId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, status }: { requestId: string; status: 'ACCEPTED' | 'REJECTED' }) =>
+      channelsApi.respondToJoinRequest(channelId, requestId, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: CHANNEL_MEMBER_KEYS.joinRequests(channelId) });
+      queryClient.invalidateQueries({ queryKey: CHANNEL_MEMBER_KEYS.members(channelId) });
     },
   });
 }

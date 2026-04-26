@@ -4,12 +4,14 @@ import { CreateChannelDto } from './dto/create-channel.dto';
 import { UpdateChannelDto } from './dto/update-channel.dto';
  import { AddMemberDto } from './dto/add-member.dto';
 import { GroupsService } from '../groups/groups.service';
+import { ChatGateway } from '../messaging/gateway/chat.gateway';
 
 @Injectable()
 export class ChannelsService {
     constructor(
         private readonly supabaseService: SupabaseService,
-        private readonly groupsService: GroupsService
+        private readonly groupsService: GroupsService,
+        private readonly chatGateway: ChatGateway,
     ) {}
 
     async createChannel(ownerId: string, createChannelDto: CreateChannelDto) {
@@ -277,7 +279,84 @@ export class ChannelsService {
             .single();
 
         if (error) throw new Error(`Failed to create join request: ${error.message}`);
+
+        // Emit real-time to channel owner
+        const { data: requestUser } = await this.supabaseService.getClient()
+            .from('users')
+            .select('id, username, avatar_url')
+            .eq('id', userId)
+            .single();
+
+        this.chatGateway.server?.to(`user_${channel.owner_id}`).emit('channelJoinRequest', {
+            requestId: data.id,
+            channelId,
+            channelName: (channel as any).name ?? 'Unknown',
+            user: requestUser,
+            createdAt: data.created_at,
+        });
+
         return data;
+    }
+
+    async getChannelJoinRequests(channelId: string, adminUserId: string) {
+        const { data: member } = await this.supabaseService.getClient()
+            .from('channel_members')
+            .select('role')
+            .eq('channel_id', channelId)
+            .eq('user_id', adminUserId)
+            .single();
+
+        if (!member || (member.role !== 'OWNER' && member.role !== 'ADMIN')) {
+            throw new UnauthorizedException('Only channel admins can view join requests');
+        }
+
+        const { data, error } = await this.supabaseService.getClient()
+            .from('invitations')
+            .select('id, status, created_at, users!invitations_inviter_id_fkey(id, username, avatar_url)')
+            .eq('entity_id', channelId)
+            .eq('entity_type', 'CHANNEL_JOIN_REQUEST')
+            .eq('status', 'PENDING')
+            .order('created_at', { ascending: true });
+
+        if (error) throw new Error(`Failed to fetch channel join requests: ${error.message}`);
+        return (data ?? []).map((r: any) => ({ id: r.id, status: r.status, created_at: r.created_at, user: r.users }));
+    }
+
+    async respondToChannelJoinRequest(channelId: string, requestId: string, status: 'ACCEPTED' | 'REJECTED', adminUserId: string) {
+        const { data: member } = await this.supabaseService.getClient()
+            .from('channel_members')
+            .select('role')
+            .eq('channel_id', channelId)
+            .eq('user_id', adminUserId)
+            .single();
+
+        if (!member || (member.role !== 'OWNER' && member.role !== 'ADMIN')) {
+            throw new UnauthorizedException('Only channel admins can respond to join requests');
+        }
+
+        const { data: request, error: fetchErr } = await this.supabaseService.getClient()
+            .from('invitations')
+            .select('inviter_id')
+            .eq('id', requestId)
+            .eq('entity_id', channelId)
+            .eq('entity_type', 'CHANNEL_JOIN_REQUEST')
+            .single();
+
+        if (fetchErr || !request) throw new NotFoundException('Join request not found');
+
+        await this.supabaseService.getClient()
+            .from('invitations')
+            .update({ status })
+            .eq('id', requestId);
+
+        if (status === 'ACCEPTED') {
+            await this.addMember(channelId, { user_id: (request as any).inviter_id, role: 'MEMBER' });
+            this.chatGateway.server?.to(`user_${(request as any).inviter_id}`).emit('channelJoinAccepted', {
+                channelId,
+            });
+        }
+
+        return { success: true, status };
     }
 
     async joinChannel(userId: string, channelId: string) {

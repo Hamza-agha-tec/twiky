@@ -40,7 +40,7 @@ import {
   WorkspaceSidebar,
 } from '@/components/chat/workspace-sidebar'
 import type { CreateEntityValues } from '@/components/chat/create-entity-dialog'
-import { useChannels, useCreateChannel, useUpdateChannel } from '@/hooks/use-channels'
+import { useChannels, useCreateChannel, useUpdateChannel, CHANNEL_KEYS, CHANNEL_MEMBER_KEYS } from '@/hooks/use-channels'
 import { useChannelGroups, useCreateGroup, useGroupMembers, useGroupMessages, backendGroupToMock } from '@/hooks/use-groups'
 import { useToggleGroupMessageReaction } from '@/hooks/use-groups'
 import { groupsApi, type GroupMessage } from '@/lib/groups-api'
@@ -59,7 +59,25 @@ import { Input } from '@/components/ui/input'
 import { useCreateDirectConversation, useDirectConversations, useDirectMessages, useSendDirectMessage, useToggleDirectMessageReaction } from '@/hooks/use-direct-conversations'
 import { useVoiceInvitationListener } from '@/hooks/use-voice-invitation-listener'
 import { invitationsApi, type Invitation } from '@/lib/invitations-api'
+import { getSocket } from '@/lib/socket'
+import type { Socket } from 'socket.io-client'
 import { toast } from 'sonner'
+
+type JoinRequestPayload = {
+  requestId: string
+  groupId: string
+  groupName: string
+  user: { id: string; username: string | null; avatar_url: string | null }
+  createdAt: string
+}
+
+type ChannelJoinRequestPayload = {
+  requestId: string
+  channelId: string
+  channelName: string
+  user: { id: string; username: string | null; avatar_url: string | null }
+  createdAt: string
+}
 
 type ChatSurface =
   | 'channel'
@@ -252,6 +270,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const [activeGroupId, setActiveGroupId] = useState('')
   const [channelFeedClosed, setChannelFeedClosed] = useState(false)
   const [activeVoiceGroupId, setActiveVoiceGroupId] = useState<string | null>(null)
+  const [pendingJoinRequests, setPendingJoinRequests] = useState<Record<string, JoinRequestPayload[]>>({})
   const [voiceProfileTarget, setVoiceProfileTarget] = useState<VoicePresenceUser | null>(null)
   const [voiceElapsed, setVoiceElapsed] = useState<string | null>(null)
   const voiceElapsedRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -463,9 +482,58 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   }, [workspaceChannels, voice])
 
   useVoiceInvitationListener(profile?.id, (invitation: Invitation) => {
-    const groupId = invitation.entity_id
     const inviterName = invitation.inviter?.username ?? 'Someone'
 
+    if (invitation.entity_type === 'CHANNEL') {
+      const channel = workspaceChannels.find((c) => c.id === invitation.entity_id)
+      const channelName = channel?.label ?? 'a channel'
+      toast.custom(
+        (t) => (
+          <div className="flex w-80 items-start gap-3 rounded-2xl border border-border bg-popover p-4 shadow-xl">
+            {invitation.inviter?.avatar_url ? (
+              <img src={invitation.inviter.avatar_url} alt={inviterName} className="h-9 w-9 shrink-0 rounded-full object-cover" />
+            ) : (
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[13px] font-bold text-primary">
+                {inviterName[0]?.toUpperCase()}
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-[12px] font-semibold text-foreground">
+                <span className="text-primary">{inviterName}</span> invited you to
+              </p>
+              <p className="text-[11px] text-muted-foreground font-medium">{channelName}</p>
+              <div className="mt-2.5 flex gap-2">
+                <button
+                  onClick={async () => {
+                    toast.dismiss(t)
+                    try {
+                      await invitationsApi.respond(invitation.id, 'ACCEPTED')
+                      queryClient.invalidateQueries({ queryKey: ['channels'] })
+                    } catch {}
+                  }}
+                  className="rounded-lg bg-primary px-3 py-1.5 text-[11px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                >
+                  Accept
+                </button>
+                <button
+                  onClick={async () => {
+                    toast.dismiss(t)
+                    try { await invitationsApi.respond(invitation.id, 'REJECTED') } catch {}
+                  }}
+                  className="rounded-lg bg-muted px-3 py-1.5 text-[11px] font-semibold text-foreground transition-colors hover:bg-accent"
+                >
+                  Decline
+                </button>
+              </div>
+            </div>
+          </div>
+        ),
+        { duration: 30000, id: invitation.id },
+      )
+      return
+    }
+
+    const groupId = invitation.entity_id
     const allGroups = workspaceChannels.flatMap((ch) => ch.groups)
     const group = allGroups.find((g) => g.id === groupId)
     const groupName = group?.label ?? 'a voice channel'
@@ -515,11 +583,17 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     )
   })
 
+  const workspaceChannelsRef = useRef(workspaceChannels)
+  workspaceChannelsRef.current = workspaceChannels
+
+  const voiceRef = useRef(voice)
+  voiceRef.current = voice
+
   useEffect(() => {
     setActiveVoiceGroupId(voice.currentGroupId)
     if (!voice.currentGroupId) return
 
-    const voiceChannel = workspaceChannels.find((channel) =>
+    const voiceChannel = workspaceChannelsRef.current.find((channel) =>
       channel.groups.some((group) => group.id === voice.currentGroupId),
     )
     if (!voiceChannel) return
@@ -532,7 +606,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     setChannelTab('feed')
     setChannelFeedClosed(false)
     setShowDirectProfile(false)
-  }, [setActiveView, voice.currentGroupId, workspaceChannels])
+  }, [setActiveView, voice.currentGroupId])
 
   // Sync real backend groups into channelGroupsById when they load
   useEffect(() => {
@@ -1055,6 +1129,141 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     return () => { if (voiceElapsedRef.current) clearInterval(voiceElapsedRef.current) }
   }, [voice.isJoined, voice.joinedAt])
 
+  // Real-time join requests from private groups
+  useEffect(() => {
+    if (!profile?.id) return
+    let mounted = true
+    let s: Socket | null = null
+
+    const onGroupJoinRequest = (payload: JoinRequestPayload) => {
+      if (!mounted) return
+      setPendingJoinRequests((prev) => ({
+        ...prev,
+        [payload.groupId]: [
+          ...(prev[payload.groupId] ?? []).filter((r) => r.requestId !== payload.requestId),
+          payload,
+        ],
+      }))
+
+      const removeRequest = () =>
+        setPendingJoinRequests((prev) => ({
+          ...prev,
+          [payload.groupId]: (prev[payload.groupId] ?? []).filter((r) => r.requestId !== payload.requestId),
+        }))
+
+      toast.custom(
+        (t) => (
+          <div className="flex w-80 items-start gap-3 rounded-2xl border border-border bg-popover p-4 shadow-xl">
+            {payload.user?.avatar_url ? (
+              <img src={payload.user.avatar_url} alt={payload.user.username ?? ''} className="h-9 w-9 shrink-0 rounded-full object-cover" />
+            ) : (
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[13px] font-bold text-primary">
+                {(payload.user?.username?.[0] ?? '?').toUpperCase()}
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-[12px] font-semibold text-foreground">
+                <span className="text-primary">@{payload.user?.username ?? 'Someone'}</span> wants to join
+              </p>
+              <p className="text-[11px] text-muted-foreground">#{payload.groupName}</p>
+              <div className="mt-2.5 flex gap-2">
+                <button
+                  onClick={async () => {
+                    toast.dismiss(t)
+                    try {
+                      await groupsApi.respondToJoinRequest(payload.groupId, payload.requestId, 'ACCEPTED')
+                      removeRequest()
+                      queryClient.invalidateQueries({ queryKey: GROUP_KEYS.messages(payload.groupId) })
+                    } catch {}
+                  }}
+                  className="rounded-lg bg-primary px-3 py-1.5 text-[11px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                >
+                  Approve
+                </button>
+                <button
+                  onClick={async () => {
+                    toast.dismiss(t)
+                    try {
+                      await groupsApi.respondToJoinRequest(payload.groupId, payload.requestId, 'REJECTED')
+                      removeRequest()
+                    } catch {}
+                  }}
+                  className="rounded-lg bg-muted px-3 py-1.5 text-[11px] font-semibold text-foreground transition-colors hover:bg-accent"
+                >
+                  Deny
+                </button>
+              </div>
+            </div>
+          </div>
+        ),
+        { duration: 0, id: `join-request-${payload.requestId}` },
+      )
+    }
+
+    const onGroupJoinAccepted = (payload: { groupId: string; channelId: string | null }) => {
+      if (!mounted) return
+      if (payload.channelId) {
+        queryClient.invalidateQueries({ queryKey: GROUP_KEYS.byChannel(payload.channelId) })
+      }
+      if (!voiceRef.current.currentGroupId) {
+        voiceRef.current.join(payload.groupId)
+        toast.success('Accepted! Joining voice group...')
+      } else {
+        toast.success('Your request to join was accepted! Switch to the group when ready.')
+      }
+    }
+
+    const onChannelJoinAccepted = (payload: { channelId: string }) => {
+      if (!mounted) return
+      queryClient.invalidateQueries({ queryKey: CHANNEL_KEYS.all })
+      toast.success('Your request to join was accepted!')
+    }
+
+    const onChannelJoinRequest = (payload: ChannelJoinRequestPayload) => {
+      if (!mounted) return
+      queryClient.invalidateQueries({ queryKey: CHANNEL_MEMBER_KEYS.joinRequests(payload.channelId) })
+      toast.custom(
+        (t) => (
+          <div className="flex w-80 items-start gap-3 rounded-2xl border border-border bg-popover p-4 shadow-xl">
+            {payload.user?.avatar_url ? (
+              <img src={payload.user.avatar_url} alt={payload.user.username ?? ''} className="h-9 w-9 shrink-0 rounded-full object-cover" />
+            ) : (
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[13px] font-bold text-primary">
+                {(payload.user?.username?.[0] ?? '?').toUpperCase()}
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-[12px] font-semibold text-foreground">
+                <span className="text-primary">@{payload.user?.username ?? 'Someone'}</span> wants to join
+              </p>
+              <p className="text-[11px] text-muted-foreground font-medium">{payload.channelName}</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">Manage in channel settings → Join Requests</p>
+            </div>
+          </div>
+        ),
+        { duration: 12000, id: `channel-join-request-${payload.requestId}` },
+      )
+    }
+
+    getSocket().then((socket) => {
+      if (!mounted) return
+      s = socket
+      s.on('groupJoinRequest', onGroupJoinRequest)
+      s.on('channelJoinRequest', onChannelJoinRequest)
+      s.on('groupJoinAccepted', onGroupJoinAccepted)
+      s.on('channelJoinAccepted', onChannelJoinAccepted)
+    })
+
+    return () => {
+      mounted = false
+      s?.off('groupJoinRequest', onGroupJoinRequest)
+      s?.off('channelJoinRequest', onChannelJoinRequest)
+      s?.off('groupJoinAccepted', onGroupJoinAccepted)
+      s?.off('channelJoinAccepted', onChannelJoinAccepted)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.id])
+
   const voiceParticipants: Record<string, VoiceParticipant[]> = voice.participantsByGroup
 
   const channelContent =
@@ -1126,6 +1335,60 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           subtitle="Select a group on the left to reopen feed."
         />
       ) : (
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {(pendingJoinRequests[activeGroup.id] ?? []).length > 0 && (
+            <div className="flex flex-col gap-0 border-b border-border bg-muted/30">
+              {(pendingJoinRequests[activeGroup.id] ?? []).map((req) => (
+                <div key={req.requestId} className="flex items-center gap-3 px-4 py-2.5">
+                  {req.user?.avatar_url ? (
+                    <img src={req.user.avatar_url} alt={req.user.username ?? ''} className="h-7 w-7 shrink-0 rounded-full object-cover" />
+                  ) : (
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-bold text-primary">
+                      {(req.user?.username?.[0] ?? '?').toUpperCase()}
+                    </div>
+                  )}
+                  <p className="min-w-0 flex-1 text-[12px] text-foreground">
+                    <span className="font-semibold text-primary">@{req.user?.username ?? 'Someone'}</span>
+                    <span className="text-muted-foreground"> wants to join </span>
+                    <span className="font-medium">#{req.groupName}</span>
+                  </p>
+                  <div className="flex shrink-0 gap-1.5">
+                    <button
+                      onClick={async () => {
+                        try {
+                          await groupsApi.respondToJoinRequest(req.groupId, req.requestId, 'ACCEPTED')
+                          setPendingJoinRequests((prev) => ({
+                            ...prev,
+                            [req.groupId]: (prev[req.groupId] ?? []).filter((r) => r.requestId !== req.requestId),
+                          }))
+                          queryClient.invalidateQueries({ queryKey: GROUP_KEYS.messages(req.groupId) })
+                          toast.dismiss(`join-request-${req.requestId}`)
+                        } catch {}
+                      }}
+                      className="rounded-md bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground hover:bg-primary/90"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await groupsApi.respondToJoinRequest(req.groupId, req.requestId, 'REJECTED')
+                          setPendingJoinRequests((prev) => ({
+                            ...prev,
+                            [req.groupId]: (prev[req.groupId] ?? []).filter((r) => r.requestId !== req.requestId),
+                          }))
+                          toast.dismiss(`join-request-${req.requestId}`)
+                        } catch {}
+                      }}
+                      className="rounded-md bg-muted px-2.5 py-1 text-[11px] font-semibold text-foreground hover:bg-accent"
+                    >
+                      Deny
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         <MainArea
           activeChannel={activeChannel}
           activeGroup={activeGroup}
@@ -1163,6 +1426,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             onCloseFeedRequest={() => setChannelFeedClosed(true)}
           />
         </MainArea>
+        </div>
       )
     ) : null
 
