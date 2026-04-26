@@ -20,6 +20,7 @@ import { SupabaseStrategy } from './auth/strategies/supabase.strategy';
 import { FilesModule } from './files/files.module';
 import { InvitationsModule } from './invitations/invitations.module';
 import { PaymentsModule } from './payments/payments.module';
+import { StoreModule } from './store/store.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { PaymentsModule } from './payments/payments.module';
     FilesModule,
     InvitationsModule,
     PaymentsModule,
+    StoreModule,
   ],
   controllers: [AppController, AuthController],
   providers: [AppService, AuthService, SupabaseStrategy],
