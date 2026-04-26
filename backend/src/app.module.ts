@@ -21,6 +21,7 @@ import { FilesModule } from './files/files.module';
 import { InvitationsModule } from './invitations/invitations.module';
 import { PaymentsModule } from './payments/payments.module';
 import { StoreModule } from './store/store.module';
+import { VoiceModule } from './voice/voice.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { StoreModule } from './store/store.module';
     InvitationsModule,
     PaymentsModule,
     StoreModule,
+    VoiceModule,
   ],
   controllers: [AppController, AuthController],
   providers: [AppService, AuthService, SupabaseStrategy],
