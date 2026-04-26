@@ -56,7 +56,7 @@ import { type Chat } from '@/lib/mock-data'
 import { useRouter } from 'next/navigation'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { useCreateDirectConversation, useDirectConversations, useDirectMessages, useSendDirectMessage } from '@/hooks/use-direct-conversations'
+import { useCreateDirectConversation, useDirectConversations, useDirectMessages, useSendDirectMessage, useToggleDirectMessageReaction } from '@/hooks/use-direct-conversations'
 
 type ChatSurface =
   | 'channel'
@@ -364,6 +364,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const activeIsRealDirect = Boolean(activeDirectChat && /^[0-9a-f-]{36}$/i.test(activeDirectChat))
   const { data: activeDirectRealMessages = [] } = useDirectMessages(activeIsRealDirect ? activeDirectChat : null)
   const sendDirectMessage = useSendDirectMessage(activeDirectChat ?? '')
+  const toggleDirectReaction = useToggleDirectMessageReaction(activeDirectChat ?? '')
 
   const mentionedGroupIds = useMemo(
     () => new Set(
@@ -831,6 +832,14 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     )
   }
 
+  const activeDirectOther = (() => {
+    if (!activeIsRealDirect) return null
+    const myId = profile?.id
+    const conv = (directConversations ?? []).find((c: any) => c.id === activeDirectChat)
+    if (!conv) return null
+    return conv.user_one_id === myId ? conv.user_two : conv.user_one
+  })()
+
   const directFeedContent = activeDirectChat ? (
       <ChatWindow
         key={activeDirectChat}
@@ -845,23 +854,16 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                 name: activeSyntheticChat.name,
                 subtitle: activeSyntheticChat.status,
               }
-            : activeIsRealDirect
-              ? (() => {
-                  const myId = profile?.id
-                  const conv = (directConversations ?? []).find((c: any) => c.id === activeDirectChat)
-                  const other = conv
-                    ? (conv.user_one_id === myId ? conv.user_two : conv.user_one)
-                    : null
-                  return {
-                    avatarUrl: other?.avatar_url ?? null,
-                    isOnline: false,
-                    subPlan: other?.sub_plan ?? null,
-                    isVerified: other?.is_verified ?? false,
-                    name: other?.username ?? 'Direct message',
-                    subtitle: null,
-                  }
-                })()
-            : undefined
+            : activeDirectOther
+              ? {
+                  avatarUrl: activeDirectOther.avatar_url ?? null,
+                  isOnline: false,
+                  subPlan: (activeDirectOther as any).sub_plan ?? null,
+                  isVerified: (activeDirectOther as any).is_verified ?? false,
+                  name: activeDirectOther.username ?? 'Direct message',
+                  subtitle: null,
+                }
+              : undefined
         }
         messages={activeIsRealDirect ? activeDirectRealMessages : activeDirectMessages}
         onSendMessage={(payload) => {
@@ -877,6 +879,9 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             payload.replyToId ?? undefined,
             payload.fileUrl ?? undefined,
           )
+        }}
+        onReact={(messageId, emoji) => {
+          if (activeIsRealDirect) toggleDirectReaction.mutate({ messageId, emoji })
         }}
         otherIsTyping={false}
         onProfileClick={() => setShowDirectProfile((v) => !v)}
@@ -1175,6 +1180,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                       {showDirectProfile && activeDirectChat ? (
                         <DirectProfileSidebar
                           activeChat={activeDirectChat}
+                          userId={activeDirectOther?.id}
                           chatOverride={activeSyntheticChat
                             ? {
                                 avatarUrl: activeSyntheticChat.avatarUrl,
@@ -1184,7 +1190,16 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                                 name: activeSyntheticChat.name,
                                 subtitle: activeSyntheticChat.status,
                               }
-                            : undefined}
+                            : activeDirectOther
+                              ? {
+                                  avatarUrl: activeDirectOther.avatar_url ?? null,
+                                  isOnline: false,
+                                  subPlan: (activeDirectOther as any).sub_plan ?? null,
+                                  isVerified: (activeDirectOther as any).is_verified ?? false,
+                                  name: activeDirectOther.username ?? 'Direct message',
+                                  subtitle: null,
+                                }
+                              : undefined}
                           onClose={() => setShowDirectProfile(false)}
                         />
                       ) : null}

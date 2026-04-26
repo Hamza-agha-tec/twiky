@@ -94,4 +94,13 @@ export class FilesController {
   ) {
     return this.filesService.uploadGroupExtra(req.user.userId, groupId, file);
   }
+
+  @Post('messages/upload')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadMessageFile(
+    @Request() req: { user: { userId: string } },
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.filesService.uploadMessageFile(req.user.userId, file);
+  }
 }

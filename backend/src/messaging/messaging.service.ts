@@ -133,9 +133,9 @@ export class MessagingService {
         const { data, error } = await this.supabaseService
             .getClient()
             .from('direct_messages')
-            .select('*, sender:users!direct_messages_sender_id_fkey(id, username, fullname, avatar_url, is_verified, sub_plan)')
+            .select('*, sender:users!direct_messages_sender_id_fkey(id, username, fullname, avatar_url, is_verified, sub_plan), reply_to:reply_to_id(id, content, sender:users!direct_messages_sender_id_fkey(id, username))')
             .eq('conversation_id', conversationId)
-            .order('created_at', { ascending: true }); // typically chronologically ordered
+            .order('created_at', { ascending: true });
 
         if (error) throw new Error(`Failed to fetch DMs: ${error.message}`);
         return data;

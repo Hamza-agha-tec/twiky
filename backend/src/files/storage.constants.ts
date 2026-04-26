@@ -3,6 +3,7 @@ export const STORAGE_BUCKETS = {
   channel: 'channels',
   users: 'users',
   groups: 'groups',
+  messages: 'messages',
 } as const;
 
 export const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8 MiB

@@ -51,7 +51,7 @@ export const messagingApi = {
     const token = await getToken();
     const form = new FormData();
     form.append('file', file);
-    const res = await fetch(`${API_URL}/messaging/messages/upload`, {
+    const res = await fetch(`${API_URL}/files/messages/upload`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       body: form,

@@ -55,6 +55,7 @@ type BackendDirectMessage = {
   created_at: string
   status?: 'sent' | 'delivered' | 'read' | string | null
   reactions?: unknown
+  reply_to?: { id: string; content: string | null; sender: { id: string; username: string } } | null
   sender: {
     id: string
     username: string
@@ -93,7 +94,9 @@ function toChatMessage(m: BackendDirectMessage): ChatMessage {
     },
     status: (m.status as any) ?? 'sent',
     reactions,
-    reply_to: null,
+    reply_to: m.reply_to
+      ? { id: m.reply_to.id, content: m.reply_to.content ?? null, sender: m.reply_to.sender }
+      : null,
     created_at: m.created_at,
     sender: m.sender,
   }

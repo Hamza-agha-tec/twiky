@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { SmilePlus, Paperclip, SendHorizontal, Mic, Square, X, Reply } from 'lucide-react';
+import { SmilePlus, Paperclip, SendHorizontal, Mic, Square, X, Reply, Loader2, FileText, Image as ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   Popover,
@@ -41,11 +41,20 @@ const EMOJIS = [
   '👀','💪','🌟','⚡','🎯','🚀','💡','✨',
 ];
 
+function formatDuration(seconds: number) {
+  const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+  const s = (seconds % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
+
 export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCancelReply }: ComposerProps) {
   const [message, setMessage] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadingLabel, setUploadingLabel] = useState<string | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -56,7 +65,6 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
   useEffect(() => { onTypingRef.current = onTyping; }, [onTyping]);
   const uploadFile = useUploadFile();
 
-  // Auto-resize textarea
   useEffect(() => {
     const ta = textareaRef.current;
     if (ta) {
@@ -79,10 +87,20 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
     };
   }, [message]);
 
-  // Focus when reply opens
   useEffect(() => {
     if (replyTo) textareaRef.current?.focus();
   }, [replyTo]);
+
+  useEffect(() => {
+    if (isRecording) {
+      setRecordSeconds(0);
+      recordTimerRef.current = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
+    } else {
+      if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+      setRecordSeconds(0);
+    }
+    return () => { if (recordTimerRef.current) clearInterval(recordTimerRef.current); };
+  }, [isRecording]);
 
   const handleSend = () => {
     if (message.trim()) {
@@ -150,6 +168,7 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
             });
 
             setIsUploading(true);
+            setUploadingLabel('Sending voice…');
 
             const duration = await new Promise<number | undefined>((resolve) => {
               const url = URL.createObjectURL(blob);
@@ -180,6 +199,7 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
             toast.error('Voice upload failed');
           } finally {
             setIsUploading(false);
+            setUploadingLabel(null);
           }
         };
 
@@ -196,6 +216,7 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
     if (!file) return;
     e.target.value = '';
     setIsUploading(true);
+    setUploadingLabel(file.name.length > 24 ? file.name.slice(0, 22) + '…' : file.name);
     try {
       const { fileUrl, fileType } = await uploadFile.mutateAsync(file);
       const type = fileType.startsWith('image/') ? 'image' : 'file';
@@ -212,11 +233,15 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
       toast.error('Upload failed');
     } finally {
       setIsUploading(false);
+      setUploadingLabel(null);
     }
   };
 
+  const hasText = message.trim().length > 0;
+  const busy = isUploading || isRecording;
+
   return (
-    <div className="border-t border-border bg-sidebar px-3 py-3">
+    <div className="border-t border-border bg-sidebar px-3 pt-2 pb-3">
       {/* Reply Preview */}
       <AnimatePresence>
         {replyTo && (
@@ -224,13 +249,13 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="px-4 pt-3 overflow-hidden"
+            className="mb-2 overflow-hidden"
           >
-            <div className="flex items-center gap-2 bg-muted rounded-lg px-3 py-2 border-l-2 border-primary">
+            <div className="flex items-center gap-2 rounded-xl bg-muted/60 px-3 py-2 border-l-2 border-primary">
               <Reply className="h-3.5 w-3.5 text-primary shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-primary">{replyTo.senderName}</p>
-                <p className="text-xs text-muted-foreground truncate">{replyTo.content}</p>
+                <p className="text-[11px] font-semibold text-primary">{replyTo.senderName}</p>
+                <p className="text-[11px] text-muted-foreground truncate">{replyTo.content}</p>
               </div>
               <button
                 onClick={onCancelReply}
@@ -243,71 +268,80 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
         )}
       </AnimatePresence>
 
-      {/* Recording Indicator */}
-      <AnimatePresence>
-        {isRecording && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="px-4 pt-3 overflow-hidden"
-          >
-            <div className="flex items-center gap-2 text-sm text-destructive">
-              <motion.div
-                className="h-2 w-2 rounded-full bg-destructive"
-                animate={{ scale: [1, 1.3, 1] }}
-                transition={{ duration: 0.8, repeat: Infinity }}
-              />
-              Recording voice message...
-            </div>
-          </motion.div>
+      <div
+        className={cn(
+          'rounded-2xl border bg-background transition-colors duration-150',
+          isRecording
+            ? 'border-destructive/60 ring-1 ring-destructive/20'
+            : 'border-border focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/10',
         )}
-      </AnimatePresence>
-
-      {recordError ? (
-        <p className="px-4 pt-2 text-[11px] text-destructive">{recordError}</p>
-      ) : null}
-
-      <div className="rounded-2xl border border-border bg-background px-2 py-2">
-        <div className="flex items-end gap-2">
-          {/* Left actions */}
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading}
-              title="Upload image or file"
+      >
+        {/* Recording bar */}
+        <AnimatePresence>
+          {isRecording && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden"
             >
-              <Paperclip className={cn('h-4 w-4', isUploading && 'animate-pulse text-primary')} />
-            </Button>
+              <div className="flex items-center gap-2.5 px-3 pt-2.5 pb-1">
+                <motion.div
+                  className="h-2 w-2 rounded-full bg-destructive shrink-0"
+                  animate={{ opacity: [1, 0.3, 1] }}
+                  transition={{ duration: 1, repeat: Infinity }}
+                />
+                <span className="text-[12px] font-medium text-destructive tabular-nums">
+                  {formatDuration(recordSeconds)}
+                </span>
+                <span className="text-[11px] text-muted-foreground">Recording…</span>
+                <span className="ml-auto text-[10px] text-muted-foreground">Tap stop to send</span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-            <Button
-              onClick={handleRecordClick}
-              variant="ghost"
-              size="icon"
-              className={cn(
-                'h-8 w-8 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground',
-                isRecording && 'bg-primary/10 text-primary',
-              )}
-              title={isRecording ? 'Stop recording' : 'Record voice'}
+        {/* Upload bar */}
+        <AnimatePresence>
+          {isUploading && uploadingLabel && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden"
             >
-              {isRecording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-            </Button>
-          </div>
+              <div className="flex items-center gap-2 px-3 pt-2.5 pb-1">
+                <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />
+                <span className="text-[11px] text-muted-foreground truncate max-w-[200px]">{uploadingLabel}</span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {/* Hidden file input */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*,video/*,.pdf,.doc,.docx,.txt"
-          className="hidden"
-          onChange={handleFileChange}
-        />
+        {/* Main input row */}
+        <div className="flex items-center gap-1.5 px-2 py-1.5">
+          {/* File upload */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={busy}
+            title="Attach file"
+          >
+            <Paperclip className="h-[15px] w-[15px]" />
+          </Button>
 
-          {/* Text input */}
-          <div className="flex-1 relative">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,video/*,.pdf,.doc,.docx,.txt,.zip,.csv"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+
+          {/* Textarea */}
+          <div className="flex-1 min-w-0">
             <textarea
               ref={textareaRef}
               value={message}
@@ -315,55 +349,100 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
               onKeyDown={handleKeyDown}
               placeholder={placeholder ?? 'Message'}
               rows={1}
-              className="max-h-40 min-h-[36px] w-full resize-none border-0 bg-transparent px-2 py-2 text-[13px] leading-normal shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus:outline-none"
+              disabled={isRecording}
+              className="max-h-[120px] min-h-[34px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[13px] leading-[1.4] shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 focus:outline-none disabled:opacity-0"
             />
           </div>
 
           {/* Right actions */}
-          <div className="flex items-center gap-0.5">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
-                  title="Emoji"
+          <div className="flex items-center gap-0.5 shrink-0">
+            {/* Emoji */}
+            {!isRecording && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground"
+                    title="Emoji"
+                    disabled={busy}
+                  >
+                    <SmilePlus className="h-[15px] w-[15px]" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 p-3" side="top" align="end">
+                  <div className="grid grid-cols-8 gap-1">
+                    {EMOJIS.map((emoji) => (
+                      <button
+                        key={emoji}
+                        onClick={() => handleEmojiSelect(emoji)}
+                        className="h-8 flex items-center justify-center text-lg hover:bg-accent rounded-md transition-colors"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
+
+            {/* Mic / Stop / Send */}
+            <AnimatePresence mode="wait" initial={false}>
+              {hasText ? (
+                <motion.div
+                  key="send"
+                  initial={{ scale: 0.7, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.7, opacity: 0 }}
+                  transition={{ duration: 0.12 }}
                 >
-                  <SmilePlus className="h-4 w-4" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-72 p-3" side="top" align="start">
-                <div className="grid grid-cols-8 gap-1">
-                  {EMOJIS.map((emoji) => (
-                    <button
-                      key={emoji}
-                      onClick={() => handleEmojiSelect(emoji)}
-                      className="h-8 flex items-center justify-center text-lg hover:bg-accent rounded-md transition-colors"
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
-            <Button
-              type="button"
-              onClick={handleSend}
-              disabled={!message.trim()}
-              size="icon"
-              className="h-8 w-8 rounded-lg"
-              title="Send"
-            >
-              <SendHorizontal className="h-4 w-4" />
-            </Button>
+                  <Button
+                    type="button"
+                    onClick={handleSend}
+                    size="icon"
+                    className="h-8 w-8 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
+                    title="Send"
+                  >
+                    <SendHorizontal className="h-[15px] w-[15px]" />
+                  </Button>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="mic"
+                  initial={{ scale: 0.7, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.7, opacity: 0 }}
+                  transition={{ duration: 0.12 }}
+                >
+                  <Button
+                    type="button"
+                    onClick={handleRecordClick}
+                    size="icon"
+                    disabled={isUploading}
+                    className={cn(
+                      'h-8 w-8 rounded-xl transition-colors',
+                      isRecording
+                        ? 'bg-destructive text-white hover:bg-destructive/90 shadow-sm'
+                        : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                    )}
+                    title={isRecording ? 'Stop recording' : 'Record voice'}
+                  >
+                    {isRecording
+                      ? <Square className="h-[13px] w-[13px] fill-current" />
+                      : <Mic className="h-[15px] w-[15px]" />
+                    }
+                  </Button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </div>
 
-      <p className="px-4 pb-3 text-[10px] text-muted-foreground">
-        Enter to send · Shift+Enter for new line · Right-click for more
-      </p>
+      {recordError ? (
+        <p className="mt-1 px-1 text-[11px] text-destructive">{recordError}</p>
+      ) : null}
     </div>
   );
 }

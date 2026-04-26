@@ -232,6 +232,21 @@ export class FilesService {
    * Extra objects under `{groupId}/...` (diagram “…”).
    * Stored as `{groupId}/files/{timestamp}_{safeOriginalName}`.
    */
+  async uploadMessageFile(userId: string, file: Express.Multer.File) {
+    if (!file?.buffer?.length) throw new BadRequestException('Missing file');
+    if (file.size > MAX_GROUP_FILE_BYTES) throw new BadRequestException('File too large (max 25 MiB)');
+
+    const isImage = IMAGE_MIME_TYPES.has(file.mimetype?.toLowerCase()) ||
+      this.inferImageMimeType(file) !== null;
+    const resolvedMime = isImage ? (this.inferImageMimeType(file) ?? file.mimetype) : file.mimetype;
+    const fileType = isImage ? 'image' : 'file';
+    const rawName = (file.originalname || 'upload').replace(/[^\w.\-]+/g, '_').slice(0, 120);
+    const ext = this.extFromMime(resolvedMime) || (rawName.match(/\.[a-z0-9]+$/i)?.[0] ?? '.bin');
+    const objectPath = `${userId}/${Date.now()}_${rawName.replace(/\.[^.]+$/, '')}${ext}`;
+    const { publicUrl } = await this.uploadObject(STORAGE_BUCKETS.messages, objectPath, file, resolvedMime);
+    return { fileName: file.originalname, fileUrl: publicUrl, fileType };
+  }
+
   async uploadGroupExtra(userId: string, groupId: string, file: Express.Multer.File) {
     await this.assertGroupUploader(userId, groupId);
     this.assertGroupFile(file);

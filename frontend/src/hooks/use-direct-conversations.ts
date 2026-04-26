@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { directConversationsApi } from '@/lib/direct-conversations-api'
+import { directMessagesApi } from '@/lib/direct-messages-api'
 
 export const DIRECT_KEYS = {
   conversations: ['direct', 'conversations'] as const,
@@ -42,6 +43,17 @@ export function useSendDirectMessage(conversationId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: DIRECT_KEYS.messages(conversationId) })
       queryClient.invalidateQueries({ queryKey: DIRECT_KEYS.conversations })
+    },
+  })
+}
+
+export function useToggleDirectMessageReaction(conversationId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ messageId, emoji }: { messageId: string; emoji: string }) =>
+      directMessagesApi.toggleDirectMessageReaction(messageId, emoji),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: DIRECT_KEYS.messages(conversationId) })
     },
   })
 }

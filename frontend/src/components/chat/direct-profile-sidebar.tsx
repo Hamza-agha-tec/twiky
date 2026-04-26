@@ -8,6 +8,7 @@ import {
 } from '@/components/chat/channel-feed'
 interface DirectProfileSidebarProps {
   activeChat: string
+  userId?: string
   chatOverride?: {
     avatarUrl?: string | null
     isOnline?: boolean
@@ -19,10 +20,11 @@ interface DirectProfileSidebarProps {
   onClose: () => void
 }
 
-export function DirectProfileSidebar({ activeChat, chatOverride, onClose }: DirectProfileSidebarProps) {
+export function DirectProfileSidebar({ activeChat, userId, chatOverride, onClose }: DirectProfileSidebarProps) {
   const name = chatOverride?.name ?? 'Direct chat'
   const avatar = chatOverride?.avatarUrl ?? null
   const memberProfile = buildStandaloneFeedMemberProfile({
+    id: userId,
     avatarUrl: avatar,
     handle: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
     name,
@@ -31,17 +33,6 @@ export function DirectProfileSidebar({ activeChat, chatOverride, onClose }: Dire
     subPlan: chatOverride?.subPlan ?? null,
     isVerified: chatOverride?.isVerified ?? false,
   })
-  const directPosts: FeedPost[] = [
-    {
-      author: name,
-      body: chatOverride?.subtitle ?? 'Direct chat active.',
-      id: `${activeChat}-profile`,
-      reactions: [],
-      replyCount: 0,
-      role: 'Member',
-      time: 'Now',
-    },
-  ]
 
   return (
     <FeedMemberProfileView
@@ -51,8 +42,9 @@ export function DirectProfileSidebar({ activeChat, chatOverride, onClose }: Dire
       messagePending={false}
       onBack={onClose}
       onMessage={() => {}}
-      posts={directPosts}
+      posts={[]}
       showMessageAction={false}
+      hideRole
     />
   )
 }

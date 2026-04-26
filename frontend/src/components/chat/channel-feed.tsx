@@ -1095,6 +1095,7 @@ export function FeedMemberProfileView({
   onMessage,
   posts,
   showMessageAction = true,
+  hideRole = false,
 }: {
   currentGroupLabel: string
   isOwn: boolean
@@ -1104,6 +1105,7 @@ export function FeedMemberProfileView({
   onMessage: () => void
   posts: FeedPost[]
   showMessageAction?: boolean
+  hideRole?: boolean
 }) {
   const [activeTab, setActiveTab] = useState<'posts' | 'articles' | 'pixel-room' | 'saved'>('posts')
   const [followRequested, setFollowRequested] = useState(false)
@@ -1357,7 +1359,7 @@ export function FeedMemberProfileView({
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-[19px] font-black leading-none tracking-tight text-foreground">{resolvedProfile.name}</h1>
           {resolvedProfile.isVerified ? <VerifiedBadge size="sm" variant={profileBadgeVariant} /> : null}
-          <RoleBadge role={resolvedProfile.role} variant="profile" />
+          {!hideRole && <RoleBadge role={resolvedProfile.role} variant="profile" />}
         </div>
         <p className="mt-0.5 text-[11px] text-muted-foreground">@{resolvedProfile.handle}</p>
         <div className="mt-2 flex items-center gap-3.5 text-[11px]">
