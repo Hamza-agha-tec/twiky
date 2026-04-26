@@ -23,7 +23,9 @@ import {
   User,
   UserMinus,
   UserPlus,
+  UserX,
   Volume2,
+  X,
 } from 'lucide-react'
 import { CreateEntityDialog, type CreateEntityValues } from '@/components/chat/create-entity-dialog'
 import { Button } from '@/components/ui/button'
@@ -59,7 +61,17 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import { useUpdateChannel, useChannelInviteLink, useDeleteChannel } from '@/hooks/use-channels'
+import {
+  useUpdateChannel,
+  useChannelInviteLink,
+  useDeleteChannel,
+  useChannelMembers,
+  useAddChannelMember,
+  useKickChannelMember,
+  useChannelJoinRequests,
+  useRespondToChannelJoinRequest,
+} from '@/hooks/use-channels'
+import { useSearchUsers } from '@/hooks/use-user'
 import { useGroupMembers, useDeleteGroup, useUpdateGroup, useGroupJoinRequests, useRespondToGroupJoinRequest, useRequestJoinGroup } from '@/hooks/use-groups'
 import { useSendGroupInvitation } from '@/hooks/use-invitations'
 import { useProfile, useUserFollowers } from '@/hooks/use-user'
@@ -414,8 +426,20 @@ function ChannelSettingsSheet({
   const [muteAll, setMuteAll] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
+  const [memberSearch, setMemberSearch] = useState('')
+  const [addingMemberId, setAddingMemberId] = useState<string | null>(null)
+  const [kickingMemberId, setKickingMemberId] = useState<string | null>(null)
   const updateChannel = useUpdateChannel()
   const deleteChannel = useDeleteChannel()
+  const isAdmin = channel.role === 'OWNER' || channel.role === 'ADMIN'
+  const { data: channelMembers = [] } = useChannelMembers(isAdmin ? channel.id : undefined)
+  const { data: channelJoinRequests = [] } = useChannelJoinRequests(
+    isAdmin && channel.access_type === 'PRIVATE' ? channel.id : undefined,
+  )
+  const addChannelMember = useAddChannelMember(channel.id)
+  const kickChannelMember = useKickChannelMember(channel.id)
+  const respondToRequest = useRespondToChannelJoinRequest(channel.id)
+  const { data: searchResults = [] } = useSearchUsers(memberSearch.trim())
   const [bannerUrl, setBannerUrl] = useState<string | null>(channel.bannerUrl ?? null)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(channel.avatarUrl ?? null)
   const [bannerFile, setBannerFile] = useState<File | null>(null)
@@ -604,6 +628,179 @@ function ChannelSettingsSheet({
               <Switch checked={muteAll} onCheckedChange={setMuteAll} />
             </div>
           </div>
+
+          {/* Join Requests — private channels, admins only */}
+          {isAdmin && channel.access_type === 'PRIVATE' && (
+            <div className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  Join Requests
+                </p>
+                {channelJoinRequests.length > 0 && (
+                  <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                    {channelJoinRequests.length}
+                  </span>
+                )}
+              </div>
+              {channelJoinRequests.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground">No pending requests</p>
+              ) : (
+                <div className="space-y-2">
+                  {channelJoinRequests.map((req) => (
+                    <div key={req.id} className="flex items-center gap-2.5 rounded-2xl border border-border bg-muted/30 px-3 py-2.5">
+                      {req.user?.avatar_url ? (
+                        <img src={req.user.avatar_url} alt={req.user.username ?? ''} className="h-7 w-7 shrink-0 rounded-full object-cover" />
+                      ) : (
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-bold text-primary">
+                          {(req.user?.username?.[0] ?? '?').toUpperCase()}
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[12px] font-medium text-foreground">
+                          @{req.user?.username ?? 'Unknown'}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {new Date(req.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 gap-1.5">
+                        <button
+                          onClick={() => respondToRequest.mutate({ requestId: req.id, status: 'ACCEPTED' })}
+                          disabled={respondToRequest.isPending}
+                          className="rounded-lg bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => respondToRequest.mutate({ requestId: req.id, status: 'REJECTED' })}
+                          disabled={respondToRequest.isPending}
+                          className="rounded-lg bg-muted px-2.5 py-1 text-[11px] font-semibold text-foreground hover:bg-accent disabled:opacity-50"
+                        >
+                          Deny
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Members — admins only */}
+          {isAdmin && (
+            <div className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  Members
+                </p>
+                <span className="text-[10px] text-muted-foreground">{channelMembers.length}</span>
+              </div>
+
+              {/* Add member search */}
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={memberSearch}
+                  onChange={(e) => setMemberSearch(e.target.value)}
+                  placeholder="Add member by username…"
+                  className="h-8 rounded-xl pl-8 text-[12px]"
+                />
+                {memberSearch && (
+                  <button
+                    onClick={() => setMemberSearch('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Search results */}
+              {memberSearch.trim() && searchResults.length > 0 && (
+                <div className="rounded-xl border border-border bg-background shadow-lg">
+                  {searchResults.slice(0, 5).map((u) => {
+                    const alreadyMember = channelMembers.some((m) => m.user?.id === u.id)
+                    return (
+                      <div key={u.id} className="flex items-center gap-2.5 border-b border-border px-3 py-2 last:border-0">
+                        {u.avatar_url ? (
+                          <img src={u.avatar_url} alt={u.username} className="h-6 w-6 rounded-full object-cover" />
+                        ) : (
+                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary">
+                            {u.username[0]?.toUpperCase()}
+                          </div>
+                        )}
+                        <span className="min-w-0 flex-1 truncate text-[12px] text-foreground">@{u.username}</span>
+                        {alreadyMember ? (
+                          <span className="text-[10px] text-muted-foreground">Member</span>
+                        ) : (
+                          <button
+                            disabled={addingMemberId === u.id}
+                            onClick={async () => {
+                              setAddingMemberId(u.id)
+                              try {
+                                await addChannelMember.mutateAsync({ userId: u.id })
+                                setMemberSearch('')
+                                toast.success(`@${u.username} added`)
+                              } catch (e) {
+                                toast.error(e instanceof Error ? e.message : 'Failed to add member')
+                              } finally {
+                                setAddingMemberId(null)
+                              }
+                            }}
+                            className="flex items-center gap-1 rounded-lg bg-primary px-2 py-0.5 text-[11px] font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                          >
+                            <UserPlus className="h-3 w-3" />
+                            Add
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Member list */}
+              <div className="max-h-48 space-y-1 overflow-y-auto">
+                {channelMembers.map((m) => (
+                  <div key={m.user?.id} className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 hover:bg-accent/50">
+                    {m.user?.avatar_url ? (
+                      <img src={m.user.avatar_url} alt={m.user.username ?? ''} className="h-6 w-6 rounded-full object-cover" />
+                    ) : (
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary">
+                        {(m.user?.username?.[0] ?? '?').toUpperCase()}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <span className="truncate text-[12px] text-foreground">@{m.user?.username ?? 'Unknown'}</span>
+                    </div>
+                    <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium capitalize text-muted-foreground">
+                      {m.role.toLowerCase()}
+                    </span>
+                    {m.role !== 'OWNER' && (
+                      <button
+                        disabled={kickingMemberId === m.user?.id}
+                        onClick={async () => {
+                          if (!m.user?.id) return
+                          setKickingMemberId(m.user.id)
+                          try {
+                            await kickChannelMember.mutateAsync(m.user.id)
+                            toast.success(`@${m.user.username} removed`)
+                          } catch (e) {
+                            toast.error(e instanceof Error ? e.message : 'Failed to remove member')
+                          } finally {
+                            setKickingMemberId(null)
+                          }
+                        }}
+                        className="shrink-0 rounded-lg p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                      >
+                        <UserX className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Danger zone */}
           <div className="p-4 space-y-3">
@@ -1433,7 +1630,10 @@ export function ChannelsPanel({
                       onClick={() => {
                         if (hasRequested) return
                         requestJoin.mutate(group.id, {
-                          onSuccess: () => setRequestedGroups((prev) => new Set([...prev, group.id])),
+                          onSuccess: () => {
+                            setRequestedGroups((prev) => new Set([...prev, group.id]))
+                            toast.success(`Request sent to join #${group.label}`)
+                          },
                         })
                       }}
                       className="absolute right-1.5 top-1/2 z-10 -translate-y-1/2 rounded-lg border border-border px-1.5 py-0.5 text-[9px] font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"

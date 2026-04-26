@@ -343,6 +343,14 @@ export function useVoicePresence(
           void audio.play().catch(() => { setSoundboardUserId(null); setSoundboardIntensity(0) })
         }
       })
+      channel.on('broadcast', { event: 'instant_leave' }, ({ payload }) => {
+        if (typeof payload?.userId === 'string' && payload.userId !== myInfoRef.current?.id) {
+          setParticipantsByGroup((prev) => ({
+            ...prev,
+            [groupId]: removeVoiceUser(prev[groupId] ?? [], payload.userId),
+          }))
+        }
+      })
       channel.on('broadcast', { event: 'move' }, ({ payload }) => {
         if (
           payload?.targetId === myInfoRef.current?.id &&
@@ -375,6 +383,9 @@ export function useVoicePresence(
     currentGroupIdRef.current = null
     currentSelfRef.current = null
     if (entry) {
+      if (myId) {
+        void entry.channel.send({ type: 'broadcast', event: 'instant_leave', payload: { userId: myId } })
+      }
       await entry.channel.untrack()
       syncParticipants(groupId, entry.channel)
     }
@@ -436,6 +447,7 @@ export function useVoicePresence(
       if (previousGroupId && previousGroupId !== groupId) {
         const previous = channelsRef.current.get(previousGroupId)
         if (previous) {
+          void previous.channel.send({ type: 'broadcast', event: 'instant_leave', payload: { userId: info.id } })
           void previous.channel.untrack().then(() => syncParticipants(previousGroupId, previous.channel))
         }
       }

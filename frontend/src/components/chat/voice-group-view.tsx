@@ -222,6 +222,9 @@ export function VoiceGroupView({
     { label: '🎵 Phonk', file: 'Voicy_phonk.mp3' },
     { label: '😤 What Hell', file: 'Voicy_What the hell_ (Loud).mp3' },
     { label: '😱 WHAT', file: 'Voicy_WHAT_!.mp3' },
+    { label: '🐻 Bear Laugh', file: 'Voicy_Black Bear Laugh.mp3' },
+    { label: '🚫 Nope', file: 'Voicy_Nope! .mp3' },
+    { label: '🏆 W', file: 'Voicy_W Reaction .mp3' },
   ]
   const timer = useElapsedTime(joinedAt, isJoined)
 
@@ -537,18 +540,22 @@ export function VoiceGroupView({
                 <Music2 className="h-4 w-4" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="center" side="top" className="w-44 bg-sidebar border-border mb-1">
-              <DropdownMenuLabel className="text-[11px] text-muted-foreground">Soundboard</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {sounds.map((s) => (
-                <DropdownMenuItem
-                  key={s.file}
-                  className="text-[12px] cursor-pointer"
-                  onClick={() => onPlaySound?.(s.file)}
-                >
-                  {s.label}
-                </DropdownMenuItem>
-              ))}
+            <DropdownMenuContent align="center" side="top" className="w-44 bg-sidebar border-border mb-1 p-0">
+              <div className="px-2 py-1.5">
+                <DropdownMenuLabel className="text-[11px] text-muted-foreground px-0">Soundboard</DropdownMenuLabel>
+              </div>
+              <DropdownMenuSeparator className="m-0" />
+              <div className="max-h-52 overflow-y-auto py-1">
+                {sounds.map((s) => (
+                  <DropdownMenuItem
+                    key={s.file}
+                    className="text-[12px] cursor-pointer"
+                    onClick={() => onPlaySound?.(s.file)}
+                  >
+                    {s.label}
+                  </DropdownMenuItem>
+                ))}
+              </div>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

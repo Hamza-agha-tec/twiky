@@ -69,4 +69,19 @@ export class ChannelsController {
     async requestJoinChannel(@Request() req: any, @Param("id") channelId: string) {
         return this.channelsService.requestJoinChannel(req.user.userId, channelId);
     }
+
+    @Get(":id/join-requests")
+    async getChannelJoinRequests(@Request() req: any, @Param("id") channelId: string) {
+        return this.channelsService.getChannelJoinRequests(channelId, req.user.userId);
+    }
+
+    @Patch(":id/join-requests/:requestId")
+    async respondToChannelJoinRequest(
+        @Request() req: any,
+        @Param("id") channelId: string,
+        @Param("requestId") requestId: string,
+        @Body() body: { status: 'ACCEPTED' | 'REJECTED' },
+    ) {
+        return this.channelsService.respondToChannelJoinRequest(channelId, requestId, body.status, req.user.userId);
+    }
 }

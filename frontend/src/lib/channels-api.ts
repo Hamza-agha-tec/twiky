@@ -40,6 +40,19 @@ export interface Channel {
   member_count?: number;
 }
 
+export interface ChannelMember {
+  role: 'OWNER' | 'ADMIN' | 'MEMBER';
+  joined_at?: string;
+  user: { id: string; username: string | null; avatar_url: string | null };
+}
+
+export interface ChannelJoinRequest {
+  id: string;
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
+  created_at: string;
+  user: { id: string; username: string | null; avatar_url: string | null };
+}
+
 export const channelsApi = {
   createChannel: (data: { name: string; description?: string; avatar_url?: string; banner_url?: string; access_type?: ChannelAccess }) =>
     authedFetch('/channels', {
@@ -60,7 +73,7 @@ export const channelsApi = {
   deleteChannel: (id: string) =>
     authedFetch(`/channels/${id}`, { method: 'DELETE' }),
 
-  getMembers: (id: string) => authedFetch<{ role: string; user: { id: string; username: string; avatar_url: string | null } }[]>(`/channels/${id}/members`),
+  getMembers: (id: string) => authedFetch<ChannelMember[]>(`/channels/${id}/members`),
 
   addMember: (id: string, userId: string, role: 'ADMIN' | 'MEMBER' = 'MEMBER') =>
     authedFetch(`/channels/${id}/members`, {
@@ -70,6 +83,15 @@ export const channelsApi = {
 
   kickMember: (channelId: string, userId: string) =>
     authedFetch(`/channels/${channelId}/members/${userId}`, { method: 'DELETE' }),
+
+  getJoinRequests: (channelId: string) =>
+    authedFetch<ChannelJoinRequest[]>(`/channels/${channelId}/join-requests`),
+
+  respondToJoinRequest: (channelId: string, requestId: string, status: 'ACCEPTED' | 'REJECTED') =>
+    authedFetch(`/channels/${channelId}/join-requests/${requestId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
 
   joinChannel: (id: string) =>
     authedFetch(`/channels/${id}/join`, { method: 'POST' }),
