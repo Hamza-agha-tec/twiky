@@ -62,6 +62,7 @@ interface VoiceGroupViewProps {
   onKick?: (userId: string) => void
   onPlaySound?: (sound: string) => void
   soundboardUserId?: string | null
+  soundboardIntensity?: number
 }
 
 function useElapsedTime(startMs: number, active: boolean) {
@@ -94,6 +95,7 @@ export function VoiceGroupView({
   onKick,
   onPlaySound,
   soundboardUserId,
+  soundboardIntensity = 0,
 }: VoiceGroupViewProps) {
   const [deafened, setDeafened] = useState(false)
   const [videoOn, setVideoOn] = useState(false)
@@ -210,6 +212,8 @@ export function VoiceGroupView({
 
   const sounds = [
     { label: '😂 Faaa', file: 'faaa sound.mpeg' },
+    { label: '💥 Blast', file: 'Voicy_blast this during class you wont regret it 🙋_♂️.mp3' },
+    { label: '🎭 Hitler', file: 'Voicy_Hitler 26 (Downfall _ DerUntergang).mp3' },
   ]
   const timer = useElapsedTime(joinedAt, isJoined)
 
@@ -347,8 +351,11 @@ export function VoiceGroupView({
                           className={cn(
                             'group/tile relative flex flex-col items-center justify-center overflow-hidden rounded-xl border border-white/5 bg-muted/30 cursor-default select-none transition-all duration-200 min-h-[120px]',
                             member.isSpeaking && !member.isMuted && 'ring-2 ring-green-500/80',
-                            soundboardUserId === member.id && 'ring-1 ring-green-400 shadow-[0_0_8px_1px_rgba(74,222,128,0.4)]',
                           )}
+                          style={soundboardUserId === member.id ? {
+                            outline: `${1 + soundboardIntensity * 3}px solid rgba(74,222,128,${0.5 + soundboardIntensity * 0.5})`,
+                            boxShadow: `0 0 ${6 + soundboardIntensity * 24}px ${soundboardIntensity * 10}px rgba(74,222,128,${0.2 + soundboardIntensity * 0.6})`,
+                          } : undefined}
                         >
                           {/* Camera video fills tile */}
                           {showVideo && (

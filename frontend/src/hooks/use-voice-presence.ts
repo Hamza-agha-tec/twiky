@@ -85,7 +85,10 @@ export function useVoicePresence(
   const [isMuted, setIsMuted] = useState(false)
   const [joinedAt, setJoinedAt] = useState(0)
   const [soundboardUserId, setSoundboardUserId] = useState<string | null>(null)
+  const [soundboardIntensity, setSoundboardIntensity] = useState(0)
   const soundboardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const analyserRafRef = useRef<number | null>(null)
+  const analyserCtxRef = useRef<AudioContext | null>(null)
   const channelsRef = useRef<Map<string, VoiceChannelEntry>>(new Map())
   const currentGroupIdRef = useRef<string | null>(null)
   const myInfoRef = useRef<MyVoiceInfo | null>(myInfo)
@@ -94,6 +97,39 @@ export function useVoicePresence(
   const joinRef = useRef<(groupId: string, muted?: boolean) => Promise<void>>(async () => {})
   const pendingJoinRef = useRef<{ groupId: string; muted: boolean } | null>(null)
   const joinSeqRef = useRef(0)
+
+  const startSoundboardAnalyser = useCallback((audio: HTMLAudioElement, senderId: string) => {
+    if (analyserRafRef.current) cancelAnimationFrame(analyserRafRef.current)
+    void analyserCtxRef.current?.close()
+    setSoundboardUserId(senderId)
+    setSoundboardIntensity(0)
+
+    const ctx = new AudioContext()
+    analyserCtxRef.current = ctx
+    const analyser = ctx.createAnalyser()
+    analyser.fftSize = 256
+    const source = ctx.createMediaElementSource(audio)
+    source.connect(analyser)
+    analyser.connect(ctx.destination)
+    const data = new Uint8Array(analyser.frequencyBinCount)
+
+    const tick = () => {
+      analyser.getByteFrequencyData(data)
+      const avg = data.reduce((a, b) => a + b, 0) / data.length
+      setSoundboardIntensity(avg / 255)
+      analyserRafRef.current = requestAnimationFrame(tick)
+    }
+    analyserRafRef.current = requestAnimationFrame(tick)
+
+    const stop = () => {
+      if (analyserRafRef.current) cancelAnimationFrame(analyserRafRef.current)
+      setSoundboardIntensity(0)
+      setSoundboardUserId(null)
+      void ctx.close()
+    }
+    audio.onended = stop
+    audio.onerror = stop
+  }, [])
 
   useEffect(() => {
     myInfoRef.current = myInfo
@@ -210,15 +246,11 @@ export function useVoicePresence(
         }
       })
       channel.on('broadcast', { event: 'soundboard' }, ({ payload }) => {
-        if (typeof payload?.sound === 'string') {
+        if (typeof payload?.sound === 'string' && typeof payload?.senderId === 'string') {
           const audio = new Audio(`/sounds/${payload.sound}`)
           audio.volume = 0.8
-          void audio.play().catch(() => {})
-        }
-        if (typeof payload?.senderId === 'string') {
-          if (soundboardTimerRef.current) clearTimeout(soundboardTimerRef.current)
-          setSoundboardUserId(payload.senderId)
-          soundboardTimerRef.current = setTimeout(() => setSoundboardUserId(null), 2500)
+          startSoundboardAnalyser(audio, payload.senderId)
+          void audio.play().catch(() => { setSoundboardUserId(null); setSoundboardIntensity(0) })
         }
       })
       channel.on('broadcast', { event: 'move' }, ({ payload }) => {
@@ -352,18 +384,18 @@ export function useVoicePresence(
     const senderId = myInfoRef.current?.id
     const audio = new Audio(`/sounds/${sound}`)
     audio.volume = 0.8
-    void audio.play().catch(() => {})
     if (senderId) {
-      if (soundboardTimerRef.current) clearTimeout(soundboardTimerRef.current)
-      setSoundboardUserId(senderId)
-      soundboardTimerRef.current = setTimeout(() => setSoundboardUserId(null), 2500)
+      startSoundboardAnalyser(audio, senderId)
+      void audio.play().catch(() => { setSoundboardUserId(null); setSoundboardIntensity(0) })
+    } else {
+      void audio.play().catch(() => {})
     }
     await entry.channel.send({
       type: 'broadcast',
       event: 'soundboard',
       payload: { sound, senderId },
     })
-  }, [])
+  }, [startSoundboardAnalyser])
 
   const kick = useCallback(async (targetId: string, groupId = currentGroupIdRef.current) => {
     if (!groupId) return
@@ -506,5 +538,6 @@ export function useVoicePresence(
     moveUser,
     playSound,
     soundboardUserId,
+    soundboardIntensity,
   }
 }

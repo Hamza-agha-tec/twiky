@@ -1041,6 +1041,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             onKick={(userId) => voice.kick(userId)}
             onPlaySound={(sound) => voice.playSound(sound)}
             soundboardUserId={voice.soundboardUserId}
+            soundboardIntensity={voice.soundboardIntensity}
           />
           <FeedProfileSidebarDock
             open={!!voiceProfileTarget}
@@ -1233,6 +1234,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             onMuteVoiceParticipant={(userId, _groupId, muted) => voice.muteUser(userId, muted)}
             onViewVoiceParticipantProfile={(p) => setVoiceProfileTarget(p as VoicePresenceUser)}
             soundboardUserId={voice.soundboardUserId}
+            soundboardIntensity={voice.soundboardIntensity}
           />
 
             {activeSurface === 'channel'
