@@ -74,9 +74,18 @@ function removeVoiceUser(users: VoicePresenceUser[], userId: string) {
   return users.filter((item) => item.id !== userId)
 }
 
+export type VoiceInvitePayload = {
+  groupId: string
+  groupName: string
+  inviterId: string
+  inviterName: string
+  inviterAvatar: string | null
+}
+
 export function useVoicePresence(
   myInfo: MyVoiceInfo | null,
   observedGroupIds: string[] = [],
+  onVoiceInvite?: (payload: VoiceInvitePayload) => void,
 ) {
   const [participantsByGroup, setParticipantsByGroup] = useState<Record<string, VoicePresenceUser[]>>({})
   const [currentGroupId, setCurrentGroupId] = useState<string | null>(null)
@@ -147,6 +156,43 @@ export function useVoicePresence(
   useEffect(() => {
     isMutedRef.current = isMuted
   }, [isMuted])
+
+  const onVoiceInviteRef = useRef(onVoiceInvite)
+  onVoiceInviteRef.current = onVoiceInvite
+
+  useEffect(() => {
+    const myId = myInfo?.id
+    if (!myId) return
+    const supabase = createClient()
+    const ch = supabase.channel(`voice-invite:${myId}`)
+    ch.on('broadcast', { event: 'voice_invite' }, ({ payload }) => {
+      if (payload && onVoiceInviteRef.current) {
+        onVoiceInviteRef.current(payload as VoiceInvitePayload)
+      }
+    })
+    ch.subscribe()
+    return () => { void supabase.removeChannel(ch) }
+  }, [myInfo?.id])
+
+  const sendVoiceInvite = useCallback(async (inviteeId: string, groupId: string, groupName: string) => {
+    const me = myInfoRef.current
+    if (!me) return
+    const supabase = createClient()
+    const ch = supabase.channel(`voice-invite:${inviteeId}`)
+    await ch.subscribe()
+    await ch.send({
+      type: 'broadcast',
+      event: 'voice_invite',
+      payload: {
+        groupId,
+        groupName,
+        inviterId: me.id,
+        inviterName: me.name,
+        inviterAvatar: me.avatarUrl,
+      } satisfies VoiceInvitePayload,
+    })
+    void supabase.removeChannel(ch)
+  }, [])
 
   const syncParticipants = useCallback((groupId: string, ch: RealtimeChannel) => {
     const myId = myInfoRef.current?.id
@@ -539,5 +585,6 @@ export function useVoicePresence(
     playSound,
     soundboardUserId,
     soundboardIntensity,
+    sendVoiceInvite,
   }
 }

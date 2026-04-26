@@ -60,7 +60,7 @@ export const channelsApi = {
   deleteChannel: (id: string) =>
     authedFetch(`/channels/${id}`, { method: 'DELETE' }),
 
-  getMembers: (id: string) => authedFetch(`/channels/${id}/members`),
+  getMembers: (id: string) => authedFetch<{ role: string; user: { id: string; username: string; avatar_url: string | null } }[]>(`/channels/${id}/members`),
 
   addMember: (id: string, userId: string, role: 'ADMIN' | 'MEMBER' = 'MEMBER') =>
     authedFetch(`/channels/${id}/members`, {

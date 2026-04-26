@@ -21,7 +21,7 @@ import {
 } from '@/components/chat/channels-panel'
 import { ChatWindow } from '@/components/chat/chat-window'
 import { VoiceGroupView } from '@/components/chat/voice-group-view'
-import { useVoicePresence, type VoicePresenceUser } from '@/hooks/use-voice-presence'
+import { useVoicePresence, type VoicePresenceUser, type VoiceInvitePayload } from '@/hooks/use-voice-presence'
 import { DirectProfileSidebar } from '@/components/chat/direct-profile-sidebar'
 import { FeedProfileSidebarDock } from '@/components/chat/feed-profile-sidebar-dock'
 import { GoalsPanel } from '@/components/chat/goals-panel'
@@ -408,7 +408,49 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     [workspaceChannels],
   )
 
-  const voice = useVoicePresence(voiceMyInfo, voiceGroupIds)
+  const voice = useVoicePresence(voiceMyInfo, voiceGroupIds, (payload) => {
+    const { groupId, groupName, inviterName, inviterAvatar } = payload
+    toast.custom(
+      (t) => (
+        <div className="flex w-80 items-start gap-3 rounded-2xl border border-border bg-popover p-4 shadow-xl">
+          {inviterAvatar ? (
+            <img src={inviterAvatar} alt={inviterName} className="h-9 w-9 shrink-0 rounded-full object-cover" />
+          ) : (
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[13px] font-bold text-primary">
+              {inviterName[0]?.toUpperCase()}
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="text-[12px] font-semibold text-foreground">
+              <span className="text-primary">{inviterName}</span> invited you to join
+            </p>
+            <p className="text-[11px] text-muted-foreground">#{groupName}</p>
+            <div className="mt-2.5 flex gap-2">
+              <button
+                onClick={() => {
+                  toast.dismiss(t)
+                  const ch = workspaceChannels.find((c) => c.groups.some((g) => g.id === groupId))
+                  if (ch) { setActiveChannelId(ch.id); setActiveGroupId(groupId) }
+                  setActiveVoiceGroupId(groupId)
+                  void voice.join(groupId)
+                }}
+                className="rounded-lg bg-primary px-3 py-1.5 text-[11px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                Join
+              </button>
+              <button
+                onClick={() => toast.dismiss(t)}
+                className="rounded-lg bg-muted px-3 py-1.5 text-[11px] font-semibold text-foreground transition-colors hover:bg-accent"
+              >
+                Decline
+              </button>
+            </div>
+          </div>
+        </div>
+      ),
+      { duration: 30000, id: `voice-invite-${groupId}` },
+    )
+  })
 
   const handleJoinVoiceGroup = useCallback((groupId: string) => {
     const channelForGroup = workspaceChannels.find((ch) => ch.groups.some((g) => g.id === groupId))
@@ -1022,6 +1064,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           <VoiceGroupView
             key={activeGroup.id}
             group={activeGroup}
+            channelId={activeChannelId}
             participants={voice.participantsByGroup[activeGroup.id] ?? []}
             isJoined={voice.isJoined && voice.joinedGroupId === activeGroup.id}
             isMuted={voice.isMuted}
@@ -1040,6 +1083,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             onViewProfile={(p) => setVoiceProfileTarget(p)}
             onKick={(userId) => voice.kick(userId)}
             onPlaySound={(sound) => voice.playSound(sound)}
+            onSendVoiceInvite={(inviteeId) => voice.sendVoiceInvite(inviteeId, activeGroup.id, activeGroup.label)}
             soundboardUserId={voice.soundboardUserId}
             soundboardIntensity={voice.soundboardIntensity}
           />

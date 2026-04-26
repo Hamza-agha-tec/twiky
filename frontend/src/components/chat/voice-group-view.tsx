@@ -27,8 +27,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import type { MockChannelGroup } from '@/components/chat/channels-panel'
 import type { VoicePresenceUser } from '@/hooks/use-voice-presence'
-import { useSearchUsers, useUserFollowing, useProfile } from '@/hooks/use-user'
-import { useSendGroupInvitation } from '@/hooks/use-invitations'
+import { useQuery } from '@tanstack/react-query'
+import { channelsApi } from '@/lib/channels-api'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   ContextMenu,
@@ -50,6 +50,7 @@ export type { VoicePresenceUser as VoiceMember }
 
 interface VoiceGroupViewProps {
   group: MockChannelGroup
+  channelId?: string
   participants: VoicePresenceUser[]
   isJoined: boolean
   isMuted: boolean
@@ -61,6 +62,7 @@ interface VoiceGroupViewProps {
   onViewProfile?: (participant: VoicePresenceUser) => void
   onKick?: (userId: string) => void
   onPlaySound?: (sound: string) => void
+  onSendVoiceInvite?: (inviteeId: string) => void
   soundboardUserId?: string | null
   soundboardIntensity?: number
 }
@@ -83,6 +85,7 @@ function useElapsedTime(startMs: number, active: boolean) {
 
 export function VoiceGroupView({
   group,
+  channelId,
   participants,
   isJoined,
   isMuted,
@@ -94,6 +97,7 @@ export function VoiceGroupView({
   onViewProfile,
   onKick,
   onPlaySound,
+  onSendVoiceInvite,
   soundboardUserId,
   soundboardIntensity = 0,
 }: VoiceGroupViewProps) {
@@ -190,30 +194,34 @@ export function VoiceGroupView({
     setChatInput('')
   }, [chatInput, me])
 
-  const { data: profile } = useProfile()
-  const { data: following = [] } = useUserFollowing(profile?.id)
-  const { data: searchResults = [] } = useSearchUsers(inviteSearch)
-  const sendInvite = useSendGroupInvitation()
+  const { data: channelMembersRaw = [] } = useQuery({
+    queryKey: ['channel-members', channelId],
+    queryFn: () => channelsApi.getMembers(channelId!),
+    enabled: Boolean(channelId && inviteOpen),
+  })
 
   const participantIds = new Set(participants.map((p) => p.id))
 
-  const inviteSuggestions = inviteSearch.trim()
-    ? searchResults
-    : following
-        .map((f) => f.users)
-        .filter((u) => u && !participantIds.has(u.id))
+  const inviteSuggestions = channelMembersRaw
+    .map((m) => m.user)
+    .filter((u) => u && u.id !== myId && !participantIds.has(u.id))
+    .filter((u) => !inviteSearch.trim() || u.username.toLowerCase().includes(inviteSearch.toLowerCase()))
 
   const handleInvite = (userId: string) => {
-    sendInvite.mutate(
-      { inviteeId: userId, groupId: group.id },
-      { onSuccess: () => setSentInvites((prev) => new Set(prev).add(userId)) },
-    )
+    onSendVoiceInvite?.(userId)
+    setSentInvites((prev) => new Set(prev).add(userId))
   }
 
   const sounds = [
     { label: '😂 Faaa', file: 'faaa sound.mpeg' },
+    { label: '👋 Bye Bye', file: 'Voicy_And we say bye bye.mp3' },
+    { label: '👏 Applause', file: 'Voicy_Applause.mp3' },
     { label: '💥 Blast', file: 'Voicy_blast this during class you wont regret it 🙋_♂️.mp3' },
+    { label: '🤫 Shut Up', file: 'Voicy_Do me a f___ing favor. Shut up, listen, and learn.mp3' },
     { label: '🎭 Hitler', file: 'Voicy_Hitler 26 (Downfall _ DerUntergang).mp3' },
+    { label: '🎵 Phonk', file: 'Voicy_phonk.mp3' },
+    { label: '😤 What Hell', file: 'Voicy_What the hell_ (Loud).mp3' },
+    { label: '😱 WHAT', file: 'Voicy_WHAT_!.mp3' },
   ]
   const timer = useElapsedTime(joinedAt, isJoined)
 
@@ -687,7 +695,7 @@ export function VoiceGroupView({
         <div className="flex flex-col gap-0.5 overflow-y-auto px-2 py-3" style={{ maxHeight: 320 }}>
           {inviteSuggestions.length === 0 ? (
             <p className="py-8 text-center text-[12px] text-muted-foreground">
-              {inviteSearch ? 'No users found' : 'No friends to invite yet'}
+              {inviteSearch ? 'No members found' : 'No channel members to invite'}
             </p>
           ) : (
             inviteSuggestions.map((user) => {
@@ -716,7 +724,7 @@ export function VoiceGroupView({
 
                   {/* Action */}
                   <button
-                    disabled={alreadyIn || sent || sendInvite.isPending}
+                    disabled={alreadyIn || sent}
                     onClick={() => handleInvite(user.id)}
                     className={cn(
                       'shrink-0 rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all',
