@@ -172,20 +172,11 @@ export function VoiceGroupView({
   }, [])
 
   const cols =
-    participants.length === 0
-      ? 'grid-cols-1'
-      : participants.length === 1
-      ? 'grid-cols-1'
-      : participants.length === 2
-      ? 'grid-cols-2'
-      : participants.length <= 4
-      ? 'grid-cols-2'
-      : participants.length <= 6
-      ? 'grid-cols-3'
-      : 'grid-cols-4'
-
-  const tileSizeClass =
-    participants.length <= 1 ? 'max-w-xs mx-auto w-full' : participants.length <= 2 ? 'max-w-xl mx-auto w-full' : 'w-full'
+    participants.length <= 1 ? 'grid-cols-1'
+    : participants.length <= 2 ? 'grid-cols-2'
+    : participants.length <= 4 ? 'grid-cols-2'
+    : participants.length <= 6 ? 'grid-cols-3'
+    : 'grid-cols-4'
 
   return (
     <motion.div
@@ -272,125 +263,123 @@ export function VoiceGroupView({
         ) : (
           <motion.div
             key="participants"
-            className={cn('grid gap-2.5 h-full', cols, tileSizeClass)}
+            className="flex h-full flex-col gap-3"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.16, ease: 'easeOut' }}
           >
-            <AnimatePresence>
-              {participants.map((member) => {
-                const isMe = member.id === myId
-                return (
-                  <ContextMenu key={member.id}>
-                    <ContextMenuTrigger asChild>
-                      <motion.div
-                        layout
-                        initial={{ opacity: 0, scale: 0.92 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.92 }}
-                        transition={{ duration: 0.16 }}
-                        className={cn(
-                          'group/tile relative flex flex-col items-center justify-center gap-3 overflow-hidden rounded-2xl border border-border/50 bg-muted/40 p-6 cursor-default select-none transition-shadow duration-300',
-                          member.isSpeaking && !member.isMuted && 'ring-2 ring-primary/70 ring-offset-1 ring-offset-background',
-                          soundboardUserId === member.id && 'ring-1 ring-green-500 ring-offset-0 shadow-[0_0_8px_1px_rgba(34,197,94,0.25)]',
-                        )}
-                      >
-                        {/* Speaking animation */}
-                        {member.isSpeaking && !member.isMuted && (
-                          <span className="absolute inset-0 animate-pulse rounded-2xl bg-primary/5" />
-                        )}
+            {/* Participant grid — fills available space */}
+            <div className={cn('grid flex-1 gap-2', cols)}>
+              <AnimatePresence>
+                {participants.map((member) => {
+                  const isMe = member.id === myId
+                  const showVideo = isMe && videoOn
+                  return (
+                    <ContextMenu key={member.id}>
+                      <ContextMenuTrigger asChild>
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                          transition={{ duration: 0.15 }}
+                          className={cn(
+                            'group/tile relative flex flex-col items-center justify-center overflow-hidden rounded-xl border border-white/5 bg-muted/30 cursor-default select-none transition-all duration-200 min-h-[120px]',
+                            member.isSpeaking && !member.isMuted && 'ring-2 ring-green-500/80',
+                            soundboardUserId === member.id && 'ring-1 ring-green-400 shadow-[0_0_8px_1px_rgba(74,222,128,0.4)]',
+                          )}
+                        >
+                          {/* Camera video fills tile */}
+                          {showVideo && (
+                            <video
+                              ref={localVideoRef}
+                              autoPlay
+                              muted
+                              playsInline
+                              className="absolute inset-0 h-full w-full object-cover"
+                            />
+                          )}
 
-                        {/* Full-card camera video */}
-                        {isMe && videoOn && (
-                          <video
-                            ref={localVideoRef}
-                            autoPlay
-                            muted
-                            playsInline
-                            className="absolute inset-0 h-full w-full rounded-2xl object-cover"
-                          />
-                        )}
+                          {/* Dark overlay for readability */}
+                          {showVideo && (
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+                          )}
 
-                        {/* Avatar (hidden when camera is on for me) */}
-                        {!(isMe && videoOn) && (
-                          <div className="relative z-10">
-                            {member.avatarUrl ? (
-                              <img
-                                src={member.avatarUrl}
-                                alt={member.name}
-                                className="h-20 w-20 rounded-full object-cover shadow"
-                              />
-                            ) : (
-                              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/15 text-[28px] font-bold text-primary shadow">
-                                {member.name[0]?.toUpperCase()}
-                              </div>
-                            )}
+                          {/* Avatar when no camera */}
+                          {!showVideo && (
+                            <div className="relative z-10 flex flex-col items-center gap-2">
+                              {member.avatarUrl ? (
+                                <img src={member.avatarUrl} alt={member.name} className="h-16 w-16 rounded-full object-cover shadow-lg" />
+                              ) : (
+                                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/20 text-[24px] font-bold text-primary shadow-lg">
+                                  {member.name[0]?.toUpperCase()}
+                                </div>
+                              )}
+                            </div>
+                          )}
 
-                            {/* Mute badge */}
+                          {/* Name + mute pinned bottom-left like Discord */}
+                          <div className="absolute bottom-2 left-2 z-10 flex items-center gap-1.5">
                             {member.isMuted && (
-                              <span className="absolute -bottom-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-background bg-destructive shadow">
+                              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-destructive shadow">
                                 <MicOff className="h-2.5 w-2.5 text-white" />
                               </span>
                             )}
+                            <span className={cn(
+                              'rounded px-1.5 py-0.5 text-[11px] font-semibold',
+                              showVideo ? 'bg-black/50 text-white' : 'text-foreground',
+                            )}>
+                              {isMe ? `${member.name} (You)` : member.name}
+                            </span>
                           </div>
-                        )}
 
-                        {/* Name — always visible, pinned to bottom */}
-                        <p className={cn(
-                          'relative z-10 max-w-full truncate text-[12px] font-semibold',
-                          isMe && videoOn
-                            ? 'absolute bottom-2 left-0 right-0 text-center text-white drop-shadow'
-                            : 'text-foreground',
-                        )}>
-                          {isMe ? `${member.name} (You)` : member.name}
-                        </p>
+                          {/* Hover 3-dot */}
+                          {!isMe && (
+                            <span className="absolute right-2 top-2 z-10 opacity-0 transition-opacity group-hover/tile:opacity-100">
+                              <MoreHorizontal className="h-3.5 w-3.5 text-white/70" />
+                            </span>
+                          )}
+                        </motion.div>
+                      </ContextMenuTrigger>
 
-                        {/* Mute badge overlay when camera on */}
-                        {isMe && videoOn && member.isMuted && (
-                          <span className="absolute bottom-6 right-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 border-background bg-destructive shadow">
-                            <MicOff className="h-2.5 w-2.5 text-white" />
-                          </span>
-                        )}
+                      {!isMe && (
+                        <ContextMenuContent className="w-44 bg-sidebar border-border">
+                          <ContextMenuItem onClick={() => onViewProfile?.(member)}>
+                            <Shield className="mr-2 h-3.5 w-3.5" />
+                            View profile
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem>
+                            <Volume1 className="mr-2 h-3.5 w-3.5" />
+                            Adjust volume
+                          </ContextMenuItem>
+                          <ContextMenuItem>
+                            <VolumeX className="mr-2 h-3.5 w-3.5" />
+                            Mute for me
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => onKick?.(member.id)}
+                          >
+                            <UserMinus className="mr-2 h-3.5 w-3.5" />
+                            Kick from voice
+                          </ContextMenuItem>
+                        </ContextMenuContent>
+                      )}
+                    </ContextMenu>
+                  )
+                })}
+              </AnimatePresence>
+            </div>
 
-                        {/* Hover 3-dot */}
-                        {!isMe && (
-                          <span className="absolute right-2 top-2 z-10 opacity-0 group-hover/tile:opacity-100 transition-opacity">
-                            <MoreHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
-                          </span>
-                        )}
-                      </motion.div>
-                    </ContextMenuTrigger>
-
-                    {!isMe && (
-                      <ContextMenuContent className="w-44 bg-sidebar border-border">
-                        <ContextMenuItem onClick={() => onViewProfile?.(member)}>
-                          <Shield className="mr-2 h-3.5 w-3.5" />
-                          View profile
-                        </ContextMenuItem>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem>
-                          <Volume1 className="mr-2 h-3.5 w-3.5" />
-                          Adjust volume
-                        </ContextMenuItem>
-                        <ContextMenuItem>
-                          <VolumeX className="mr-2 h-3.5 w-3.5" />
-                          Mute for me
-                        </ContextMenuItem>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => onKick?.(member.id)}
-                        >
-                          <UserMinus className="mr-2 h-3.5 w-3.5" />
-                          Kick from voice
-                        </ContextMenuItem>
-                      </ContextMenuContent>
-                    )}
-                  </ContextMenu>
-                )
-              })}
-            </AnimatePresence>
+            {/* Invite friends */}
+            <button className="mx-auto flex items-center gap-2 rounded-xl border border-dashed border-border/50 px-5 py-2 text-[12px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>
+              </svg>
+              Invite Friends
+            </button>
           </motion.div>
         )}
         </AnimatePresence>
