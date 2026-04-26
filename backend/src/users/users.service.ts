@@ -228,4 +228,57 @@ export class UsersService {
         // Map to return the user objects directly
         return mutuals.map((m: any) => m.users);
     }
+
+    async updateDodoCustomerId(userId: string, dodoCustomerId: string) {
+        const client = this.supabaseService.getClient();
+        
+        // Update user_settings table
+        const { data, error } = await client
+            .from('user_settings')
+            .upsert({
+                user_id: userId,
+                dodo_customer_id: dodoCustomerId,
+                updated_at: new Date().toISOString(),
+            })
+            .select()
+            .single();
+
+        if (error) {
+            throw new Error(`Failed to update dodo_customer_id: ${error.message}`);
+        }
+
+        // Also update user metadata for backward compatibility
+        try {
+            const { data: user } = await client.auth.admin.getUserById(userId);
+            await client.auth.admin.updateUserById(userId, {
+                user_metadata: {
+                    ...user?.user?.user_metadata,
+                    dodo_customer_id: dodoCustomerId,
+                },
+            });
+        } catch (error) {
+            console.error(`Failed to update user metadata: ${error.message}`);
+        }
+
+        return data;
+    }
+
+    async getDodoCustomerId(userId: string) {
+        const client = this.supabaseService.getClient();
+        
+        // First check user_settings
+        const { data: settings, error: settingsError } = await client
+            .from('user_settings')
+            .select('dodo_customer_id')
+            .eq('user_id', userId)
+            .single();
+
+        if (!settingsError && settings?.dodo_customer_id) {
+            return settings.dodo_customer_id;
+        }
+
+        // Fallback to user metadata
+        const { data: user } = await client.auth.admin.getUserById(userId);
+        return user?.user?.user_metadata?.dodo_customer_id;
+    }
 }

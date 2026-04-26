@@ -20,8 +20,12 @@ export const nextConfig = {
       },
       {
         protocol: 'https',
-        hostname: '', // This allows all HTTPS domains
+        hostname: 'qmdfqlvsrpebevswmugt.supabase.co',
       },
+      {
+        protocol: 'https',
+        hostname: '', // This allows all HTTPS domains
+      }
     ],
   },
   // Other Next.js config options can go here
