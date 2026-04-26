@@ -17,6 +17,7 @@ import {
   Volume1,
   Shield,
   MoreHorizontal,
+  Music2,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
@@ -29,6 +30,14 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 export type { VoicePresenceUser as VoiceMember }
 
@@ -44,6 +53,8 @@ interface VoiceGroupViewProps {
   onToggleMute: () => void
   onViewProfile?: (participant: VoicePresenceUser) => void
   onKick?: (userId: string) => void
+  onPlaySound?: (sound: string) => void
+  soundboardUserId?: string | null
 }
 
 function useElapsedTime(startMs: number, active: boolean) {
@@ -74,11 +85,17 @@ export function VoiceGroupView({
   onToggleMute,
   onViewProfile,
   onKick,
+  onPlaySound,
+  soundboardUserId,
 }: VoiceGroupViewProps) {
   const [deafened, setDeafened] = useState(false)
   const [videoOn, setVideoOn] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [exitReason, setExitReason] = useState<'left' | null>(null)
+
+  const sounds = [
+    { label: '😂 Faaa', file: 'faaa sound.mpeg' },
+  ]
   const timer = useElapsedTime(joinedAt, isJoined)
 
   const prevJoinedRef = useRef(isJoined)
@@ -192,8 +209,9 @@ export function VoiceGroupView({
                         exit={{ opacity: 0, scale: 0.92 }}
                         transition={{ duration: 0.16 }}
                         className={cn(
-                          'group/tile relative flex flex-col items-center justify-center gap-3 overflow-hidden rounded-2xl border border-border/50 bg-muted/40 p-6 cursor-default select-none',
+                          'group/tile relative flex flex-col items-center justify-center gap-3 overflow-hidden rounded-2xl border border-border/50 bg-muted/40 p-6 cursor-default select-none transition-shadow duration-300',
                           member.isSpeaking && !member.isMuted && 'ring-2 ring-primary/70 ring-offset-1 ring-offset-background',
+                          soundboardUserId === member.id && 'ring-1 ring-green-500 ring-offset-0 shadow-[0_0_8px_1px_rgba(34,197,94,0.25)]',
                         )}
                       >
                         {/* Speaking animation */}
@@ -277,15 +295,16 @@ export function VoiceGroupView({
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.18, ease: 'easeOut' }}
-        layout
       >
         {/* Left: voice info */}
-        <div className="flex items-center gap-2">
-          <span className="flex h-2 w-2 rounded-full bg-green-500" />
-          <span className="text-[11px] font-medium text-muted-foreground">
+        <div className="flex w-32 shrink-0 items-center gap-2">
+          <span className="flex h-2 w-2 shrink-0 rounded-full bg-green-500" />
+          <span className="truncate text-[11px] font-medium text-muted-foreground">
             {group.label}
-            {timer && <span className="ml-1.5 text-primary">{timer}</span>}
           </span>
+          {timer && (
+            <span className="shrink-0 font-mono text-[11px] tabular-nums text-primary">{timer}</span>
+          )}
         </div>
 
         {/* Center: controls */}
@@ -323,9 +342,34 @@ export function VoiceGroupView({
           >
             {sharing ? <MonitorOff className="h-4 w-4" /> : <MonitorUp className="h-4 w-4" />}
           </VoiceCtrlBtn>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                title="Soundboard"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-muted/50 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <Music2 className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center" side="top" className="w-44 bg-sidebar border-border mb-1">
+              <DropdownMenuLabel className="text-[11px] text-muted-foreground">Soundboard</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {sounds.map((s) => (
+                <DropdownMenuItem
+                  key={s.file}
+                  className="text-[12px] cursor-pointer"
+                  onClick={() => onPlaySound?.(s.file)}
+                >
+                  {s.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {/* Right: leave */}
+        <div className="flex w-32 shrink-0 justify-end">
         <button
           onClick={() => { if (isJoined) setExit('left'); onLeave() }}
           title="Leave"
@@ -334,6 +378,7 @@ export function VoiceGroupView({
           <PhoneOff className="h-3.5 w-3.5" />
           <span className="text-[11px] font-semibold">Leave</span>
         </button>
+        </div>
       </motion.div>}
     </motion.div>
   )

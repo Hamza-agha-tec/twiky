@@ -84,6 +84,8 @@ export function useVoicePresence(
   const [isJoined, setIsJoined] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
   const [joinedAt, setJoinedAt] = useState(0)
+  const [soundboardUserId, setSoundboardUserId] = useState<string | null>(null)
+  const soundboardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const channelsRef = useRef<Map<string, VoiceChannelEntry>>(new Map())
   const currentGroupIdRef = useRef<string | null>(null)
   const myInfoRef = useRef<MyVoiceInfo | null>(myInfo)
@@ -205,6 +207,18 @@ export function useVoicePresence(
           void channel.track(nextSelf)
           setIsMuted(muted)
           syncParticipants(groupId, channel)
+        }
+      })
+      channel.on('broadcast', { event: 'soundboard' }, ({ payload }) => {
+        if (typeof payload?.sound === 'string') {
+          const audio = new Audio(`/sounds/${payload.sound}`)
+          audio.volume = 0.8
+          void audio.play().catch(() => {})
+        }
+        if (typeof payload?.senderId === 'string') {
+          if (soundboardTimerRef.current) clearTimeout(soundboardTimerRef.current)
+          setSoundboardUserId(payload.senderId)
+          soundboardTimerRef.current = setTimeout(() => setSoundboardUserId(null), 2500)
         }
       })
       channel.on('broadcast', { event: 'move' }, ({ payload }) => {
@@ -329,6 +343,27 @@ export function useVoicePresence(
   useEffect(() => {
     joinRef.current = join
   }, [join])
+
+  const playSound = useCallback(async (sound: string) => {
+    const groupId = currentGroupIdRef.current
+    if (!groupId) return
+    const entry = channelsRef.current.get(groupId)
+    if (!entry) return
+    const senderId = myInfoRef.current?.id
+    const audio = new Audio(`/sounds/${sound}`)
+    audio.volume = 0.8
+    void audio.play().catch(() => {})
+    if (senderId) {
+      if (soundboardTimerRef.current) clearTimeout(soundboardTimerRef.current)
+      setSoundboardUserId(senderId)
+      soundboardTimerRef.current = setTimeout(() => setSoundboardUserId(null), 2500)
+    }
+    await entry.channel.send({
+      type: 'broadcast',
+      event: 'soundboard',
+      payload: { sound, senderId },
+    })
+  }, [])
 
   const kick = useCallback(async (targetId: string, groupId = currentGroupIdRef.current) => {
     if (!groupId) return
@@ -469,5 +504,7 @@ export function useVoicePresence(
     kick,
     muteUser,
     moveUser,
+    playSound,
+    soundboardUserId,
   }
 }

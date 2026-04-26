@@ -147,6 +147,7 @@ interface ChannelsPanelProps {
   onKickVoiceParticipant?: (userId: string, groupId: string) => void
   onMuteVoiceParticipant?: (userId: string, groupId: string, muted: boolean) => void
   onViewVoiceParticipantProfile?: (participant: VoiceParticipant) => void
+  soundboardUserId?: string | null
 }
 
 const MEMBER_LABELS = ['26 online', '18 online', '12 online', '9 online', '6 online']
@@ -1154,6 +1155,7 @@ export function ChannelsPanel({
   onKickVoiceParticipant,
   onMuteVoiceParticipant,
   onViewVoiceParticipantProfile,
+  soundboardUserId,
 }: ChannelsPanelProps) {
   const [showCreateGroup, setShowCreateGroup] = useState(false)
   const [channelSettingsOpen, setChannelSettingsOpen] = useState(false)
@@ -1510,7 +1512,10 @@ export function ChannelsPanel({
                                 }}
                                 onDragEnd={() => setDragOverVoiceGroupId(null)}
                               >
-                                <div className="relative flex-shrink-0">
+                                <div className={cn(
+                                  'relative flex-shrink-0 rounded-full transition-shadow duration-300',
+                                  soundboardUserId === p.id && 'ring-1 ring-green-400 ring-offset-0 shadow-[0_0_4px_1px_rgba(74,222,128,0.4)]',
+                                )}>
                                   {p.avatarUrl ? (
                                     <img
                                       src={p.avatarUrl}
