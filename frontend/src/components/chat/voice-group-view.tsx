@@ -18,6 +18,10 @@ import {
   Shield,
   MoreHorizontal,
   Music2,
+  MessageSquare,
+  X,
+  Send,
+  Hash,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
@@ -92,6 +96,11 @@ export function VoiceGroupView({
   const [videoOn, setVideoOn] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [exitReason, setExitReason] = useState<'left' | null>(null)
+  const [chatOpen, setChatOpen] = useState(false)
+  const [chatInput, setChatInput] = useState('')
+  const [chatMessages, setChatMessages] = useState<{ id: string; userId: string; name: string; avatar: string | null; text: string; ts: number }[]>([])
+  const chatEndRef = useRef<HTMLDivElement | null>(null)
+  const chatInputRef = useRef<HTMLInputElement | null>(null)
 
   const videoStreamRef = useRef<MediaStream | null>(null)
   const screenStreamRef = useRef<MediaStream | null>(null)
@@ -149,6 +158,30 @@ export function VoiceGroupView({
     }
   }, [sharing])
 
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [chatMessages])
+
+  useEffect(() => {
+    if (chatOpen) setTimeout(() => chatInputRef.current?.focus(), 150)
+  }, [chatOpen])
+
+  const me = participants.find((p) => p.id === myId)
+
+  const sendChatMessage = useCallback(() => {
+    const text = chatInput.trim()
+    if (!text || !me) return
+    setChatMessages((prev) => [...prev, {
+      id: crypto.randomUUID(),
+      userId: me.id,
+      name: me.name,
+      avatar: me.avatarUrl,
+      text,
+      ts: Date.now(),
+    }])
+    setChatInput('')
+  }, [chatInput, me])
+
   const sounds = [
     { label: '😂 Faaa', file: 'faaa sound.mpeg' },
   ]
@@ -180,11 +213,13 @@ export function VoiceGroupView({
 
   return (
     <motion.div
-      className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background"
+      className="flex min-w-0 flex-1 overflow-hidden bg-background"
       initial={{ opacity: 0, y: 8, scale: 0.995 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.18, ease: 'easeOut' }}
     >
+    {/* Main voice area */}
+    <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
       {/* Header */}
       <div className="flex h-12 flex-shrink-0 items-center gap-2.5 border-b border-border bg-sidebar px-4">
         <Volume2 className="h-4 w-4 flex-shrink-0 text-primary" />
@@ -439,6 +474,16 @@ export function VoiceGroupView({
             {sharing ? <MonitorOff className="h-4 w-4" /> : <MonitorUp className="h-4 w-4" />}
           </VoiceCtrlBtn>
 
+          <VoiceCtrlBtn
+            active={chatOpen}
+            title={chatOpen ? 'Close chat' : 'Open chat'}
+            onClick={() => setChatOpen((v) => !v)}
+          >
+            <div className="relative">
+              <MessageSquare className="h-4 w-4" />
+            </div>
+          </VoiceCtrlBtn>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -485,6 +530,101 @@ export function VoiceGroupView({
         </button>
         </div>
       </motion.div>}
+    </div>
+
+    {/* Chat sidebar */}
+    <AnimatePresence>
+      {chatOpen && (
+        <motion.div
+          key="chat-sidebar"
+          className="flex w-72 shrink-0 flex-col border-l border-border bg-background"
+          initial={{ width: 0, opacity: 0 }}
+          animate={{ width: 288, opacity: 1 }}
+          exit={{ width: 0, opacity: 0 }}
+          transition={{ duration: 0.22, ease: 'easeInOut' }}
+        >
+          {/* Chat header */}
+          <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
+            <Hash className="h-4 w-4 text-muted-foreground" />
+            <span className="flex-1 text-[13px] font-semibold text-foreground">Voice Chat</span>
+            <button
+              onClick={() => setChatOpen(false)}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Messages */}
+          <div className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-3">
+            {chatMessages.length === 0 ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
+                  <MessageSquare className="h-5 w-5 text-muted-foreground" />
+                </div>
+                <p className="text-[12px] font-semibold text-foreground">No messages yet</p>
+                <p className="text-[11px] text-muted-foreground">Say something to the group!</p>
+              </div>
+            ) : (
+              chatMessages.map((msg, i) => {
+                const prev = chatMessages[i - 1]
+                const grouped = prev?.userId === msg.userId && msg.ts - prev.ts < 60000
+                return (
+                  <div key={msg.id} className={cn('flex gap-2.5', grouped ? 'mt-0.5' : 'mt-3')}>
+                    {!grouped ? (
+                      <div className="shrink-0">
+                        {msg.avatar ? (
+                          <img src={msg.avatar} alt={msg.name} className="h-7 w-7 rounded-full object-cover" />
+                        ) : (
+                          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-[11px] font-bold text-primary">
+                            {msg.name[0]?.toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="w-7 shrink-0" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      {!grouped && (
+                        <div className="mb-0.5 flex items-baseline gap-2">
+                          <span className="text-[12px] font-semibold text-foreground">{msg.name}</span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      )}
+                      <p className="break-words text-[12px] leading-relaxed text-foreground/90">{msg.text}</p>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Input */}
+          <div className="shrink-0 border-t border-border p-3">
+            <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/20 transition-all">
+              <input
+                ref={chatInputRef}
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage() } }}
+                placeholder="Message the group…"
+                className="min-w-0 flex-1 bg-transparent text-[12px] text-foreground placeholder:text-muted-foreground outline-none"
+              />
+              <button
+                onClick={sendChatMessage}
+                disabled={!chatInput.trim()}
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-primary disabled:opacity-30"
+              >
+                <Send className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
     </motion.div>
   )
 }
