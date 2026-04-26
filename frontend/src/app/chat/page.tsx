@@ -1006,9 +1006,11 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             ...prev,
             [activeChannel.id]: [...(prev[activeChannel.id] ?? activeChannel.groups), newGroup],
           }))
-          setActiveGroupId(newGroup.id)
-          setActiveSurface('channel')
-          setChannelTab('feed')
+          if (!(newGroup.kind === 'voice' && voiceRef.current.currentGroupId)) {
+            setActiveGroupId(newGroup.id)
+            setActiveSurface('channel')
+            setChannelTab('feed')
+          }
         },
       },
     )
