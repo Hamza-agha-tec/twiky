@@ -343,6 +343,12 @@ export function useVoicePresence(
 
   const muteUser = useCallback(async (targetId: string, muted: boolean, groupId = currentGroupIdRef.current) => {
     if (!groupId) return
+    setParticipantsByGroup((prev) => ({
+      ...prev,
+      [groupId]: (prev[groupId] ?? []).map((u) =>
+        u.id === targetId ? { ...u, isMuted: muted } : u,
+      ),
+    }))
     const entry = ensureChannel(groupId)
     await waitForSubscribed(entry)
     await entry.channel.send({
@@ -350,7 +356,7 @@ export function useVoicePresence(
       event: 'server-mute',
       payload: { targetId, muted },
     })
-  }, [ensureChannel, waitForSubscribed])
+  }, [ensureChannel, setParticipantsByGroup, waitForSubscribed])
 
   const moveUser = useCallback(
     async (targetId: string, fromGroupId: string, targetGroupId: string) => {

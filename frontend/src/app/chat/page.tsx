@@ -984,6 +984,10 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                   name: voiceProfileTarget.name,
                   handle: voiceProfileTarget.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
                   role: (() => {
+                    if (voiceProfileTarget.id === profile?.id) {
+                      const r = activeChannel?.role ?? 'MEMBER'
+                      return r.charAt(0) + r.slice(1).toLowerCase()
+                    }
                     const m = voiceGroupMembers.find((m) => m.user?.id === voiceProfileTarget.id)
                     if (!m) return 'Member'
                     return m.role.charAt(0) + m.role.slice(1).toLowerCase()
