@@ -76,7 +76,7 @@ function toChatMessage(m: BackendDirectMessage): ChatMessage {
             const users = Array.isArray(r.users) ? r.users : []
             return users
               .filter((id: unknown): id is string => typeof id === 'string')
-              .map((userId) => ({ userId, emoji: r.emoji }))
+              .map((userId: string) => ({ userId, emoji: r.emoji }))
           })
       : []
 

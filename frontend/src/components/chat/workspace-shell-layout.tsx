@@ -13,6 +13,7 @@ const PATH_BY_VIEW: Record<Exclude<ActiveView, 'settings'>, string> = {
   'add-friends': '/add-friends',
   notifications: '/notifications',
   store: '/store',
+  game: '/chat',
 }
 
 function getActiveView(pathname: string): ActiveView {

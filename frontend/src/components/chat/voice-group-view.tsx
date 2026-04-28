@@ -25,13 +25,17 @@ import {
   Hash,
   ChevronUp,
   Check,
+  Smile,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import type { Socket } from 'socket.io-client'
+import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import type { MockChannelGroup } from '@/components/chat/channels-panel'
 import type { VoicePresenceUser } from '@/hooks/use-voice-presence'
 import { useQuery } from '@tanstack/react-query'
 import { channelsApi } from '@/lib/channels-api'
+import { getSocket } from '@/lib/socket'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   ContextMenu,
@@ -52,6 +56,19 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Slider } from '@/components/ui/slider'
 
 export type { VoicePresenceUser as VoiceMember }
+
+const VOICE_CHAT_EMOJIS = ['👍', '❤️', '😂', '🔥', '👏', '😮', '😢', '🙏']
+
+type VoiceChatMessage = {
+  id: string
+  roomId: string
+  userId: string
+  name: string
+  avatar: string | null
+  text: string
+  ts: number
+  reactions: { emoji: string; users: string[] }[]
+}
 
 interface VoiceGroupViewProps {
   group: MockChannelGroup
@@ -130,9 +147,12 @@ export function VoiceGroupView({
   const [exitReason, setExitReason] = useState<'left' | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
   const [chatInput, setChatInput] = useState('')
-  const [chatMessages, setChatMessages] = useState<{ id: string; userId: string; name: string; avatar: string | null; text: string; ts: number }[]>([])
+  const [chatMessages, setChatMessages] = useState<VoiceChatMessage[]>([])
+  const [chatUnread, setChatUnread] = useState(false)
   const chatEndRef = useRef<HTMLDivElement | null>(null)
   const chatInputRef = useRef<HTMLInputElement | null>(null)
+  const chatSocketRef = useRef<Socket | null>(null)
+  const chatOpenRef = useRef(chatOpen)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [inviteSearch, setInviteSearch] = useState('')
   const [sentInvites, setSentInvites] = useState<Set<string>>(new Set())
@@ -254,24 +274,137 @@ export function VoiceGroupView({
   }, [chatMessages])
 
   useEffect(() => {
-    if (chatOpen) setTimeout(() => chatInputRef.current?.focus(), 150)
+    chatOpenRef.current = chatOpen
+    if (chatOpen) {
+      setChatUnread(false)
+      setTimeout(() => chatInputRef.current?.focus(), 150)
+    }
   }, [chatOpen])
 
   const me = participants.find((p) => p.id === myId)
 
+  useEffect(() => {
+    let mounted = true
+    let socket: Socket | null = null
+
+    const roomId = group.id
+    const upsertMessage = (message: VoiceChatMessage) => {
+      setChatMessages((prev) => {
+        if (prev.some((item) => item.id === message.id)) {
+          return prev.map((item) => item.id === message.id ? message : item)
+        }
+        return [...prev, message]
+      })
+    }
+
+    const onHistory = (payload: { roomId?: string; messages?: VoiceChatMessage[] }) => {
+      if (!mounted || payload.roomId !== roomId) return
+      setChatMessages(Array.isArray(payload.messages) ? payload.messages : [])
+    }
+
+    const onMessage = (message: VoiceChatMessage) => {
+      if (!mounted || message.roomId !== roomId) return
+      upsertMessage(message)
+      if (message.userId !== myId && !chatOpenRef.current) {
+        setChatUnread(true)
+        toast.custom((toastId) => (
+          <button
+            type="button"
+            onClick={() => {
+              setChatOpen(true)
+              toast.dismiss(toastId)
+            }}
+            className="flex w-80 items-start gap-3 rounded-2xl border border-border bg-popover p-3 text-left shadow-xl transition-colors hover:bg-accent"
+          >
+            {message.avatar ? (
+              <img src={message.avatar} alt={message.name} className="h-10 w-10 shrink-0 rounded-full object-cover" />
+            ) : (
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[13px] font-bold text-primary">
+                {message.name[0]?.toUpperCase() ?? '?'}
+              </span>
+            )}
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-primary">
+                <MessageSquare className="h-3 w-3" />
+                {group.label}
+              </span>
+              <span className="mt-0.5 block truncate text-[13px] font-semibold text-foreground">{message.name}</span>
+              <span className="mt-0.5 line-clamp-2 block text-[12px] leading-snug text-muted-foreground">
+                {message.text}
+              </span>
+            </span>
+          </button>
+        ))
+      }
+    }
+
+    const onMessageUpdated = (message: VoiceChatMessage) => {
+      if (!mounted || message.roomId !== roomId) return
+      upsertMessage(message)
+    }
+
+    if (!isJoined) {
+      setChatMessages([])
+      setChatUnread(false)
+      return
+    }
+
+    void getSocket().then((s) => {
+      if (!mounted) return
+      socket = s
+      chatSocketRef.current = s
+      s.on('voice-chat-history', onHistory)
+      s.on('voice-chat-message', onMessage)
+      s.on('voice-chat-message-updated', onMessageUpdated)
+      s.emit('voice-chat-history', { roomId })
+    })
+
+    return () => {
+      mounted = false
+      if (socket) {
+        socket.off('voice-chat-history', onHistory)
+        socket.off('voice-chat-message', onMessage)
+        socket.off('voice-chat-message-updated', onMessageUpdated)
+      }
+    }
+  }, [group.id, group.label, isJoined, myId])
+
   const sendChatMessage = useCallback(() => {
     const text = chatInput.trim()
-    if (!text || !me) return
-    setChatMessages((prev) => [...prev, {
-      id: crypto.randomUUID(),
-      userId: me.id,
-      name: me.name,
-      avatar: me.avatarUrl,
-      text,
-      ts: Date.now(),
-    }])
+    if (!text || !me || !isJoined) return
+    chatSocketRef.current?.emit('voice-chat-message', { roomId: group.id, text })
     setChatInput('')
-  }, [chatInput, me])
+  }, [chatInput, group.id, isJoined, me])
+
+  const addChatEmoji = useCallback((emoji: string) => {
+    setChatInput((prev) => `${prev}${emoji}`)
+    setTimeout(() => chatInputRef.current?.focus(), 0)
+  }, [])
+
+  const toggleChatReaction = useCallback((messageId: string, emoji: string) => {
+    if (!isJoined) return
+    chatSocketRef.current?.emit('voice-chat-reaction', { roomId: group.id, messageId, emoji })
+  }, [group.id, isJoined])
+
+  const openChatProfile = useCallback((message: VoiceChatMessage) => {
+    const participant = participants.find((p) => p.id === message.userId)
+    onViewProfile?.(participant ?? {
+      id: message.userId,
+      name: message.name,
+      avatarUrl: message.avatar,
+      isMuted: false,
+      joinedAt: message.ts,
+    })
+  }, [onViewProfile, participants])
+
+  const copyChatMessage = useCallback((text: string) => {
+    if (!navigator.clipboard) return
+    void navigator.clipboard.writeText(text).then(() => {
+      toast.success('Message copied')
+    }).catch(() => {
+      toast.error('Could not copy message')
+    })
+  }, [])
 
   const { data: channelMembersRaw = [] } = useQuery({
     queryKey: ['channel-members', channelId],
@@ -802,10 +935,14 @@ export function VoiceGroupView({
             onClick={() => setChatOpen((v) => !v)}
           >
             <motion.span
+              className="relative"
               animate={{ rotate: chatOpen ? 15 : 0 }}
               transition={{ type: 'spring', stiffness: 400, damping: 17 }}
             >
               <MessageSquare className="h-4 w-4" />
+              {chatUnread && !chatOpen ? (
+                <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-background bg-destructive" />
+              ) : null}
             </motion.span>
           </VoiceCtrlBtn>
 
@@ -892,9 +1029,14 @@ export function VoiceGroupView({
           transition={{ duration: 0.22, ease: 'easeInOut' }}
         >
           {/* Chat header */}
-          <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
-            <Hash className="h-4 w-4 text-muted-foreground" />
-            <span className="flex-1 text-[13px] font-semibold text-foreground">Voice Chat</span>
+          <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Hash className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-semibold text-foreground">{group.label}</p>
+              <p className="truncate text-[11px] text-muted-foreground">Voice chat · {participants.length} active</p>
+            </div>
             <button
               onClick={() => setChatOpen(false)}
               className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -918,15 +1060,21 @@ export function VoiceGroupView({
                 const prev = chatMessages[i - 1]
                 const grouped = prev?.userId === msg.userId && msg.ts - prev.ts < 60000
                 return (
-                  <div key={msg.id} className={cn('flex gap-2.5', grouped ? 'mt-0.5' : 'mt-3')}>
+                  <div key={msg.id} className={cn('group flex gap-2.5', grouped ? 'mt-0.5' : 'mt-3')}>
                     {!grouped ? (
                       <div className="shrink-0">
                         {msg.avatar ? (
-                          <img src={msg.avatar} alt={msg.name} className="h-7 w-7 rounded-full object-cover" />
+                          <button type="button" onClick={() => openChatProfile(msg)} className="block rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <img src={msg.avatar} alt={msg.name} className="h-7 w-7 rounded-full object-cover" />
+                          </button>
                         ) : (
-                          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-[11px] font-bold text-primary">
+                          <button
+                            type="button"
+                            onClick={() => openChatProfile(msg)}
+                            className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-[11px] font-bold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
                             {msg.name[0]?.toUpperCase()}
-                          </div>
+                          </button>
                         )}
                       </div>
                     ) : (
@@ -934,14 +1082,126 @@ export function VoiceGroupView({
                     )}
                     <div className="min-w-0 flex-1">
                       {!grouped && (
-                        <div className="mb-0.5 flex items-baseline gap-2">
-                          <span className="text-[12px] font-semibold text-foreground">{msg.name}</span>
-                          <span className="text-[10px] text-muted-foreground">
+                        <div className="mb-0.5 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openChatProfile(msg)}
+                            className="min-w-0 truncate text-[12px] font-semibold text-foreground hover:text-primary"
+                          >
+                            {msg.name}
+                          </button>
+                          <span className="shrink-0 text-[10px] text-muted-foreground">
                             {new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                className="ml-auto flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-all hover:bg-accent hover:text-foreground group-hover:opacity-100 data-[state=open]:opacity-100"
+                                title="Message actions"
+                              >
+                                <MoreHorizontal className="h-3.5 w-3.5" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent side="left" align="start" className="w-44 border-border bg-background">
+                              <DropdownMenuLabel className="text-[11px]">Message</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem className="text-[12px]" onSelect={() => openChatProfile(msg)}>
+                                View profile
+                              </DropdownMenuItem>
+                              <DropdownMenuItem className="text-[12px]" onSelect={() => copyChatMessage(msg.text)}>
+                                Copy text
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <div className="grid grid-cols-4 gap-1 p-1">
+                                {VOICE_CHAT_EMOJIS.map((emoji) => (
+                                  <button
+                                    key={`${msg.id}-menu-${emoji}`}
+                                    type="button"
+                                    onClick={() => toggleChatReaction(msg.id, emoji)}
+                                    className="flex h-7 w-7 items-center justify-center rounded-md text-[14px] hover:bg-accent"
+                                  >
+                                    {emoji}
+                                  </button>
+                                ))}
+                              </div>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       )}
-                      <p className="break-words text-[12px] leading-relaxed text-foreground/90">{msg.text}</p>
+                      <div className="flex items-start gap-1.5">
+                        <p className="min-w-0 flex-1 break-words text-[12px] leading-relaxed text-foreground/90">{msg.text}</p>
+                        {grouped ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-all hover:bg-accent hover:text-foreground group-hover:opacity-100 data-[state=open]:opacity-100"
+                                title="Message actions"
+                              >
+                                <MoreHorizontal className="h-3.5 w-3.5" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent side="left" align="start" className="w-44 border-border bg-background">
+                              <DropdownMenuLabel className="text-[11px]">Message</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem className="text-[12px]" onSelect={() => openChatProfile(msg)}>
+                                View profile
+                              </DropdownMenuItem>
+                              <DropdownMenuItem className="text-[12px]" onSelect={() => copyChatMessage(msg.text)}>
+                                Copy text
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <div className="grid grid-cols-4 gap-1 p-1">
+                                {VOICE_CHAT_EMOJIS.map((emoji) => (
+                                  <button
+                                    key={`${msg.id}-grouped-menu-${emoji}`}
+                                    type="button"
+                                    onClick={() => toggleChatReaction(msg.id, emoji)}
+                                    className="flex h-7 w-7 items-center justify-center rounded-md text-[14px] hover:bg-accent"
+                                  >
+                                    {emoji}
+                                  </button>
+                                ))}
+                              </div>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : null}
+                      </div>
+                      {msg.reactions.length > 0 ? (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {msg.reactions.map((reaction) => {
+                            const mine = myId ? reaction.users.includes(myId) : false
+                            return (
+                              <button
+                                key={`${msg.id}-${reaction.emoji}`}
+                                onClick={() => toggleChatReaction(msg.id, reaction.emoji)}
+                                className={cn(
+                                  'flex h-6 items-center gap-1 rounded-full border px-2 text-[11px] transition-colors',
+                                  mine
+                                    ? 'border-primary/30 bg-primary/15 text-primary'
+                                    : 'border-border bg-muted/50 text-muted-foreground hover:bg-accent hover:text-foreground',
+                                )}
+                              >
+                                <span>{reaction.emoji}</span>
+                                <span className="tabular-nums">{reaction.users.length}</span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      ) : null}
+                      <div className="mt-1 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        {VOICE_CHAT_EMOJIS.slice(0, 4).map((emoji) => (
+                          <button
+                            key={`${msg.id}-quick-${emoji}`}
+                            onClick={() => toggleChatReaction(msg.id, emoji)}
+                            className="flex h-6 w-6 items-center justify-center rounded-full text-[12px] transition-colors hover:bg-accent"
+                            title={`React ${emoji}`}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )
@@ -953,6 +1213,31 @@ export function VoiceGroupView({
           {/* Input */}
           <div className="shrink-0 border-t border-border p-3">
             <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/20 transition-all">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    title="Add emoji"
+                  >
+                    <Smile className="h-3.5 w-3.5" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent side="top" align="start" className="w-auto border-border bg-background p-2">
+                  <div className="grid grid-cols-4 gap-1">
+                    {VOICE_CHAT_EMOJIS.map((emoji) => (
+                      <button
+                        key={`input-${emoji}`}
+                        type="button"
+                        onClick={() => addChatEmoji(emoji)}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-[15px] transition-colors hover:bg-accent"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
               <input
                 ref={chatInputRef}
                 value={chatInput}

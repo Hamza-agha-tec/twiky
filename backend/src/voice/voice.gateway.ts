@@ -12,6 +12,7 @@ import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { SocketAuthMiddleware } from '../messaging/middlewares/ws-auth.middleware';
 import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'crypto';
 
 interface WebRTCSignal {
   type: 'offer' | 'answer' | 'ice-candidate';
@@ -42,9 +43,26 @@ interface VoiceRoomParticipant {
   user: VoiceParticipantInfo;
 }
 
+interface VoiceChatReaction {
+  emoji: string;
+  users: string[];
+}
+
+interface VoiceChatMessage {
+  id: string;
+  roomId: string;
+  userId: string;
+  name: string;
+  avatar: string | null;
+  text: string;
+  ts: number;
+  reactions: VoiceChatReaction[];
+}
+
 interface VoiceRoom {
   id: string;
   participants: Map<string, VoiceRoomParticipant>;
+  messages: VoiceChatMessage[];
   hostId: string;
   createdAt: Date;
 }
@@ -160,6 +178,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
       room = {
         id: data.roomId,
         participants: new Map(),
+        messages: [],
         hostId: userId,
         createdAt: new Date(),
       };
@@ -207,6 +226,83 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
 
     this.logger.log(`User ${userId} joined voice room ${data.roomId}`);
     return { success: true, roomId: data.roomId };
+  }
+
+  @SubscribeMessage('voice-chat-history')
+  handleVoiceChatHistory(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomId: string },
+  ) {
+    const userId = client.data.user?.userId;
+    if (!userId || !data.roomId) return;
+
+    const room = this.voiceRooms.get(data.roomId);
+    if (!room?.participants.has(userId)) return;
+
+    client.emit('voice-chat-history', {
+      roomId: data.roomId,
+      messages: room.messages,
+    });
+  }
+
+  @SubscribeMessage('voice-chat-message')
+  handleVoiceChatMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomId: string; text: string },
+  ) {
+    const userId = client.data.user?.userId;
+    if (!userId || !data.roomId || typeof data.text !== 'string') return;
+
+    const room = this.voiceRooms.get(data.roomId);
+    const participant = room?.participants.get(userId);
+    if (!room || !participant) return;
+
+    const text = data.text.trim().slice(0, 1000);
+    if (!text) return;
+
+    const message: VoiceChatMessage = {
+      id: randomUUID(),
+      roomId: data.roomId,
+      userId,
+      name: participant.user.name,
+      avatar: participant.user.avatarUrl,
+      text,
+      ts: Date.now(),
+      reactions: [],
+    };
+
+    room.messages = [...room.messages, message].slice(-100);
+    this.server.to(participantRoom(data.roomId)).emit('voice-chat-message', message);
+  }
+
+  @SubscribeMessage('voice-chat-reaction')
+  handleVoiceChatReaction(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomId: string; messageId: string; emoji: string },
+  ) {
+    const userId = client.data.user?.userId;
+    if (!userId || !data.roomId || !data.messageId || typeof data.emoji !== 'string') return;
+
+    const room = this.voiceRooms.get(data.roomId);
+    if (!room?.participants.has(userId)) return;
+
+    const emoji = data.emoji.trim().slice(0, 16);
+    if (!emoji) return;
+
+    const message = room.messages.find((m) => m.id === data.messageId);
+    if (!message) return;
+
+    const existing = message.reactions.find((r) => r.emoji === emoji);
+    if (existing) {
+      existing.users = existing.users.includes(userId)
+        ? existing.users.filter((id) => id !== userId)
+        : [...existing.users, userId];
+    } else {
+      message.reactions.push({ emoji, users: [userId] });
+    }
+    message.reactions = message.reactions.filter((r) => r.users.length > 0);
+
+    this.server.to(participantRoom(data.roomId)).emit('voice-chat-message-updated', message);
   }
 
   @SubscribeMessage('leave-voice-room')
