@@ -8,4 +8,5 @@ export class UpdateUserDto {
   full_name?: string;
   x_url?: string;
   website_url?: string;
+  enter_sound_url?: string | null;
 }

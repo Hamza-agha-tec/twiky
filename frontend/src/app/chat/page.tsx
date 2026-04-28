@@ -286,7 +286,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const { data: profile } = useProfile()
 
   const voiceMyInfo = profile
-    ? { id: profile.id, name: profile.fullname ?? profile.username ?? 'You', avatarUrl: profile.avatar_url }
+    ? { id: profile.id, name: profile.fullname ?? profile.username ?? 'You', avatarUrl: profile.avatar_url, enterSoundUrl: profile.enter_sound_url ?? null }
     : null
   const { data: directConversations = [] } = useDirectConversations()
   const { data: mutualFollowers = [] } = useMutualFollowers()

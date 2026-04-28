@@ -19,6 +19,7 @@ export interface UserProfile {
   x_url: string | null;
   is_verified?: boolean | null;
   sub_plan?: 'FREE' | 'PRO' | 'GEEK' | null;
+  enter_sound_url?: string | null;
 }
 
 export interface UserSummary {
@@ -53,7 +54,7 @@ export interface UserPost {
 }
 
 export type UpdateProfileInput = Partial<
-  Pick<UserProfile, 'username' | 'fullname' | 'avatar_url' | 'banner' | 'phone_number' | 'bio' | 'status' | 'website_url' | 'x_url'>
+  Pick<UserProfile, 'username' | 'fullname' | 'avatar_url' | 'banner' | 'phone_number' | 'bio' | 'status' | 'website_url' | 'x_url' | 'enter_sound_url'>
 >;
 
 async function getToken(): Promise<string> {

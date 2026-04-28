@@ -38,12 +38,14 @@ export interface VoicePresenceUser {
   soundboardStartedAt?: number
   isScreenSharing?: boolean
   isCameraOn?: boolean
+  enterSoundUrl?: string | null
 }
 
 type MyVoiceInfo = {
   id: string
   name: string
   avatarUrl: string | null
+  enterSoundUrl?: string | null
 }
 
 export type VoiceInvitePayload = {
@@ -182,7 +184,20 @@ export function useVoicePresence(
         ...prev,
         [payload.roomId!]: upsertUser(prev[payload.roomId!] ?? [], payload.user!),
       }))
-      if (payload.user.id !== myInfoRef.current?.id) playVoiceSound('join')
+      if (payload.user.id !== myInfoRef.current?.id) {
+        playVoiceSound('join')
+        if (payload.user.enterSoundUrl) {
+          const enterAudio = new Audio(payload.user.enterSoundUrl)
+          enterAudio.volume = 0.85
+          const stopTimer = setTimeout(() => {
+            enterAudio.pause()
+            enterAudio.currentTime = 0
+          }, 15000)
+          enterAudio.onended = () => clearTimeout(stopTimer)
+          enterAudio.onerror = () => clearTimeout(stopTimer)
+          void enterAudio.play().catch(() => clearTimeout(stopTimer))
+        }
+      }
     }
 
     const onUserLeft = (payload: { roomId?: string; userId?: string }) => {
@@ -482,6 +497,7 @@ export function useVoicePresence(
       id: info.id,
       name: info.name,
       avatarUrl: info.avatarUrl,
+      enterSoundUrl: info.enterSoundUrl ?? null,
       isMuted: muted,
       joinedAt: nextJoinedAt,
     }

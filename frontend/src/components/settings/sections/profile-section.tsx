@@ -1,7 +1,7 @@
 'use client'
 
 import { type ChangeEvent, useEffect, useRef, useState } from 'react'
-import { Link2, Trash2, Upload, ImageIcon } from 'lucide-react'
+import { Link2, Trash2, Upload, ImageIcon, Music2, Play, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { SectionHeader, SectionBlock, SettingRow, versionedImageUrl } from '../shared'
@@ -50,6 +50,12 @@ export function ProfileSection({
   const [statusEmoji, setStatusEmoji] = useState('🟢')
   const [xUrl, setXUrl] = useState(profile?.x_url ?? '')
   const [websiteUrl, setWebsiteUrl] = useState(profile?.website_url ?? '')
+  const [enterSoundUrl, setEnterSoundUrl] = useState(profile?.enter_sound_url ?? null)
+  const [enterSoundBusy, setEnterSoundBusy] = useState(false)
+  const [enterSoundPlaying, setEnterSoundPlaying] = useState(false)
+  const enterSoundRef = useRef<HTMLInputElement>(null)
+  const enterSoundAudioRef = useRef<HTMLAudioElement | null>(null)
+  const enterSoundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   async function handleSaveProfile() {
     setSaveMessage(null)
@@ -162,6 +168,75 @@ export function ProfileSection({
     'from-pink-500 via-rose-500 to-red-600',
     'from-indigo-500 via-blue-500 to-sky-600',
   ]
+  async function handleEnterSoundFile(e: ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    // Validate duration ≤ 60s client-side
+    const objectUrl = URL.createObjectURL(f)
+    const tempAudio = new Audio(objectUrl)
+    const duration = await new Promise<number>((resolve) => {
+      tempAudio.addEventListener('loadedmetadata', () => resolve(tempAudio.duration), { once: true })
+      tempAudio.addEventListener('error', () => resolve(Infinity), { once: true })
+    })
+    URL.revokeObjectURL(objectUrl)
+    if (duration > 60) {
+      toast.error('Enter sound must be 1 minute or shorter')
+      return
+    }
+    setEnterSoundBusy(true)
+    try {
+      const { publicUrl } = await filesApi.uploadUserEnterSound(f)
+      await updateProfile.mutateAsync({ enter_sound_url: publicUrl })
+      setEnterSoundUrl(publicUrl)
+      toast.success('Enter sound saved')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setEnterSoundBusy(false)
+    }
+  }
+
+  async function handleEnterSoundRemove() {
+    setEnterSoundBusy(true)
+    try {
+      await updateProfile.mutateAsync({ enter_sound_url: null })
+      setEnterSoundUrl(null)
+      toast.success('Enter sound removed')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not remove')
+    } finally {
+      setEnterSoundBusy(false)
+    }
+  }
+
+  function handleEnterSoundPreview() {
+    if (!enterSoundUrl) return
+    if (enterSoundPlaying) {
+      if (enterSoundTimerRef.current) clearTimeout(enterSoundTimerRef.current)
+      enterSoundAudioRef.current?.pause()
+      enterSoundAudioRef.current = null
+      setEnterSoundPlaying(false)
+      return
+    }
+    const audio = new Audio(enterSoundUrl)
+    audio.volume = 0.85
+    enterSoundAudioRef.current = audio
+    setEnterSoundPlaying(true)
+    const stopFn = () => {
+      if (enterSoundTimerRef.current) clearTimeout(enterSoundTimerRef.current)
+      setEnterSoundPlaying(false)
+      enterSoundAudioRef.current = null
+    }
+    audio.onended = stopFn
+    audio.onerror = stopFn
+    enterSoundTimerRef.current = setTimeout(() => {
+      audio.pause()
+      stopFn()
+    }, 15000)
+    void audio.play().catch(stopFn)
+  }
+
   const effectiveAvatarUrl = avatarUrl ?? profile?.avatar_url ?? null
   const effectiveBannerUrl = bannerUrl ?? profile?.banner ?? null
   const isVerified = isVerifiedAccountIdentity({
@@ -404,6 +479,59 @@ export function ProfileSection({
           </Button>
         </div>
       </SectionBlock>
+
+      {profile?.sub_plan === 'GEEK' && (
+        <SectionBlock title="Enter Sound">
+          <div className="py-2">
+            <p className="mb-3 text-[12px] leading-relaxed text-muted-foreground">
+              Play a custom sound when you join a voice channel. Others hear the first <span className="font-semibold text-foreground">15 seconds</span>. Max <span className="font-semibold text-foreground">1 minute</span> audio file.
+            </p>
+            {enterSoundUrl ? (
+              <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2.5">
+                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Music2 className="h-4 w-4" />
+                </div>
+                <span className="flex-1 truncate text-[12px] font-medium text-foreground">
+                  {enterSoundUrl.split('/').pop()?.split('?')[0] ?? 'Enter sound'}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleEnterSoundPreview}
+                  title={enterSoundPlaying ? 'Stop preview' : 'Preview (15s)'}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  {enterSoundPlaying ? <Square className="h-3.5 w-3.5 fill-current" /> : <Play className="h-3.5 w-3.5 fill-current" />}
+                </button>
+                <button
+                  type="button"
+                  disabled={enterSoundBusy}
+                  onClick={() => void handleEnterSoundRemove()}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={enterSoundBusy}
+                onClick={() => enterSoundRef.current?.click()}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border py-4 text-[12px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+              >
+                <Upload className="h-4 w-4" />
+                {enterSoundBusy ? 'Uploading...' : 'Upload enter sound'}
+              </button>
+            )}
+            <input
+              ref={enterSoundRef}
+              type="file"
+              accept="audio/*"
+              className="hidden"
+              onChange={(e) => void handleEnterSoundFile(e)}
+            />
+          </div>
+        </SectionBlock>
+      )}
 
       <SectionBlock title="Recent Posts">
         <div className="space-y-2 py-2">

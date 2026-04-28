@@ -33,6 +33,7 @@ interface VoiceParticipantInfo {
   soundboardStartedAt?: number;
   isScreenSharing?: boolean;
   isCameraOn?: boolean;
+  enterSoundUrl?: string | null;
 }
 
 interface VoiceRoomParticipant {
@@ -176,6 +177,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
       soundboardStartedAt: data.user?.soundboardStartedAt,
       isScreenSharing: data.user?.isScreenSharing ?? false,
       isCameraOn: data.user?.isCameraOn ?? false,
+      enterSoundUrl: data.user?.enterSoundUrl ?? null,
     };
 
     room.participants.set(userId, {

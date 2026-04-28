@@ -45,6 +45,15 @@ export class FilesController {
     return this.filesService.uploadUserImage(req.user.userId, 'avatar_url', file);
   }
 
+  @Post('users/me/enter_sound')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadUserEnterSound(
+    @Request() req: { user: { userId: string } },
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.filesService.uploadUserEnterSound(req.user.userId, file);
+  }
+
   /** Second user image slot in the `users` bucket; map to `users.banner` on the client if you use it as a header image. */
   @Post('users/me/logo')
   @UseInterceptors(FileInterceptor('file'))

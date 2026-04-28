@@ -6,8 +6,10 @@ import {
 } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.module';
 import {
+  AUDIO_MIME_TYPES,
   IMAGE_MIME_TYPES,
   MAX_BANNER_BYTES,
+  MAX_ENTER_SOUND_BYTES,
   MAX_GROUP_FILE_BYTES,
   MAX_IMAGE_BYTES,
   STORAGE_BUCKETS,
@@ -245,6 +247,26 @@ export class FilesService {
     const objectPath = `${userId}/${Date.now()}_${rawName.replace(/\.[^.]+$/, '')}${ext}`;
     const { publicUrl } = await this.uploadObject(STORAGE_BUCKETS.messages, objectPath, file, resolvedMime);
     return { fileName: file.originalname, fileUrl: publicUrl, fileType };
+  }
+
+  async uploadUserEnterSound(userId: string, file: Express.Multer.File) {
+    if (!file?.buffer?.length) throw new BadRequestException('Missing file');
+    if (file.size > MAX_ENTER_SOUND_BYTES) throw new BadRequestException('Enter sound too large (max 10 MiB / ~1 min)');
+    const mime = file.mimetype?.toLowerCase().trim();
+    const ext = file.originalname?.toLowerCase();
+    const isAudio = AUDIO_MIME_TYPES.has(mime) ||
+      ext?.endsWith('.mp3') || ext?.endsWith('.ogg') || ext?.endsWith('.wav') ||
+      ext?.endsWith('.aac') || ext?.endsWith('.m4a') || ext?.endsWith('.webm') || ext?.endsWith('.flac');
+    if (!isAudio) throw new BadRequestException('File must be an audio file (mp3, ogg, wav, aac, m4a, webm, flac)');
+    const extMap: Record<string, string> = {
+      'audio/mpeg': '.mp3', 'audio/mp3': '.mp3', 'audio/ogg': '.ogg',
+      'audio/wav': '.wav', 'audio/wave': '.wav', 'audio/x-wav': '.wav',
+      'audio/aac': '.aac', 'audio/mp4': '.m4a', 'audio/x-m4a': '.m4a',
+      'audio/webm': '.webm', 'audio/flac': '.flac',
+    };
+    const resolvedExt = extMap[mime] ?? (file.originalname?.match(/\.[a-z0-9]+$/i)?.[0] ?? '.mp3');
+    const objectPath = `enter-sounds/${userId}/enter_sound${resolvedExt}`;
+    return this.uploadObject(STORAGE_BUCKETS.messages, objectPath, file, mime || 'audio/mpeg');
   }
 
   async uploadGroupExtra(userId: string, groupId: string, file: Express.Multer.File) {

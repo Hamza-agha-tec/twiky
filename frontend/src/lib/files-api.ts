@@ -36,6 +36,8 @@ export const filesApi = {
 
   uploadUserAvatar: (file: File) => uploadForm('/files/users/me/avatar_url', file),
 
+  uploadUserEnterSound: (file: File) => uploadForm('/files/users/me/enter_sound', file),
+
   /** `users` bucket `logo` slot; use with `users.banner` when that is your header image. */
   uploadUserLogo: (file: File) => uploadForm('/files/users/me/logo', file),
   uploadUserBanner: (file: File) => uploadForm('/files/users/me/logo', file),
