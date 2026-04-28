@@ -1145,13 +1145,21 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   }
 
   useEffect(() => {
-    if (!voice.isJoined || !voice.joinedAt) {
+    const joinedGroupId = voice.joinedGroupId
+    const participants = joinedGroupId ? (voice.participantsByGroup[joinedGroupId] ?? []) : []
+    const joinedTimes = participants
+      .map((participant) => participant.joinedAt)
+      .filter((time): time is number => Number.isFinite(time) && time > 0)
+    const callStartedAt = joinedTimes.length > 0 ? Math.min(...joinedTimes) : voice.joinedAt
+
+    if (!voice.isJoined || !callStartedAt) {
       if (voiceElapsedRef.current) clearInterval(voiceElapsedRef.current)
+      voiceElapsedRef.current = null
       setVoiceElapsed(null)
       return
     }
     const tick = () => {
-      const s = Math.floor((Date.now() - voice.joinedAt) / 1000)
+      const s = Math.floor((Date.now() - callStartedAt) / 1000)
       const h = Math.floor(s / 3600)
       const m = Math.floor((s % 3600) / 60).toString().padStart(2, '0')
       const sec = (s % 60).toString().padStart(2, '0')
@@ -1159,8 +1167,11 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     }
     tick()
     voiceElapsedRef.current = setInterval(tick, 1000)
-    return () => { if (voiceElapsedRef.current) clearInterval(voiceElapsedRef.current) }
-  }, [voice.isJoined, voice.joinedAt])
+    return () => {
+      if (voiceElapsedRef.current) clearInterval(voiceElapsedRef.current)
+      voiceElapsedRef.current = null
+    }
+  }, [voice.isJoined, voice.joinedAt, voice.joinedGroupId, voice.participantsByGroup])
 
   // Real-time join requests from private groups
   useEffect(() => {

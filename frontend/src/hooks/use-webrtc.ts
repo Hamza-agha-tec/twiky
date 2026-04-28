@@ -23,6 +23,7 @@ type PeerState = {
   audioTransceiver: RTCRtpTransceiver
   videoTransceivers: Record<VideoSource, RTCRtpTransceiver>
   videoTrackToSource: Map<MediaStreamTrack, VideoSource>
+  remoteMidSources: Map<string, VideoSource>
 }
 
 type WebRTCSignal = {
@@ -32,6 +33,7 @@ type WebRTCSignal = {
   targetUserId?: string
   fromId?: string
   senderId?: string
+  videoSources?: Array<{ mid: string; source: VideoSource }>
 }
 
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
@@ -96,11 +98,26 @@ function removeRemotePeer(setStreams: StreamSetter, peerId: string) {
   })
 }
 
-function attachVideoTrack(state: PeerState, track: MediaStreamTrack, source: VideoSource) {
+async function attachVideoTrack(
+  state: PeerState,
+  track: MediaStreamTrack,
+  source: VideoSource,
+  negotiate = true,
+) {
   if (track.readyState !== 'live') return
 
   const currentSource = state.videoTrackToSource.get(track)
-  if (currentSource === source) return
+  if (currentSource === source) {
+    const currentTransceiver = state.videoTransceivers[source]
+    if (currentTransceiver.direction !== 'sendrecv') {
+      currentTransceiver.direction = 'sendrecv'
+    }
+    if (currentTransceiver.sender.track !== track) {
+      await currentTransceiver.sender.replaceTrack(track)
+      if (negotiate) void state.doNegotiate?.()
+    }
+    return
+  }
 
   if (currentSource) {
     const currentTransceiver = state.videoTransceivers[currentSource]
@@ -125,12 +142,13 @@ function attachVideoTrack(state: PeerState, track: MediaStreamTrack, source: Vid
   if (transceiver.direction !== 'sendrecv') {
     transceiver.direction = 'sendrecv'
   }
-  transceiver.sender.replaceTrack(track)
-    .then(() => { void state.doNegotiate?.() })
-    .catch((error) => {
-      state.videoTrackToSource.delete(track)
-      console.error('[webrtc] failed to attach video track', error)
-    })
+  try {
+    await transceiver.sender.replaceTrack(track)
+    if (negotiate) void state.doNegotiate?.()
+  } catch (error) {
+    state.videoTrackToSource.delete(track)
+    console.error('[webrtc] failed to attach video track', error)
+  }
 }
 
 function detachVideoTrack(state: PeerState, track: MediaStreamTrack) {
@@ -152,6 +170,11 @@ function getVideoSource(
   state: PeerState,
   transceiver: RTCRtpTransceiver,
 ): VideoSource {
+  if (transceiver.mid) {
+    const source = state.remoteMidSources.get(transceiver.mid)
+    if (source) return source
+  }
+
   if (transceiver === state.videoTransceivers.screen) return 'screen'
   if (transceiver === state.videoTransceivers.camera) return 'camera'
 
@@ -174,6 +197,13 @@ async function flushQueuedCandidates(pc: RTCPeerConnection, state: PeerState) {
       }
     }
   }
+}
+
+function getLocalVideoSources(state: PeerState): Array<{ mid: string; source: VideoSource }> {
+  return (['camera', 'screen'] as const).flatMap((source) => {
+    const mid = state.videoTransceivers[source].mid
+    return mid ? [{ mid, source }] : []
+  })
 }
 
 export function useWebRTC(
@@ -267,6 +297,7 @@ export function useWebRTC(
       audioTransceiver,
       videoTransceivers,
       videoTrackToSource: new Map(),
+      remoteMidSources: new Map(),
     }
     peerStateRef.current.set(peerId, state)
 
@@ -279,7 +310,7 @@ export function useWebRTC(
       }
 
       videoTracksRef.current.forEach(({ source }, track) => {
-        attachVideoTrack(state, track, source)
+        void attachVideoTrack(state, track, source)
       })
     })
 
@@ -342,6 +373,7 @@ export function useWebRTC(
           roomId: groupIdRef.current,
           targetUserId: peerId,
           fromId: me,
+          videoSources: getLocalVideoSources(state),
         })
       } catch (error) {
         console.error('[webrtc] failed to negotiate with peer', peerId, error)
@@ -432,7 +464,7 @@ export function useWebRTC(
     }
 
     videoTracksRef.current.set(track, { stream, source })
-    peerStateRef.current.forEach((state) => attachVideoTrack(state, track, source))
+    peerStateRef.current.forEach((state) => { void attachVideoTrack(state, track, source) })
   }, [])
 
   const removeVideoTrack = useCallback((track: MediaStreamTrack) => {
@@ -448,11 +480,22 @@ export function useWebRTC(
     const reconnectTimers = reconnectTimersRef.current
     const localVideoTracks = videoTracksRef.current
 
+    const syncLocalTracksForAnswer = async (state: PeerState) => {
+      const audioTrack = localStreamRef.current?.getAudioTracks()[0]
+      if (audioTrack && state.audioTransceiver.sender.track !== audioTrack) {
+        await state.audioTransceiver.sender.replaceTrack(audioTrack)
+      }
+
+      await Promise.all(Array.from(videoTracksRef.current.entries()).map(([track, { source }]) => {
+        return attachVideoTrack(state, track, source, false)
+      }))
+    }
+
     const handleSignal = async (signal: WebRTCSignal) => {
       if (!mountedRef.current) return
 
       const me = myIdRef.current!
-      const { type, payload, fromId, senderId, targetUserId } = signal
+      const { type, payload, fromId, senderId, targetUserId, videoSources } = signal
 
       if (targetUserId && targetUserId !== me) return
 
@@ -473,11 +516,16 @@ export function useWebRTC(
         if (state.ignoreOffer) return
 
         try {
+          if (Array.isArray(videoSources)) {
+            state.remoteMidSources = new Map(videoSources.map(({ mid, source }) => [mid, source]))
+          }
+
           await pc.setRemoteDescription(description)
           await flushQueuedCandidates(pc, state)
 
           if (isOffer) {
             state.suppressInitialOffer = false
+            await syncLocalTracksForAnswer(state)
             await pc.setLocalDescription()
 
             sendSignal({
@@ -486,6 +534,7 @@ export function useWebRTC(
               roomId: groupIdRef.current,
               targetUserId: peerId,
               fromId: me,
+              videoSources: getLocalVideoSources(state),
             })
             state.negotiationQueued = false
           } else if (state.negotiationQueued) {

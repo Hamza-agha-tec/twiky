@@ -19,6 +19,7 @@ interface WebRTCSignal {
   roomId: string;
   targetUserId?: string;
   fromId?: string;
+  videoSources?: Array<{ mid: string; source: 'camera' | 'screen' }>;
 }
 
 interface VoiceParticipantInfo {

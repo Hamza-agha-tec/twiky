@@ -305,6 +305,15 @@ export function VoiceGroupView({
     : participants.length <= 6 ? 'grid-cols-3'
     : 'grid-cols-4'
 
+  const remoteScreenPeerIds = new Set<string>()
+  if (isJoined) {
+    remoteScreenStreams?.forEach((_stream, peerId) => remoteScreenPeerIds.add(peerId))
+    participants.forEach((participant) => {
+      if (participant.id !== myId && participant.isScreenSharing) remoteScreenPeerIds.add(participant.id)
+    })
+  }
+  const remoteScreenShares = Array.from(remoteScreenPeerIds)
+
   return (
     <motion.div
       className="flex min-w-0 flex-1 overflow-hidden bg-background"
@@ -331,7 +340,7 @@ export function VoiceGroupView({
       {/* Local screen share preview — always mounted so ref is valid; hidden when not sharing */}
       <div
         className="mx-4 mt-4 flex gap-3"
-        style={{ display: (sharing || (remoteScreenStreams && remoteScreenStreams.size > 0)) ? undefined : 'none', maxHeight: '40%' }}
+        style={{ display: (isJoined && (sharing || remoteScreenShares.length > 0)) ? undefined : 'none', maxHeight: '40%' }}
       >
         <div
           className="relative overflow-hidden rounded-2xl border border-border bg-black"
@@ -350,14 +359,21 @@ export function VoiceGroupView({
         </div>
 
         {/* Remote screen shares */}
-        {remoteScreenStreams && Array.from(remoteScreenStreams.entries()).map(([peerId, stream]) => {
+        {remoteScreenShares.map((peerId) => {
+          const stream = remoteScreenStreams?.get(peerId)
           const peer = participants.find(p => p.id === peerId)
-          const activeScreenTrack = stream.getVideoTracks().find(t => t.readyState === 'live' && !t.muted)
-          if (!activeScreenTrack) return null
+          const activeScreenTrack = stream?.getVideoTracks().find(t => t.readyState === 'live' && !t.muted)
+          if (!activeScreenTrack && !peer?.isScreenSharing) return null
           
           return (
             <div key={peerId} className="relative flex-1 overflow-hidden rounded-2xl border border-border bg-black" style={{ minHeight: '180px' }}>
-              <RemoteVideo stream={stream} fit="contain" />
+              {stream && activeScreenTrack ? (
+                <RemoteVideo stream={stream} fit="contain" />
+              ) : (
+                <div className="flex h-full min-h-[180px] w-full items-center justify-center bg-black text-[11px] font-semibold text-white/70">
+                  Connecting to screen share...
+                </div>
+              )}
               <span className="absolute left-2 top-2 rounded-lg bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
                 {peer?.name ?? 'User'}&apos;s screen
               </span>
@@ -420,7 +436,7 @@ export function VoiceGroupView({
                   const remoteVideoTrack = remoteStream
                     ?.getVideoTracks()
                     .find((track) => track.readyState === 'live' && !track.muted)
-                  const showRemoteVideo = Boolean(remoteVideoTrack && member.isCameraOn)
+                  const showRemoteVideo = Boolean(remoteVideoTrack && (member.isCameraOn || !member.isScreenSharing))
                   
                   return (
                     <ContextMenu key={member.id}>
@@ -480,7 +496,7 @@ export function VoiceGroupView({
                             )}
                             <span className={cn(
                               'rounded px-1.5 py-0.5 text-[11px] font-semibold',
-                              showVideo ? 'bg-black/50 text-white' : 'text-foreground',
+                              (showVideo || showRemoteVideo) ? 'bg-black/50 text-white' : 'text-foreground',
                             )}>
                               {isMe ? `${member.name} (You)` : member.name}
                             </span>
