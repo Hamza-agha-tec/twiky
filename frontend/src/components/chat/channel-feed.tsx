@@ -664,6 +664,7 @@ function MessageRow({
 }) {
   const [profileOpen, setProfileOpen] = useState(false)
   const [isFollowing, setIsFollowing] = useState(false)
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
 
   const { data: realUser } = useUserById(profileOpen ? memberProfile.id : undefined)
   const { data: followersData } = useUserFollowers(profileOpen ? memberProfile.id : undefined)
@@ -768,7 +769,8 @@ function MessageRow({
                     <img
                       src={post.imageUrl}
                       alt="Uploaded"
-                      className="max-h-32 max-w-[200px] rounded-xl"
+                      className="max-h-32 max-w-[200px] cursor-pointer rounded-xl transition-opacity hover:opacity-90"
+                      onClick={() => setLightboxSrc(post.imageUrl!)}
                     />
                   ) : (
                     <a
@@ -783,7 +785,11 @@ function MessageRow({
                   )
                 ) : null}
                 {post.media?.map((media) => (
-                  <div key={media.label} className="relative h-36 w-56 overflow-hidden rounded-xl border border-border">
+                  <div
+                    key={media.label}
+                    className="relative h-36 w-56 cursor-pointer overflow-hidden rounded-xl border border-border transition-opacity hover:opacity-90"
+                    onClick={() => setLightboxSrc(media.src)}
+                  >
                     <Image src={media.src} alt={media.alt} fill unoptimized sizes="300px" className="object-cover" />
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-3 py-2">
                       <p className="text-[10px] font-semibold uppercase tracking-[0.07em] text-white/90">{media.label}</p>
@@ -946,6 +952,25 @@ function MessageRow({
           </div>
         </PopoverContent>
       </Popover>
+      {lightboxSrc && (
+        <div
+          className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={() => setLightboxSrc(null)}
+        >
+          <div
+            className="relative max-h-[85vh] max-w-4xl overflow-hidden rounded-2xl shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img src={lightboxSrc} alt="Preview" className="max-h-[85vh] max-w-full object-contain" />
+            <button
+              onClick={() => setLightboxSrc(null)}
+              className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white hover:bg-black/80"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </>
   )
 }
@@ -1672,12 +1697,14 @@ function FeedProfileRow({
   onDelete: () => void
   onContextMenu: (e: MouseEvent) => void
 }) {
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
   const roleColor = ROLE_COLORS[post.role] ?? 'text-primary'
   const displayAvatar = post.isOwn
     ? (authorAvatarUrl ?? myAvatarUrl ?? memberProfile.avatarUrl ?? null)
     : (authorAvatarUrl ?? memberProfile.avatarUrl ?? null)
 
   return (
+    <>
     <div
       className={cn(
         'group relative flex gap-3 px-4 transition-colors hover:bg-accent/20',
@@ -1744,7 +1771,8 @@ function FeedProfileRow({
                 <img
                   src={post.imageUrl}
                   alt="Uploaded"
-                  className="max-h-32 max-w-[200px] rounded-xl"
+                  className="max-h-32 max-w-[200px] cursor-pointer rounded-xl transition-opacity hover:opacity-90"
+                  onClick={() => setLightboxSrc(post.imageUrl!)}
                 />
               ) : (
                 <a
@@ -1759,7 +1787,11 @@ function FeedProfileRow({
               )
             ) : null}
             {post.media?.map((media) => (
-              <div key={media.label} className="relative h-36 w-56 overflow-hidden rounded-xl border border-border">
+              <div
+                key={media.label}
+                className="relative h-36 w-56 cursor-pointer overflow-hidden rounded-xl border border-border transition-opacity hover:opacity-90"
+                onClick={() => setLightboxSrc(media.src)}
+              >
                 <Image src={media.src} alt={media.alt} fill unoptimized sizes="300px" className="object-cover" />
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-3 py-2">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.07em] text-white/90">{media.label}</p>
@@ -1795,6 +1827,26 @@ function FeedProfileRow({
       </div>
 
     </div>
+      {lightboxSrc && (
+        <div
+          className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={() => setLightboxSrc(null)}
+        >
+          <div
+            className="relative max-h-[85vh] max-w-4xl overflow-hidden rounded-2xl shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img src={lightboxSrc} alt="Preview" className="max-h-[85vh] max-w-full object-contain" />
+            <button
+              onClick={() => setLightboxSrc(null)}
+              className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white hover:bg-black/80"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 

@@ -10,6 +10,7 @@ import {
   HeadphoneOff,
   MonitorUp,
   MonitorOff,
+  Maximize2,
   PhoneOff,
   Volume2,
   UserMinus,
@@ -288,18 +289,20 @@ export function VoiceGroupView({
   }
 
   const sounds = [
-    { label: '😂 Faaa', file: 'faaa sound.mpeg' },
+    { label: '😂 Faaaa!', file: 'faaa sound.mpeg' },
     { label: '👋 Bye Bye', file: 'Voicy_And we say bye bye.mp3' },
     { label: '👏 Applause', file: 'Voicy_Applause.mp3' },
-    { label: '💥 Blast', file: 'Voicy_blast this during class you wont regret it 🙋_♂️.mp3' },
-    { label: '🤫 Shut Up', file: 'Voicy_Do me a f___ing favor. Shut up, listen, and learn.mp3' },
-    { label: '🎭 Hitler', file: 'Voicy_Hitler 26 (Downfall _ DerUntergang).mp3' },
+    { label: '💥 Nuke This', file: 'Voicy_blast this during class you wont regret it 🙋_♂️.mp3' },
+    { label: '🤫 Pipe Down', file: 'Voicy_Do me a f___ing favor. Shut up, listen, and learn.mp3' },
+    { label: '📉 Downfall', file: 'Voicy_Hitler 26 (Downfall _ DerUntergang).mp3' },
     { label: '🎵 Phonk', file: 'Voicy_phonk.mp3' },
-    { label: '😤 What Hell', file: 'Voicy_What the hell_ (Loud).mp3' },
-    { label: '😱 WHAT', file: 'Voicy_WHAT_!.mp3' },
-    { label: '🐻 Bear Laugh', file: 'Voicy_Black Bear Laugh.mp3' },
-    { label: '🚫 Nope', file: 'Voicy_Nope! .mp3' },
-    { label: '🏆 W', file: 'Voicy_W Reaction .mp3' },
+    { label: '😤 The Hell?!', file: 'Voicy_What the hell_ (Loud).mp3' },
+    { label: '😱 WHAT!?', file: 'Voicy_WHAT_!.mp3' },
+    { label: '🏴‍☠️ Blackbeard LOL', file: 'Voicy_Black Bear Laugh.mp3' },
+    { label: '🚫 Nope!', file: 'Voicy_Nope! .mp3' },
+    { label: '🏆 Big W', file: 'Voicy_W Reaction .mp3' },
+    { label: '🚀 Soviet Banger', file: 'Voicy_SOVIET UNION THEME (700k likes)(EARRAPE).mp3' },
+    { label: '🤢 Eww Brother', file: 'Voicy_eww brother eww.mp3' },
   ]
   const callStartedAt = participants.length > 0
     ? Math.min(...participants.map(p => p.joinedAt))
@@ -376,7 +379,7 @@ export function VoiceGroupView({
         style={{ display: (isJoined && (sharing || remoteScreenShares.length > 0)) ? undefined : 'none', maxHeight: '40%' }}
       >
         <div
-          className="relative overflow-hidden rounded-2xl border border-border bg-black"
+          className="group/screen relative overflow-hidden rounded-2xl border border-border bg-black"
           style={{ flex: 1, display: sharing ? undefined : 'none', minHeight: '180px' }}
         >
           <video
@@ -389,6 +392,16 @@ export function VoiceGroupView({
           <span className="absolute left-2 top-2 rounded-lg bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
             Your screen
           </span>
+          <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 transition-opacity group-hover/screen:opacity-100">
+            <button
+              onClick={() => screenVideoRef.current?.requestFullscreen()}
+              className="flex items-center gap-1 rounded-lg bg-black/70 px-2 py-1 text-[11px] font-semibold text-white backdrop-blur-sm hover:bg-black/90"
+              title="Fullscreen"
+            >
+              <Maximize2 className="h-3 w-3" />
+              Fullscreen
+            </button>
+          </div>
         </div>
 
         {/* Remote screen shares */}
@@ -399,7 +412,7 @@ export function VoiceGroupView({
           if (!activeScreenTrack && !peer?.isScreenSharing) return null
           
           return (
-            <div key={peerId} className="relative flex-1 overflow-hidden rounded-2xl border border-border bg-black" style={{ minHeight: '180px' }}>
+            <div key={peerId} data-screen-tile="" className="group/screen relative flex-1 overflow-hidden rounded-2xl border border-border bg-black" style={{ minHeight: '180px' }}>
               {stream && activeScreenTrack ? (
                 <RemoteVideo stream={stream} fit="contain" />
               ) : (
@@ -410,6 +423,16 @@ export function VoiceGroupView({
               <span className="absolute left-2 top-2 rounded-lg bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
                 {peer?.name ?? 'User'}&apos;s screen
               </span>
+              <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 transition-opacity group-hover/screen:opacity-100">
+                <button
+                  onClick={(e) => (e.currentTarget.closest('[data-screen-tile]') as HTMLElement | null)?.requestFullscreen()}
+                  className="flex items-center gap-1 rounded-lg bg-black/70 px-2 py-1 text-[11px] font-semibold text-white backdrop-blur-sm hover:bg-black/90"
+                  title="Fullscreen"
+                >
+                  <Maximize2 className="h-3 w-3" />
+                  Fullscreen
+                </button>
+              </div>
             </div>
           )
         })}
