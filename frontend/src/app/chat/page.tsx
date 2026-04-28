@@ -44,7 +44,7 @@ import type { CreateEntityValues } from '@/components/chat/create-entity-dialog'
 import { useChannels, useCreateChannel, useUpdateChannel, useChannelMembers, CHANNEL_KEYS, CHANNEL_MEMBER_KEYS } from '@/hooks/use-channels'
 import { useCreateGroup, useGroupMembers, useGroupMessages, backendGroupToMock } from '@/hooks/use-groups'
 import { useToggleGroupMessageReaction } from '@/hooks/use-groups'
-import { groupsApi, type BackendGroup, type GroupMessage } from '@/lib/groups-api'
+import { groupsApi, type BackendGroup, type GroupJoinRequest, type GroupMessage } from '@/lib/groups-api'
 import { useQueryClient, useQueries } from '@tanstack/react-query'
 import { GROUP_KEYS } from '@/hooks/use-groups'
 import type { FeedPost } from '@/components/chat/channel-feed'
@@ -1184,6 +1184,17 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
 
     const onGroupJoinRequest = (payload: JoinRequestPayload) => {
       if (!mounted) return
+      const joinRequestsKey = GROUP_KEYS.joinRequests(payload.groupId)
+      queryClient.setQueryData<GroupJoinRequest[]>(joinRequestsKey, (prev = []) => [
+        ...prev.filter((request) => request.id !== payload.requestId),
+        {
+          id: payload.requestId,
+          status: 'PENDING',
+          created_at: payload.createdAt,
+          user: payload.user,
+        },
+      ])
+      queryClient.invalidateQueries({ queryKey: joinRequestsKey })
       setPendingJoinRequests((prev) => ({
         ...prev,
         [payload.groupId]: [
@@ -1192,11 +1203,16 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         ],
       }))
 
-      const removeRequest = () =>
+      const removeRequest = () => {
         setPendingJoinRequests((prev) => ({
           ...prev,
           [payload.groupId]: (prev[payload.groupId] ?? []).filter((r) => r.requestId !== payload.requestId),
         }))
+        queryClient.setQueryData<GroupJoinRequest[]>(joinRequestsKey, (prev = []) =>
+          prev.filter((request) => request.id !== payload.requestId),
+        )
+        queryClient.invalidateQueries({ queryKey: joinRequestsKey })
+      }
 
       toast.custom(
         (t) => (
@@ -1220,6 +1236,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                     try {
                       await groupsApi.respondToJoinRequest(payload.groupId, payload.requestId, 'ACCEPTED')
                       removeRequest()
+                      queryClient.invalidateQueries({ queryKey: GROUP_KEYS.members(payload.groupId) })
                       queryClient.invalidateQueries({ queryKey: GROUP_KEYS.messages(payload.groupId) })
                     } catch {}
                   }}
@@ -1478,6 +1495,11 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                             ...prev,
                             [req.groupId]: (prev[req.groupId] ?? []).filter((r) => r.requestId !== req.requestId),
                           }))
+                          queryClient.setQueryData<GroupJoinRequest[]>(GROUP_KEYS.joinRequests(req.groupId), (prev = []) =>
+                            prev.filter((request) => request.id !== req.requestId),
+                          )
+                          queryClient.invalidateQueries({ queryKey: GROUP_KEYS.joinRequests(req.groupId) })
+                          queryClient.invalidateQueries({ queryKey: GROUP_KEYS.members(req.groupId) })
                           queryClient.invalidateQueries({ queryKey: GROUP_KEYS.messages(req.groupId) })
                           toast.dismiss(`join-request-${req.requestId}`)
                         } catch {}
@@ -1494,6 +1516,10 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                             ...prev,
                             [req.groupId]: (prev[req.groupId] ?? []).filter((r) => r.requestId !== req.requestId),
                           }))
+                          queryClient.setQueryData<GroupJoinRequest[]>(GROUP_KEYS.joinRequests(req.groupId), (prev = []) =>
+                            prev.filter((request) => request.id !== req.requestId),
+                          )
+                          queryClient.invalidateQueries({ queryKey: GROUP_KEYS.joinRequests(req.groupId) })
                           toast.dismiss(`join-request-${req.requestId}`)
                         } catch {}
                       }}

@@ -13,6 +13,37 @@ export class GroupsService {
         private readonly chatGateway: ChatGateway,
     ) { }
 
+    private async isGroupAdmin(groupId: string, userId: string): Promise<boolean> {
+        const { data: groupMember } = await this.supabaseService
+            .getClient()
+            .from('group_members')
+            .select('role')
+            .eq('group_id', groupId)
+            .eq('user_id', userId)
+            .single();
+
+        if (groupMember && (groupMember.role === 'OWNER' || groupMember.role === 'ADMIN')) return true;
+
+        const { data: group } = await this.supabaseService
+            .getClient()
+            .from('groups')
+            .select('channel_id')
+            .eq('id', groupId)
+            .single();
+
+        if (!group) return false;
+
+        const { data: channelMember } = await this.supabaseService
+            .getClient()
+            .from('channel_members')
+            .select('role')
+            .eq('channel_id', group.channel_id)
+            .eq('user_id', userId)
+            .single();
+
+        return !!channelMember && (channelMember.role === 'OWNER' || channelMember.role === 'ADMIN');
+    }
+
     private async emitChannelGroupEvent(
         channelId: string,
         event: 'channelGroupCreated' | 'channelGroupUpdated' | 'channelGroupDeleted',
@@ -181,16 +212,7 @@ export class GroupsService {
     }
 
     async addMemberToGroup(groupId: string, creatorUserId: string, addGroupMemberDto: AddGroupMemberDto) {
-
-        const { data: member } = await this.supabaseService
-            .getClient()
-            .from('group_members')
-            .select('role')
-            .eq('group_id', groupId)
-            .eq('user_id', creatorUserId)
-            .single();
-
-        if (!member || (member.role !== 'OWNER' && member.role !== 'ADMIN')) {
+        if (!(await this.isGroupAdmin(groupId, creatorUserId))) {
             throw new UnauthorizedException("Only Group Admins or Owners can invite memebers to groups.");
         }
 
@@ -214,16 +236,7 @@ export class GroupsService {
     }
 
     async updateGroupMemberRole(groupId: string, creatorUserId: string, addGroupMemberDto: AddGroupMemberDto) {
-
-        const { data: member } = await this.supabaseService
-            .getClient()
-            .from('group_members')
-            .select('role')
-            .eq('group_id', groupId)
-            .eq('user_id', creatorUserId)
-            .single();
-
-        if (!member || (member.role !== 'OWNER' && member.role !== 'ADMIN')) {
+        if (!(await this.isGroupAdmin(groupId, creatorUserId))) {
             throw new UnauthorizedException("Only Group Admins or Owners can promote or demote other members.");
         }
 
@@ -243,16 +256,7 @@ export class GroupsService {
     }
 
     async deleteGroupMember(groupId: string, creatorUserId: string, memberId: string) {
-
-        const { data: member } = await this.supabaseService
-            .getClient()
-            .from('group_members')
-            .select('role')
-            .eq('group_id', groupId)
-            .eq('user_id', creatorUserId)
-            .single();
-
-        if (!member || (member.role !== 'OWNER' && member.role !== 'ADMIN')) {
+        if (!(await this.isGroupAdmin(groupId, creatorUserId))) {
             throw new UnauthorizedException("Only Group Admins or Owners can remove other members.");
         }
 
@@ -307,12 +311,17 @@ export class GroupsService {
 
         if (error) throw new Error(`Failed to create join request: ${error.message}`);
 
-        // Emit real-time event to group admins (no DB notification)
-        const [{ data: admins }, { data: requestUser }] = await Promise.all([
+        // Emit real-time event to group admins + channel admins/owners
+        const [{ data: groupAdmins }, { data: channelAdmins }, { data: requestUser }] = await Promise.all([
             this.supabaseService.getClient()
                 .from('group_members')
                 .select('user_id')
                 .eq('group_id', groupId)
+                .in('role', ['OWNER', 'ADMIN']),
+            this.supabaseService.getClient()
+                .from('channel_members')
+                .select('user_id')
+                .eq('channel_id', group.channel_id)
                 .in('role', ['OWNER', 'ADMIN']),
             this.supabaseService.getClient()
                 .from('users')
@@ -321,7 +330,10 @@ export class GroupsService {
                 .single(),
         ]);
 
-        for (const admin of (admins ?? [])) {
+        const notified = new Set<string>();
+        for (const admin of [...(groupAdmins ?? []), ...(channelAdmins ?? [])]) {
+            if (notified.has(admin.user_id)) continue;
+            notified.add(admin.user_id);
             this.chatGateway.server?.to(`user_${admin.user_id}`).emit('groupJoinRequest', {
                 requestId: data.id,
                 groupId,
@@ -335,15 +347,7 @@ export class GroupsService {
     }
 
     async getJoinRequests(groupId: string, adminUserId: string) {
-        const { data: member } = await this.supabaseService
-            .getClient()
-            .from('group_members')
-            .select('role')
-            .eq('group_id', groupId)
-            .eq('user_id', adminUserId)
-            .single();
-
-        if (!member || (member.role !== 'OWNER' && member.role !== 'ADMIN')) {
+        if (!(await this.isGroupAdmin(groupId, adminUserId))) {
             throw new UnauthorizedException('Only group admins can view join requests');
         }
 
@@ -360,15 +364,7 @@ export class GroupsService {
     }
 
     async respondToJoinRequest(groupId: string, requestId: string, status: 'ACCEPTED' | 'REJECTED', adminUserId: string) {
-        const { data: member } = await this.supabaseService
-            .getClient()
-            .from('group_members')
-            .select('role')
-            .eq('group_id', groupId)
-            .eq('user_id', adminUserId)
-            .single();
-
-        if (!member || (member.role !== 'OWNER' && member.role !== 'ADMIN')) {
+        if (!(await this.isGroupAdmin(groupId, adminUserId))) {
             throw new UnauthorizedException('Only group admins can respond to join requests');
         }
 

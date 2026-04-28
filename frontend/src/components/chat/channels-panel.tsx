@@ -12,6 +12,7 @@ import {
   Hash,
   Link,
   Lock,
+  LockOpen,
   Mic,
   MicOff,
   MoreHorizontal,
@@ -1057,6 +1058,87 @@ function InviteMembersDialog({
   )
 }
 
+function RequestJoinButton({
+  groupId,
+  groupLabel,
+  hasRequested,
+  isPending,
+  onRequest,
+}: {
+  groupId: string
+  groupLabel: string
+  hasRequested: boolean
+  isPending: boolean
+  onRequest: () => void
+}) {
+  const [hovered, setHovered] = useState(false)
+
+  return (
+    <button
+      disabled={hasRequested || isPending}
+      onClick={onRequest}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className={cn(
+        'absolute right-1.5 top-1/2 z-10 -translate-y-1/2 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[8.5px] font-semibold transition-all duration-200 opacity-0 group-hover:opacity-100',
+        hasRequested
+          ? 'border border-border bg-muted/50 text-muted-foreground'
+          : 'border border-primary/25 bg-primary/5 text-primary hover:bg-primary/12 hover:border-primary/50',
+      )}
+    >
+      <span className="relative h-2.5 w-2.5 flex-shrink-0 overflow-hidden">
+        <AnimatePresence mode="wait" initial={false}>
+          {hasRequested ? (
+            <motion.span
+              key="check"
+              className="absolute inset-0 flex items-center justify-center"
+              initial={{ y: 6, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: -6, opacity: 0 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+            >
+              <Check className="h-2.5 w-2.5" />
+            </motion.span>
+          ) : hovered ? (
+            <motion.span
+              key="open"
+              className="absolute inset-0 flex items-center justify-center"
+              initial={{ y: 8, opacity: 0, rotate: -15 }}
+              animate={{ y: 0, opacity: 1, rotate: 0 }}
+              exit={{ y: -8, opacity: 0, rotate: 15 }}
+              transition={{ duration: 0.35, ease: [0.34, 1.56, 0.64, 1] }}
+            >
+              <LockOpen className="h-2.5 w-2.5" />
+            </motion.span>
+          ) : (
+            <motion.span
+              key="closed"
+              className="absolute inset-0 flex items-center justify-center"
+              initial={{ y: -8, opacity: 0, rotate: 15 }}
+              animate={{ y: 0, opacity: 1, rotate: 0 }}
+              exit={{ y: 8, opacity: 0, rotate: -15, scale: 0.7 }}
+              transition={{ duration: 0.35, ease: [0.34, 1.56, 0.64, 1] }}
+            >
+              <Lock className="h-2.5 w-2.5" />
+            </motion.span>
+          )}
+        </AnimatePresence>
+      </span>
+      {hasRequested ? 'Requested' : 'Request'}
+    </button>
+  )
+}
+
+function GroupPendingDot({ groupId }: { groupId: string }) {
+  const { data: requests = [] } = useGroupJoinRequests(groupId)
+  if (!requests.length) return null
+  return (
+    <span className="flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-destructive text-[8px] font-bold text-white ring-1 ring-background">
+      {requests.length > 9 ? '9+' : requests.length}
+    </span>
+  )
+}
+
 function GroupSettingsSheet({
   group,
   open,
@@ -1366,6 +1448,10 @@ export function ChannelsPanel({
   const [dragOverVoiceGroupId, setDragOverVoiceGroupId] = useState<string | null>(null)
   const requestJoin = useRequestJoinGroup()
   const deleteGroup = useDeleteGroup(channel?.id ?? '')
+  const isAdminForNotif = channel?.role === 'OWNER' || channel?.role === 'ADMIN'
+  const { data: channelPendingRequests = [] } = useChannelJoinRequests(
+    isAdminForNotif && channel?.access_type === 'PRIVATE' ? channel?.id : undefined,
+  )
 
   if (!visible || !channel) return null
 
@@ -1463,7 +1549,14 @@ export function ChannelsPanel({
                   )}
                   onClick={() => setChannelSettingsOpen(true)}
                 >
-                  <MoreHorizontal className="h-3.5 w-3.5" />
+                  <div className="relative">
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                    {channelPendingRequests.length > 0 && (
+                      <span className="absolute -right-1 -top-1 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-destructive text-[8px] font-bold text-white ring-1 ring-background">
+                        {channelPendingRequests.length > 9 ? '9+' : channelPendingRequests.length}
+                      </span>
+                    )}
+                  </div>
                 </Button>
               </div>
             ) : null}
@@ -1626,9 +1719,12 @@ export function ChannelsPanel({
 
                   {/* Request to join — non-admin members on private groups */}
                   {memberCanRequest && (
-                    <button
-                      disabled={hasRequested || requestJoin.isPending}
-                      onClick={() => {
+                    <RequestJoinButton
+                      groupId={group.id}
+                      groupLabel={group.label}
+                      hasRequested={hasRequested}
+                      isPending={requestJoin.isPending}
+                      onRequest={() => {
                         if (hasRequested) return
                         requestJoin.mutate(group.id, {
                           onSuccess: () => {
@@ -1637,10 +1733,14 @@ export function ChannelsPanel({
                           },
                         })
                       }}
-                      className="absolute right-1.5 top-1/2 z-10 -translate-y-1/2 rounded-lg border border-border px-1.5 py-0.5 text-[9px] font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
-                    >
-                      {hasRequested ? 'Requested' : 'Request'}
-                    </button>
+                    />
+                  )}
+
+                  {/* Pending requests dot — admins/owners only, private groups */}
+                  {canManage && isPrivate && (
+                    <div className="absolute right-8 top-1/2 z-10 -translate-y-1/2">
+                      <GroupPendingDot groupId={group.id} />
+                    </div>
                   )}
 
                   {/* Group 3-dot menu — admins/owners only */}
