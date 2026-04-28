@@ -22,6 +22,8 @@ import {
   X,
   Send,
   Hash,
+  ChevronUp,
+  Check,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
@@ -73,6 +75,7 @@ interface VoiceGroupViewProps {
   removeVideoTrack?: (track: MediaStreamTrack) => void
   onScreenShareToggle?: (enabled: boolean) => void
   onCameraToggle?: (enabled: boolean) => void
+  onSwitchAudioInput?: (deviceId: string) => void
 }
 
 function useElapsedTime(startMs: number, active: boolean) {
@@ -116,6 +119,7 @@ export function VoiceGroupView({
   removeVideoTrack,
   onScreenShareToggle,
   onCameraToggle,
+  onSwitchAudioInput,
 }: VoiceGroupViewProps) {
   const [videoOn, setVideoOn] = useState(false)
   const [sharing, setSharing] = useState(false)
@@ -128,6 +132,35 @@ export function VoiceGroupView({
   const [inviteOpen, setInviteOpen] = useState(false)
   const [inviteSearch, setInviteSearch] = useState('')
   const [sentInvites, setSentInvites] = useState<Set<string>>(new Set())
+
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([])
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('default')
+
+  useEffect(() => {
+    if (!isJoined) return
+
+    const enumerate = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        const inputs = devices.filter((d) => d.kind === 'audioinput')
+        setAudioDevices(inputs)
+
+        const headphone = inputs.find((d) =>
+          /headphone|headset|earphone|airpod|buds/i.test(d.label)
+        )
+        if (headphone && headphone.deviceId !== selectedDeviceId) {
+          setSelectedDeviceId(headphone.deviceId)
+          onSwitchAudioInput?.(headphone.deviceId)
+        }
+      } catch {}
+    }
+
+    void enumerate()
+
+    const handleDeviceChange = () => void enumerate()
+    navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange)
+    return () => navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange)
+  }, [isJoined]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const videoStreamRef = useRef<MediaStream | null>(null)
   const screenStreamRef = useRef<MediaStream | null>(null)
@@ -577,14 +610,59 @@ export function VoiceGroupView({
 
         {/* Center: controls */}
         <div className="flex items-center gap-2">
-          <VoiceCtrlBtn
-            active={!isMuted}
-            danger={isMuted}
-            title={isMuted ? 'Unmute' : 'Mute'}
-            onClick={onToggleMute}
-          >
-            {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-          </VoiceCtrlBtn>
+          <div className="flex items-center">
+            <VoiceCtrlBtn
+              active={!isMuted}
+              danger={isMuted}
+              title={isMuted ? 'Unmute' : 'Mute'}
+              onClick={onToggleMute}
+              rounded="left"
+            >
+              {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+            </VoiceCtrlBtn>
+            <DropdownMenu onOpenChange={(open) => {
+              if (open && isJoined) {
+                navigator.mediaDevices.enumerateDevices().then((devices) => {
+                  setAudioDevices(devices.filter((d) => d.kind === 'audioinput'))
+                }).catch(() => {})
+              }
+            }}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  title="Select microphone"
+                  className={cn(
+                    'flex h-9 w-5 items-center justify-center rounded-r-xl border border-l-0 transition-colors',
+                    isMuted
+                      ? 'border-destructive/20 bg-destructive/10 text-destructive hover:bg-destructive/20'
+                      : 'border-primary/20 bg-primary/10 text-primary hover:bg-primary/20',
+                  )}
+                >
+                  <ChevronUp className="h-3 w-3" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="top" align="start" className="w-56 bg-background">
+                <DropdownMenuLabel className="text-[11px]">Input Device</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {audioDevices.length === 0 ? (
+                  <DropdownMenuItem disabled className="text-[12px]">No devices found</DropdownMenuItem>
+                ) : (
+                  audioDevices.map((device) => (
+                    <DropdownMenuItem
+                      key={device.deviceId}
+                      className="text-[12px]"
+                      onSelect={() => {
+                        setSelectedDeviceId(device.deviceId)
+                        onSwitchAudioInput?.(device.deviceId)
+                      }}
+                    >
+                      <Check className={cn('mr-2 h-3 w-3', selectedDeviceId === device.deviceId ? 'opacity-100' : 'opacity-0')} />
+                      {device.label || `Microphone ${audioDevices.indexOf(device) + 1}`}
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
 
           <VoiceCtrlBtn
             active={!deafened}
@@ -883,19 +961,22 @@ function VoiceCtrlBtn({
   danger,
   title,
   onClick,
+  rounded = 'full',
 }: {
   children: React.ReactNode
   active?: boolean
   danger?: boolean
   title?: string
   onClick?: () => void
+  rounded?: 'full' | 'left'
 }) {
   return (
     <button
       onClick={onClick}
       title={title}
       className={cn(
-        'flex h-9 w-9 items-center justify-center rounded-xl border transition-colors',
+        'flex h-9 w-9 items-center justify-center border transition-colors',
+        rounded === 'left' ? 'rounded-l-xl rounded-r-none' : 'rounded-xl',
         danger
           ? 'border-destructive/20 bg-destructive/10 text-destructive hover:bg-destructive/20'
           : active

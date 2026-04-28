@@ -539,6 +539,42 @@ export function useWebRTC(
     }
   }, [])
 
+  const switchAudioInput = useCallback(async (deviceId: string) => {
+    try {
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: { exact: deviceId }, echoCancellation: true, noiseSuppression: true, sampleRate: 48000 },
+        video: false,
+      })
+      const newTrack = newStream.getAudioTracks()[0]
+      if (!newTrack) return
+
+      newTrack.enabled = !isMutedRef.current
+
+      if (localStreamRef.current) {
+        localStreamRef.current.getAudioTracks().forEach((t) => {
+          t.stop()
+          localStreamRef.current!.removeTrack(t)
+        })
+        localStreamRef.current.addTrack(newTrack)
+      } else {
+        localStreamRef.current = newStream
+      }
+      setLocalStream(localStreamRef.current)
+
+      pcsRef.current.forEach((_, peerId) => {
+        const state = peerStateRef.current.get(peerId)
+        if (state) state.audioTransceiver.sender.replaceTrack(newTrack).catch(() => {})
+      })
+
+      if (speakingRafRef.current) cancelAnimationFrame(speakingRafRef.current)
+      analyserCtxRef.current?.close().catch(() => {})
+      analyserCtxRef.current = null
+      setupSpeakingDetection(localStreamRef.current!)
+    } catch (error) {
+      console.error('[webrtc] failed to switch audio input', error)
+    }
+  }, [setupSpeakingDetection])
+
   const addVideoTrack = useCallback((track: MediaStreamTrack, stream: MediaStream, source: VideoSource = 'camera') => {
     for (const [existingTrack, entry] of videoTracksRef.current.entries()) {
       if (entry.source === source && existingTrack !== track) {
@@ -787,5 +823,6 @@ export function useWebRTC(
     removeVideoTrack,
     closePeer,
     signalScreenShare,
+    switchAudioInput,
   }
 }
