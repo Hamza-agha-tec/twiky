@@ -2249,7 +2249,7 @@ export function ChannelFeed({
     const post: FeedPost = {
       id: `${group.id}-${Date.now()}`,
       author: 'You',
-      role: 'Member',
+      role: channel.role ? channel.role.charAt(0).toUpperCase() + channel.role.slice(1).toLowerCase() : 'Member',
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       body,
       isOwn: true,

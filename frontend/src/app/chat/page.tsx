@@ -41,7 +41,7 @@ import {
   WorkspaceSidebar,
 } from '@/components/chat/workspace-sidebar'
 import type { CreateEntityValues } from '@/components/chat/create-entity-dialog'
-import { useChannels, useCreateChannel, useUpdateChannel, CHANNEL_KEYS, CHANNEL_MEMBER_KEYS } from '@/hooks/use-channels'
+import { useChannels, useCreateChannel, useUpdateChannel, useChannelMembers, CHANNEL_KEYS, CHANNEL_MEMBER_KEYS } from '@/hooks/use-channels'
 import { useCreateGroup, useGroupMembers, useGroupMessages, backendGroupToMock } from '@/hooks/use-groups'
 import { useToggleGroupMessageReaction } from '@/hooks/use-groups'
 import { groupsApi, type BackendGroup, type GroupMessage } from '@/lib/groups-api'
@@ -203,6 +203,13 @@ function getChannelRoleLabel(role?: string | null) {
   return role.charAt(0).toUpperCase() + role.slice(1).toLowerCase()
 }
 
+const ROLE_RANK: Record<string, number> = { Owner: 3, Admin: 2, Member: 1 }
+function getEffectiveRole(channelRole?: string, groupRole?: string): string {
+  const cr = channelRole ?? 'Member'
+  const gr = groupRole ?? 'Member'
+  return (ROLE_RANK[cr] ?? 1) >= (ROLE_RANK[gr] ?? 1) ? cr : gr
+}
+
 function toWorkspaceChannel(
   channel: BackendChannel,
   index: number,
@@ -322,9 +329,16 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const { data: activeGroupMembers = [] } = useGroupMembers(isRealGroupId ? activeGroupId : undefined)
   const isRealVoiceGroupId = /^[0-9a-f-]{36}$/i.test(activeVoiceGroupId ?? '')
   const { data: voiceGroupMembers = [] } = useGroupMembers(isRealVoiceGroupId ? (activeVoiceGroupId ?? undefined) : undefined)
+  const isRealChannelId = /^[0-9a-f-]{36}$/i.test(activeChannelId)
+  const { data: activeChannelMembers = [] } = useChannelMembers(isRealChannelId ? activeChannelId : undefined)
 
   const groupPosts: FeedPost[] = useMemo(() => {
   const groupMessageById = new Map((rawMessages ?? []).map((msg) => [msg.id, msg]))
+  const channelMemberRoleByUserId = new Map(
+    activeChannelMembers
+      .filter((member) => member.user)
+      .map((member) => [member.user.id, getChannelRoleLabel(member.role)]),
+  )
   const groupMemberRoleByUserId = new Map(
     activeGroupMembers
       .filter((member) => member.user)
@@ -377,7 +391,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       authorIsVerified: Boolean(msg.sender?.is_verified || msg.sender?.sub_plan === 'PRO' || msg.sender?.sub_plan === 'GEEK'),
       authorSubPlan: msg.sender?.sub_plan ?? null,
       isSystem,
-      role: isSystem ? 'Automation' : (groupMemberRoleByUserId.get(msg.sender_id) ?? 'Member'),
+      role: isSystem ? 'Automation' : getEffectiveRole(channelMemberRoleByUserId.get(msg.sender_id), groupMemberRoleByUserId.get(msg.sender_id)),
       time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       body: msg.content,
       isOwn: msg.sender_id === profile?.id,
@@ -396,7 +410,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     }
   })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rawMessages, activeGroupMembers, profile?.id])
+  }, [rawMessages, activeGroupMembers, activeChannelMembers, profile?.id])
 
   const activeSyntheticChat = activeDirectChat ? (syntheticDirectChats[activeDirectChat] ?? null) : null
   const activeIsRealDirect = Boolean(activeDirectChat && /^[0-9a-f-]{36}$/i.test(activeDirectChat))
