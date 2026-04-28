@@ -12,6 +12,12 @@ type LocalVideoTrack = {
   source: VideoSource
 }
 
+type RemoteAudioAnalyser = {
+  peerId: string
+  ctx: AudioContext
+  raf: number | null
+}
+
 type PeerState = {
   polite: boolean
   makingOffer: boolean
@@ -214,6 +220,7 @@ export function useWebRTC(
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map())
   const [remoteScreenStreams, setRemoteScreenStreams] = useState<Map<string, MediaStream>>(new Map())
   const [isSpeaking, setIsSpeaking] = useState(false)
+  const [remoteSpeakingUserIds, setRemoteSpeakingUserIds] = useState<Set<string>>(new Set())
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
 
   const pcsRef = useRef<Map<string, RTCPeerConnection>>(new Map())
@@ -226,6 +233,7 @@ export function useWebRTC(
   const isMutedRef = useRef(isMuted)
   const speakingRafRef = useRef<number | null>(null)
   const analyserCtxRef = useRef<AudioContext | null>(null)
+  const remoteAudioAnalysersRef = useRef<Map<MediaStreamTrack, RemoteAudioAnalyser>>(new Map())
   const videoTracksRef = useRef<Map<MediaStreamTrack, LocalVideoTrack>>(new Map())
   const mountedRef = useRef(false)
 
@@ -240,6 +248,78 @@ export function useWebRTC(
   const sendSignal = useCallback((payload: object) => {
     socketRef.current?.emit('webrtc-signal', payload)
   }, [])
+
+  const setRemoteSpeaking = useCallback((peerId: string, speaking: boolean) => {
+    setRemoteSpeakingUserIds((prev) => {
+      const currentlySpeaking = prev.has(peerId)
+      if (currentlySpeaking === speaking) return prev
+
+      const next = new Set(prev)
+      if (speaking) next.add(peerId)
+      else next.delete(peerId)
+      return next
+    })
+  }, [])
+
+  const cleanupRemoteAudioTrack = useCallback((track: MediaStreamTrack) => {
+    const analyser = remoteAudioAnalysersRef.current.get(track)
+    if (!analyser) return
+
+    if (analyser.raf !== null) cancelAnimationFrame(analyser.raf)
+    void analyser.ctx.close().catch(() => {})
+    remoteAudioAnalysersRef.current.delete(track)
+    setRemoteSpeaking(analyser.peerId, false)
+  }, [setRemoteSpeaking])
+
+  const cleanupRemoteAudioForPeer = useCallback((peerId: string) => {
+    Array.from(remoteAudioAnalysersRef.current.entries()).forEach(([track, analyser]) => {
+      if (analyser.peerId === peerId) cleanupRemoteAudioTrack(track)
+    })
+    setRemoteSpeaking(peerId, false)
+  }, [cleanupRemoteAudioTrack, setRemoteSpeaking])
+
+  const setupRemoteSpeakingDetection = useCallback((peerId: string, track: MediaStreamTrack) => {
+    if (remoteAudioAnalysersRef.current.has(track)) return
+
+    try {
+      const ctx = new AudioContext()
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 256
+      analyser.smoothingTimeConstant = 0.35
+      ctx.createMediaStreamSource(new MediaStream([track])).connect(analyser)
+
+      const data = new Uint8Array(analyser.frequencyBinCount)
+      const entry: RemoteAudioAnalyser = { peerId, ctx, raf: null }
+      let speaking = false
+
+      const tick = () => {
+        if (!mountedRef.current || track.readyState !== 'live') {
+          setRemoteSpeaking(peerId, false)
+          return
+        }
+
+        if (track.muted) {
+          if (speaking) {
+            speaking = false
+            setRemoteSpeaking(peerId, false)
+          }
+        } else {
+          analyser.getByteFrequencyData(data)
+          const rms = Math.sqrt(data.reduce((sum, value) => sum + value * value, 0) / data.length)
+          const nextSpeaking = speaking ? rms > 6 : rms > 12
+          if (nextSpeaking !== speaking) {
+            speaking = nextSpeaking
+            setRemoteSpeaking(peerId, nextSpeaking)
+          }
+        }
+
+        entry.raf = requestAnimationFrame(tick)
+      }
+
+      remoteAudioAnalysersRef.current.set(track, entry)
+      entry.raf = requestAnimationFrame(tick)
+    } catch {}
+  }, [setRemoteSpeaking])
 
   const closePeer = useCallback((peerId: string) => {
     const pc = pcsRef.current.get(peerId)
@@ -259,9 +339,10 @@ export function useWebRTC(
 
     pcsRef.current.delete(peerId)
     peerStateRef.current.delete(peerId)
+    cleanupRemoteAudioForPeer(peerId)
     removeRemotePeer(setRemoteStreams, peerId)
     removeRemotePeer(setRemoteScreenStreams, peerId)
-  }, [])
+  }, [cleanupRemoteAudioForPeer])
 
   const createPeer = useCallback((peerId: string, suppressInitialOffer = false): RTCPeerConnection => {
     const existing = pcsRef.current.get(peerId)
@@ -328,12 +409,15 @@ export function useWebRTC(
 
       const removeTrackFromStream = () => {
         if (!mountedRef.current) return
+        if (track.kind === 'audio') cleanupRemoteAudioTrack(track)
         removeRemoteTrack(setStream, peerId, track)
       }
 
       addTrackToStream()
+      if (track.kind === 'audio') setupRemoteSpeakingDetection(peerId, track)
       track.addEventListener('ended', removeTrackFromStream)
       track.addEventListener('mute', () => {
+        if (track.kind === 'audio') setRemoteSpeaking(peerId, false)
         if (track.kind === 'video') removeTrackFromStream()
       })
       track.addEventListener('unmute', addTrackToStream)
@@ -416,7 +500,7 @@ export function useWebRTC(
     }
 
     return pc
-  }, [sendSignal, closePeer])
+  }, [sendSignal, closePeer, cleanupRemoteAudioTrack, setupRemoteSpeakingDetection, setRemoteSpeaking])
 
   const setupSpeakingDetection = useCallback((stream: MediaStream) => {
     try {
@@ -479,6 +563,7 @@ export function useWebRTC(
     const peerStates = peerStateRef.current
     const reconnectTimers = reconnectTimersRef.current
     const localVideoTracks = videoTracksRef.current
+    const remoteAudioAnalysers = remoteAudioAnalysersRef.current
 
     const syncLocalTracksForAnswer = async (state: PeerState) => {
       const audioTrack = localStreamRef.current?.getAudioTracks()[0]
@@ -657,6 +742,13 @@ export function useWebRTC(
       reconnectTimers.forEach((timer) => clearTimeout(timer))
       reconnectTimers.clear()
 
+      remoteAudioAnalysers.forEach((analyser) => {
+        if (analyser.raf !== null) cancelAnimationFrame(analyser.raf)
+        void analyser.ctx.close().catch(() => {})
+      })
+      remoteAudioAnalysers.clear()
+      setRemoteSpeakingUserIds(new Set())
+
       peerConnections.forEach((pc) => {
         pc.onconnectionstatechange = null
         pc.onnegotiationneeded = null
@@ -690,6 +782,7 @@ export function useWebRTC(
     remoteStreams,
     remoteScreenStreams,
     isSpeaking,
+    remoteSpeakingUserIds,
     addVideoTrack,
     removeVideoTrack,
     closePeer,

@@ -1308,7 +1308,15 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id])
 
-  const voiceParticipants: Record<string, VoiceParticipant[]> = voice.participantsByGroup
+  const voiceParticipants: Record<string, VoiceParticipant[]> = Object.fromEntries(
+    Object.entries(voice.participantsByGroup).map(([groupId, participants]) => [
+      groupId,
+      participants.map((participant) => ({
+        ...participant,
+        isSpeaking: participant.isSpeaking || webrtc.remoteSpeakingUserIds.has(participant.id),
+      })),
+    ]),
+  )
 
   const channelContent =
     activeChannel && activeGroup ? (

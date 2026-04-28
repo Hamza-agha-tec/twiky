@@ -134,6 +134,7 @@ export interface VoiceParticipant {
   name: string
   avatarUrl: string | null
   isMuted?: boolean
+  isSpeaking?: boolean
 }
 
 interface ChannelsPanelProps {
@@ -1690,6 +1691,9 @@ export function ChannelsPanel({
                     <div className="ml-6 mb-1 space-y-0.5">
                       {participants.map((p) => {
                         const isSelf = p.id === myId
+                        const voiceActive = Boolean(p.isSpeaking && !p.isMuted)
+                        const soundboardActive = soundboardUserId === p.id
+                        const avatarActivity = soundboardActive ? soundboardIntensity : voiceActive ? 0.65 : 0
                         return (
                           <ContextMenu key={p.id}>
                             <ContextMenuTrigger asChild>
@@ -1716,9 +1720,9 @@ export function ChannelsPanel({
                               >
                                 <div
                                   className="relative flex-shrink-0 rounded-full transition-shadow duration-75"
-                                  style={soundboardUserId === p.id ? {
-                                    outline: `${1 + soundboardIntensity * 2}px solid rgba(74,222,128,${0.5 + soundboardIntensity * 0.5})`,
-                                    boxShadow: `0 0 ${4 + soundboardIntensity * 12}px ${soundboardIntensity * 4}px rgba(74,222,128,${0.2 + soundboardIntensity * 0.6})`,
+                                  style={avatarActivity > 0 ? {
+                                    outline: `${1 + avatarActivity * 2}px solid rgba(74,222,128,${0.5 + avatarActivity * 0.5})`,
+                                    boxShadow: `0 0 ${4 + avatarActivity * 12}px ${avatarActivity * 4}px rgba(74,222,128,${0.2 + avatarActivity * 0.6})`,
                                   } : undefined}
                                 >
                                   {p.avatarUrl ? (
