@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Camera,
   CameraOff,
@@ -48,6 +48,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Slider } from '@/components/ui/slider'
 
 export type { VoicePresenceUser as VoiceMember }
 
@@ -124,6 +126,7 @@ export function VoiceGroupView({
 }: VoiceGroupViewProps) {
   const [videoOn, setVideoOn] = useState(false)
   const [sharing, setSharing] = useState(false)
+  const [outputVolume, setOutputVolume] = useState(100)
   const [exitReason, setExitReason] = useState<'left' | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
   const [chatInput, setChatInput] = useState('')
@@ -687,14 +690,52 @@ export function VoiceGroupView({
             </DropdownMenu>
           </div>
 
-          <VoiceCtrlBtn
-            active={!deafened}
-            danger={deafened}
-            title={deafened ? 'Undeafen' : 'Deafen'}
-            onClick={onToggleDeafen}
-          >
-            {deafened ? <HeadphoneOff className="h-4 w-4" /> : <Headphones className="h-4 w-4" />}
-          </VoiceCtrlBtn>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                title="Sound settings"
+                className={cn(
+                  'flex h-9 w-9 items-center justify-center rounded-xl border transition-colors',
+                  deafened
+                    ? 'border-destructive/20 bg-destructive/10 text-destructive hover:bg-destructive/20'
+                    : 'border-primary/20 bg-primary/10 text-primary hover:bg-primary/20',
+                )}
+              >
+                {deafened ? <HeadphoneOff className="h-4 w-4" /> : <Headphones className="h-4 w-4" />}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent side="top" align="center" className="w-56 border-border bg-background p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5 text-[12px] font-semibold text-foreground">
+                  <Volume2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  Output Volume
+                </div>
+                <span className="text-[11px] font-medium tabular-nums text-muted-foreground">{outputVolume}%</span>
+              </div>
+              <Slider
+                value={[outputVolume]}
+                min={0}
+                max={100}
+                step={1}
+                onValueChange={([v]) => setOutputVolume(v)}
+                className="mb-3 [&_[data-slot=slider-range]]:bg-[#92dce5] [&_[data-slot=slider-thumb]]:border-[#92dce5] [&_[data-slot=slider-thumb]]:ring-[#92dce5]/30"
+              />
+              <div className="border-t border-border pt-2.5">
+                <button
+                  onClick={onToggleDeafen}
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[12px] font-medium transition-colors',
+                    deafened
+                      ? 'bg-destructive/10 text-destructive hover:bg-destructive/20'
+                      : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                  )}
+                >
+                  {deafened ? <HeadphoneOff className="h-3.5 w-3.5" /> : <Headphones className="h-3.5 w-3.5" />}
+                  {deafened ? 'Undeafen' : 'Deafen'}
+                </button>
+              </div>
+            </PopoverContent>
+          </Popover>
 
           <VoiceCtrlBtn
             active={videoOn}

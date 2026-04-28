@@ -123,7 +123,7 @@ const CHAT_VIEW_STATE_KEY = 'twiky-chat-view-state'
 const CHAT_SURFACES = ['channel', 'direct', 'personal-goals', 'personal-notes', 'personal-tasks'] as const
 const WORKSPACE_MODES = ['direct', 'channels'] as const
 const MAIN_AREA_TABS = ['feed', 'notes', 'tasks', 'goals'] as const
-const ACTIVE_VIEWS = ['chat', 'discover-channels', 'settings', 'store', 'add-friends', 'notifications'] as const
+const ACTIVE_VIEWS = ['chat', 'discover-channels', 'settings', 'store', 'add-friends', 'notifications', 'game'] as const
 
 function versionedAssetUrl(url: string) {
   const separator = url.includes('?') ? '&' : '?'
@@ -1613,6 +1613,21 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           <AddFriendsView />
         ) : activeView === 'notifications' ? (
           <NotificationsView onAcceptGroupInvitation={handleJoinVoiceGroup} />
+        ) : activeView === 'game' ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
+            <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-primary/10 text-primary">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="6" width="20" height="12" rx="2" />
+                <path d="M6 12h4M8 10v4" />
+                <circle cx="15" cy="11" r="1" fill="currentColor" stroke="none" />
+                <circle cx="18" cy="13" r="1" fill="currentColor" stroke="none" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-[15px] font-semibold text-foreground">Pixel Game</p>
+              <p className="mt-1 text-[13px] text-muted-foreground">Coming soon — stay tuned.</p>
+            </div>
+          </div>
         ) : (
           <>
             <WorkspaceSidebar

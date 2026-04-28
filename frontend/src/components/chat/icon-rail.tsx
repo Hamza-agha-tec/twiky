@@ -1,13 +1,13 @@
 'use client'
 
-import { Bell, Compass, MessageSquareMore, Settings2, Store, UserPlus } from 'lucide-react'
+import { Bell, Compass, Gamepad2, MessageSquareMore, Settings2, Store, UserPlus } from 'lucide-react'
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-export type ActiveView = 'chat' | 'discover-channels' | 'settings' | 'store' | 'add-friends' | 'notifications'
+export type ActiveView = 'chat' | 'discover-channels' | 'settings' | 'store' | 'add-friends' | 'notifications' | 'game'
 
 interface IconRailProps {
   activeView: ActiveView
@@ -78,6 +78,30 @@ export function IconRail({
               </Tooltip>
             )
           })}
+
+          <div className="my-1 h-px w-8 rounded-full bg-border" />
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onViewChange('game')}
+                className={cn(
+                  'relative h-11 w-11 rounded-2xl',
+                  activeView === 'game'
+                    ? 'bg-primary/10 text-primary hover:bg-primary/10 hover:text-primary'
+                    : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                )}
+              >
+                {activeView === 'game' ? (
+                  <span className="absolute left-0 top-1/2 h-7 w-1 -translate-y-1/2 rounded-r-full bg-primary" />
+                ) : null}
+                <Gamepad2 className="h-5 w-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">Pixel Game</TooltipContent>
+          </Tooltip>
         </div>
 
         {/* Avatar — opens settings → profile */}
