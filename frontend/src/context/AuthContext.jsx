@@ -44,9 +44,6 @@ export function AuthProvider({ children }) {
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         void syncSocketWithSession(session)
       }
-      if (session) {
-        console.log('🔑 YOUR BEARER TOKEN:', session.access_token);
-      }
       setSession(session)
       setUser(session?.user ?? null)
       setLoading(false)

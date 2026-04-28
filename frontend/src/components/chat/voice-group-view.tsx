@@ -65,6 +65,14 @@ interface VoiceGroupViewProps {
   onSendVoiceInvite?: (inviteeId: string) => void
   soundboardUserId?: string | null
   soundboardIntensity?: number
+  deafened?: boolean
+  onToggleDeafen?: () => void
+  remoteStreams?: Map<string, MediaStream>
+  remoteScreenStreams?: Map<string, MediaStream>
+  addVideoTrack?: (track: MediaStreamTrack, stream: MediaStream, source?: 'camera' | 'screen') => void
+  removeVideoTrack?: (track: MediaStreamTrack) => void
+  onScreenShareToggle?: (enabled: boolean) => void
+  onCameraToggle?: (enabled: boolean) => void
 }
 
 function useElapsedTime(startMs: number, active: boolean) {
@@ -100,8 +108,15 @@ export function VoiceGroupView({
   onSendVoiceInvite,
   soundboardUserId,
   soundboardIntensity = 0,
+  deafened = false,
+  onToggleDeafen,
+  remoteStreams,
+  remoteScreenStreams,
+  addVideoTrack,
+  removeVideoTrack,
+  onScreenShareToggle,
+  onCameraToggle,
 }: VoiceGroupViewProps) {
-  const [deafened, setDeafened] = useState(false)
   const [videoOn, setVideoOn] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [exitReason, setExitReason] = useState<'left' | null>(null)
@@ -120,15 +135,16 @@ export function VoiceGroupView({
   const screenVideoRef = useRef<HTMLVideoElement | null>(null)
 
   useEffect(() => {
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = videoOn ? (videoStreamRef.current ?? null) : null
-    }
+    const v = localVideoRef.current
+    if (!v) return
+    v.srcObject = videoOn ? (videoStreamRef.current ?? null) : null
+    if (videoOn && v.srcObject) v.play().catch(() => {})
   }, [videoOn])
 
+  // screenVideoRef always mounted (hidden video element), srcObject set directly in handler
   useEffect(() => {
-    if (screenVideoRef.current) {
-      screenVideoRef.current.srcObject = sharing ? (screenStreamRef.current ?? null) : null
-    }
+    const v = screenVideoRef.current
+    if (v && !sharing) v.srcObject = null
   }, [sharing])
 
   useEffect(() => {
@@ -140,6 +156,10 @@ export function VoiceGroupView({
 
   const handleToggleCamera = useCallback(async () => {
     if (videoOn) {
+      if (localVideoRef.current) localVideoRef.current.srcObject = null
+      const track = videoStreamRef.current?.getVideoTracks()[0]
+      onCameraToggle?.(false)
+      if (track) removeVideoTrack?.(track)
       videoStreamRef.current?.getTracks().forEach((t) => t.stop())
       videoStreamRef.current = null
       setVideoOn(false)
@@ -147,28 +167,50 @@ export function VoiceGroupView({
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
         videoStreamRef.current = stream
+        const track = stream.getVideoTracks()[0]
+        if (track) addVideoTrack?.(track, stream, 'camera')
+        onCameraToggle?.(true)
         setVideoOn(true)
+        // srcObject set after render via useEffect — but also set eagerly here in case ref already exists
+        if (localVideoRef.current) localVideoRef.current.srcObject = stream
       } catch {}
     }
-  }, [videoOn])
+  }, [videoOn, addVideoTrack, removeVideoTrack, onCameraToggle])
 
   const handleToggleSharing = useCallback(async () => {
     if (sharing) {
+      const track = screenStreamRef.current?.getVideoTracks()[0]
+      if (track) removeVideoTrack?.(track)
       screenStreamRef.current?.getTracks().forEach((t) => t.stop())
       screenStreamRef.current = null
       setSharing(false)
+      onScreenShareToggle?.(false)
     } else {
       try {
         const stream = await navigator.mediaDevices.getDisplayMedia({ video: true })
         screenStreamRef.current = stream
-        stream.getVideoTracks()[0].onended = () => {
-          screenStreamRef.current = null
-          setSharing(false)
+        const track = stream.getVideoTracks()[0]
+        if (track) {
+          // Emit socket signal BEFORE addVideoTrack so receivers know it's a screen share
+          // before the WebRTC track arrives
+          onScreenShareToggle?.(true)
+          addVideoTrack?.(track, stream, 'screen')
+          track.onended = () => {
+            removeVideoTrack?.(track)
+            screenStreamRef.current = null
+            setSharing(false)
+            onScreenShareToggle?.(false)
+          }
+        }
+        // Set srcObject immediately — ref is always mounted
+        if (screenVideoRef.current) {
+          screenVideoRef.current.srcObject = stream
+          void screenVideoRef.current.play().catch(() => {})
         }
         setSharing(true)
       } catch {}
     }
-  }, [sharing])
+  }, [sharing, addVideoTrack, removeVideoTrack, onScreenShareToggle])
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -205,7 +247,7 @@ export function VoiceGroupView({
   const inviteSuggestions = channelMembersRaw
     .map((m) => m.user)
     .filter((u) => u && u.id !== myId && !participantIds.has(u.id))
-    .filter((u) => !inviteSearch.trim() || u.username.toLowerCase().includes(inviteSearch.toLowerCase()))
+    .filter((u) => !inviteSearch.trim() || (u.username ?? '').toLowerCase().includes(inviteSearch.toLowerCase()))
 
   const handleInvite = (userId: string) => {
     onSendVoiceInvite?.(userId)
@@ -226,12 +268,23 @@ export function VoiceGroupView({
     { label: '🚫 Nope', file: 'Voicy_Nope! .mp3' },
     { label: '🏆 W', file: 'Voicy_W Reaction .mp3' },
   ]
-  const timer = useElapsedTime(joinedAt, isJoined)
+  const callStartedAt = participants.length > 0
+    ? Math.min(...participants.map(p => p.joinedAt))
+    : (me?.joinedAt ?? joinedAt)
+  const timer = useElapsedTime(callStartedAt, isJoined)
 
   const prevJoinedRef = useRef(isJoined)
   useEffect(() => {
     if (prevJoinedRef.current && !isJoined) {
       setExitReason('left')
+      videoStreamRef.current?.getTracks().forEach((t) => t.stop())
+      videoStreamRef.current = null
+      if (localVideoRef.current) localVideoRef.current.srcObject = null
+      setVideoOn(false)
+      screenStreamRef.current?.getTracks().forEach((t) => t.stop())
+      screenStreamRef.current = null
+      if (screenVideoRef.current) screenVideoRef.current.srcObject = null
+      setSharing(false)
     }
     prevJoinedRef.current = isJoined
   }, [isJoined])
@@ -241,7 +294,7 @@ export function VoiceGroupView({
   }
 
   useEffect(() => {
-    onJoin()
+    if (!isJoined) onJoin()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -275,31 +328,43 @@ export function VoiceGroupView({
         </span>
       </div>
 
-      {/* Screen share preview */}
-      <AnimatePresence>
-        {sharing && (
-          <motion.div
-            key="screen-share"
-            className="relative mx-4 mt-4 overflow-hidden rounded-2xl border border-border bg-black"
-            style={{ maxHeight: '40%' }}
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            <video
-              ref={screenVideoRef}
-              autoPlay
-              muted
-              playsInline
-              className="h-full w-full object-contain"
-            />
-            <span className="absolute left-2 top-2 rounded-lg bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
-              Your screen
-            </span>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Local screen share preview — always mounted so ref is valid; hidden when not sharing */}
+      <div
+        className="mx-4 mt-4 flex gap-3"
+        style={{ display: (sharing || (remoteScreenStreams && remoteScreenStreams.size > 0)) ? undefined : 'none', maxHeight: '40%' }}
+      >
+        <div
+          className="relative overflow-hidden rounded-2xl border border-border bg-black"
+          style={{ flex: 1, display: sharing ? undefined : 'none', minHeight: '180px' }}
+        >
+          <video
+            ref={screenVideoRef}
+            autoPlay
+            muted
+            playsInline
+            className="h-full w-full object-contain"
+          />
+          <span className="absolute left-2 top-2 rounded-lg bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
+            Your screen
+          </span>
+        </div>
+
+        {/* Remote screen shares */}
+        {remoteScreenStreams && Array.from(remoteScreenStreams.entries()).map(([peerId, stream]) => {
+          const peer = participants.find(p => p.id === peerId)
+          const activeScreenTrack = stream.getVideoTracks().find(t => t.readyState === 'live' && !t.muted)
+          if (!activeScreenTrack) return null
+          
+          return (
+            <div key={peerId} className="relative flex-1 overflow-hidden rounded-2xl border border-border bg-black" style={{ minHeight: '180px' }}>
+              <RemoteVideo stream={stream} fit="contain" />
+              <span className="absolute left-2 top-2 rounded-lg bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
+                {peer?.name ?? 'User'}&apos;s screen
+              </span>
+            </div>
+          )
+        })}
+      </div>
 
       {/* Participants grid */}
       <div className="flex flex-1 flex-col overflow-hidden p-4">
@@ -351,6 +416,12 @@ export function VoiceGroupView({
                 {participants.map((member) => {
                   const isMe = member.id === myId
                   const showVideo = isMe && videoOn
+                  const remoteStream = !isMe ? remoteStreams?.get(member.id) : undefined
+                  const remoteVideoTrack = remoteStream
+                    ?.getVideoTracks()
+                    .find((track) => track.readyState === 'live' && !track.muted)
+                  const showRemoteVideo = Boolean(remoteVideoTrack && member.isCameraOn)
+                  
                   return (
                     <ContextMenu key={member.id}>
                       <ContextMenuTrigger asChild>
@@ -368,7 +439,7 @@ export function VoiceGroupView({
                             boxShadow: `0 0 ${6 + soundboardIntensity * 24}px ${soundboardIntensity * 10}px rgba(74,222,128,${0.2 + soundboardIntensity * 0.6})`,
                           } : undefined}
                         >
-                          {/* Camera video fills tile */}
+                          {/* Local camera video */}
                           {showVideo && (
                             <video
                               ref={localVideoRef}
@@ -379,13 +450,16 @@ export function VoiceGroupView({
                             />
                           )}
 
+                          {/* Remote participant video — keyed by isCameraOn so toggle remounts and re-attaches srcObject */}
+                          {showRemoteVideo && remoteStream && <RemoteVideo key={`${member.id}-${member.isCameraOn ? 'on' : 'off'}`} stream={remoteStream} />}
+
                           {/* Dark overlay for readability */}
-                          {showVideo && (
+                          {(showVideo || showRemoteVideo) && (
                             <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
                           )}
 
-                          {/* Avatar when no camera */}
-                          {!showVideo && (
+                          {/* Avatar when no video */}
+                          {!showVideo && !showRemoteVideo && (
                             <div className="relative z-10 flex flex-col items-center gap-2">
                               {member.avatarUrl ? (
                                 <img src={member.avatarUrl} alt={member.name} className="h-16 w-16 rounded-full object-cover shadow-lg" />
@@ -500,7 +574,7 @@ export function VoiceGroupView({
             active={!deafened}
             danger={deafened}
             title={deafened ? 'Undeafen' : 'Deafen'}
-            onClick={() => setDeafened((v) => !v)}
+            onClick={onToggleDeafen}
           >
             {deafened ? <HeadphoneOff className="h-4 w-4" /> : <Headphones className="h-4 w-4" />}
           </VoiceCtrlBtn>
@@ -564,11 +638,18 @@ export function VoiceGroupView({
         <div className="flex w-32 shrink-0 justify-end">
         <button
           onClick={() => {
+            const videoTrack = videoStreamRef.current?.getVideoTracks()[0]
+            if (videoTrack) removeVideoTrack?.(videoTrack)
+            if (localVideoRef.current) localVideoRef.current.srcObject = null
             videoStreamRef.current?.getTracks().forEach((t) => t.stop())
             videoStreamRef.current = null
             setVideoOn(false)
+            const screenTrack = screenStreamRef.current?.getVideoTracks()[0]
+            if (screenTrack) removeVideoTrack?.(screenTrack)
+            if (screenVideoRef.current) screenVideoRef.current.srcObject = null
             screenStreamRef.current?.getTracks().forEach((t) => t.stop())
             screenStreamRef.current = null
+            if (sharing) onScreenShareToggle?.(false)
             setSharing(false)
             if (isJoined) setExit('left')
             onLeave()
@@ -709,6 +790,7 @@ export function VoiceGroupView({
               if (!user) return null
               const alreadyIn = participantIds.has(user.id)
               const sent = sentInvites.has(user.id)
+              const username = user.username ?? 'Unknown'
               return (
                 <div
                   key={user.id}
@@ -716,16 +798,16 @@ export function VoiceGroupView({
                 >
                   {/* Avatar */}
                   {user.avatar_url ? (
-                    <img src={user.avatar_url} alt={user.username} className="h-8 w-8 rounded-full object-cover shrink-0" />
+                    <img src={user.avatar_url} alt={username} className="h-8 w-8 rounded-full object-cover shrink-0" />
                   ) : (
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[13px] font-bold text-primary">
-                      {user.username[0]?.toUpperCase()}
+                      {username[0]?.toUpperCase()}
                     </div>
                   )}
 
                   {/* Name */}
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[12px] font-semibold text-foreground">{user.username}</p>
+                    <p className="truncate text-[12px] font-semibold text-foreground">{username}</p>
                     {alreadyIn && <p className="text-[10px] text-green-500">Already in call</p>}
                   </div>
 
@@ -752,6 +834,30 @@ export function VoiceGroupView({
       </DialogContent>
     </Dialog>
     </motion.div>
+  )
+}
+
+function RemoteVideo({ stream, fit = 'cover' }: { stream: MediaStream; fit?: 'cover' | 'contain' }) {
+  const ref = useRef<HTMLVideoElement>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.srcObject = stream
+    void el.play().catch(() => {})
+    return () => {
+      if (el.srcObject === stream) el.srcObject = null
+    }
+  }, [stream])
+
+  return (
+    <video
+      ref={ref}
+      autoPlay
+      playsInline
+      muted
+      className={cn('absolute inset-0 h-full w-full bg-black', fit === 'contain' ? 'object-contain' : 'object-cover')}
+    />
   )
 }
 

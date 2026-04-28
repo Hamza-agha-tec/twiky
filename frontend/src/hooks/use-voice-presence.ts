@@ -1,7 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { RealtimeChannel } from '@supabase/supabase-js'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { Socket } from 'socket.io-client'
+import { getSocket } from '@/lib/socket'
 import { createClient } from '@/utils/supabase/client'
 
 function playVoiceSound(type: 'join' | 'leave') {
@@ -12,27 +13,15 @@ function playVoiceSound(type: 'join' | 'leave') {
     gain.gain.setValueAtTime(0.18, ctx.currentTime)
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.5)
 
-    if (type === 'join') {
-      const freqs = [660, 880]
-      freqs.forEach((freq, i) => {
-        const osc = ctx.createOscillator()
-        osc.type = 'sine'
-        osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.12)
-        osc.connect(gain)
-        osc.start(ctx.currentTime + i * 0.12)
-        osc.stop(ctx.currentTime + i * 0.12 + 0.18)
-      })
-    } else {
-      const freqs = [660, 440]
-      freqs.forEach((freq, i) => {
-        const osc = ctx.createOscillator()
-        osc.type = 'sine'
-        osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.12)
-        osc.connect(gain)
-        osc.start(ctx.currentTime + i * 0.12)
-        osc.stop(ctx.currentTime + i * 0.12 + 0.18)
-      })
-    }
+    const freqs = type === 'join' ? [660, 880] : [660, 440]
+    freqs.forEach((freq, i) => {
+      const osc = ctx.createOscillator()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.12)
+      osc.connect(gain)
+      osc.start(ctx.currentTime + i * 0.12)
+      osc.stop(ctx.currentTime + i * 0.12 + 0.18)
+    })
 
     setTimeout(() => ctx.close(), 800)
   } catch {}
@@ -47,6 +36,8 @@ export interface VoicePresenceUser {
   joinedAt: number
   soundboardFile?: string
   soundboardStartedAt?: number
+  isScreenSharing?: boolean
+  isCameraOn?: boolean
 }
 
 type MyVoiceInfo = {
@@ -55,33 +46,20 @@ type MyVoiceInfo = {
   avatarUrl: string | null
 }
 
-type VoiceChannelEntry = {
-  channel: RealtimeChannel
-  subscribed: boolean
-  waiters: Array<(subscribed: boolean) => void>
-}
-
-function getPresenceUsers(ch: RealtimeChannel) {
-  const state = ch.presenceState<VoicePresenceUser>()
-  return Object.values(state)
-    .map((arr) => (arr as VoicePresenceUser[]).at(-1))
-    .filter((user): user is VoicePresenceUser => Boolean(user))
-}
-
-function upsertVoiceUser(users: VoicePresenceUser[], user: VoicePresenceUser) {
-  return [user, ...users.filter((item) => item.id !== user.id)]
-}
-
-function removeVoiceUser(users: VoicePresenceUser[], userId: string) {
-  return users.filter((item) => item.id !== userId)
-}
-
 export type VoiceInvitePayload = {
   groupId: string
   groupName: string
   inviterId: string
   inviterName: string
   inviterAvatar: string | null
+}
+
+function upsertUser(list: VoicePresenceUser[], user: VoicePresenceUser): VoicePresenceUser[] {
+  return [user, ...list.filter(u => u.id !== user.id)]
+}
+
+function removeUser(list: VoicePresenceUser[], userId: string): VoicePresenceUser[] {
+  return list.filter(u => u.id !== userId)
 }
 
 export function useVoicePresence(
@@ -97,19 +75,32 @@ export function useVoicePresence(
   const [joinedAt, setJoinedAt] = useState(0)
   const [soundboardUserId, setSoundboardUserId] = useState<string | null>(null)
   const [soundboardIntensity, setSoundboardIntensity] = useState(0)
-  const soundboardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const analyserRafRef = useRef<number | null>(null)
-  const analyserCtxRef = useRef<AudioContext | null>(null)
-  const playedPresenceSoundsRef = useRef<Set<string>>(new Set())
-  const activeSoundAudioRef = useRef<HTMLAudioElement | null>(null)
-  const channelsRef = useRef<Map<string, VoiceChannelEntry>>(new Map())
+
+  const socketRef = useRef<Socket | null>(null)
   const currentGroupIdRef = useRef<string | null>(null)
   const myInfoRef = useRef<MyVoiceInfo | null>(myInfo)
   const isMutedRef = useRef(false)
   const currentSelfRef = useRef<VoicePresenceUser | null>(null)
-  const joinRef = useRef<(groupId: string, muted?: boolean) => Promise<void>>(async () => {})
+  const joinRefFn = useRef<(groupId: string, muted?: boolean) => Promise<void>>(async () => {})
   const pendingJoinRef = useRef<{ groupId: string; muted: boolean } | null>(null)
   const joinSeqRef = useRef(0)
+  const analyserRafRef = useRef<number | null>(null)
+  const analyserCtxRef = useRef<AudioContext | null>(null)
+  const activeSoundAudioRef = useRef<HTMLAudioElement | null>(null)
+  const onVoiceInviteRef = useRef(onVoiceInvite)
+  onVoiceInviteRef.current = onVoiceInvite
+
+  useEffect(() => { myInfoRef.current = myInfo }, [myInfo])
+  useEffect(() => { isMutedRef.current = isMuted }, [isMuted])
+  useEffect(() => { currentGroupIdRef.current = currentGroupId }, [currentGroupId])
+
+  useEffect(() => {
+    if (myInfo && pendingJoinRef.current) {
+      const pending = pendingJoinRef.current
+      pendingJoinRef.current = null
+      void joinRefFn.current(pending.groupId, pending.muted)
+    }
+  }, [myInfo])
 
   const stopActiveSound = useCallback(() => {
     if (activeSoundAudioRef.current) {
@@ -119,6 +110,7 @@ export function useVoicePresence(
     }
     if (analyserRafRef.current) cancelAnimationFrame(analyserRafRef.current)
     void analyserCtxRef.current?.close()
+    analyserCtxRef.current = null
     setSoundboardIntensity(0)
     setSoundboardUserId(null)
   }, [])
@@ -162,26 +154,212 @@ export function useVoicePresence(
     audio.onerror = stop
   }, [])
 
+  // Socket.IO event wiring — single source of truth
   useEffect(() => {
-    myInfoRef.current = myInfo
-    if (myInfo && pendingJoinRef.current) {
-      const pending = pendingJoinRef.current
-      pendingJoinRef.current = null
-      void joinRef.current(pending.groupId, pending.muted)
+    let mounted = true
+    let socket: Socket | null = null
+
+    const onRoomUsers = (payload: { roomId?: string; participants?: VoicePresenceUser[] }) => {
+      if (!mounted || !payload?.roomId) return
+      const users = Array.isArray(payload.participants) ? payload.participants : []
+      setParticipantsByGroup(prev => ({ ...prev, [payload.roomId!]: users }))
     }
-  }, [myInfo])
 
-  useEffect(() => {
-    currentGroupIdRef.current = currentGroupId
-  }, [currentGroupId])
+    const onRoomParticipants = (payload: { roomId?: string; users?: VoicePresenceUser[] }) => {
+      if (!mounted || !payload?.roomId) return
+      const users = Array.isArray(payload.users) ? payload.users : []
+      setParticipantsByGroup(prev => {
+        const existing = prev[payload.roomId!] ?? []
+        const byId = new Map(existing.map(u => [u.id, u]))
+        users.forEach(u => byId.set(u.id, u))
+        return { ...prev, [payload.roomId!]: Array.from(byId.values()) }
+      })
+    }
 
-  useEffect(() => {
-    isMutedRef.current = isMuted
-  }, [isMuted])
+    const onUserJoined = (payload: { roomId?: string; userId?: string; user?: VoicePresenceUser }) => {
+      if (!mounted || !payload?.roomId || !payload.user?.id) return
+      setParticipantsByGroup(prev => ({
+        ...prev,
+        [payload.roomId!]: upsertUser(prev[payload.roomId!] ?? [], payload.user!),
+      }))
+      if (payload.user.id !== myInfoRef.current?.id) playVoiceSound('join')
+    }
 
-  const onVoiceInviteRef = useRef(onVoiceInvite)
-  onVoiceInviteRef.current = onVoiceInvite
+    const onUserLeft = (payload: { roomId?: string; userId?: string }) => {
+      if (!mounted || !payload?.roomId || !payload.userId) return
+      setParticipantsByGroup(prev => ({
+        ...prev,
+        [payload.roomId!]: removeUser(prev[payload.roomId!] ?? [], payload.userId!),
+      }))
+      if (payload.userId !== myInfoRef.current?.id) playVoiceSound('leave')
+    }
 
+    const onAudioToggled = (payload: { roomId?: string; userId?: string; muted?: boolean }) => {
+      if (!mounted || !payload?.roomId || !payload.userId || typeof payload.muted !== 'boolean') return
+      setParticipantsByGroup(prev => ({
+        ...prev,
+        [payload.roomId!]: (prev[payload.roomId!] ?? []).map(u =>
+          u.id === payload.userId ? { ...u, isMuted: payload.muted! } : u,
+        ),
+      }))
+    }
+
+    const onUserSpeaking = (payload: { roomId?: string; userId?: string; speaking?: boolean }) => {
+      if (!mounted || !payload?.roomId || !payload.userId || typeof payload.speaking !== 'boolean') return
+      setParticipantsByGroup(prev => ({
+        ...prev,
+        [payload.roomId!]: (prev[payload.roomId!] ?? []).map(u =>
+          u.id === payload.userId ? { ...u, isSpeaking: payload.speaking } : u,
+        ),
+      }))
+    }
+
+    const onSoundboard = (payload: { roomId?: string; senderId?: string; sound?: string; startedAt?: number }) => {
+      if (!mounted || !payload?.sound || !payload.senderId) return
+      if (currentGroupIdRef.current !== payload.roomId) return
+      const audio = new Audio(`/sounds/${payload.sound}`)
+      audio.volume = 0.8
+      if (payload.startedAt) {
+        const elapsedSec = (Date.now() - payload.startedAt) / 1000
+        audio.addEventListener('loadedmetadata', () => {
+          if (elapsedSec < audio.duration) audio.currentTime = elapsedSec
+          startSoundboardAnalyser(audio, payload.senderId!)
+          void audio.play().catch(() => { setSoundboardUserId(null); setSoundboardIntensity(0) })
+        }, { once: true })
+      } else {
+        startSoundboardAnalyser(audio, payload.senderId)
+        void audio.play().catch(() => { setSoundboardUserId(null); setSoundboardIntensity(0) })
+      }
+    }
+
+    const onVideoToggled = (payload: { roomId?: string; userId?: string; enabled?: boolean }) => {
+      if (!mounted || !payload?.roomId || !payload.userId || typeof payload.enabled !== 'boolean') return
+      if (payload.userId === myInfoRef.current?.id && currentSelfRef.current) {
+        currentSelfRef.current = { ...currentSelfRef.current, isCameraOn: payload.enabled }
+      }
+      setParticipantsByGroup(prev => ({
+        ...prev,
+        [payload.roomId!]: (prev[payload.roomId!] ?? []).map(u =>
+          u.id === payload.userId ? { ...u, isCameraOn: payload.enabled } : u,
+        ),
+      }))
+    }
+
+    const onScreenToggled = (payload: { roomId?: string; userId?: string; enabled?: boolean }) => {
+      if (!mounted || !payload?.roomId || !payload.userId || typeof payload.enabled !== 'boolean') return
+      if (payload.userId === myInfoRef.current?.id && currentSelfRef.current) {
+        currentSelfRef.current = { ...currentSelfRef.current, isScreenSharing: payload.enabled }
+      }
+      setParticipantsByGroup(prev => ({
+        ...prev,
+        [payload.roomId!]: (prev[payload.roomId!] ?? []).map(u =>
+          u.id === payload.userId ? { ...u, isScreenSharing: payload.enabled } : u,
+        ),
+      }))
+    }
+
+    const onSoundboardStop = (payload: { roomId?: string; senderId?: string }) => {
+      if (!mounted) return
+      if (payload.senderId === soundboardUserId) stopActiveSound()
+    }
+
+    const onKicked = (payload: { roomId?: string }) => {
+      if (!mounted) return
+      const groupId = payload.roomId ?? currentGroupIdRef.current
+      if (!groupId) return
+      const myId = myInfoRef.current?.id
+      stopActiveSound()
+      currentGroupIdRef.current = null
+      currentSelfRef.current = null
+      setCurrentGroupId(null)
+      setJoinedGroupId(null)
+      setIsJoined(false)
+      setJoinedAt(0)
+      if (myId) {
+        setParticipantsByGroup(prev => ({
+          ...prev,
+          [groupId]: removeUser(prev[groupId] ?? [], myId),
+        }))
+      }
+      socket?.emit('leave-voice-room', { roomId: groupId })
+    }
+
+    const onServerMuted = (payload: { roomId?: string; muted?: boolean }) => {
+      if (!mounted || typeof payload.muted !== 'boolean') return
+      const muted = payload.muted
+      const prev = currentSelfRef.current
+      if (!prev) return
+      const nextSelf: VoicePresenceUser = { ...prev, isMuted: muted }
+      currentSelfRef.current = nextSelf
+      setIsMuted(muted)
+      const groupId = currentGroupIdRef.current
+      if (groupId) {
+        setParticipantsByGroup(p => ({
+          ...p,
+          [groupId]: upsertUser(p[groupId] ?? [], nextSelf),
+        }))
+        socket?.emit('voice-room-audio-toggle', { roomId: groupId, muted })
+      }
+    }
+
+    const onMoved = (payload: { fromRoomId?: string; targetRoomId?: string }) => {
+      if (!mounted || !payload.targetRoomId) return
+      if (payload.targetRoomId !== currentGroupIdRef.current) {
+        void joinRefFn.current(payload.targetRoomId, isMutedRef.current)
+      }
+    }
+
+    const rejoinActiveRoom = () => {
+      const groupId = currentGroupIdRef.current
+      const self = currentSelfRef.current
+      if (groupId && self && socket) {
+        socket.emit('join-voice-room', { roomId: groupId, user: self })
+      }
+    }
+
+    getSocket().then(s => {
+      if (!mounted) return
+      socket = s
+      socketRef.current = s
+      s.on('voice-room-users', onRoomUsers)
+      s.on('voice-room-participants', onRoomParticipants)
+      s.on('user-joined-voice', onUserJoined)
+      s.on('user-left-voice', onUserLeft)
+      s.on('user-audio-toggled', onAudioToggled)
+      s.on('user-speaking', onUserSpeaking)
+      s.on('voice-soundboard', onSoundboard)
+      s.on('voice-soundboard-stop', onSoundboardStop)
+      s.on('user-video-toggled', onVideoToggled)
+      s.on('user-screen-toggled', onScreenToggled)
+      s.on('voice-kicked', onKicked)
+      s.on('voice-server-muted', onServerMuted)
+      s.on('voice-moved', onMoved)
+      s.on('connect', rejoinActiveRoom)
+      rejoinActiveRoom()
+    })
+
+    return () => {
+      mounted = false
+      if (socket) {
+        socket.off('voice-room-users', onRoomUsers)
+        socket.off('voice-room-participants', onRoomParticipants)
+        socket.off('user-joined-voice', onUserJoined)
+        socket.off('user-left-voice', onUserLeft)
+        socket.off('user-audio-toggled', onAudioToggled)
+        socket.off('user-speaking', onUserSpeaking)
+        socket.off('voice-soundboard', onSoundboard)
+        socket.off('voice-soundboard-stop', onSoundboardStop)
+        socket.off('user-video-toggled', onVideoToggled)
+        socket.off('user-screen-toggled', onScreenToggled)
+        socket.off('voice-kicked', onKicked)
+        socket.off('voice-server-muted', onServerMuted)
+        socket.off('voice-moved', onMoved)
+        socket.off('connect', rejoinActiveRoom)
+      }
+    }
+  }, [startSoundboardAnalyser, stopActiveSound]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Supabase used ONLY for cross-user voice invites
   useEffect(() => {
     const myId = myInfo?.id
     if (!myId) return
@@ -195,6 +373,44 @@ export function useVoicePresence(
     ch.subscribe()
     return () => { void supabase.removeChannel(ch) }
   }, [myInfo?.id])
+
+  // Observe voice rooms in sidebar for real-time presence
+  const observedKey = [...new Set(observedGroupIds.filter(Boolean))].sort().join('|')
+  useEffect(() => {
+    if (!observedKey) return
+    const roomIds = observedKey.split('|')
+    const socket = socketRef.current
+    let cancelled = false
+
+    const subscribe = (s: Socket) => {
+      if (cancelled) return
+      s.emit('subscribe-voice-rooms', { roomIds })
+    }
+
+    if (socket) {
+      subscribe(socket)
+    } else {
+      void getSocket().then((s) => {
+        if (cancelled) return
+        socketRef.current = s
+        subscribe(s)
+      })
+    }
+
+    const onConnect = () => {
+      if (socketRef.current) socketRef.current.emit('subscribe-voice-rooms', { roomIds })
+    }
+    socket?.on('connect', onConnect)
+
+    return () => {
+      cancelled = true
+      const s = socketRef.current
+      if (s) {
+        s.emit('unsubscribe-voice-rooms', { roomIds })
+        s.off('connect', onConnect)
+      }
+    }
+  }, [observedKey])
 
   const sendVoiceInvite = useCallback(async (inviteeId: string, groupId: string, groupName: string) => {
     const me = myInfoRef.current
@@ -216,423 +432,190 @@ export function useVoicePresence(
     void supabase.removeChannel(ch)
   }, [])
 
-  const syncParticipants = useCallback((groupId: string, ch: RealtimeChannel) => {
-    const myId = myInfoRef.current?.id
-    const activeGroupId = currentGroupIdRef.current
-    const currentSelf = currentSelfRef.current
-    let users = getPresenceUsers(ch)
-
-    if (myId) {
-      users = users.filter((user) => user.id !== myId || groupId === activeGroupId)
-    }
-
-    if (currentSelf && groupId === activeGroupId) {
-      users = upsertVoiceUser(users, currentSelf)
-    }
-
-    setParticipantsByGroup((prev) => ({ ...prev, [groupId]: users }))
-
-    if (groupId === currentGroupIdRef.current) {
-      const myId = myInfoRef.current?.id
-      for (const u of users) {
-        if (!u.soundboardFile || !u.soundboardStartedAt) continue
-        if (u.id === myId) continue
-        const key = `${u.id}:${u.soundboardStartedAt}`
-        if (playedPresenceSoundsRef.current.has(key)) continue
-        playedPresenceSoundsRef.current.add(key)
-        const elapsedSec = (Date.now() - u.soundboardStartedAt) / 1000
-        const audio = new Audio(`/sounds/${u.soundboardFile}`)
-        audio.volume = 0.8
-        audio.addEventListener('loadedmetadata', () => {
-          if (elapsedSec < audio.duration) {
-            audio.currentTime = elapsedSec
-            startSoundboardAnalyser(audio, u.id)
-            void audio.play().catch(() => { setSoundboardUserId(null); setSoundboardIntensity(0) })
-          }
-        }, { once: true })
-      }
-    }
-  }, [])
-
-  const waitForSubscribed = useCallback((entry: VoiceChannelEntry, timeoutMs = 2500) => {
-    if (entry.subscribed) return Promise.resolve(true)
-
-    return new Promise<boolean>((resolve) => {
-      let settled = false
-      const finish = (subscribed: boolean) => {
-        if (settled) return
-        settled = true
-        resolve(subscribed)
-      }
-      const timeout = window.setTimeout(() => finish(false), timeoutMs)
-      entry.waiters.push((subscribed) => {
-        window.clearTimeout(timeout)
-        finish(subscribed)
-      })
-    })
-  }, [])
-
-  const removeChannel = useCallback((groupId: string) => {
-    const entry = channelsRef.current.get(groupId)
-    if (!entry) return
-    void entry.channel.untrack()
-    void entry.channel.unsubscribe()
-    createClient().removeChannel(entry.channel)
-    entry.waiters.splice(0).forEach((resolve) => resolve(false))
-    channelsRef.current.delete(groupId)
-  }, [])
-
-  const ensureChannel = useCallback(
-    (groupId: string) => {
-      const existing = channelsRef.current.get(groupId)
-      if (existing) return existing
-
-      const supabase = createClient()
-      const channel = supabase.channel(`voice:${groupId}`, {
-        config: { presence: { key: myInfoRef.current?.id ?? `observer-${groupId}` } },
-      })
-      const entry: VoiceChannelEntry = { channel, subscribed: false, waiters: [] }
-      channelsRef.current.set(groupId, entry)
-
-      channel.on('presence', { event: 'sync' }, () => syncParticipants(groupId, channel))
-      channel.on('presence', { event: 'join' }, ({ newPresences }) => {
-        syncParticipants(groupId, channel)
-        const myId = myInfoRef.current?.id
-        const isOwnJoin = Boolean(myId) && (newPresences as unknown as VoicePresenceUser[]).some((p) => p.id === myId)
-        if (!isOwnJoin) playVoiceSound('join')
-      })
-      channel.on('presence', { event: 'leave' }, ({ leftPresences }) => {
-        syncParticipants(groupId, channel)
-        const myId = myInfoRef.current?.id
-        const isOwnLeave = Boolean(myId) && (leftPresences as unknown as VoicePresenceUser[]).some((p) => p.id === myId)
-        if (!isOwnLeave) playVoiceSound('leave')
-      })
-      channel.on('broadcast', { event: 'kick' }, ({ payload }) => {
-        if (payload?.targetId === myInfoRef.current?.id) {
-          void channel.untrack()
-          currentGroupIdRef.current = null
-          currentSelfRef.current = null
-          setCurrentGroupId(null)
-          setJoinedGroupId(null)
-          setIsJoined(false)
-          setJoinedAt(0)
-          setParticipantsByGroup((prev) => ({
-            ...prev,
-            [groupId]: removeVoiceUser(prev[groupId] ?? [], payload.targetId),
-          }))
-        }
-      })
-      channel.on('broadcast', { event: 'server-mute' }, ({ payload }) => {
-        if (payload?.targetId === myInfoRef.current?.id) {
-          const muted: boolean = !!payload.muted
-          const prev = currentSelfRef.current
-          if (!prev) return
-          const nextSelf: VoicePresenceUser = { ...prev, isMuted: muted }
-          currentSelfRef.current = nextSelf
-          void channel.track(nextSelf)
-          setIsMuted(muted)
-          syncParticipants(groupId, channel)
-        }
-      })
-      channel.on('broadcast', { event: 'soundboard' }, ({ payload }) => {
-        if (currentGroupIdRef.current !== groupId) return
-        if (typeof payload?.sound === 'string' && typeof payload?.senderId === 'string') {
-          const audio = new Audio(`/sounds/${payload.sound}`)
-          audio.volume = 0.8
-          startSoundboardAnalyser(audio, payload.senderId)
-          void audio.play().catch(() => { setSoundboardUserId(null); setSoundboardIntensity(0) })
-        }
-      })
-      channel.on('broadcast', { event: 'instant_leave' }, ({ payload }) => {
-        if (typeof payload?.userId === 'string' && payload.userId !== myInfoRef.current?.id) {
-          setParticipantsByGroup((prev) => ({
-            ...prev,
-            [groupId]: removeVoiceUser(prev[groupId] ?? [], payload.userId),
-          }))
-        }
-      })
-      channel.on('broadcast', { event: 'move' }, ({ payload }) => {
-        if (
-          payload?.targetId === myInfoRef.current?.id &&
-          typeof payload.targetGroupId === 'string' &&
-          payload.targetGroupId !== currentGroupIdRef.current
-        ) {
-          void joinRef.current(payload.targetGroupId, isMutedRef.current)
-        }
-      })
-
-      channel.subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          entry.subscribed = true
-          syncParticipants(groupId, channel)
-          entry.waiters.splice(0).forEach((resolve) => resolve(true))
-        }
-      })
-
-      return entry
-    },
-    [syncParticipants],
-  )
-
   const leave = useCallback(async () => {
     const groupId = currentGroupIdRef.current
     if (!groupId) return
     stopActiveSound()
-    const entry = channelsRef.current.get(groupId)
     const myId = myInfoRef.current?.id
+    const socket = socketRef.current
     currentGroupIdRef.current = null
     currentSelfRef.current = null
-    if (entry) {
-      if (myId) {
-        void entry.channel.send({ type: 'broadcast', event: 'instant_leave', payload: { userId: myId } })
-      }
-      await entry.channel.untrack()
-      syncParticipants(groupId, entry.channel)
-    }
-    if (myId) {
-      setParticipantsByGroup((prev) => ({
-        ...prev,
-        [groupId]: removeVoiceUser(prev[groupId] ?? [], myId),
-      }))
-    }
     setCurrentGroupId(null)
     setJoinedGroupId(null)
     setIsJoined(false)
     setJoinedAt(0)
-  }, [syncParticipants, stopActiveSound])
+    if (myId) {
+      setParticipantsByGroup(prev => ({
+        ...prev,
+        [groupId]: removeUser(prev[groupId] ?? [], myId),
+      }))
+    }
+    socket?.emit('leave-voice-room', { roomId: groupId })
+  }, [stopActiveSound])
 
-  const join = useCallback(
-    async (groupId: string, muted = false) => {
-      if (!groupId) return
-      if (!myInfoRef.current) {
-        pendingJoinRef.current = { groupId, muted }
-        currentGroupIdRef.current = groupId
-        setCurrentGroupId(groupId)
-        setJoinedGroupId(null)
-        setIsJoined(false)
-        return
-      }
-
-      const seq = joinSeqRef.current + 1
-      joinSeqRef.current = seq
-      const previousGroupId = currentGroupIdRef.current
-      const info = myInfoRef.current
-      const nextJoinedAt = Date.now()
-      const optimisticUser: VoicePresenceUser = {
-        id: info.id,
-        name: info.name,
-        avatarUrl: info.avatarUrl,
-        isMuted: muted,
-        joinedAt: nextJoinedAt,
-      }
-
-      stopActiveSound()
-      playedPresenceSoundsRef.current.clear()
+  const join = useCallback(async (groupId: string, muted = false) => {
+    if (!groupId) return
+    if (!myInfoRef.current) {
+      pendingJoinRef.current = { groupId, muted }
       currentGroupIdRef.current = groupId
-      currentSelfRef.current = optimisticUser
+      setCurrentGroupId(groupId)
+      setJoinedGroupId(null)
+      setIsJoined(false)
+      return
+    }
+
+    if (currentGroupIdRef.current === groupId && currentSelfRef.current) {
       setCurrentGroupId(groupId)
       setJoinedGroupId(groupId)
-      setIsMuted(muted)
       setIsJoined(true)
-      setJoinedAt(nextJoinedAt)
-      setParticipantsByGroup((prev) => {
-        const next: Record<string, VoicePresenceUser[]> = {}
-        Object.entries(prev).forEach(([existingGroupId, users]) => {
-          next[existingGroupId] = removeVoiceUser(users, info.id)
-        })
-        next[groupId] = upsertVoiceUser(next[groupId] ?? [], optimisticUser)
-        return next
+      return
+    }
+
+    const seq = joinSeqRef.current + 1
+    joinSeqRef.current = seq
+
+    const previousGroupId = currentGroupIdRef.current
+    const info = myInfoRef.current
+    const nextJoinedAt = Date.now()
+
+    const optimisticUser: VoicePresenceUser = {
+      id: info.id,
+      name: info.name,
+      avatarUrl: info.avatarUrl,
+      isMuted: muted,
+      joinedAt: nextJoinedAt,
+    }
+
+    stopActiveSound()
+    currentGroupIdRef.current = groupId
+    currentSelfRef.current = optimisticUser
+    isMutedRef.current = muted
+    setCurrentGroupId(groupId)
+    setJoinedGroupId(groupId)
+    setIsMuted(muted)
+    setIsJoined(true)
+    setJoinedAt(nextJoinedAt)
+
+    // Optimistically add self, remove self from old group
+    setParticipantsByGroup(prev => {
+      const next: Record<string, VoicePresenceUser[]> = {}
+      Object.entries(prev).forEach(([gId, users]) => {
+        next[gId] = removeUser(users, info.id)
       })
+      next[groupId] = upsertUser(next[groupId] ?? [], optimisticUser)
+      return next
+    })
 
-      if (previousGroupId && previousGroupId !== groupId) {
-        const previous = channelsRef.current.get(previousGroupId)
-        if (previous) {
-          void previous.channel.send({ type: 'broadcast', event: 'instant_leave', payload: { userId: info.id } })
-          void previous.channel.untrack().then(() => syncParticipants(previousGroupId, previous.channel))
-        }
-      }
+    // Leave previous room on socket
+    if (previousGroupId && previousGroupId !== groupId) {
+      socketRef.current?.emit('leave-voice-room', { roomId: previousGroupId })
+    }
 
-      const entry = ensureChannel(groupId)
+    // Get or wait for socket
+    let socket = socketRef.current
+    if (!socket) {
+      try { socket = await getSocket(); socketRef.current = socket } catch { return }
+    }
 
-      const subscribed = await waitForSubscribed(entry)
-      if (joinSeqRef.current !== seq || currentGroupIdRef.current !== groupId) return
-      if (!subscribed) {
-        removeChannel(groupId)
-        if (joinSeqRef.current === seq && currentGroupIdRef.current === groupId) {
-          void join(groupId, muted)
-        }
-        return
-      }
+    if (joinSeqRef.current !== seq) return
 
-      await entry.channel.track({
+    socket.emit('join-voice-room', { roomId: groupId, user: optimisticUser })
+  }, [stopActiveSound])
+
+  useEffect(() => {
+    joinRefFn.current = join
+  }, [join])
+
+  const toggleMute = useCallback(() => {
+    const groupId = currentGroupIdRef.current
+    const info = myInfoRef.current
+    if (!groupId || !info) return
+    const next = !isMutedRef.current
+    isMutedRef.current = next
+    const nextSelf: VoicePresenceUser = {
+      ...(currentSelfRef.current ?? {
         id: info.id,
         name: info.name,
         avatarUrl: info.avatarUrl,
-        isMuted: muted,
-        joinedAt: nextJoinedAt,
-      } satisfies VoicePresenceUser)
-      if (joinSeqRef.current !== seq || currentGroupIdRef.current !== groupId) return
-      syncParticipants(groupId, entry.channel)
-    },
-    [ensureChannel, removeChannel, syncParticipants, waitForSubscribed],
-  )
+        joinedAt: Date.now(),
+      }),
+      isMuted: next,
+    }
+    currentSelfRef.current = nextSelf
+    setIsMuted(next)
+    setParticipantsByGroup(prev => ({
+      ...prev,
+      [groupId]: upsertUser(prev[groupId] ?? [], nextSelf),
+    }))
+    socketRef.current?.emit('voice-room-audio-toggle', { roomId: groupId, muted: next })
+  }, [])
 
-  useEffect(() => {
-    joinRef.current = join
-  }, [join])
+  const setSpeaking = useCallback((speaking: boolean) => {
+    const groupId = currentGroupIdRef.current
+    const info = myInfoRef.current
+    if (!groupId || !info) return
+    const prev = currentSelfRef.current
+    if (!prev || prev.isSpeaking === speaking) return
+    const next: VoicePresenceUser = { ...prev, isSpeaking: speaking }
+    currentSelfRef.current = next
+    setParticipantsByGroup(p => ({
+      ...p,
+      [groupId]: upsertUser(p[groupId] ?? [], next),
+    }))
+    socketRef.current?.emit('voice-speaking', { roomId: groupId, speaking })
+  }, [])
 
   const playSound = useCallback(async (sound: string) => {
     const groupId = currentGroupIdRef.current
-    if (!groupId) return
-    const entry = channelsRef.current.get(groupId)
-    if (!entry) return
     const self = currentSelfRef.current
-    if (!self) return
-    const soundboardStartedAt = Date.now()
-    const updatedSelf: VoicePresenceUser = { ...self, soundboardFile: sound, soundboardStartedAt }
-    currentSelfRef.current = updatedSelf
-    void entry.channel.track(updatedSelf)
+    if (!groupId || !self) return
 
     const audio = new Audio(`/sounds/${sound}`)
     audio.volume = 0.8
-    const clearPresence = () => {
-      const cur = currentSelfRef.current
-      if (!cur) return
-      const cleared: VoicePresenceUser = { ...cur, soundboardFile: undefined, soundboardStartedAt: undefined }
-      currentSelfRef.current = cleared
-      void entry.channel.track(cleared)
-    }
-    startSoundboardAnalyser(audio, self.id, clearPresence)
-    void audio.play().catch(() => { setSoundboardUserId(null); setSoundboardIntensity(0); clearPresence() })
-
-    await entry.channel.send({
-      type: 'broadcast',
-      event: 'soundboard',
-      payload: { sound, senderId: self.id },
+    startSoundboardAnalyser(audio, self.id, () => {
+      socketRef.current?.emit('voice-soundboard-stop', { roomId: groupId })
     })
+    void audio.play().catch(() => { setSoundboardUserId(null); setSoundboardIntensity(0) })
+
+    socketRef.current?.emit('voice-soundboard', { roomId: groupId, sound })
   }, [startSoundboardAnalyser])
 
   const kick = useCallback(async (targetId: string, groupId = currentGroupIdRef.current) => {
     if (!groupId) return
-    const entry = ensureChannel(groupId)
-    await waitForSubscribed(entry)
-    await entry.channel.send({
-      type: 'broadcast',
-      event: 'kick',
-      payload: { targetId },
-    })
-  }, [ensureChannel, waitForSubscribed])
+    setParticipantsByGroup(prev => ({
+      ...prev,
+      [groupId]: removeUser(prev[groupId] ?? [], targetId),
+    }))
+    socketRef.current?.emit('voice-kick', { roomId: groupId, targetId })
+  }, [])
 
   const muteUser = useCallback(async (targetId: string, muted: boolean, groupId = currentGroupIdRef.current) => {
     if (!groupId) return
-    setParticipantsByGroup((prev) => ({
+    setParticipantsByGroup(prev => ({
       ...prev,
-      [groupId]: (prev[groupId] ?? []).map((u) =>
+      [groupId]: (prev[groupId] ?? []).map(u =>
         u.id === targetId ? { ...u, isMuted: muted } : u,
       ),
     }))
-    const entry = ensureChannel(groupId)
-    await waitForSubscribed(entry)
-    await entry.channel.send({
-      type: 'broadcast',
-      event: 'server-mute',
-      payload: { targetId, muted },
-    })
-  }, [ensureChannel, setParticipantsByGroup, waitForSubscribed])
+    socketRef.current?.emit('voice-server-mute', { roomId: groupId, targetId, muted })
+  }, [])
 
-  const moveUser = useCallback(
-    async (targetId: string, fromGroupId: string, targetGroupId: string) => {
-      if (!targetId || !fromGroupId || !targetGroupId || fromGroupId === targetGroupId) return
-      if (targetId === myInfoRef.current?.id) {
-        await joinRef.current(targetGroupId, isMutedRef.current)
-        return
-      }
-      setParticipantsByGroup((prev) => {
-        const movedUser = prev[fromGroupId]?.find((user) => user.id === targetId)
-        if (!movedUser) return prev
-        return {
-          ...prev,
-          [fromGroupId]: removeVoiceUser(prev[fromGroupId] ?? [], targetId),
-          [targetGroupId]: upsertVoiceUser(prev[targetGroupId] ?? [], {
-            ...movedUser,
-            joinedAt: Date.now(),
-          }),
-        }
-      })
-      let entry = ensureChannel(fromGroupId)
-      let subscribed = await waitForSubscribed(entry)
-      if (!subscribed) {
-        removeChannel(fromGroupId)
-        entry = ensureChannel(fromGroupId)
-        subscribed = await waitForSubscribed(entry)
-      }
-      if (!subscribed) return
-
-      await entry.channel.send({
-        type: 'broadcast',
-        event: 'move',
-        payload: { targetId, targetGroupId },
-      })
-    },
-    [ensureChannel, removeChannel, waitForSubscribed],
-  )
-
-  const toggleMute = useCallback(async () => {
-    const groupId = currentGroupIdRef.current
-    const info = myInfoRef.current
-    if (!groupId || !info) return
-    const entry = channelsRef.current.get(groupId)
-    if (!entry) return
-    const next = !isMuted
-    const nextSelf: VoicePresenceUser = {
-      id: info.id,
-      name: info.name,
-      avatarUrl: info.avatarUrl,
-      isMuted: next,
-      joinedAt,
+  const moveUser = useCallback(async (targetId: string, fromGroupId: string, targetGroupId: string) => {
+    if (!targetId || !fromGroupId || !targetGroupId || fromGroupId === targetGroupId) return
+    if (targetId === myInfoRef.current?.id) {
+      await joinRefFn.current(targetGroupId, isMutedRef.current)
+      return
     }
-    currentSelfRef.current = nextSelf
-    await waitForSubscribed(entry)
-    await entry.channel.track(nextSelf satisfies VoicePresenceUser)
-    setIsMuted(next)
-    syncParticipants(groupId, entry.channel)
-  }, [isMuted, joinedAt, syncParticipants, waitForSubscribed])
-
-  const observedKey = useMemo(
-    () => [...new Set(observedGroupIds.filter(Boolean))].sort().join('|'),
-    [observedGroupIds],
-  )
-
-  useEffect(() => {
-    const desired = new Set(observedKey ? observedKey.split('|') : [])
-    if (currentGroupIdRef.current) desired.add(currentGroupIdRef.current)
-
-    desired.forEach((groupId) => ensureChannel(groupId))
-
-    channelsRef.current.forEach((entry, groupId) => {
-      if (desired.has(groupId)) return
-      void entry.channel.unsubscribe()
-      createClient().removeChannel(entry.channel)
-      channelsRef.current.delete(groupId)
-      setParticipantsByGroup((prev) => {
-        const next = { ...prev }
-        delete next[groupId]
-        return next
-      })
+    setParticipantsByGroup(prev => {
+      const movedUser = prev[fromGroupId]?.find(u => u.id === targetId)
+      if (!movedUser) return prev
+      return {
+        ...prev,
+        [fromGroupId]: removeUser(prev[fromGroupId] ?? [], targetId),
+        [targetGroupId]: upsertUser(prev[targetGroupId] ?? [], { ...movedUser, joinedAt: Date.now() }),
+      }
     })
-  }, [ensureChannel, observedKey])
-
-  useEffect(() => {
-    const supabase = createClient()
-    const channels = channelsRef.current
-    return () => {
-      channels.forEach((entry) => {
-        void entry.channel.untrack()
-        void entry.channel.unsubscribe()
-        supabase.removeChannel(entry.channel)
-      })
-      channels.clear()
-    }
+    socketRef.current?.emit('voice-move-user', { fromRoomId: fromGroupId, targetRoomId: targetGroupId, targetId })
   }, [])
 
   const participants = currentGroupId ? (participantsByGroup[currentGroupId] ?? []) : []
@@ -655,5 +638,6 @@ export function useVoicePresence(
     soundboardUserId,
     soundboardIntensity,
     sendVoiceInvite,
+    setSpeaking,
   }
 }

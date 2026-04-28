@@ -15,17 +15,40 @@ import { ConfigService } from '@nestjs/config';
 
 interface WebRTCSignal {
   type: 'offer' | 'answer' | 'ice-candidate';
-  payload: any;
+  payload: unknown;
   roomId: string;
   targetUserId?: string;
+  fromId?: string;
+}
+
+interface VoiceParticipantInfo {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+  isMuted: boolean;
+  isSpeaking?: boolean;
+  joinedAt: number;
+  soundboardFile?: string;
+  soundboardStartedAt?: number;
+  isScreenSharing?: boolean;
+  isCameraOn?: boolean;
+}
+
+interface VoiceRoomParticipant {
+  socketId: string;
+  socket: Socket;
+  user: VoiceParticipantInfo;
 }
 
 interface VoiceRoom {
   id: string;
-  participants: Map<string, Socket>;
+  participants: Map<string, VoiceRoomParticipant>;
   hostId: string;
   createdAt: Date;
 }
+
+const participantRoom = (id: string) => `voice-room-${id}`;
+const presenceRoom = (id: string) => `voice-presence-${id}`;
 
 @WebSocketGateway({
   cors: {
@@ -38,14 +61,15 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
 
   private readonly logger = new Logger(VoiceGateway.name);
   private voiceRooms = new Map<string, VoiceRoom>();
-  private userSockets = new Map<string, Socket>();
+  private userSockets = new Map<string, Set<Socket>>();
+  private activeRoomByUser = new Map<string, string>();
 
   constructor(private readonly configService: ConfigService) {}
 
   afterInit(server: Server) {
     const supabaseUrl = this.configService.get<string>('NEXT_PUBLIC_SUPABASE_URL') as string;
     server.use(SocketAuthMiddleware(supabaseUrl));
-    this.logger.log('Voice Gateway initialized for WebRTC signaling');
+    this.logger.log('Voice Gateway initialized');
   }
 
   handleConnection(client: Socket) {
@@ -55,35 +79,79 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
       return;
     }
 
-    this.userSockets.set(userId, client);
+    if (!this.userSockets.has(userId)) {
+      this.userSockets.set(userId, new Set());
+    }
+    this.userSockets.get(userId)!.add(client);
     client.data.userId = userId;
-    this.logger.log(`User ${userId} connected to voice gateway [${client.id}]`);
+    this.logger.log(`User ${userId} connected [${client.id}]`);
   }
 
   handleDisconnect(client: Socket) {
     const userId = client.data.user?.userId;
     if (userId) {
-      this.userSockets.delete(userId);
-      this.leaveAllVoiceRooms(userId);
-      this.logger.log(`User ${userId} disconnected from voice gateway [${client.id}]`);
+      const sockets = this.userSockets.get(userId);
+      sockets?.delete(client);
+      if (sockets?.size === 0) {
+        this.userSockets.delete(userId);
+      }
+      this.leaveAllVoiceRooms(userId, client.id);
+      this.logger.log(`User ${userId} disconnected [${client.id}]`);
     }
   }
 
-  private leaveAllVoiceRooms(userId: string) {
+  private leaveAllVoiceRooms(userId: string, socketId?: string) {
     for (const [roomId, room] of this.voiceRooms.entries()) {
-      if (room.participants.has(userId)) {
+      const participant = room.participants.get(userId);
+      if (participant && (!socketId || participant.socketId === socketId)) {
         this.leaveVoiceRoom(roomId, userId);
       }
+    }
+  }
+
+  // Observers: get presence updates without being a participant.
+  @SubscribeMessage('subscribe-voice-rooms')
+  handleSubscribe(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomIds: string[] },
+  ) {
+    if (!Array.isArray(data?.roomIds)) return;
+    for (const roomId of data.roomIds) {
+      if (!roomId) continue;
+      client.join(presenceRoom(roomId));
+      // Send current state immediately
+      client.emit('voice-room-users', {
+        roomId,
+        participants: this.getRoomParticipants(roomId),
+      });
+    }
+  }
+
+  @SubscribeMessage('unsubscribe-voice-rooms')
+  handleUnsubscribe(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomIds: string[] },
+  ) {
+    if (!Array.isArray(data?.roomIds)) return;
+    for (const roomId of data.roomIds) {
+      if (!roomId) continue;
+      client.leave(presenceRoom(roomId));
     }
   }
 
   @SubscribeMessage('join-voice-room')
   async handleJoinVoiceRoom(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { roomId: string },
+    @MessageBody() data: { roomId: string; user?: VoiceParticipantInfo },
   ) {
     const userId = client.data.user?.userId;
     if (!userId) return;
+    if (!data.roomId) return { success: false, message: 'Missing roomId' };
+
+    const previousRoomId = this.activeRoomByUser.get(userId);
+    if (previousRoomId && previousRoomId !== data.roomId) {
+      this.leaveVoiceRoom(previousRoomId, userId);
+    }
 
     let room = this.voiceRooms.get(data.roomId);
     if (!room) {
@@ -96,21 +164,43 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
       this.voiceRooms.set(data.roomId, room);
     }
 
-    room.participants.set(userId, client);
-    client.join(`voice-room-${data.roomId}`);
+    const participant: VoiceParticipantInfo = {
+      id: userId,
+      name: data.user?.name ?? 'Unknown',
+      avatarUrl: data.user?.avatarUrl ?? null,
+      isMuted: data.user?.isMuted ?? false,
+      isSpeaking: data.user?.isSpeaking,
+      joinedAt: data.user?.joinedAt ?? Date.now(),
+      soundboardFile: data.user?.soundboardFile,
+      soundboardStartedAt: data.user?.soundboardStartedAt,
+      isScreenSharing: data.user?.isScreenSharing ?? false,
+      isCameraOn: data.user?.isCameraOn ?? false,
+    };
 
-    // Notify other participants
-    client.to(`voice-room-${data.roomId}`).emit('user-joined-voice', {
+    room.participants.set(userId, {
+      socketId: client.id,
+      socket: client,
+      user: participant,
+    });
+    this.activeRoomByUser.set(userId, data.roomId);
+    client.join(participantRoom(data.roomId));
+    client.join(presenceRoom(data.roomId));
+
+    // Notify all observers + participants
+    this.server.to(presenceRoom(data.roomId)).emit('user-joined-voice', {
       userId,
       roomId: data.roomId,
+      user: participant,
     });
 
-    // Send current participants to the new user
-    const participants = Array.from(room.participants.keys()).filter(id => id !== userId);
+    // Send full participant list to the new joiner
+    const participants = this.getRoomParticipants(data.roomId).filter((u) => u.id !== userId);
     client.emit('voice-room-participants', {
       roomId: data.roomId,
-      participants,
+      participants: participants.map((u) => u.id),
+      users: participants,
     });
+    this.emitRoomUsers(data.roomId);
 
     this.logger.log(`User ${userId} joined voice room ${data.roomId}`);
     return { success: true, roomId: data.roomId };
@@ -123,25 +213,43 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
   ) {
     const userId = client.data.user?.userId;
     if (!userId) return;
-
     this.leaveVoiceRoom(data.roomId, userId);
     return { success: true };
+  }
+
+  private getRoomParticipants(roomId: string): VoiceParticipantInfo[] {
+    const room = this.voiceRooms.get(roomId);
+    if (!room) return [];
+    return Array.from(room.participants.values()).map((p) => p.user);
+  }
+
+  private emitRoomUsers(roomId: string) {
+    this.server.to(presenceRoom(roomId)).emit('voice-room-users', {
+      roomId,
+      participants: this.getRoomParticipants(roomId),
+    });
   }
 
   private leaveVoiceRoom(roomId: string, userId: string) {
     const room = this.voiceRooms.get(roomId);
     if (!room) return;
 
+    const participant = room.participants.get(userId);
     room.participants.delete(userId);
-    this.server.to(`voice-room-${roomId}`).emit('user-left-voice', {
-      userId,
-      roomId,
-    });
+    if (this.activeRoomByUser.get(userId) === roomId) {
+      this.activeRoomByUser.delete(userId);
+    }
+    // Leave the participant room only — keep observer subscription if still observing
+    participant?.socket.leave(participantRoom(roomId));
 
-    // Clean up empty rooms
+    this.server.to(presenceRoom(roomId)).emit('user-left-voice', { userId, roomId });
+    participant?.socket.emit('user-left-voice', { userId, roomId });
+
     if (room.participants.size === 0) {
       this.voiceRooms.delete(roomId);
       this.logger.log(`Voice room ${roomId} deleted (empty)`);
+    } else {
+      this.emitRoomUsers(roomId);
     }
   }
 
@@ -153,20 +261,16 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
     const userId = client.data.user?.userId;
     if (!userId) return;
 
-    // Forward signal to target user or broadcast to room
     if (signal.targetUserId) {
-      const targetSocket = this.userSockets.get(signal.targetUserId);
+      const room = this.voiceRooms.get(signal.roomId);
+      const targetSocket =
+        room?.participants.get(signal.targetUserId)?.socket ??
+        Array.from(this.userSockets.get(signal.targetUserId) ?? [])[0];
       if (targetSocket) {
-        targetSocket.emit('webrtc-signal', {
-          ...signal,
-          senderId: userId,
-        });
+        targetSocket.emit('webrtc-signal', { ...signal, senderId: userId });
       }
     } else {
-      client.to(`voice-room-${signal.roomId}`).emit('webrtc-signal', {
-        ...signal,
-        senderId: userId,
-      });
+      client.to(participantRoom(signal.roomId)).emit('webrtc-signal', { ...signal, senderId: userId });
     }
   }
 
@@ -178,7 +282,12 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
     const userId = client.data.user?.userId;
     if (!userId) return;
 
-    client.to(`voice-room-${data.roomId}`).emit('user-audio-toggled', {
+    const participant = this.voiceRooms.get(data.roomId)?.participants.get(userId);
+    if (participant) {
+      participant.user = { ...participant.user, isMuted: data.muted };
+      this.emitRoomUsers(data.roomId);
+    }
+    this.server.to(presenceRoom(data.roomId)).emit('user-audio-toggled', {
       userId,
       roomId: data.roomId,
       muted: data.muted,
@@ -192,11 +301,170 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
   ) {
     const userId = client.data.user?.userId;
     if (!userId) return;
-
-    client.to(`voice-room-${data.roomId}`).emit('user-video-toggled', {
+    const participant = this.voiceRooms.get(data.roomId)?.participants.get(userId);
+    if (participant) {
+      participant.user = { ...participant.user, isCameraOn: data.enabled };
+      this.emitRoomUsers(data.roomId);
+    }
+    this.server.to(presenceRoom(data.roomId)).emit('user-video-toggled', {
       userId,
       roomId: data.roomId,
       enabled: data.enabled,
+    });
+  }
+
+  @SubscribeMessage('voice-soundboard')
+  handleSoundboard(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomId: string; sound: string },
+  ) {
+    const userId = client.data.user?.userId;
+    if (!userId || !data.roomId || !data.sound) return;
+
+    const room = this.voiceRooms.get(data.roomId);
+    if (!room) return;
+
+    const startedAt = Date.now();
+    const participant = room.participants.get(userId);
+    if (participant) {
+      participant.user = {
+        ...participant.user,
+        soundboardFile: data.sound,
+        soundboardStartedAt: startedAt,
+      };
+    }
+
+    client.to(participantRoom(data.roomId)).emit('voice-soundboard', {
+      senderId: userId,
+      roomId: data.roomId,
+      sound: data.sound,
+      startedAt,
+    });
+  }
+
+  @SubscribeMessage('voice-screen-share')
+  handleScreenShare(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomId: string; enabled: boolean },
+  ) {
+    const userId = client.data.user?.userId;
+    if (!userId || !data.roomId) return;
+
+    const room = this.voiceRooms.get(data.roomId);
+    if (!room) return;
+
+    const participant = room.participants.get(userId);
+    if (participant) {
+      participant.user = { ...participant.user, isScreenSharing: data.enabled };
+      this.emitRoomUsers(data.roomId);
+    }
+
+    this.server.to(presenceRoom(data.roomId)).emit('user-screen-toggled', {
+      userId,
+      roomId: data.roomId,
+      enabled: data.enabled,
+    });
+  }
+
+  @SubscribeMessage('voice-soundboard-stop')
+  handleSoundboardStop(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomId: string },
+  ) {
+    const userId = client.data.user?.userId;
+    if (!userId || !data.roomId) return;
+
+    const participant = this.voiceRooms.get(data.roomId)?.participants.get(userId);
+    if (participant) {
+      participant.user = { ...participant.user, soundboardFile: undefined, soundboardStartedAt: undefined };
+    }
+
+    client.to(participantRoom(data.roomId)).emit('voice-soundboard-stop', {
+      senderId: userId,
+      roomId: data.roomId,
+    });
+  }
+
+  @SubscribeMessage('voice-kick')
+  handleKick(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomId: string; targetId: string },
+  ) {
+    const userId = client.data.user?.userId;
+    if (!userId || !data.roomId || !data.targetId) return;
+
+    const room = this.voiceRooms.get(data.roomId);
+    if (!room) return;
+
+    const targetParticipant = room.participants.get(data.targetId);
+    if (targetParticipant) {
+      targetParticipant.socket.emit('voice-kicked', { roomId: data.roomId, kickedBy: userId });
+    }
+
+    this.leaveVoiceRoom(data.roomId, data.targetId);
+  }
+
+  @SubscribeMessage('voice-server-mute')
+  handleServerMute(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomId: string; targetId: string; muted: boolean },
+  ) {
+    const userId = client.data.user?.userId;
+    if (!userId || !data.roomId || !data.targetId) return;
+
+    const room = this.voiceRooms.get(data.roomId);
+    if (!room) return;
+
+    const participant = room.participants.get(data.targetId);
+    if (participant) {
+      participant.user = { ...participant.user, isMuted: data.muted };
+      participant.socket.emit('voice-server-muted', {
+        roomId: data.roomId,
+        muted: data.muted,
+        mutedBy: userId,
+      });
+      this.emitRoomUsers(data.roomId);
+    }
+  }
+
+  @SubscribeMessage('voice-move-user')
+  handleMoveUser(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { fromRoomId: string; targetRoomId: string; targetId: string },
+  ) {
+    const userId = client.data.user?.userId;
+    if (!userId || !data.fromRoomId || !data.targetRoomId || !data.targetId) return;
+
+    const room = this.voiceRooms.get(data.fromRoomId);
+    if (!room) return;
+
+    const targetParticipant = room.participants.get(data.targetId);
+    if (targetParticipant) {
+      targetParticipant.socket.emit('voice-moved', {
+        fromRoomId: data.fromRoomId,
+        targetRoomId: data.targetRoomId,
+        movedBy: userId,
+      });
+    }
+  }
+
+  @SubscribeMessage('voice-speaking')
+  handleSpeaking(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomId: string; speaking: boolean },
+  ) {
+    const userId = client.data.user?.userId;
+    if (!userId || !data.roomId) return;
+
+    const participant = this.voiceRooms.get(data.roomId)?.participants.get(userId);
+    if (participant) {
+      participant.user = { ...participant.user, isSpeaking: data.speaking };
+    }
+
+    this.server.to(presenceRoom(data.roomId)).emit('user-speaking', {
+      userId,
+      roomId: data.roomId,
+      speaking: data.speaking,
     });
   }
 
@@ -205,17 +473,19 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomId: string },
   ) {
+    const userId = client.data.user?.userId;
     const room = this.voiceRooms.get(data.roomId);
     if (!room) {
       client.emit('voice-room-error', { message: 'Room not found' });
       return;
     }
 
-    client.emit('voice-room-info', {
+    // Send participant list so WebRTC can initialize peer connections
+    const participants = this.getRoomParticipants(data.roomId).filter((u) => u.id !== userId);
+    client.emit('voice-room-participants', {
       roomId: data.roomId,
-      participants: Array.from(room.participants.keys()),
-      hostId: room.hostId,
-      createdAt: room.createdAt,
+      participants: participants.map((u) => u.id),
+      users: participants,
     });
   }
 }

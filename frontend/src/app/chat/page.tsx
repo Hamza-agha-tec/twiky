@@ -21,7 +21,8 @@ import {
 } from '@/components/chat/channels-panel'
 import { ChatWindow } from '@/components/chat/chat-window'
 import { VoiceGroupView } from '@/components/chat/voice-group-view'
-import { useVoicePresence, type VoicePresenceUser, type VoiceInvitePayload } from '@/hooks/use-voice-presence'
+import { useVoicePresence, type VoicePresenceUser } from '@/hooks/use-voice-presence'
+import { useWebRTC } from '@/hooks/use-webrtc'
 import { DirectProfileSidebar } from '@/components/chat/direct-profile-sidebar'
 import { FeedProfileSidebarDock } from '@/components/chat/feed-profile-sidebar-dock'
 import { GoalsPanel } from '@/components/chat/goals-panel'
@@ -41,10 +42,10 @@ import {
 } from '@/components/chat/workspace-sidebar'
 import type { CreateEntityValues } from '@/components/chat/create-entity-dialog'
 import { useChannels, useCreateChannel, useUpdateChannel, CHANNEL_KEYS, CHANNEL_MEMBER_KEYS } from '@/hooks/use-channels'
-import { useChannelGroups, useCreateGroup, useGroupMembers, useGroupMessages, backendGroupToMock } from '@/hooks/use-groups'
+import { useCreateGroup, useGroupMembers, useGroupMessages, backendGroupToMock } from '@/hooks/use-groups'
 import { useToggleGroupMessageReaction } from '@/hooks/use-groups'
 import { groupsApi, type GroupMessage } from '@/lib/groups-api'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueryClient, useQueries } from '@tanstack/react-query'
 import { GROUP_KEYS } from '@/hooks/use-groups'
 import type { FeedPost } from '@/components/chat/channel-feed'
 import { type ChatMessage } from '@/hooks/use-messaging'
@@ -270,6 +271,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const [activeGroupId, setActiveGroupId] = useState('')
   const [channelFeedClosed, setChannelFeedClosed] = useState(false)
   const [activeVoiceGroupId, setActiveVoiceGroupId] = useState<string | null>(null)
+  const [deafened, setDeafened] = useState(false)
   const [pendingJoinRequests, setPendingJoinRequests] = useState<Record<string, JoinRequestPayload[]>>({})
   const [voiceProfileTarget, setVoiceProfileTarget] = useState<VoicePresenceUser | null>(null)
   const [voiceElapsed, setVoiceElapsed] = useState<string | null>(null)
@@ -298,7 +300,29 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const { data: backendChannels = [] } = useChannels()
   const createChannel = useCreateChannel()
   const updateChannel = useUpdateChannel()
-  const { data: backendGroups = [] } = useChannelGroups(activeChannelId || undefined)
+  const channelGroupQueries = useQueries({
+    queries: backendChannels.map((ch) => ({
+      queryKey: GROUP_KEYS.byChannel(ch.id),
+      queryFn: () => groupsApi.getChannelGroups(ch.id),
+      staleTime: 30_000,
+      enabled: !!ch.id,
+    })),
+  })
+
+  const allBackendGroupsById = useMemo(() => {
+    const result: Record<string, ReturnType<typeof backendGroupToMock>[]> = {}
+    backendChannels.forEach((ch, idx) => {
+      const data = channelGroupQueries[idx]?.data
+      if (data) result[ch.id] = data.map(backendGroupToMock)
+    })
+    return result
+  }, [backendChannels, channelGroupQueries])
+
+  const mergedGroupsById = useMemo(
+    () => ({ ...allBackendGroupsById, ...channelGroupsById }),
+    [allBackendGroupsById, channelGroupsById],
+  )
+
   const createGroup = useCreateGroup(activeChannelId)
   const isRealGroupId = /^[0-9a-f-]{36}$/i.test(activeGroupId)
   const { data: rawMessages } = useGroupMessages(isRealGroupId ? activeGroupId : undefined)
@@ -408,7 +432,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const workspaceChannels = useMemo(
     () =>
       backendChannels.map((channel, index) => {
-        const wc = toWorkspaceChannel(channel, index, channelGroupsById)
+        const wc = toWorkspaceChannel(channel, index, mergedGroupsById)
         return {
           ...wc,
           groups: wc.groups.map((g) => ({
@@ -417,7 +441,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           })),
         }
       }),
-    [backendChannels, channelGroupsById, mentionedGroupIds],
+    [backendChannels, mergedGroupsById, mentionedGroupIds],
   )
 
   const voiceGroupIds = useMemo(
@@ -470,6 +494,24 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       { duration: 30000, id: `voice-invite-${groupId}` },
     )
   })
+
+  const webrtc = useWebRTC(voice.joinedGroupId, profile?.id ?? null, voice.isMuted)
+
+  const handleCameraToggle = useCallback(async (enabled: boolean) => {
+    const groupId = voice.joinedGroupId
+    if (!groupId) return
+    const socket = await getSocket()
+    socket.emit('voice-room-video-toggle', { roomId: groupId, enabled })
+  }, [voice.joinedGroupId])
+
+  useEffect(() => {
+    voice.setSpeaking(webrtc.isSpeaking)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [webrtc.isSpeaking])
+
+  useEffect(() => {
+    setActiveVoiceGroupId(voice.joinedGroupId)
+  }, [voice.joinedGroupId])
 
   const handleJoinVoiceGroup = useCallback((groupId: string) => {
     const channelForGroup = workspaceChannels.find((ch) => ch.groups.some((g) => g.id === groupId))
@@ -607,15 +649,6 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     setChannelFeedClosed(false)
     setShowDirectProfile(false)
   }, [setActiveView, voice.currentGroupId])
-
-  // Sync real backend groups into channelGroupsById when they load
-  useEffect(() => {
-    if (!activeChannelId || backendGroups.length === 0) return;
-    setChannelGroupsById((prev) => ({
-      ...prev,
-      [activeChannelId]: backendGroups.map(backendGroupToMock),
-    }));
-  }, [activeChannelId, backendGroups]);
 
   const { mutate: markNotifAsRead } = useMarkAsRead()
 
@@ -981,13 +1014,11 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
 
   function handleGroupUpdated(groupId: string, updates: Partial<MockChannelGroup>) {
     if (!activeChannelId) return
-    setChannelGroupsById((prev) => {
-      const groups = prev[activeChannelId] ?? []
-      return {
-        ...prev,
-        [activeChannelId]: groups.map((g) => g.id === groupId ? { ...g, ...updates } : g),
-      }
-    })
+    const baseGroups = mergedGroupsById[activeChannelId] ?? []
+    setChannelGroupsById((prev) => ({
+      ...prev,
+      [activeChannelId]: baseGroups.map((g) => g.id === groupId ? { ...g, ...updates } : g),
+    }))
   }
 
   function handleCreateGroup(values: CreateEntityValues) {
@@ -1297,6 +1328,14 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             onSendVoiceInvite={(inviteeId) => voice.sendVoiceInvite(inviteeId, activeGroup.id, activeGroup.label)}
             soundboardUserId={voice.soundboardUserId}
             soundboardIntensity={voice.soundboardIntensity}
+            deafened={deafened}
+            onToggleDeafen={() => setDeafened((v) => !v)}
+            remoteStreams={webrtc.remoteStreams}
+            remoteScreenStreams={webrtc.remoteScreenStreams}
+            addVideoTrack={webrtc.addVideoTrack}
+            removeVideoTrack={webrtc.removeVideoTrack}
+            onScreenShareToggle={webrtc.signalScreenShare}
+            onCameraToggle={handleCameraToggle}
           />
           <FeedProfileSidebarDock
             open={!!voiceProfileTarget}
@@ -1592,6 +1631,11 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         )}
       </div>
 
+      {/* Persistent WebRTC audio — outside conditional so audio survives navigation */}
+      {Array.from(webrtc.remoteStreams.entries()).map(([userId, stream]) => (
+        <RemoteAudio key={userId} stream={stream} deafened={deafened} />
+      ))}
+
       <Dialog open={startDmOpen} onOpenChange={setStartDmOpen}>
         <DialogContent className="sm:max-w-[420px] p-0 overflow-hidden">
           <DialogHeader className="border-b border-border px-4 py-3">
@@ -1654,6 +1698,30 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       </Dialog>
     </>
   )
+}
+
+function RemoteAudio({ stream, deafened }: { stream: MediaStream; deafened: boolean }) {
+  const ref = useRef<HTMLAudioElement>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.srcObject = stream
+    el.muted = deafened
+    void el.play().catch(() => {})
+    const onAddTrack = () => {
+      el.srcObject = stream
+      void el.play().catch(() => {})
+    }
+    stream.addEventListener('addtrack', onAddTrack)
+    return () => stream.removeEventListener('addtrack', onAddTrack)
+  }, [stream]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.muted = deafened
+    if (!deafened) void el.play().catch(() => {})
+  }, [deafened])
+  return <audio ref={ref} autoPlay />
 }
 
 export default function ChatPage() {
