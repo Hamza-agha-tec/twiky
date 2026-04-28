@@ -44,7 +44,7 @@ import type { CreateEntityValues } from '@/components/chat/create-entity-dialog'
 import { useChannels, useCreateChannel, useUpdateChannel, CHANNEL_KEYS, CHANNEL_MEMBER_KEYS } from '@/hooks/use-channels'
 import { useCreateGroup, useGroupMembers, useGroupMessages, backendGroupToMock } from '@/hooks/use-groups'
 import { useToggleGroupMessageReaction } from '@/hooks/use-groups'
-import { groupsApi, type GroupMessage } from '@/lib/groups-api'
+import { groupsApi, type BackendGroup, type GroupMessage } from '@/lib/groups-api'
 import { useQueryClient, useQueries } from '@tanstack/react-query'
 import { GROUP_KEYS } from '@/hooks/use-groups'
 import type { FeedPost } from '@/components/chat/channel-feed'
@@ -95,7 +95,6 @@ type PersistedChatState = {
   activeView: ActiveView
   channelTab: MainAreaTab
   settingsSection: string
-  channelGroupsById: Record<string, MockChannelGroup[]>
   syntheticDirectChats: Record<string, FeedDirectConversationTarget>
   syntheticDirectMessages: Record<string, ChatMessage[]>
   workspaceCollapsed: boolean
@@ -153,13 +152,6 @@ function readPersistedChatState(): Partial<PersistedChatState> {
     if (isOneOf(parsed.activeSurface, CHAT_SURFACES)) next.activeSurface = parsed.activeSurface
     if (isOneOf(parsed.activeView, ACTIVE_VIEWS)) next.activeView = parsed.activeView
     if (isOneOf(parsed.channelTab, MAIN_AREA_TABS)) next.channelTab = parsed.channelTab
-    if (
-      parsed.channelGroupsById &&
-      typeof parsed.channelGroupsById === 'object' &&
-      !Array.isArray(parsed.channelGroupsById)
-    ) {
-      next.channelGroupsById = parsed.channelGroupsById as Record<string, MockChannelGroup[]>
-    }
     if (typeof parsed.settingsSection === 'string') next.settingsSection = parsed.settingsSection
     if (
       parsed.syntheticDirectChats &&
@@ -319,7 +311,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   }, [backendChannels, channelGroupQueries])
 
   const mergedGroupsById = useMemo(
-    () => ({ ...allBackendGroupsById, ...channelGroupsById }),
+    () => ({ ...channelGroupsById, ...allBackendGroupsById }),
     [allBackendGroupsById, channelGroupsById],
   )
 
@@ -713,7 +705,6 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     if (!lockedView && persisted.activeView) setActiveViewState(persisted.activeView)
     if (persisted.settingsSection) setSettingsSection(persisted.settingsSection)
     if (persisted.activeSurface) setActiveSurface(persisted.activeSurface)
-    if (persisted.channelGroupsById) setChannelGroupsById(persisted.channelGroupsById)
     if (persisted.syntheticDirectChats) setSyntheticDirectChats(persisted.syntheticDirectChats)
     if (persisted.syntheticDirectMessages) setSyntheticDirectMessages(persisted.syntheticDirectMessages)
     if (persisted.workspaceMode) setWorkspaceMode(persisted.workspaceMode)
@@ -735,7 +726,6 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         activeGroupId: activeGroup?.id ?? activeGroupId,
         activeSurface,
         activeView,
-        channelGroupsById,
         channelTab,
         settingsSection,
         syntheticDirectChats,
@@ -754,7 +744,6 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     activeGroupId,
     activeSurface,
     activeView,
-    channelGroupsById,
     channelTab,
     settingsSection,
     syntheticDirectChats,
@@ -1033,10 +1022,10 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       {
         onSuccess: (group) => {
           const newGroup = backendGroupToMock(group)
-          setChannelGroupsById((prev) => ({
-            ...prev,
-            [activeChannel.id]: [...(prev[activeChannel.id] ?? activeChannel.groups), newGroup],
-          }))
+          queryClient.setQueryData<BackendGroup[]>(GROUP_KEYS.byChannel(activeChannel.id), (prev = []) => {
+            if (prev.some((existing) => existing.id === group.id)) return prev
+            return [...prev, group]
+          })
           if (!(newGroup.kind === 'voice' && voiceRef.current.currentGroupId)) {
             setActiveGroupId(newGroup.id)
             setActiveSurface('channel')
@@ -1289,6 +1278,54 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       )
     }
 
+    const refreshChannelGroups = (channelId?: string | null) => {
+      if (!mounted || !channelId) return
+      queryClient.invalidateQueries({ queryKey: GROUP_KEYS.byChannel(channelId) })
+      setChannelGroupsById((prev) => {
+        if (!prev[channelId]) return prev
+        const next = { ...prev }
+        delete next[channelId]
+        return next
+      })
+    }
+
+    const onChannelGroupCreated = (payload: { channelId?: string; group?: BackendGroup }) => {
+      const channelId = payload.channelId ?? payload.group?.channel_id
+      if (channelId && payload.group) {
+        queryClient.setQueryData<BackendGroup[]>(GROUP_KEYS.byChannel(channelId), (prev = []) => {
+          if (prev.some((group) => group.id === payload.group!.id)) return prev
+          return [...prev, payload.group!]
+        })
+      }
+      refreshChannelGroups(channelId)
+    }
+
+    const onChannelGroupUpdated = (payload: { channelId?: string; group?: BackendGroup }) => {
+      const channelId = payload.channelId ?? payload.group?.channel_id
+      if (channelId && payload.group) {
+        queryClient.setQueryData<BackendGroup[]>(GROUP_KEYS.byChannel(channelId), (prev = []) =>
+          prev.map((group) => group.id === payload.group!.id ? { ...group, ...payload.group! } : group),
+        )
+      }
+      refreshChannelGroups(channelId)
+    }
+
+    const onChannelGroupDeleted = (payload: { channelId?: string; groupId?: string }) => {
+      if (payload.channelId && payload.groupId) {
+        queryClient.setQueryData<BackendGroup[]>(GROUP_KEYS.byChannel(payload.channelId), (prev = []) =>
+          prev.filter((group) => group.id !== payload.groupId),
+        )
+      }
+      refreshChannelGroups(payload.channelId)
+      if (payload.groupId && activeGroupId === payload.groupId) {
+        setActiveGroupId('')
+        setChannelTab('feed')
+      }
+      if (payload.groupId && activeVoiceGroupId === payload.groupId) {
+        setActiveVoiceGroupId(null)
+      }
+    }
+
     getSocket().then((socket) => {
       if (!mounted) return
       s = socket
@@ -1296,6 +1333,9 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       s.on('channelJoinRequest', onChannelJoinRequest)
       s.on('groupJoinAccepted', onGroupJoinAccepted)
       s.on('channelJoinAccepted', onChannelJoinAccepted)
+      s.on('channelGroupCreated', onChannelGroupCreated)
+      s.on('channelGroupUpdated', onChannelGroupUpdated)
+      s.on('channelGroupDeleted', onChannelGroupDeleted)
     })
 
     return () => {
@@ -1304,9 +1344,12 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       s?.off('channelJoinRequest', onChannelJoinRequest)
       s?.off('groupJoinAccepted', onGroupJoinAccepted)
       s?.off('channelJoinAccepted', onChannelJoinAccepted)
+      s?.off('channelGroupCreated', onChannelGroupCreated)
+      s?.off('channelGroupUpdated', onChannelGroupUpdated)
+      s?.off('channelGroupDeleted', onChannelGroupDeleted)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.id])
+  }, [profile?.id, activeGroupId, activeVoiceGroupId])
 
   const voiceParticipants: Record<string, VoiceParticipant[]> = Object.fromEntries(
     Object.entries(voice.participantsByGroup).map(([groupId, participants]) => [

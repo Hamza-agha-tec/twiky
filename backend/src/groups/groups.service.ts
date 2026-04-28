@@ -13,6 +13,25 @@ export class GroupsService {
         private readonly chatGateway: ChatGateway,
     ) { }
 
+    private async emitChannelGroupEvent(
+        channelId: string,
+        event: 'channelGroupCreated' | 'channelGroupUpdated' | 'channelGroupDeleted',
+        payload: Record<string, unknown>,
+    ) {
+        const { data: members } = await this.supabaseService
+            .getClient()
+            .from('channel_members')
+            .select('user_id')
+            .eq('channel_id', channelId);
+
+        for (const member of (members ?? [])) {
+            this.chatGateway.server?.to(`user_${member.user_id}`).emit(event, {
+                channelId,
+                ...payload,
+            });
+        }
+    }
+
     async createGroup(channelId: string, creatorUserId: string, createGroupDto: CreateGroupDto) {
         const { data: member } = await this.supabaseService
             .getClient()
@@ -47,6 +66,8 @@ export class GroupsService {
             .getClient()
             .from('group_members')
             .insert({ group_id: data.id, user_id: creatorUserId, role: 'ADMIN' });
+
+        await this.emitChannelGroupEvent(channelId, 'channelGroupCreated', { group: data });
 
         return data;
     }
@@ -120,6 +141,7 @@ export class GroupsService {
             .eq('id', groupId);
 
         if (error) throw new Error(`Failed to delete group: ${error.message}`);
+        await this.emitChannelGroupEvent(group.channel_id, 'channelGroupDeleted', { groupId });
         return { success: true };
     }
 
@@ -154,6 +176,7 @@ export class GroupsService {
             .single();
 
         if (error) throw new Error(`Failed to update group: ${error.message}`);
+        await this.emitChannelGroupEvent(group.channel_id, 'channelGroupUpdated', { group: updated });
         return updated;
     }
 
