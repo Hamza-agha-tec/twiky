@@ -4,8 +4,8 @@ import { useParams, useRouter } from 'next/navigation'
 import { useProfile, useUserByUsername, useUserPosts, useUserFollowers, useUserFollowing, useSendFollowRequest } from '@/hooks/use-user'
 import { IconRail, type ActiveView } from '@/components/chat/icon-rail'
 import { useNotifications } from '@/hooks/use-notifications'
-import { useState } from 'react'
-import { ArrowLeft, Globe, ImageIcon, MessageSquare } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ArrowLeft, Gamepad2, Globe, ImageIcon, MessageSquare } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { toast } from 'sonner'
 
@@ -22,6 +22,13 @@ function formatPostTime(iso: string) {
   if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
   return d.toLocaleDateString('en', { month: 'short', day: 'numeric' })
+}
+
+type RoomPreview = {
+  image: string
+  savedAt: string
+  username: string | null
+  objectCount: number
 }
 
 export default function ProfilePage() {
@@ -44,6 +51,7 @@ export default function ProfilePage() {
   const [followRequested, setFollowRequested] = useState(false)
   const [tab, setTab] = useState<'posts' | 'about'>('posts')
   const [followListView, setFollowListView] = useState<'followers' | 'following' | null>(null)
+  const [roomPreview, setRoomPreview] = useState<RoomPreview | null>(null)
 
   const isOwn = currentUser?.id === profile?.id
   const isAlreadyFollowing = followersData.some(
@@ -55,6 +63,36 @@ export default function ProfilePage() {
     if (view === 'settings') router.push('/settings/account')
     else router.push('/chat')
   }
+
+  useEffect(() => {
+    if (!profile || typeof window === 'undefined') {
+      setRoomPreview(null)
+      return
+    }
+
+    const byId = window.localStorage.getItem(`twiky-pixel-room-preview:${profile.id}`)
+    const byUsername = profile.username
+      ? window.localStorage.getItem(`twiky-pixel-room-preview:username:${profile.username}`)
+      : null
+    const raw = byId ?? byUsername
+
+    if (!raw) {
+      setRoomPreview(null)
+      return
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as Partial<RoomPreview>
+      setRoomPreview(typeof parsed.image === 'string' ? {
+        image: parsed.image,
+        savedAt: typeof parsed.savedAt === 'string' ? parsed.savedAt : new Date().toISOString(),
+        username: typeof parsed.username === 'string' ? parsed.username : null,
+        objectCount: Number.isFinite(parsed.objectCount) ? Number(parsed.objectCount) : 0,
+      } : null)
+    } catch {
+      setRoomPreview(null)
+    }
+  }, [profile])
 
   async function handleFollow() {
     if (!profile?.id) return
@@ -286,6 +324,7 @@ export default function ProfilePage() {
         <div className="flex-1 overflow-y-auto bg-background px-8 py-6">
           {tab === 'posts' && (
             <div className="mx-auto max-w-2xl space-y-4">
+              {roomPreview ? <RoomPreviewCard preview={roomPreview} handle={handle} /> : null}
               {posts.length === 0 ? (
                 <div className="flex flex-col items-center py-20 text-center">
                   <ImageIcon className="mb-4 h-10 w-10 text-muted-foreground/40" />
@@ -323,6 +362,7 @@ export default function ProfilePage() {
 
           {tab === 'about' && (
             <div className="mx-auto max-w-2xl space-y-6">
+              {roomPreview ? <RoomPreviewCard preview={roomPreview} handle={handle} /> : null}
               <div className="rounded-2xl border border-border bg-card p-6 space-y-4">
                 <h2 className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">About</h2>
                 <p className="text-[14px] leading-relaxed text-foreground">{profile.bio ?? 'No bio yet.'}</p>
@@ -362,5 +402,31 @@ export default function ProfilePage() {
         </div>
       </div>
     </div>
+  )
+}
+
+function RoomPreviewCard({ preview, handle }: { preview: RoomPreview; handle: string }) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-border bg-card">
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Gamepad2 className="h-4 w-4 text-primary" />
+          <div className="min-w-0">
+            <p className="truncate text-[13px] font-semibold text-foreground">@{handle}&apos;s room</p>
+            <p className="text-[11px] text-muted-foreground">Preview only</p>
+          </div>
+        </div>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+          {preview.objectCount} objects
+        </span>
+      </div>
+      <div className="bg-[#060910] p-3">
+        <img
+          src={preview.image}
+          alt={`${handle}'s saved room preview`}
+          className="aspect-[832/576] w-full rounded-[10px] border border-[#1e3a5f] object-cover [image-rendering:pixelated]"
+        />
+      </div>
+    </section>
   )
 }

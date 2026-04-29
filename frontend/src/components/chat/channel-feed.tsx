@@ -512,6 +512,36 @@ function createPixelRoomPreview() {
 
 const PIXEL_ROOM_PREVIEW_SRC = createPixelRoomPreview()
 
+type StoredRoomPreview = {
+  image: string
+  savedAt: string
+  username: string | null
+  objectCount: number
+}
+
+function readStoredRoomPreview(userId?: string | null, username?: string | null): StoredRoomPreview | null {
+  if (typeof window === 'undefined') return null
+
+  const raw = (userId ? window.localStorage.getItem(`twiky-pixel-room-preview:${userId}`) : null)
+    ?? (username ? window.localStorage.getItem(`twiky-pixel-room-preview:username:${username}`) : null)
+
+  if (!raw) return null
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<StoredRoomPreview>
+    if (typeof parsed.image !== 'string') return null
+
+    return {
+      image: parsed.image,
+      savedAt: typeof parsed.savedAt === 'string' ? parsed.savedAt : new Date().toISOString(),
+      username: typeof parsed.username === 'string' ? parsed.username : null,
+      objectCount: Number.isFinite(parsed.objectCount) ? Number(parsed.objectCount) : 0,
+    }
+  } catch {
+    return null
+  }
+}
+
 function escapeSvgText(value: string) {
   return value
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -1137,6 +1167,7 @@ export function FeedMemberProfileView({
   const [pixelRoomLiked, setPixelRoomLiked] = useState(false)
   const [followSheet, setFollowSheet] = useState<'followers' | 'following' | null>(null)
   const [viewingUser, setViewingUser] = useState<FeedMemberProfile | null>(null)
+  const [roomPreview, setRoomPreview] = useState<StoredRoomPreview | null>(null)
 
   const { user: authUser } = useAuth()
   const { data: currentUser } = useProfile()
@@ -1194,6 +1225,17 @@ export function FeedMemberProfileView({
   const bannerImage = realUser?.banner ?? null
   const avatarImage = resolvedProfile.avatarUrl ?? null
   const profileBadgeVariant = getVerifiedBadgeVariant(resolvedProfile.subPlan)
+
+  useEffect(() => {
+    const refreshRoomPreview = () => {
+      setRoomPreview(readStoredRoomPreview(realUser?.id ?? memberProfile.id, realUser?.username ?? resolvedProfile.handle))
+    }
+
+    refreshRoomPreview()
+    window.addEventListener('twiky-pixel-room-preview-saved', refreshRoomPreview)
+
+    return () => window.removeEventListener('twiky-pixel-room-preview-saved', refreshRoomPreview)
+  }, [memberProfile.id, realUser?.id, realUser?.username, resolvedProfile.handle])
 
   const fallbackPosts = posts.slice(0, 3)
   const profilePosts = memberProfile.id
@@ -1594,7 +1636,7 @@ export function FeedMemberProfileView({
           >
             <div className="relative overflow-hidden rounded-2xl border border-border bg-card">
               <img
-                src={PIXEL_ROOM_PREVIEW_SRC}
+                src={roomPreview?.image ?? PIXEL_ROOM_PREVIEW_SRC}
                 alt={`${resolvedProfile.name}'s Pixel Room`}
                 className="h-32 w-full object-cover"
               />
@@ -1602,17 +1644,19 @@ export function FeedMemberProfileView({
               <div className="absolute bottom-2.5 left-3 right-3 flex items-end justify-between gap-2">
                 <div className="min-w-0">
                   <p className="truncate text-[12px] font-bold text-white">{resolvedProfile.name}&apos;s Room</p>
-                  <p className="text-[10px] text-white/70">Pixel World · preview</p>
+                  <p className="text-[10px] text-white/70">
+                    {roomPreview ? 'Pixel World - saved preview' : 'Pixel World - no saved room yet'}
+                  </p>
                 </div>
                 <span className="rounded-full bg-white/15 px-2 py-0.5 text-[9px] font-semibold text-white backdrop-blur-sm">
-                  Open soon
+                  Preview only
                 </span>
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-1.5">
               {[
-                { label: 'Furniture', value: '—' },
+                { label: 'Objects', value: roomPreview ? String(roomPreview.objectCount) : '-' },
                 { label: 'Visitors', value: formatCompactCount(resolvedProfile.followers) },
                 { label: 'Style', value: 'Loft' },
               ].map(({ label, value }) => (
@@ -1626,9 +1670,10 @@ export function FeedMemberProfileView({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                className="h-8 flex-1 rounded-lg bg-primary px-3 text-[11px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                disabled
+                className="h-8 flex-1 cursor-not-allowed rounded-lg bg-muted px-3 text-[11px] font-semibold text-muted-foreground"
               >
-                Enter Room
+                Enter Room Later
               </button>
               <button
                 type="button"

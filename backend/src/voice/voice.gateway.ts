@@ -27,6 +27,9 @@ interface VoiceParticipantInfo {
   id: string;
   name: string;
   avatarUrl: string | null;
+  bannerUrl?: string | null;
+  subPlan?: 'FREE' | 'PRO' | 'GEEK' | string | null;
+  isVerified?: boolean | null;
   isMuted: boolean;
   isSpeaking?: boolean;
   joinedAt: number;
@@ -189,6 +192,9 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
       id: userId,
       name: data.user?.name ?? 'Unknown',
       avatarUrl: data.user?.avatarUrl ?? null,
+      bannerUrl: data.user?.bannerUrl ?? null,
+      subPlan: data.user?.subPlan ?? null,
+      isVerified: data.user?.isVerified ?? null,
       isMuted: data.user?.isMuted ?? false,
       isSpeaking: data.user?.isSpeaking,
       joinedAt: data.user?.joinedAt ?? Date.now(),

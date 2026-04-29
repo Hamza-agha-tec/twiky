@@ -129,7 +129,7 @@ export class ChannelsService {
         const { data, error } = await this.supabaseService
             .getClient()
             .from('channel_members')
-            .select('role, joined_at, users!channel_members_user_id_fkey(id, username, avatar_url, bio)')
+            .select('role, joined_at, users!channel_members_user_id_fkey(id, username, avatar_url, banner, bio, sub_plan, is_verified)')
             .eq('channel_id', channelId);
 
         if (error) throw new Error(`Failed to get channel members: ${error.message}`);

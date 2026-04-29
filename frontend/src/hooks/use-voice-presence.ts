@@ -31,6 +31,9 @@ export interface VoicePresenceUser {
   id: string
   name: string
   avatarUrl: string | null
+  bannerUrl?: string | null
+  subPlan?: 'FREE' | 'PRO' | 'GEEK' | string | null
+  isVerified?: boolean | null
   isMuted: boolean
   isSpeaking?: boolean
   joinedAt: number
@@ -45,6 +48,9 @@ type MyVoiceInfo = {
   id: string
   name: string
   avatarUrl: string | null
+  bannerUrl?: string | null
+  subPlan?: 'FREE' | 'PRO' | 'GEEK' | string | null
+  isVerified?: boolean | null
   enterSoundUrl?: string | null
 }
 
@@ -497,6 +503,9 @@ export function useVoicePresence(
       id: info.id,
       name: info.name,
       avatarUrl: info.avatarUrl,
+      bannerUrl: info.bannerUrl ?? null,
+      subPlan: info.subPlan ?? null,
+      isVerified: info.isVerified ?? null,
       enterSoundUrl: info.enterSoundUrl ?? null,
       isMuted: muted,
       joinedAt: nextJoinedAt,

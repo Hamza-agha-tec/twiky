@@ -54,8 +54,10 @@ export interface GroupMember {
     full_name?: string | null;
     username: string | null;
     avatar_url: string | null;
+    banner?: string | null;
     bio: string | null;
     is_verified?: boolean | null;
+    sub_plan?: 'FREE' | 'PRO' | 'GEEK' | null;
   };
 }
 

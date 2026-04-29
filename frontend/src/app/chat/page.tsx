@@ -35,6 +35,7 @@ import { AddFriendsView } from '@/components/chat/views/add-friends-view'
 import { DiscoverChannelsView } from '@/components/chat/views/discover-channels-view'
 import { NotificationsView } from '@/components/chat/views/notifications-view'
 import { StoreView } from '@/components/chat/views/store-view'
+import { PixelRoomGame } from '@/components/game/pixel-room-game'
 import {
   WorkspaceMode,
   WorkspaceNavTarget,
@@ -286,7 +287,15 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const { data: profile } = useProfile()
 
   const voiceMyInfo = profile
-    ? { id: profile.id, name: profile.fullname ?? profile.username ?? 'You', avatarUrl: profile.avatar_url, enterSoundUrl: profile.enter_sound_url ?? null }
+    ? {
+        id: profile.id,
+        name: profile.fullname ?? profile.username ?? 'You',
+        avatarUrl: profile.avatar_url,
+        bannerUrl: profile.banner ?? null,
+        subPlan: profile.sub_plan ?? null,
+        isVerified: profile.is_verified ?? null,
+        enterSoundUrl: profile.enter_sound_url ?? null,
+      }
     : null
   const { data: directConversations = [] } = useDirectConversations()
   const { data: mutualFollowers = [] } = useMutualFollowers()
@@ -1382,13 +1391,37 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id, activeGroupId, activeVoiceGroupId])
 
+  const voiceProfileByUserId = useMemo(() => {
+    const profiles = new Map<string, Partial<VoiceParticipant>>()
+    const addUser = (user: any) => {
+      if (!user?.id) return
+      profiles.set(user.id, {
+        bannerUrl: user.banner ?? user.bannerUrl ?? null,
+        subPlan: user.sub_plan ?? user.subPlan ?? null,
+        isVerified: user.is_verified ?? user.isVerified ?? null,
+      })
+    }
+    if (profile) addUser(profile)
+    activeChannelMembers.forEach((member) => addUser(member.user))
+    activeGroupMembers.forEach((member) => addUser(member.user))
+    voiceGroupMembers.forEach((member) => addUser(member.user))
+    return profiles
+  }, [activeChannelMembers, activeGroupMembers, profile, voiceGroupMembers])
+
   const voiceParticipants: Record<string, VoiceParticipant[]> = Object.fromEntries(
     Object.entries(voice.participantsByGroup).map(([groupId, participants]) => [
       groupId,
-      participants.map((participant) => ({
-        ...participant,
-        isSpeaking: participant.isSpeaking || webrtc.remoteSpeakingUserIds.has(participant.id),
-      })),
+      participants.map((participant) => {
+        const profileMeta = voiceProfileByUserId.get(participant.id)
+        return {
+          ...participant,
+          ...profileMeta,
+          bannerUrl: participant.bannerUrl ?? profileMeta?.bannerUrl ?? null,
+          subPlan: participant.subPlan ?? profileMeta?.subPlan ?? null,
+          isVerified: participant.isVerified ?? profileMeta?.isVerified ?? null,
+          isSpeaking: participant.isSpeaking || webrtc.remoteSpeakingUserIds.has(participant.id),
+        }
+      }),
     ]),
   )
 
@@ -1614,20 +1647,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         ) : activeView === 'notifications' ? (
           <NotificationsView onAcceptGroupInvitation={handleJoinVoiceGroup} />
         ) : activeView === 'game' ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
-            <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-primary/10 text-primary">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2" y="6" width="20" height="12" rx="2" />
-                <path d="M6 12h4M8 10v4" />
-                <circle cx="15" cy="11" r="1" fill="currentColor" stroke="none" />
-                <circle cx="18" cy="13" r="1" fill="currentColor" stroke="none" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-[15px] font-semibold text-foreground">Pixel Game</p>
-              <p className="mt-1 text-[13px] text-muted-foreground">Coming soon — stay tuned.</p>
-            </div>
-          </div>
+          <PixelRoomGame />
         ) : (
           <>
             <WorkspaceSidebar

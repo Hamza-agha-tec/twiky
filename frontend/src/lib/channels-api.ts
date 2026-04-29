@@ -43,7 +43,15 @@ export interface Channel {
 export interface ChannelMember {
   role: 'OWNER' | 'ADMIN' | 'MEMBER';
   joined_at?: string;
-  user: { id: string; username: string | null; avatar_url: string | null };
+  user: {
+    id: string;
+    username: string | null;
+    avatar_url: string | null;
+    banner?: string | null;
+    bio?: string | null;
+    is_verified?: boolean | null;
+    sub_plan?: 'FREE' | 'PRO' | 'GEEK' | null;
+  };
 }
 
 export interface ChannelJoinRequest {

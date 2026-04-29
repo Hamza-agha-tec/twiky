@@ -134,6 +134,9 @@ export interface VoiceParticipant {
   id: string
   name: string
   avatarUrl: string | null
+  bannerUrl?: string | null
+  subPlan?: 'FREE' | 'PRO' | 'GEEK' | string | null
+  isVerified?: boolean | null
   isMuted?: boolean
   isSpeaking?: boolean
 }
@@ -1794,6 +1797,7 @@ export function ChannelsPanel({
                         const voiceActive = Boolean(p.isSpeaking && !p.isMuted)
                         const soundboardActive = soundboardUserId === p.id
                         const avatarActivity = soundboardActive ? soundboardIntensity : voiceActive ? 0.65 : 0
+                        const hasGeekBanner = p.subPlan === 'GEEK' && Boolean(p.bannerUrl)
                         return (
                           <ContextMenu key={p.id}>
                             <ContextMenuTrigger asChild>
@@ -1801,7 +1805,8 @@ export function ChannelsPanel({
                                 draggable={canManage}
                                 title={canManage ? 'Drag to move to another voice group' : undefined}
                                 className={cn(
-                                  'flex items-center gap-2 rounded-lg px-2 py-0.5',
+                                  'group/voice-participant relative flex min-h-9 items-center gap-2 overflow-hidden rounded-lg px-2 py-1',
+                                  hasGeekBanner && 'transition-shadow duration-300 ease-out hover:shadow-[0_10px_22px_rgba(0,0,0,0.22)]',
                                   canManage && 'cursor-grab transition-colors hover:bg-accent/60 active:cursor-grabbing',
                                   !canManage && 'hover:bg-accent/40 transition-colors',
                                 )}
@@ -1818,8 +1823,24 @@ export function ChannelsPanel({
                                 }}
                                 onDragEnd={() => setDragOverVoiceGroupId(null)}
                               >
+                                {hasGeekBanner ? (
+                                  <>
+                                    <motion.img
+                                      src={p.bannerUrl ?? ''}
+                                      alt=""
+                                      aria-hidden="true"
+                                      draggable={false}
+                                      className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-300 group-hover/voice-participant:opacity-100"
+                                      initial={false}
+                                      whileHover={{ scale: 1.05 }}
+                                      transition={{ duration: 0.35, ease: 'easeOut' }}
+                                    />
+                                    <span className="pointer-events-none absolute inset-0 bg-gradient-to-r from-sidebar/95 via-sidebar/58 to-sidebar/18 opacity-0 transition-opacity duration-300 group-hover/voice-participant:opacity-100" />
+                                    <span className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-[linear-gradient(90deg,rgba(0,0,0,0.92)_0%,rgba(0,0,0,0.72)_34%,rgba(0,0,0,0.34)_68%,rgba(0,0,0,0)_100%)] opacity-0 shadow-[inset_18px_0_22px_rgba(0,0,0,0.86)] transition-opacity duration-300 group-hover/voice-participant:opacity-100" />
+                                  </>
+                                ) : null}
                                 <div
-                                  className="relative flex-shrink-0 rounded-full transition-shadow duration-75"
+                                  className="relative z-10 flex-shrink-0 rounded-full transition-shadow duration-75"
                                   style={avatarActivity > 0 ? {
                                     outline: `${1 + avatarActivity * 2}px solid rgba(74,222,128,${0.5 + avatarActivity * 0.5})`,
                                     boxShadow: `0 0 ${4 + avatarActivity * 12}px ${avatarActivity * 4}px rgba(74,222,128,${0.2 + avatarActivity * 0.6})`,
@@ -1830,19 +1851,25 @@ export function ChannelsPanel({
                                       src={p.avatarUrl}
                                       alt={p.name}
                                       draggable={false}
-                                      className="h-5 w-5 rounded-full object-cover"
+                                      className="h-6 w-6 rounded-full object-cover"
                                     />
                                   ) : (
-                                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/15 text-[8px] font-bold text-primary">
+                                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-[9px] font-bold text-primary">
                                       {p.name[0]?.toUpperCase()}
                                     </div>
                                   )}
                                   <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-background bg-green-500" />
                                 </div>
-                                <span className={cn('truncate text-[11px]', p.isMuted ? 'text-muted-foreground/50' : 'text-muted-foreground')}>
-                                  {p.name}{isSelf ? ' (You)' : ''}
+                                <span className="relative z-10 flex min-w-0 items-center gap-1.5">
+                                  <span className={cn(
+                                    'truncate text-[11px] transition-colors duration-300',
+                                    p.isMuted ? 'text-muted-foreground/50' : 'text-muted-foreground',
+                                    hasGeekBanner && 'group-hover/voice-participant:text-white',
+                                  )}>
+                                    {p.name}{isSelf ? ' (You)' : ''}
+                                  </span>
                                 </span>
-                                {p.isMuted && <MicOff className="ml-auto h-2.5 w-2.5 flex-shrink-0 text-muted-foreground/40" />}
+                                {p.isMuted && <MicOff className="relative z-10 ml-auto h-2.5 w-2.5 flex-shrink-0 text-muted-foreground/40" />}
                               </div>
                             </ContextMenuTrigger>
                             <ContextMenuContent className="w-44 bg-sidebar border-border">

@@ -13,7 +13,7 @@ const PATH_BY_VIEW: Record<Exclude<ActiveView, 'settings'>, string> = {
   'add-friends': '/add-friends',
   notifications: '/notifications',
   store: '/store',
-  game: '/chat',
+  game: '/game',
 }
 
 function getActiveView(pathname: string): ActiveView {
@@ -21,6 +21,7 @@ function getActiveView(pathname: string): ActiveView {
   if (pathname.startsWith('/add-friends') || pathname.startsWith('/chat/add-friends')) return 'add-friends'
   if (pathname.startsWith('/notifications') || pathname.startsWith('/chat/notifications')) return 'notifications'
   if (pathname.startsWith('/store') || pathname.startsWith('/chat/store')) return 'store'
+  if (pathname.startsWith('/game') || pathname.startsWith('/chat/game')) return 'game'
   if (pathname.startsWith('/settings') || pathname.startsWith('/chat/settings')) return 'settings'
   return 'chat'
 }

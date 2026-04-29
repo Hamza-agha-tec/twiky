@@ -21,3 +21,7 @@ alldb.sql
 télécharger.gif
 .gitignore
 draft/
+
+# Pixel game generated/imported assets
+frontend/public/pixel/game/objects/
+frontend/public/pixel/game/avatars/
