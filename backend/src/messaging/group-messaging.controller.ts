@@ -1,12 +1,16 @@
-import { Controller, Get, Post, Param, Body, UseGuards, Request, Patch } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Request, UseGuards } from '@nestjs/common';
 import { MessagingService } from './messaging.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SendGroupMessageDto } from './dto/group-messaging.dto';
+import { ChatGateway } from './gateway/chat.gateway';
 
 @UseGuards(JwtAuthGuard)
 @Controller('groups')
 export class GroupMessagingController {
-    constructor(private readonly messagingService: MessagingService) {}
+    constructor(
+        private readonly messagingService: MessagingService,
+        private readonly chatGateway: ChatGateway,
+    ) {}
 
     @Get(':groupId/messages')
     async getGroupMessages(@Request() req: any, @Param('groupId') groupId: string) {
@@ -15,16 +19,29 @@ export class GroupMessagingController {
 
     @Post(':groupId/messages')
     async sendGroupMessage(@Request() req: any, @Param('groupId') groupId: string, @Body() dto: SendGroupMessageDto) {
-        return this.messagingService.sendGroupMessage(req.user.userId, groupId, dto);
+        const message = await this.messagingService.sendGroupMessage(req.user.userId, groupId, dto);
+        this.chatGateway.emitGroupMessageCreated(groupId, message);
+        return message;
     }
 
     @Post('messages/:messageId/reactions')
     async toggleReaction(@Request() req: any, @Param('messageId') messageId: string, @Body() dto: { emoji: string }) {
-        return this.messagingService.toggleGroupMessageReaction(req.user.userId, messageId, dto.emoji);
+        const message = await this.messagingService.toggleGroupMessageReaction(req.user.userId, messageId, dto.emoji);
+        this.chatGateway.emitGroupMessageUpdated(message.group_id, message);
+        return message;
     }
 
     @Patch('messages/:messageId/pin')
     async togglePin(@Request() req: any, @Param('messageId') messageId: string) {
-        return this.messagingService.toggleGroupMessagePin(req.user.userId, messageId);
+        const message = await this.messagingService.toggleGroupMessagePin(req.user.userId, messageId);
+        this.chatGateway.emitGroupMessageUpdated(message.group_id, message);
+        return message;
+    }
+
+    @Delete('messages/:messageId')
+    async deleteMessage(@Request() req: any, @Param('messageId') messageId: string) {
+        const result = await this.messagingService.deleteGroupMessage(req.user.userId, messageId);
+        this.chatGateway.emitGroupMessageDeleted(result.groupId, messageId);
+        return result;
     }
 }

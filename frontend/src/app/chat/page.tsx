@@ -43,7 +43,7 @@ import {
 } from '@/components/chat/workspace-sidebar'
 import type { CreateEntityValues } from '@/components/chat/create-entity-dialog'
 import { useChannels, useCreateChannel, useUpdateChannel, useChannelMembers, CHANNEL_KEYS, CHANNEL_MEMBER_KEYS } from '@/hooks/use-channels'
-import { useCreateGroup, useGroupMembers, useGroupMessages, backendGroupToMock } from '@/hooks/use-groups'
+import { useCreateGroup, useGroupMembers, useGroupMessages, useGroupMessageRealtime, backendGroupToMock } from '@/hooks/use-groups'
 import { useToggleGroupMessageReaction } from '@/hooks/use-groups'
 import { groupsApi, type BackendGroup, type GroupJoinRequest, type GroupMessage } from '@/lib/groups-api'
 import { useQueryClient, useQueries } from '@tanstack/react-query'
@@ -334,6 +334,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const createGroup = useCreateGroup(activeChannelId)
   const isRealGroupId = /^[0-9a-f-]{36}$/i.test(activeGroupId)
   const { data: rawMessages } = useGroupMessages(isRealGroupId ? activeGroupId : undefined)
+  useGroupMessageRealtime(isRealGroupId ? activeGroupId : undefined)
   const toggleGroupReaction = useToggleGroupMessageReaction(activeGroupId)
   const { data: activeGroupMembers = [] } = useGroupMembers(isRealGroupId ? activeGroupId : undefined)
   const isRealVoiceGroupId = /^[0-9a-f-]{36}$/i.test(activeVoiceGroupId ?? '')
@@ -408,6 +409,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       attachmentType: (msg as any).type ?? undefined,
       attachmentMime: (msg as any).mime ?? undefined,
       attachmentDuration: (msg as any).duration ?? undefined,
+      pinned: Boolean(msg.is_pinned),
       reactions: normalizedReactions,
       replyCount: groupReplyCounts.get(msg.id) ?? 0,
       replyTo: replySource
@@ -1599,6 +1601,14 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             onToggleReaction={(postId, emoji) => {
               if (!isRealGroupId) return
               toggleGroupReaction.mutate({ messageId: postId, emoji })
+            }}
+            onTogglePin={async (postId) => {
+              if (!isRealGroupId) return
+              await groupsApi.toggleGroupMessagePin(postId)
+            }}
+            onDeletePost={async (postId) => {
+              if (!isRealGroupId) return
+              await groupsApi.deleteGroupMessage(postId)
             }}
             onCloseFeedRequest={() => setChannelFeedClosed(true)}
           />

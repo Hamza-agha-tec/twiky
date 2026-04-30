@@ -88,6 +88,18 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     }
   }
 
+  emitGroupMessageCreated(groupId: string, message: any) {
+    this.server?.to(`group_${groupId}`).emit('newGroupMessage', message);
+  }
+
+  emitGroupMessageUpdated(groupId: string, message: any) {
+    this.server?.to(`group_${groupId}`).emit('groupMessageUpdated', message);
+  }
+
+  emitGroupMessageDeleted(groupId: string, messageId: string) {
+    this.server?.to(`group_${groupId}`).emit('groupMessageDeleted', { groupId, messageId });
+  }
+
   @SubscribeMessage('getOnlineUsers')
   handleGetOnlineUsers() {
     return Array.from(this.onlineUsers.keys());
@@ -269,12 +281,12 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   @SubscribeMessage('sendGroupMessage')
   async handleSendGroupMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() payload: { groupId: string; content: string; fileUrl?: string; replyToId?: string; entityMentions?: any[] },
+    @MessageBody() payload: { groupId: string; content: string; fileUrl?: string; replyToId?: string; entityMentions?: any[]; type?: 'voice' | 'image' | 'file'; mime?: string; duration?: number; size?: number },
   ) {
     const senderId = client.data.user.userId;
     try {
       const message = await this.messagingService.sendGroupMessage(senderId, payload.groupId, payload);
-      this.server.to(`group_${payload.groupId}`).emit('newGroupMessage', message);
+      this.emitGroupMessageCreated(payload.groupId, message);
       return { status: 'sent', messageId: message.id };
     } catch (error) {
       this.logger.error(`Send Group Message failed: ${error.message}`);
@@ -290,9 +302,41 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const userId = client.data.user.userId;
     try {
       const updated = await this.messagingService.editGroupMessage(userId, payload.messageId, payload.content);
-      this.server.to(`group_${payload.groupId}`).emit('groupMessageUpdated', updated);
+      this.emitGroupMessageUpdated(payload.groupId, updated);
     } catch (error) {
       this.logger.error(`Edit Group Msg failed: ${error.message}`);
+    }
+  }
+
+  @SubscribeMessage('reactToGroupMessage')
+  async handleReactToGroupMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { messageId: string; groupId: string; emoji: string },
+  ) {
+    const userId = client.data.user.userId;
+    try {
+      const updated = await this.messagingService.toggleGroupMessageReaction(userId, payload.messageId, payload.emoji);
+      this.emitGroupMessageUpdated(payload.groupId, updated);
+      return { status: 'updated', messageId: updated.id };
+    } catch (error) {
+      this.logger.error(`Group reaction failed: ${error.message}`);
+      return { status: 'error', message: error.message };
+    }
+  }
+
+  @SubscribeMessage('toggleGroupMessagePin')
+  async handleToggleGroupMessagePin(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { messageId: string; groupId: string },
+  ) {
+    const userId = client.data.user.userId;
+    try {
+      const updated = await this.messagingService.toggleGroupMessagePin(userId, payload.messageId);
+      this.emitGroupMessageUpdated(payload.groupId, updated);
+      return { status: 'updated', messageId: updated.id };
+    } catch (error) {
+      this.logger.error(`Group pin failed: ${error.message}`);
+      return { status: 'error', message: error.message };
     }
   }
 
@@ -304,7 +348,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const userId = client.data.user.userId;
     try {
       await this.messagingService.deleteGroupMessage(userId, payload.messageId);
-      this.server.to(`group_${payload.groupId}`).emit('groupMessageDeleted', payload.messageId);
+      this.emitGroupMessageDeleted(payload.groupId, payload.messageId);
     } catch (error) {
       this.logger.error(`Delete Group Msg failed: ${error.message}`);
     }

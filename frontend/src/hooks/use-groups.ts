@@ -1,7 +1,9 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { type BackendGroup, groupsApi } from '@/lib/groups-api';
+import { type BackendGroup, type GroupMessage, groupsApi } from '@/lib/groups-api';
+import { getSocket } from '@/lib/socket';
 export { type BackendGroup };
 
 export const GROUP_KEYS = {
@@ -74,6 +76,70 @@ export function useToggleGroupMessageReaction(_groupId: string) {
     mutationFn: (data: { messageId: string; emoji: string }) =>
       groupsApi.toggleGroupMessageReaction(data.messageId, data.emoji),
   });
+}
+
+function upsertGroupMessage(messages: GroupMessage[], message: GroupMessage) {
+  const next = messages.some((item) => item.id === message.id)
+    ? messages.map((item) => item.id === message.id ? message : item)
+    : [...messages, message];
+
+  return next.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+}
+
+export function useGroupMessageRealtime(groupId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!groupId) return;
+
+    let mounted = true;
+    let cleanup: (() => void) | null = null;
+
+    getSocket().then((socket) => {
+      if (!mounted) return;
+
+      const joinRoom = () => socket.emit('joinGroupRoom', groupId);
+      const messageKey = GROUP_KEYS.messages(groupId);
+
+      const onMessageCreated = (message: GroupMessage) => {
+        if (!mounted || message.group_id !== groupId) return;
+        queryClient.setQueryData<GroupMessage[]>(messageKey, (old = []) => upsertGroupMessage(old, message));
+      };
+
+      const onMessageUpdated = (message: GroupMessage) => {
+        if (!mounted || message.group_id !== groupId) return;
+        queryClient.setQueryData<GroupMessage[]>(messageKey, (old = []) => upsertGroupMessage(old, message));
+      };
+
+      const onMessageDeleted = (payload: string | { groupId?: string; messageId?: string }) => {
+        const messageId = typeof payload === 'string' ? payload : payload.messageId;
+        const payloadGroupId = typeof payload === 'string' ? groupId : payload.groupId;
+        if (!mounted || !messageId || payloadGroupId !== groupId) return;
+        queryClient.setQueryData<GroupMessage[]>(messageKey, (old = []) =>
+          old.filter((message) => message.id !== messageId),
+        );
+      };
+
+      joinRoom();
+      socket.on('connect', joinRoom);
+      socket.on('newGroupMessage', onMessageCreated);
+      socket.on('groupMessageUpdated', onMessageUpdated);
+      socket.on('groupMessageDeleted', onMessageDeleted);
+
+      cleanup = () => {
+        socket.off('connect', joinRoom);
+        socket.off('newGroupMessage', onMessageCreated);
+        socket.off('groupMessageUpdated', onMessageUpdated);
+        socket.off('groupMessageDeleted', onMessageDeleted);
+        socket.emit('leaveRoom', `group_${groupId}`);
+      };
+    });
+
+    return () => {
+      mounted = false;
+      cleanup?.();
+    };
+  }, [groupId, queryClient]);
 }
 
 export function useUpdateGroupMemberRole(groupId: string) {

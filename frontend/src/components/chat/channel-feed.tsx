@@ -1909,6 +1909,8 @@ export function ChannelFeed({
   onProfileCloseRequestChange,
   onCloseFeedRequest,
   onToggleReaction,
+  onTogglePin,
+  onDeletePost,
 }: {
   channel: WorkspaceChannel
   group: MockChannelGroup
@@ -1932,6 +1934,8 @@ export function ChannelFeed({
   onProfileCloseRequestChange?: (closeFn: (() => void) | null) => void
   onCloseFeedRequest?: () => void
   onToggleReaction?: (postId: string, emoji: string) => Promise<void> | void
+  onTogglePin?: (postId: string) => Promise<void> | void
+  onDeletePost?: (postId: string) => Promise<void> | void
 }) {
   const [postsByGroup, setPostsByGroup] = useState<Record<string, FeedPost[]>>({})
   const [drafts, setDrafts] = useState<Record<string, string>>({})
@@ -2590,12 +2594,26 @@ export function ChannelFeed({
   }
 
   function handleTogglePin(postId: string) {
+    if (onTogglePin) {
+      void Promise.resolve(onTogglePin(postId)).catch((err) => {
+        toast.error(err instanceof Error ? err.message : 'Could not update pin')
+      })
+      return
+    }
+
     updatePosts((current) =>
       current.map((p) => (p.id === postId ? { ...p, pinned: !p.pinned } : p)),
     )
   }
 
   function handleDelete(postId: string) {
+    if (onDeletePost) {
+      void Promise.resolve(onDeletePost(postId)).catch((err) => {
+        toast.error(err instanceof Error ? err.message : 'Could not delete post')
+      })
+      return
+    }
+
     updatePosts((current) => current.filter((p) => p.id !== postId))
   }
 

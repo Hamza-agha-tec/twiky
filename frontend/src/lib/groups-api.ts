@@ -72,6 +72,7 @@ export interface GroupMessage {
   duration?: number | null;
   size?: number | null;
   reply_to_id: string | null;
+  is_pinned?: boolean | null;
   created_at: string;
   reactions?: { emoji: string; users: string[] }[] | null;
   sender?: { id: string; email?: string | null; fullname?: string | null; full_name?: string | null; username: string | null; avatar_url: string | null; is_verified?: boolean | null; sub_plan?: 'FREE' | 'PRO' | 'GEEK' | null };
@@ -141,9 +142,19 @@ export const groupsApi = {
     }),
 
   toggleGroupMessageReaction: (messageId: string, emoji: string) =>
-    authedFetch(`/groups/messages/${messageId}/reactions`, {
+    authedFetch<GroupMessage>(`/groups/messages/${messageId}/reactions`, {
       method: 'POST',
       body: JSON.stringify({ emoji }),
+    }),
+
+  toggleGroupMessagePin: (messageId: string) =>
+    authedFetch<GroupMessage>(`/groups/messages/${messageId}/pin`, {
+      method: 'PATCH',
+    }),
+
+  deleteGroupMessage: (messageId: string) =>
+    authedFetch<{ success: boolean; groupId: string; messageId: string }>(`/groups/messages/${messageId}`, {
+      method: 'DELETE',
     }),
 
   updateGroup: (groupId: string, data: { name?: string; description?: string; group_type?: 'text' | 'voice'; access_type?: 'PUBLIC' | 'PRIVATE' }) =>

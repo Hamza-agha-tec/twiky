@@ -360,6 +360,16 @@ export class MessagingService {
     }
 
     async deleteGroupMessage(userId: string, messageId: string) {
+        const { data: message, error: fetchError } = await this.supabaseService
+            .getClient()
+            .from('group_messages')
+            .select('group_id')
+            .eq('id', messageId)
+            .eq('sender_id', userId)
+            .single();
+
+        if (fetchError || !message) throw new NotFoundException('Message not found');
+
         const { error } = await this.supabaseService
             .getClient()
             .from('group_messages')
@@ -368,7 +378,7 @@ export class MessagingService {
             .eq('sender_id', userId);
 
         if (error) throw new Error(`Failed to delete group message: ${error.message}`);
-        return { success: true };
+        return { success: true, groupId: message.group_id, messageId };
     }
 
     async toggleDirectMessageReaction(userId: string, messageId: string, emoji: string) {
@@ -437,7 +447,7 @@ export class MessagingService {
             .from('group_messages')
             .update({ is_pinned: !message.is_pinned })
             .eq('id', messageId)
-            .select()
+            .select('*, sender:users!group_messages_sender_id_fkey(id, username, fullname, avatar_url, is_verified, sub_plan)')
             .single();
 
         if (error) throw new Error(`Failed to toggle pin: ${error.message}`);
