@@ -1805,7 +1805,7 @@ export function ChannelsPanel({
                                 draggable={canManage}
                                 title={canManage ? 'Drag to move to another voice group' : undefined}
                                 className={cn(
-                                  'group/voice-participant relative flex min-h-9 items-center gap-2 overflow-hidden rounded-lg px-2 py-1',
+                                  'group/voice-participant relative flex min-h-7 items-center gap-2 overflow-hidden rounded-lg px-2 py-0.5',
                                   hasGeekBanner && 'transition-shadow duration-300 ease-out hover:shadow-[0_10px_22px_rgba(0,0,0,0.22)]',
                                   canManage && 'cursor-grab transition-colors hover:bg-accent/60 active:cursor-grabbing',
                                   !canManage && 'hover:bg-accent/40 transition-colors',
@@ -1851,10 +1851,10 @@ export function ChannelsPanel({
                                       src={p.avatarUrl}
                                       alt={p.name}
                                       draggable={false}
-                                      className="h-6 w-6 rounded-full object-cover"
+                                      className="h-5 w-5 rounded-full object-cover"
                                     />
                                   ) : (
-                                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-[9px] font-bold text-primary">
+                                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/15 text-[8px] font-bold text-primary">
                                       {p.name[0]?.toUpperCase()}
                                     </div>
                                   )}
