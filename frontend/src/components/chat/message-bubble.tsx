@@ -259,11 +259,11 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
           {message.isOwn && (
             <>
               {message.isRead ? (
-                <CheckCheck className="h-3 w-3 text-blue-500" />
+                <CheckCheck aria-label="Read" className="h-3 w-3 text-blue-500" />
               ) : message.isDelivered ? (
-                <CheckCheck className="h-3 w-3 text-muted-foreground/60" />
+                <CheckCheck aria-label="Received" className="h-3 w-3 text-muted-foreground/70" />
               ) : (
-                <Check className="h-3 w-3 text-muted-foreground/60" />
+                <Check aria-label="Sent" className="h-3 w-3 text-muted-foreground/70" />
               )}
             </>
           )}

@@ -212,7 +212,7 @@ export function ChatWindow({ chatOverride, messages: providedMessages = [], onSe
               </p>
             ) : (isOnline || chatSubtitle) ? (
               <p className="text-xs text-muted-foreground flex items-center gap-1">
-                {isOnline && <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-500" />}
+                <span className={`inline-block h-1.5 w-1.5 rounded-full ${isOnline ? 'bg-green-500' : 'bg-muted-foreground/55'}`} />
                 {isOnline ? (chatSubtitle ?? 'Online') : chatSubtitle}
               </p>
             ) : null}

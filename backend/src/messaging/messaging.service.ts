@@ -168,14 +168,44 @@ export class MessagingService {
     }
 
     async updateDirectMessageStatus(messageId: string, status: 'sent' | 'delivered' | 'read') {
+        const { data: message } = await this.supabaseService
+            .getClient()
+            .from('direct_messages')
+            .select('id, conversation_id, status')
+            .eq('id', messageId)
+            .single();
+
+        if (!message) return { success: false };
+        if (message.status === 'read' && status === 'delivered') {
+            return this.getDirectMessageStatusPayload(message.conversation_id, messageId, 'read');
+        }
+
         const { error } = await this.supabaseService
             .getClient()
             .from('direct_messages')
             .update({ status })
             .eq('id', messageId);
 
-        // Optionally, don't throw an error if it fails because read receipts aren't critical
-        return { success: !error };
+        if (error) return { success: false };
+        return this.getDirectMessageStatusPayload(message.conversation_id, messageId, status);
+    }
+
+    private async getDirectMessageStatusPayload(conversationId: string, messageId: string, status: 'sent' | 'delivered' | 'read') {
+        const { data: conversation } = await this.supabaseService
+            .getClient()
+            .from('direct_conversations')
+            .select('user_one_id, user_two_id')
+            .eq('id', conversationId)
+            .single();
+
+        return {
+            success: true,
+            conversationId,
+            messageId,
+            status,
+            userOneId: conversation?.user_one_id,
+            userTwoId: conversation?.user_two_id,
+        };
     }
 
     // ==========================================

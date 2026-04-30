@@ -58,10 +58,11 @@ import { type Chat } from '@/lib/mock-data'
 import { useRouter } from 'next/navigation'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { useCreateDirectConversation, useDirectConversations, useDirectMessages, useDirectMessageRealtime, useSendDirectMessage, useToggleDirectMessageReaction } from '@/hooks/use-direct-conversations'
+import { DIRECT_KEYS, useCreateDirectConversation, useDirectConversations, useDirectMessages, useDirectMessageRealtime, useSendDirectMessage, useToggleDirectMessageReaction } from '@/hooks/use-direct-conversations'
 import { useVoiceInvitationListener } from '@/hooks/use-voice-invitation-listener'
 import { invitationsApi, type Invitation } from '@/lib/invitations-api'
 import { getSocket } from '@/lib/socket'
+import { useOnlineUsers, usePresenceSocket } from '@/hooks/use-socket'
 import type { Socket } from 'socket.io-client'
 import { toast } from 'sonner'
 
@@ -270,6 +271,8 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
 
   const queryClient = useQueryClient()
   const { data: profile } = useProfile()
+  usePresenceSocket(Boolean(profile?.id))
+  const onlineUsers = useOnlineUsers()
 
   const voiceMyInfo = profile
     ? {
@@ -410,8 +413,11 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
 
   const activeSyntheticChat = activeDirectChat ? (syntheticDirectChats[activeDirectChat] ?? null) : null
   const activeIsRealDirect = Boolean(activeDirectChat && /^[0-9a-f-]{36}$/i.test(activeDirectChat))
+  const visibleDirectConversationId = activeView === 'chat' && activeSurface === 'direct' && activeIsRealDirect
+    ? activeDirectChat
+    : undefined
   const { data: activeDirectRealMessages = [] } = useDirectMessages(activeIsRealDirect ? activeDirectChat : null)
-  useDirectMessageRealtime(activeIsRealDirect ? activeDirectChat : undefined)
+  useDirectMessageRealtime(visibleDirectConversationId, profile?.id)
   const sendDirectMessage = useSendDirectMessage(activeDirectChat ?? '')
   const toggleDirectReaction = useToggleDirectMessageReaction(activeDirectChat ?? '')
 
@@ -808,6 +814,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       return (directConversations ?? []).map((conv: any) => {
         const other =
           conv.user_one_id === myId ? conv.user_two : conv.user_one
+        const isOnline = other?.id ? onlineUsers.has(other.id) : false
         const name = other?.username ?? 'Unknown'
         const last = Array.isArray(conv.last_message) ? conv.last_message[0] : null
         const lastContent = typeof last?.content === 'string' ? last.content.trim() : ''
@@ -822,13 +829,13 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           timestamp: last?.created_at ?? conv.created_at ?? new Date().toISOString(),
           unread: unreadCounts[conv.id] ?? 0,
           isGroup: false,
-          isOnline: false,
+          isOnline,
           subPlan: other?.sub_plan ?? null,
           isVerified: other?.is_verified ?? false,
         }
       })
     },
-    [directConversations, profile?.id, unreadCounts],
+    [directConversations, onlineUsers, profile?.id, unreadCounts],
   )
 
   const directSidebarChats = backendDirectChats
@@ -1049,6 +1056,32 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     if (!conv) return null
     return conv.user_one_id === myId ? conv.user_two : conv.user_one
   })()
+  const activeDirectOtherIsOnline = activeDirectOther?.id ? onlineUsers.has(activeDirectOther.id) : false
+
+  useEffect(() => {
+    if (!visibleDirectConversationId || !profile?.id) return
+    const unreadIncoming = activeDirectRealMessages.filter(
+      (message) => message.sender_id !== profile.id && message.status !== 'read',
+    )
+    if (!unreadIncoming.length) return
+
+    queryClient.setQueryData<ChatMessage[]>(DIRECT_KEYS.messages(visibleDirectConversationId), (old = []) =>
+      old.map((message) =>
+        message.sender_id !== profile.id && message.status !== 'read'
+          ? { ...message, status: 'read' }
+          : message,
+      ),
+    )
+
+    getSocket().then((socket) => {
+      unreadIncoming.forEach((message) => {
+        socket.emit('markDirectRead', {
+          conversationId: visibleDirectConversationId,
+          messageId: message.id,
+        })
+      })
+    })
+  }, [activeDirectRealMessages, profile?.id, queryClient, visibleDirectConversationId])
 
   const directFeedContent = activeDirectChat ? (
       <ChatWindow
@@ -1067,11 +1100,11 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             : activeDirectOther
               ? {
                   avatarUrl: activeDirectOther.avatar_url ?? null,
-                  isOnline: false,
+                  isOnline: activeDirectOtherIsOnline,
                   subPlan: (activeDirectOther as any).sub_plan ?? null,
                   isVerified: (activeDirectOther as any).is_verified ?? false,
                   name: activeDirectOther.username ?? 'Direct message',
-                  subtitle: null,
+                  subtitle: activeDirectOtherIsOnline ? 'Online' : 'Offline',
                 }
               : undefined
         }
@@ -1742,11 +1775,11 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                             : activeDirectOther
                               ? {
                                   avatarUrl: activeDirectOther.avatar_url ?? null,
-                                  isOnline: false,
+                                  isOnline: activeDirectOtherIsOnline,
                                   subPlan: (activeDirectOther as any).sub_plan ?? null,
                                   isVerified: (activeDirectOther as any).is_verified ?? false,
                                   name: activeDirectOther.username ?? 'Direct message',
-                                  subtitle: null,
+                                  subtitle: activeDirectOtherIsOnline ? 'Online' : 'Offline',
                                 }
                               : undefined}
                           onClose={() => setShowDirectProfile(false)}

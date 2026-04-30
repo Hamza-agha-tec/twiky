@@ -64,7 +64,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
 
       if (userSockets.size === 0) {
         this.onlineUsers.delete(userId);
-        this.server.emit('userStatusChange', { userId, status: 'offline' });
+        this.server.emit('userStatusChange', { userId, status: 'offline', lastSeenAt: new Date().toISOString() });
       }
     }
 
@@ -116,9 +116,31 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     this.server?.to(`dm_${conversationId}`).emit('directMessageDeleted', { conversationId, messageId });
   }
 
+  private emitDirectMessageStatus(payload: {
+    conversationId?: string;
+    messageId?: string;
+    status?: 'sent' | 'delivered' | 'read';
+    userOneId?: string;
+    userTwoId?: string;
+  }) {
+    if (!payload.conversationId || !payload.messageId || !payload.status) return;
+
+    const eventPayload = {
+      conversationId: payload.conversationId,
+      messageId: payload.messageId,
+      status: payload.status,
+    };
+
+    this.server?.to(`dm_${payload.conversationId}`).emit('directMessageStatusUpdate', eventPayload);
+    if (payload.userOneId) this.server?.to(`user_${payload.userOneId}`).emit('directMessageStatusUpdate', eventPayload);
+    if (payload.userTwoId) this.server?.to(`user_${payload.userTwoId}`).emit('directMessageStatusUpdate', eventPayload);
+  }
+
   @SubscribeMessage('getOnlineUsers')
-  handleGetOnlineUsers() {
-    return Array.from(this.onlineUsers.keys());
+  handleGetOnlineUsers(@ConnectedSocket() client: Socket) {
+    const userIds = Array.from(this.onlineUsers.keys());
+    client.emit('onlineUsersList', userIds);
+    return userIds;
   }
 
   // ==========================================
@@ -287,11 +309,8 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     @ConnectedSocket() _client: Socket,
     @MessageBody() payload: { messageId: string; conversationId: string },
   ) {
-    await this.messagingService.updateDirectMessageStatus(payload.messageId, 'delivered');
-    this.server.to(`dm_${payload.conversationId}`).emit('directMessageStatusUpdate', {
-      messageId: payload.messageId,
-      status: 'delivered',
-    });
+    const statusPayload = await this.messagingService.updateDirectMessageStatus(payload.messageId, 'delivered');
+    if ('conversationId' in statusPayload) this.emitDirectMessageStatus(statusPayload);
   }
 
   @SubscribeMessage('markDirectRead')
@@ -299,11 +318,8 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     @ConnectedSocket() _client: Socket,
     @MessageBody() payload: { messageId: string; conversationId: string },
   ) {
-    await this.messagingService.updateDirectMessageStatus(payload.messageId, 'read');
-    this.server.to(`dm_${payload.conversationId}`).emit('directMessageStatusUpdate', {
-      messageId: payload.messageId,
-      status: 'read',
-    });
+    const statusPayload = await this.messagingService.updateDirectMessageStatus(payload.messageId, 'read');
+    if ('conversationId' in statusPayload) this.emitDirectMessageStatus(statusPayload);
   }
 
   // ==========================================

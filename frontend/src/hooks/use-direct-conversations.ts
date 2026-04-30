@@ -82,7 +82,7 @@ function updateConversationPreview(conversation: DirectConversation, message: Ch
   }
 }
 
-export function useDirectMessageRealtime(conversationId?: string | null) {
+export function useDirectMessageRealtime(conversationId?: string | null, currentUserId?: string | null) {
   const queryClient = useQueryClient()
 
   useEffect(() => {
@@ -102,6 +102,20 @@ export function useDirectMessageRealtime(conversationId?: string | null) {
           old.map((conversation) => updateConversationPreview(conversation, message)),
         )
         queryClient.invalidateQueries({ queryKey: DIRECT_KEYS.conversations })
+
+        if (currentUserId && message.sender_id !== currentUserId) {
+          socket.emit('directMessageDelivered', {
+            conversationId: message.conversation_id,
+            messageId: message.id,
+          })
+
+          if (message.conversation_id === conversationId) {
+            socket.emit('markDirectRead', {
+              conversationId: message.conversation_id,
+              messageId: message.id,
+            })
+          }
+        }
       }
 
       const onDirectMessageUpdated = (raw: BackendDirectMessage) => {
@@ -156,6 +170,6 @@ export function useDirectMessageRealtime(conversationId?: string | null) {
       mounted = false
       cleanup?.()
     }
-  }, [conversationId, queryClient])
+  }, [conversationId, currentUserId, queryClient])
 }
 
