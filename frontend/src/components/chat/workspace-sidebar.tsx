@@ -108,6 +108,11 @@ function resolveConversationAvatar(_name: string, avatar?: string | null) {
   return ''
 }
 
+function formatUnreadCount(count: number) {
+  if (count > 99) return '99+'
+  return String(count)
+}
+
 export function WorkspaceSidebar({
   activeChannelId = null,
   activeChat,
@@ -337,59 +342,81 @@ export function WorkspaceSidebar({
                 </Button>
               </div>
               {visibleDirectChats.length > 0 ? (
-                visibleDirectChats.map((chat, index) => (
-                  <motion.button
-                    key={chat.id}
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.02 }}
-                    onClick={() => onSelectChat(chat.id)}
-                    onContextMenu={(event) => handleContextMenu(event, chat)}
-                    className={cn(
-                      'mb-1 flex w-full items-start gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors',
-                      activeChat === chat.id ? 'bg-primary/10' : 'hover:bg-accent',
-                    )}
-                  >
-                    <div className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted text-[12px] font-semibold text-foreground">
-                      {chat.avatar ? (
-                        <img src={chat.avatar} alt={chat.name} className="block h-full w-full object-cover object-center" />
-                      ) : (
-                        chat.name[0]?.toUpperCase() ?? '?'
+                visibleDirectChats.map((chat, index) => {
+                  const unread = unreadCounts[chat.id] ?? chat.unread ?? 0
+                  const hasUnread = unread > 0
+
+                  return (
+                    <motion.button
+                      key={chat.id}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.02 }}
+                      onClick={() => onSelectChat(chat.id)}
+                      onContextMenu={(event) => handleContextMenu(event, chat)}
+                      className={cn(
+                        'mb-1 flex w-full items-start gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors',
+                        activeChat === chat.id
+                          ? 'bg-primary/10'
+                          : hasUnread
+                            ? 'bg-accent/50 hover:bg-accent/75'
+                            : 'hover:bg-accent',
                       )}
-                      {chat.isOnline ? (
-                        <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-sidebar bg-emerald-500" />
-                      ) : null}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="flex min-w-0 items-center gap-1.5">
-                          <span className="truncate text-[12px] font-medium text-foreground">
-                            {chat.name}
-                          </span>
-                          {null}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground">
-                          {chat.timestamp
-                            ? new Date(chat.timestamp).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })
-                            : ''}
-                        </span>
-                      </div>
-                      <div className="mt-0.5 flex items-center justify-between gap-2">
-                        <span className="truncate text-[11px] text-muted-foreground">
-                          {chat.lastMessage || 'No messages yet'}
-                        </span>
-                        {(unreadCounts[chat.id] ?? 0) > 0 ? (
-                          <span className="rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-bold text-primary-foreground">
-                            {unreadCounts[chat.id]}
+                    >
+                      <div className="relative h-9 w-9 shrink-0">
+                        <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-2xl bg-muted text-[12px] font-semibold text-foreground">
+                          {chat.avatar ? (
+                            <img src={chat.avatar} alt={chat.name} className="block h-full w-full object-cover object-center" />
+                          ) : (
+                            chat.name[0]?.toUpperCase() ?? '?'
+                          )}
+                        </div>
+                        {chat.isOnline ? (
+                          <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-sidebar">
+                            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.12),0_0_9px_rgba(16,185,129,0.55)] ring-1 ring-emerald-300/70" />
                           </span>
                         ) : null}
                       </div>
-                    </div>
-                  </motion.button>
-                ))
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span className={cn(
+                              'truncate text-[12px] text-foreground',
+                              hasUnread ? 'font-bold' : 'font-medium',
+                            )}>
+                              {chat.name}
+                            </span>
+                            {null}
+                          </span>
+                          <span className={cn(
+                            'text-[10px]',
+                            hasUnread ? 'font-semibold text-primary' : 'text-muted-foreground',
+                          )}>
+                            {chat.timestamp
+                              ? new Date(chat.timestamp).toLocaleTimeString([], {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : ''}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 flex items-center justify-between gap-2">
+                          <span className={cn(
+                            'truncate text-[11px]',
+                            hasUnread ? 'font-semibold text-foreground' : 'text-muted-foreground',
+                          )}>
+                            {chat.lastMessage || 'No messages yet'}
+                          </span>
+                          {hasUnread ? (
+                            <span className="min-w-5 rounded-full bg-primary px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-primary-foreground shadow-sm">
+                              {formatUnreadCount(unread)}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </motion.button>
+                  )
+                })
               ) : (
                 <div className="flex h-40 flex-col items-center justify-center text-center text-muted-foreground">
                   <MessageSquare className="mb-3 h-8 w-8 opacity-35" />
@@ -459,30 +486,45 @@ export function WorkspaceSidebar({
         ) : collapsed && mode === 'direct' ? (
           <div className="flex-1 overflow-y-auto px-2 py-2">
             <div className="flex flex-col items-center gap-2">
-              {directChats.slice(0, 8).map((chat) => (
-                <button
-                  key={chat.id}
-                  onClick={() => onSelectChat(chat.id)}
-                  onContextMenu={(event) => handleContextMenu(event, chat)}
-                  className={cn(
-                    'relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl text-[12px] font-semibold transition-colors',
-                    activeChat === chat.id
-                      ? 'bg-primary/10 text-primary'
-                      : 'bg-muted text-foreground hover:bg-accent',
-                  )}
-                >
-                  {chat.avatar ? (
-                    <img src={chat.avatar} alt={chat.name} className="block h-full w-full object-cover object-center" />
-                  ) : (
-                    chat.name[0]?.toUpperCase() ?? '?'
-                  )}
-                  {(unreadCounts[chat.id] ?? 0) > 0 ? (
-                    <span className="absolute -right-1 -top-1 rounded-full bg-primary px-1 py-0.5 text-[9px] font-bold text-primary-foreground">
-                      {Math.min(unreadCounts[chat.id], 9)}
+              {directChats.slice(0, 8).map((chat) => {
+                const unread = unreadCounts[chat.id] ?? chat.unread ?? 0
+                const hasUnread = unread > 0
+
+                return (
+                  <button
+                    key={chat.id}
+                    onClick={() => onSelectChat(chat.id)}
+                    onContextMenu={(event) => handleContextMenu(event, chat)}
+                    className={cn(
+                      'relative flex h-10 w-10 items-center justify-center rounded-xl text-[12px] font-semibold transition-colors',
+                      activeChat === chat.id
+                        ? 'bg-primary/10 text-primary'
+                        : hasUnread
+                          ? 'bg-accent text-foreground'
+                          : 'bg-muted text-foreground hover:bg-accent',
+                    )}
+                    title={chat.name}
+                  >
+                    <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl">
+                      {chat.avatar ? (
+                        <img src={chat.avatar} alt={chat.name} className="block h-full w-full object-cover object-center" />
+                      ) : (
+                        chat.name[0]?.toUpperCase() ?? '?'
+                      )}
                     </span>
-                  ) : null}
-                </button>
-              ))}
+                    {chat.isOnline ? (
+                      <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-sidebar">
+                        <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.12),0_0_9px_rgba(16,185,129,0.55)] ring-1 ring-emerald-300/70" />
+                      </span>
+                    ) : null}
+                    {hasUnread ? (
+                      <span className="absolute -right-1.5 -top-1.5 min-w-4 rounded-full bg-primary px-1 py-0.5 text-center text-[9px] font-bold leading-none text-primary-foreground shadow-sm">
+                        {unread > 9 ? '9+' : unread}
+                      </span>
+                    ) : null}
+                  </button>
+                )
+              })}
             </div>
           </div>
         ) : collapsed && mode === 'channels' ? (

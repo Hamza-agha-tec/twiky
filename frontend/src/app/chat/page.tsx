@@ -417,7 +417,22 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     ? activeDirectChat
     : undefined
   const { data: activeDirectRealMessages = [] } = useDirectMessages(activeIsRealDirect ? activeDirectChat : null)
-  useDirectMessageRealtime(visibleDirectConversationId, profile?.id)
+  const handleIncomingDirectMessage = useCallback((message: ChatMessage, isVisibleConversation: boolean) => {
+    if (isVisibleConversation) {
+      setUnreadCounts((prev) =>
+        prev[message.conversation_id] ? { ...prev, [message.conversation_id]: 0 } : prev,
+      )
+      return
+    }
+
+    setUnreadCounts((prev) => ({
+      ...prev,
+      [message.conversation_id]: (prev[message.conversation_id] ?? 0) + 1,
+    }))
+  }, [])
+  useDirectMessageRealtime(visibleDirectConversationId, profile?.id, {
+    onIncomingMessage: handleIncomingDirectMessage,
+  })
   const sendDirectMessage = useSendDirectMessage(activeDirectChat ?? '')
   const toggleDirectReaction = useToggleDirectMessageReaction(activeDirectChat ?? '')
 
@@ -827,7 +842,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           avatar: other?.avatar_url ?? '',
           lastMessage: lastLine,
           timestamp: last?.created_at ?? conv.created_at ?? new Date().toISOString(),
-          unread: unreadCounts[conv.id] ?? 0,
+          unread: unreadCounts[conv.id] ?? conv.unread_count ?? 0,
           isGroup: false,
           isOnline,
           subPlan: other?.sub_plan ?? null,
@@ -1060,6 +1075,10 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
 
   useEffect(() => {
     if (!visibleDirectConversationId || !profile?.id) return
+    setUnreadCounts((prev) =>
+      prev[visibleDirectConversationId] ? { ...prev, [visibleDirectConversationId]: 0 } : prev,
+    )
+
     const unreadIncoming = activeDirectRealMessages.filter(
       (message) => message.sender_id !== profile.id && message.status !== 'read',
     )

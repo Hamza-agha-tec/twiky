@@ -39,6 +39,7 @@ export type DirectConversation = {
   user_one?: { id: string; username: string | null; avatar_url: string | null } | null
   user_two?: { id: string; username: string | null; avatar_url: string | null } | null
   last_message?: Array<{ id: string; content: string | null; sender_id: string; created_at: string }> | null
+  unread_count?: number
 }
 
 export type BackendDirectMessage = {

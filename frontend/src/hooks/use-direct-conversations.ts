@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { directConversationsApi, type BackendDirectMessage, type DirectConversation, toChatMessage } from '@/lib/direct-conversations-api'
 import { directMessagesApi } from '@/lib/direct-messages-api'
@@ -82,8 +82,22 @@ function updateConversationPreview(conversation: DirectConversation, message: Ch
   }
 }
 
-export function useDirectMessageRealtime(conversationId?: string | null, currentUserId?: string | null) {
+interface DirectMessageRealtimeOptions {
+  onIncomingMessage?: (message: ChatMessage, isVisibleConversation: boolean) => void
+}
+
+export function useDirectMessageRealtime(
+  conversationId?: string | null,
+  currentUserId?: string | null,
+  options: DirectMessageRealtimeOptions = {},
+) {
   const queryClient = useQueryClient()
+  const optionsRef = useRef(options)
+  const handledIncomingIdsRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    optionsRef.current = options
+  }, [options])
 
   useEffect(() => {
     let mounted = true
@@ -104,12 +118,18 @@ export function useDirectMessageRealtime(conversationId?: string | null, current
         queryClient.invalidateQueries({ queryKey: DIRECT_KEYS.conversations })
 
         if (currentUserId && message.sender_id !== currentUserId) {
+          if (handledIncomingIdsRef.current.has(message.id)) return
+          handledIncomingIdsRef.current.add(message.id)
+
+          const isVisibleConversation = message.conversation_id === conversationId
+          optionsRef.current.onIncomingMessage?.(message, isVisibleConversation)
+
           socket.emit('directMessageDelivered', {
             conversationId: message.conversation_id,
             messageId: message.id,
           })
 
-          if (message.conversation_id === conversationId) {
+          if (isVisibleConversation) {
             socket.emit('markDirectRead', {
               conversationId: message.conversation_id,
               messageId: message.id,

@@ -64,8 +64,8 @@ export class MessagingService {
 
     async getDirectConversations(userId: string) {
         // Find where user is user_one OR user_two
-        const { data, error } = await this.supabaseService
-            .getClient()
+        const client = this.supabaseService.getClient();
+        const { data, error } = await client
             .from('direct_conversations')
             .select(`
                 *,
@@ -79,7 +79,32 @@ export class MessagingService {
             .order('created_at', { ascending: false });
 
         if (error) throw new Error(`Failed to fetch inboxes: ${error.message}`);
-        return data;
+
+        const conversations = data ?? [];
+        const conversationIds = conversations.map((conversation) => conversation.id);
+        if (!conversationIds.length) return conversations;
+
+        const { data: unreadMessages, error: unreadError } = await client
+            .from('direct_messages')
+            .select('conversation_id')
+            .in('conversation_id', conversationIds)
+            .neq('sender_id', userId)
+            .or('status.is.null,status.neq.read');
+
+        if (unreadError) throw new Error(`Failed to fetch unread counts: ${unreadError.message}`);
+
+        const unreadByConversation = new Map<string, number>();
+        for (const message of unreadMessages ?? []) {
+            unreadByConversation.set(
+                message.conversation_id,
+                (unreadByConversation.get(message.conversation_id) ?? 0) + 1,
+            );
+        }
+
+        return conversations.map((conversation) => ({
+            ...conversation,
+            unread_count: unreadByConversation.get(conversation.id) ?? 0,
+        }));
     }
 
     async sendDirectMessage(userId: string, conversationId: string, dto: SendDirectMessageDto) {
