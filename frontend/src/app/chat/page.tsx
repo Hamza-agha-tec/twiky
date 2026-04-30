@@ -58,7 +58,7 @@ import { type Chat } from '@/lib/mock-data'
 import { useRouter } from 'next/navigation'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { useCreateDirectConversation, useDirectConversations, useDirectMessages, useSendDirectMessage, useToggleDirectMessageReaction } from '@/hooks/use-direct-conversations'
+import { useCreateDirectConversation, useDirectConversations, useDirectMessages, useDirectMessageRealtime, useSendDirectMessage, useToggleDirectMessageReaction } from '@/hooks/use-direct-conversations'
 import { useVoiceInvitationListener } from '@/hooks/use-voice-invitation-listener'
 import { invitationsApi, type Invitation } from '@/lib/invitations-api'
 import { getSocket } from '@/lib/socket'
@@ -154,20 +154,8 @@ function readPersistedChatState(): Partial<PersistedChatState> {
     if (isOneOf(parsed.activeView, ACTIVE_VIEWS)) next.activeView = parsed.activeView
     if (isOneOf(parsed.channelTab, MAIN_AREA_TABS)) next.channelTab = parsed.channelTab
     if (typeof parsed.settingsSection === 'string') next.settingsSection = parsed.settingsSection
-    if (
-      parsed.syntheticDirectChats &&
-      typeof parsed.syntheticDirectChats === 'object' &&
-      !Array.isArray(parsed.syntheticDirectChats)
-    ) {
-      next.syntheticDirectChats = parsed.syntheticDirectChats as Record<string, FeedDirectConversationTarget>
-    }
-    if (
-      parsed.syntheticDirectMessages &&
-      typeof parsed.syntheticDirectMessages === 'object' &&
-      !Array.isArray(parsed.syntheticDirectMessages)
-    ) {
-      next.syntheticDirectMessages = parsed.syntheticDirectMessages as Record<string, ChatMessage[]>
-    }
+    next.syntheticDirectChats = {}
+    next.syntheticDirectMessages = {}
     if (typeof parsed.workspaceCollapsed === 'boolean') {
       next.workspaceCollapsed = parsed.workspaceCollapsed
     }
@@ -175,10 +163,7 @@ function readPersistedChatState(): Partial<PersistedChatState> {
       next.workspaceMode = parsed.workspaceMode
     }
 
-    if (
-      next.activeDirectChat &&
-      !next.syntheticDirectChats?.[next.activeDirectChat]
-    ) {
+    if (next.activeDirectChat && !/^[0-9a-f-]{36}$/i.test(next.activeDirectChat)) {
       next.activeDirectChat = null
     }
 
@@ -426,6 +411,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const activeSyntheticChat = activeDirectChat ? (syntheticDirectChats[activeDirectChat] ?? null) : null
   const activeIsRealDirect = Boolean(activeDirectChat && /^[0-9a-f-]{36}$/i.test(activeDirectChat))
   const { data: activeDirectRealMessages = [] } = useDirectMessages(activeIsRealDirect ? activeDirectChat : null)
+  useDirectMessageRealtime(activeIsRealDirect ? activeDirectChat : undefined)
   const sendDirectMessage = useSendDirectMessage(activeDirectChat ?? '')
   const toggleDirectReaction = useToggleDirectMessageReaction(activeDirectChat ?? '')
 
@@ -753,8 +739,8 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         activeView,
         channelTab,
         settingsSection,
-        syntheticDirectChats,
-        syntheticDirectMessages,
+        syntheticDirectChats: {},
+        syntheticDirectMessages: {},
         workspaceCollapsed,
         workspaceMode,
       }
@@ -771,8 +757,6 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     activeView,
     channelTab,
     settingsSection,
-    syntheticDirectChats,
-    syntheticDirectMessages,
     viewStateReady,
     workspaceCollapsed,
     workspaceMode,
@@ -847,15 +831,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     [directConversations, profile?.id, unreadCounts],
   )
 
-  const directSidebarChats = useMemo<Chat[]>(
-    () => {
-      const merged = [...backendDirectChats, ...syntheticSidebarChats]
-      return merged.filter((chat, index, items) =>
-        items.findIndex((c) => c.id === chat.id) === index,
-      )
-    },
-    [backendDirectChats, syntheticSidebarChats],
-  )
+  const directSidebarChats = backendDirectChats
 
   const activeNav: WorkspaceNavTarget | null =
     activeSurface === 'personal-notes' ? 'notes'
@@ -869,23 +845,28 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     router.push('/settings/profile')
   }
 
-  const openDirectChat = useCallback((conversation: string | FeedDirectConversationTarget) => {
+  const openDirectChat = useCallback(async (conversation: string | FeedDirectConversationTarget) => {
     const conversationId =
       typeof conversation === 'string' ? conversation : conversation.id
 
     if (typeof conversation !== 'string') {
-      setSyntheticDirectChats((prev) => ({
-        ...prev,
-        [conversation.id]: {
-          ...(prev[conversation.id] ?? {}),
-          ...conversation,
-        },
-      }))
-      setSyntheticDirectMessages((prev) => {
-        if (prev[conversation.id]?.length) return prev
-        if (!conversation.initialMessages?.length) return prev
-        return { ...prev, [conversation.id]: conversation.initialMessages }
-      })
+      if (!conversation.targetUserId) {
+        toast.error('This feed user is not linked to a real account yet.')
+        return
+      }
+
+      try {
+        const realConversation = await createDirectConversation.mutateAsync(conversation.targetUserId)
+        setActiveDirectChat(realConversation.id)
+        setActiveSurface('direct')
+        setWorkspaceMode('direct')
+        setActiveView('chat')
+        setShowDirectProfile(false)
+        setUnreadCounts((prev) => ({ ...prev, [realConversation.id]: 0 }))
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Could not start direct message')
+      }
+      return
     }
 
     setActiveDirectChat(conversationId)
@@ -894,7 +875,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     setActiveView('chat')
     setShowDirectProfile(false)
     setUnreadCounts((prev) => ({ ...prev, [conversationId]: 0 }))
-  }, [])
+  }, [createDirectConversation, setActiveView])
 
   const handleSyntheticSendMessage = useCallback(
     (conversationId: string, content: string, type = 'text', replyToId?: string, fileUrl?: string) => {

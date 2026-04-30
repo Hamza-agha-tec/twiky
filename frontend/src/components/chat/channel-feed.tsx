@@ -187,6 +187,7 @@ export interface FeedDirectConversationTarget {
   isVerified?: boolean
   name: string
   status: string
+  targetUserId?: string
 }
 
 const FEED_MEMBER_PROFILES: Record<string, Omit<FeedMemberProfile, 'avatarUrl' | 'name' | 'role'>> = {
@@ -2210,6 +2211,7 @@ export function ChannelFeed({
       isVerified: memberProfile.isVerified ?? false,
       name: memberProfile.name,
       status: memberProfile.status,
+      targetUserId: memberProfile.id,
     }
   }
 

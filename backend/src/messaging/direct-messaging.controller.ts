@@ -2,11 +2,15 @@ import { Controller, Get, Post, Param, Body, UseGuards, Request } from '@nestjs/
 import { MessagingService } from './messaging.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { StartDirectConversationDto, SendDirectMessageDto } from './dto/direct-messaging.dto';
+import { ChatGateway } from './gateway/chat.gateway';
 
 @UseGuards(JwtAuthGuard)
 @Controller('direct-conversations')
 export class DirectMessagingController {
-    constructor(private readonly messagingService: MessagingService) {}
+    constructor(
+        private readonly messagingService: MessagingService,
+        private readonly chatGateway: ChatGateway,
+    ) {}
 
     @Get()
     async getDirectConversations(@Request() req: any) {
@@ -25,11 +29,20 @@ export class DirectMessagingController {
 
     @Post(':id/messages')
     async sendDirectMessage(@Request() req: any, @Param('id') conversationId: string, @Body() dto: SendDirectMessageDto) {
-        return this.messagingService.sendDirectMessage(req.user.userId, conversationId, dto);
+        const message = await this.messagingService.sendDirectMessage(req.user.userId, conversationId, dto);
+        this.chatGateway.emitDirectMessageCreated(conversationId, message);
+        const conversations = await this.messagingService.getDirectConversations(req.user.userId);
+        const conversation = conversations.find((item) => item.id === conversationId);
+        if (conversation) {
+            this.chatGateway.emitDirectMessageNotification(conversation.user_one_id, conversation.user_two_id, message);
+        }
+        return message;
     }
 
     @Post('messages/:messageId/reactions')
     async toggleReaction(@Request() req: any, @Param('messageId') messageId: string, @Body() dto: { emoji: string }) {
-        return this.messagingService.toggleDirectMessageReaction(req.user.userId, messageId, dto.emoji);
+        const message = await this.messagingService.toggleDirectMessageReaction(req.user.userId, messageId, dto.emoji);
+        this.chatGateway.emitDirectMessageUpdated(message.conversation_id, message);
+        return message;
     }
 }

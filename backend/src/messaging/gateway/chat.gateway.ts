@@ -100,6 +100,22 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     this.server?.to(`group_${groupId}`).emit('groupMessageDeleted', { groupId, messageId });
   }
 
+  emitDirectMessageCreated(conversationId: string, message: any) {
+    this.server?.to(`dm_${conversationId}`).emit('newDirectMessage', message);
+  }
+
+  emitDirectMessageNotification(userOneId: string, userTwoId: string, message: any) {
+    this.server?.to(`user_${userOneId}`).to(`user_${userTwoId}`).emit('newDirectMessageNotification', message);
+  }
+
+  emitDirectMessageUpdated(conversationId: string, message: any) {
+    this.server?.to(`dm_${conversationId}`).emit('directMessageUpdated', message);
+  }
+
+  emitDirectMessageDeleted(conversationId: string, messageId: string) {
+    this.server?.to(`dm_${conversationId}`).emit('directMessageDeleted', { conversationId, messageId });
+  }
+
   @SubscribeMessage('getOnlineUsers')
   handleGetOnlineUsers() {
     return Array.from(this.onlineUsers.keys());
@@ -205,14 +221,14 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       const message = await this.messagingService.sendDirectMessage(senderId, payload.conversationId, payload);
 
       // Broadcast to local room
-      this.server.to(`dm_${payload.conversationId}`).emit('newDirectMessage', message);
+      this.emitDirectMessageCreated(payload.conversationId, message);
 
       // Alert both users globally (for notification syncing)
       // Since DM has 2 users, we can just fetch the conv and emit to both
       const conv = await this.messagingService.getDirectConversations(senderId);
       const dmConv = conv.find(c => c.id === payload.conversationId);
       if (dmConv) {
-        this.server.to(`user_${dmConv.user_one_id}`).to(`user_${dmConv.user_two_id}`).emit('newDirectMessageNotification', message);
+        this.emitDirectMessageNotification(dmConv.user_one_id, dmConv.user_two_id, message);
       }
 
       return { status: 'sent', messageId: message.id };
@@ -230,7 +246,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const userId = client.data.user.userId;
     try {
       const updated = await this.messagingService.editDirectMessage(userId, payload.messageId, payload.content);
-      this.server.to(`dm_${payload.conversationId}`).emit('directMessageUpdated', updated);
+      this.emitDirectMessageUpdated(payload.conversationId, updated);
     } catch (error) {
       this.logger.error(`Edit DM failed: ${error.message}`);
     }
@@ -244,9 +260,25 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const userId = client.data.user.userId;
     try {
       await this.messagingService.deleteDirectMessage(userId, payload.messageId);
-      this.server.to(`dm_${payload.conversationId}`).emit('directMessageDeleted', payload.messageId);
+      this.emitDirectMessageDeleted(payload.conversationId, payload.messageId);
     } catch (error) {
       this.logger.error(`Delete DM failed: ${error.message}`);
+    }
+  }
+
+  @SubscribeMessage('reactToDirectMessage')
+  async handleReactToDirectMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { messageId: string; conversationId: string; emoji: string },
+  ) {
+    const userId = client.data.user.userId;
+    try {
+      const updated = await this.messagingService.toggleDirectMessageReaction(userId, payload.messageId, payload.emoji);
+      this.emitDirectMessageUpdated(payload.conversationId, updated);
+      return { status: 'updated', messageId: updated.id };
+    } catch (error) {
+      this.logger.error(`DM reaction failed: ${error.message}`);
+      return { status: 'error', message: error.message };
     }
   }
 

@@ -41,7 +41,7 @@ export type DirectConversation = {
   last_message?: Array<{ id: string; content: string | null; sender_id: string; created_at: string }> | null
 }
 
-type BackendDirectMessage = {
+export type BackendDirectMessage = {
   id: string
   conversation_id: string
   sender_id: string
@@ -67,7 +67,7 @@ type BackendDirectMessage = {
   }
 }
 
-function toChatMessage(m: BackendDirectMessage): ChatMessage {
+export function toChatMessage(m: BackendDirectMessage): ChatMessage {
   const reactions =
     Array.isArray(m.reactions)
       ? (m.reactions as any[])
