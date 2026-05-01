@@ -76,6 +76,8 @@ function updateConversationPreview(conversation: DirectConversation, message: Ch
     last_message: [{
       id: message.id,
       content: message.content,
+      type: message.type,
+      file_url: message.file_url,
       sender_id: message.sender_id,
       created_at: message.created_at,
     }],

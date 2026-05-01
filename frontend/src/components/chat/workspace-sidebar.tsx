@@ -355,7 +355,7 @@ export function WorkspaceSidebar({
                       onClick={() => onSelectChat(chat.id)}
                       onContextMenu={(event) => handleContextMenu(event, chat)}
                       className={cn(
-                        'mb-1 flex w-full items-start gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors',
+                        'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors',
                         activeChat === chat.id
                           ? 'bg-primary/10'
                           : hasUnread
@@ -363,8 +363,8 @@ export function WorkspaceSidebar({
                             : 'hover:bg-accent',
                       )}
                     >
-                      <div className="relative h-9 w-9 shrink-0">
-                        <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-2xl bg-muted text-[12px] font-semibold text-foreground">
+                      <div className="relative h-7 w-7 shrink-0">
+                        <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-lg bg-muted text-[10px] font-semibold text-foreground">
                           {chat.avatar ? (
                             <img src={chat.avatar} alt={chat.name} className="block h-full w-full object-cover object-center" />
                           ) : (
@@ -372,47 +372,38 @@ export function WorkspaceSidebar({
                           )}
                         </div>
                         {chat.isOnline ? (
-                          <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-sidebar">
-                            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.12),0_0_9px_rgba(16,185,129,0.55)] ring-1 ring-emerald-300/70" />
-                          </span>
+                          <span className="absolute -bottom-px -right-px h-2 w-2 rounded-full bg-emerald-500 ring-1 ring-sidebar" />
                         ) : null}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="flex min-w-0 items-center gap-1.5">
-                            <span className={cn(
-                              'truncate text-[12px] text-foreground',
-                              hasUnread ? 'font-bold' : 'font-medium',
-                            )}>
-                              {chat.name}
-                            </span>
-                            {null}
-                          </span>
+                        <div className="flex items-center justify-between gap-1">
                           <span className={cn(
-                            'text-[10px]',
-                            hasUnread ? 'font-semibold text-primary' : 'text-muted-foreground',
+                            'truncate text-[12px] leading-tight text-foreground',
+                            hasUnread ? 'font-semibold' : 'font-medium',
                           )}>
+                            {chat.name}
+                          </span>
+                          <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
                             {chat.timestamp
-                              ? new Date(chat.timestamp).toLocaleTimeString([], {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })
+                              ? new Date(chat.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                               : ''}
                           </span>
                         </div>
-                        <div className="mt-0.5 flex items-center justify-between gap-2">
-                          <span className={cn(
-                            'truncate text-[11px]',
-                            hasUnread ? 'font-semibold text-foreground' : 'text-muted-foreground',
-                          )}>
-                            {chat.lastMessage || 'No messages yet'}
-                          </span>
-                          {hasUnread ? (
-                            <span className="min-w-5 rounded-full bg-primary px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-primary-foreground shadow-sm">
-                              {formatUnreadCount(unread)}
+                        {(chat.lastMessage || hasUnread) ? (
+                          <div className="mt-0.5 flex items-center justify-between gap-1">
+                            <span className={cn(
+                              'truncate text-[11px] leading-tight',
+                              hasUnread ? 'font-semibold text-foreground' : 'text-muted-foreground',
+                            )}>
+                              {chat.lastMessage || ''}
                             </span>
-                          ) : null}
-                        </div>
+                            {hasUnread ? (
+                              <span className="shrink-0 rounded-full bg-primary px-1 py-0.5 text-center text-[9px] font-bold leading-none text-primary-foreground">
+                                {formatUnreadCount(unread)}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </div>
                     </motion.button>
                   )
@@ -496,7 +487,7 @@ export function WorkspaceSidebar({
                     onClick={() => onSelectChat(chat.id)}
                     onContextMenu={(event) => handleContextMenu(event, chat)}
                     className={cn(
-                      'relative flex h-10 w-10 items-center justify-center rounded-xl text-[12px] font-semibold transition-colors',
+                      'relative flex h-8 w-8 items-center justify-center rounded-lg text-[10px] font-semibold transition-colors',
                       activeChat === chat.id
                         ? 'bg-primary/10 text-primary'
                         : hasUnread
@@ -505,7 +496,7 @@ export function WorkspaceSidebar({
                     )}
                     title={chat.name}
                   >
-                    <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl">
+                    <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg">
                       {chat.avatar ? (
                         <img src={chat.avatar} alt={chat.name} className="block h-full w-full object-cover object-center" />
                       ) : (
@@ -513,9 +504,7 @@ export function WorkspaceSidebar({
                       )}
                     </span>
                     {chat.isOnline ? (
-                      <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-sidebar">
-                        <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.12),0_0_9px_rgba(16,185,129,0.55)] ring-1 ring-emerald-300/70" />
-                      </span>
+                      <span className="absolute -bottom-px -right-px h-2 w-2 rounded-full bg-emerald-500 ring-1 ring-sidebar" />
                     ) : null}
                     {hasUnread ? (
                       <span className="absolute -right-1.5 -top-1.5 min-w-4 rounded-full bg-primary px-1 py-0.5 text-center text-[9px] font-bold leading-none text-primary-foreground shadow-sm">

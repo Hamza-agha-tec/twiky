@@ -2,10 +2,11 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { Check, CheckCheck, Forward, Play, Pause } from 'lucide-react';
+import { Check, CheckCheck, Forward, Play, Pause, FileText, Download, X } from 'lucide-react';
 import { Message } from '@/lib/mock-data';
 import { format } from 'date-fns';
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { MessageContextMenu } from './message-context-menu';
 import { useChatThemeContext } from '@/context/ChatThemeContext';
 
@@ -24,7 +25,11 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
   const [isMounted, setIsMounted] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [audioDuration, setAudioDuration] = useState<string | null>(null);
+  const [audioProgress, setAudioProgress] = useState(0);
+  const [lightbox, setLightbox] = useState(false);
   const messageRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const { resolved: theme } = useChatThemeContext();
 
   const messageReactions = message.reactions ?? [];
@@ -50,9 +55,37 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
   };
 
   const handlePlayToggle = () => {
-    setIsPlaying((p) => !p);
-    if (!isPlaying) setTimeout(() => setIsPlaying(false), 3000);
+    const src = message.fileUrl || (message.type === 'voice' ? '' : message.content);
+    if (!src) return;
+
+    if (!audioRef.current) {
+      const audio = new Audio(src);
+      audio.onended = () => { setIsPlaying(false); setAudioProgress(0); };
+      audio.ontimeupdate = () => {
+        if (audio.duration) setAudioProgress(audio.currentTime / audio.duration);
+      };
+      audio.onloadedmetadata = () => {
+        if (Number.isFinite(audio.duration)) {
+          const m = Math.floor(audio.duration / 60);
+          const s = Math.floor(audio.duration % 60).toString().padStart(2, '0');
+          setAudioDuration(`${m}:${s}`);
+        }
+      };
+      audioRef.current = audio;
+    }
+
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      audioRef.current.play().catch(() => {});
+      setIsPlaying(true);
+    }
   };
+
+  useEffect(() => {
+    return () => { audioRef.current?.pause(); };
+  }, []);
 
   return (
     <motion.div
@@ -89,7 +122,7 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
         <div
           ref={messageRef}
           className={`rounded-2xl relative cursor-context-menu ${
-            message.type === 'image' || message.type === 'video' ? 'p-0 overflow-hidden' : 'px-4 py-2.5'
+            message.type === 'image' || message.type === 'video' ? 'p-0 overflow-hidden' : message.type === 'file' ? 'p-0' : 'px-4 py-2.5'
           } ${
             message.isOwn
               ? `rounded-br-sm ${!theme.own ? 'bg-primary text-primary-foreground' : ''}`
@@ -144,39 +177,14 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
             <p className="text-sm wrap-break-word whitespace-pre-wrap leading-relaxed">{message.content}</p>
           )}
 
-          {/* Image */}
+          {/* Image / GIF */}
           {message.type === 'image' && (
             <img
-              src={message.content}
+              src={message.fileUrl || message.content}
               alt="Shared image"
-              className="max-w-xs max-h-64 object-cover block"
+              className="max-w-[200px] max-h-44 object-cover block cursor-zoom-in"
+              onClick={() => setLightbox(true)}
             />
-          )}
-
-          {/* Video */}
-          {message.type === 'video' && (
-            <div className="max-w-xs relative group/video overflow-hidden">
-              <img
-                src={message.content}
-                alt="Video thumbnail"
-                className="max-h-64 w-full object-cover group-hover/video:scale-105 transition-transform duration-300"
-              />
-              <div className="absolute inset-0 bg-linear-to-b from-transparent via-transparent to-black/50" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <motion.button
-                  whileHover={{ scale: 1.12 }}
-                  whileTap={{ scale: 0.92 }}
-                  className="p-3 bg-white/90 backdrop-blur-sm rounded-full shadow-lg"
-                >
-                  <Play className="h-6 w-6 text-black fill-black" />
-                </motion.button>
-              </div>
-              {message.duration && (
-                <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-0.5 rounded font-medium">
-                  {message.duration}
-                </div>
-              )}
-            </div>
           )}
 
           {/* Voice Message */}
@@ -199,28 +207,72 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
 
               {/* Waveform bars */}
               <div className="flex items-center gap-px h-8 flex-1">
-                {WAVEFORM.map((h, i) => (
-                  <motion.div
-                    key={i}
-                    className={`w-1 rounded-full shrink-0 ${
-                      message.isOwn ? 'bg-white/70' : 'bg-primary/60'
-                    }`}
-                    style={{ height: `${h}%` }}
-                    animate={isPlaying ? {
-                      scaleY: [1, 1.5 + Math.random(), 1],
-                      opacity: [0.6, 1, 0.6],
-                    } : { scaleY: 1, opacity: 0.7 }}
-                    transition={isPlaying ? {
-                      duration: 0.4 + Math.random() * 0.3,
-                      repeat: Infinity,
-                      delay: i * 0.02,
-                    } : {}}
-                  />
-                ))}
+                {WAVEFORM.map((h, i) => {
+                  const played = i / WAVEFORM.length < audioProgress;
+                  return (
+                    <motion.div
+                      key={i}
+                      className={`w-1 rounded-full shrink-0 ${
+                        played
+                          ? (message.isOwn ? 'bg-white' : 'bg-primary')
+                          : (message.isOwn ? 'bg-white/40' : 'bg-primary/35')
+                      }`}
+                      style={{ height: `${h}%` }}
+                      animate={isPlaying ? {
+                        scaleY: [1, 1.5 + Math.random(), 1],
+                        opacity: [0.6, 1, 0.6],
+                      } : { scaleY: 1, opacity: 0.7 }}
+                      transition={isPlaying ? {
+                        duration: 0.4 + Math.random() * 0.3,
+                        repeat: Infinity,
+                        delay: i * 0.02,
+                      } : {}}
+                    />
+                  );
+                })}
               </div>
 
-              <span className="text-xs whitespace-nowrap opacity-75">{message.content}</span>
+              <span className="text-xs whitespace-nowrap opacity-75">
+                {audioDuration ?? message.content}
+              </span>
             </div>
+          )}
+
+          {/* Video */}
+          {message.type === 'video' && (
+            <div className="max-w-xs overflow-hidden">
+              <video
+                src={message.fileUrl || message.content}
+                controls
+                className="max-h-64 w-full block"
+                preload="metadata"
+              />
+            </div>
+          )}
+
+          {/* File attachment */}
+          {message.type === 'file' && (
+            <a
+              href={message.fileUrl || message.content}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 min-w-[180px] transition-colors ${
+                message.isOwn ? 'bg-white/10 hover:bg-white/20' : 'bg-primary/8 hover:bg-primary/15'
+              }`}
+            >
+              <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${
+                message.isOwn ? 'bg-white/15' : 'bg-primary/15'
+              }`}>
+                <FileText className="h-5 w-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] font-medium truncate">
+                  {(message.fileUrl || message.content)?.split('/').pop() ?? 'File'}
+                </p>
+                <p className="text-[10px] opacity-60">Tap to open</p>
+              </div>
+              <Download className="h-3.5 w-3.5 opacity-60 shrink-0" />
+            </a>
           )}
 
           {/* Edited */}
@@ -280,6 +332,31 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
           onReply={onReply ? () => { onReply(message); setContextMenu(null); } : undefined}
           onDelete={onDelete ? () => { onDelete(); setContextMenu(null); } : undefined}
         />
+      )}
+
+      {/* Image lightbox */}
+      {lightbox && isMounted && createPortal(
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[999] flex items-center justify-center bg-black/90 backdrop-blur-sm"
+          onClick={() => setLightbox(false)}
+        >
+          <button
+            className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
+            onClick={() => setLightbox(false)}
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <img
+            src={message.fileUrl || message.content}
+            alt="Full size"
+            className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </motion.div>,
+        document.body,
       )}
     </motion.div>
   );

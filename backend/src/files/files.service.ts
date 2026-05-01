@@ -246,7 +246,7 @@ export class FilesService {
     const ext = this.extFromMime(resolvedMime) || (rawName.match(/\.[a-z0-9]+$/i)?.[0] ?? '.bin');
     const objectPath = `${userId}/${Date.now()}_${rawName.replace(/\.[^.]+$/, '')}${ext}`;
     const { publicUrl } = await this.uploadObject(STORAGE_BUCKETS.messages, objectPath, file, resolvedMime);
-    return { fileName: file.originalname, fileUrl: publicUrl, fileType };
+    return { fileName: file.originalname, fileUrl: publicUrl, fileType: resolvedMime };
   }
 
   async uploadUserEnterSound(userId: string, file: Express.Multer.File) {

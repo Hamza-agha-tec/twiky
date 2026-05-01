@@ -832,10 +832,16 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         const isOnline = other?.id ? onlineUsers.has(other.id) : false
         const name = other?.username ?? 'Unknown'
         const last = Array.isArray(conv.last_message) ? conv.last_message[0] : null
-        const lastContent = typeof last?.content === 'string' ? last.content.trim() : ''
+        const lastType = last?.type ?? 'text'
+        const mediaLabel =
+          lastType === 'image' ? '📷 Photo' :
+          lastType === 'video' ? '🎥 Video' :
+          lastType === 'voice' ? '🎤 Voice note' :
+          lastType === 'file' ? '📎 File' : null
+        const lastContent = mediaLabel ?? (typeof last?.content === 'string' ? last.content.trim() : '')
         const lastPrefix =
           last?.sender_id && last.sender_id === myId ? 'You' : (name || 'User')
-        const lastLine = lastContent ? `${lastPrefix}: ${lastContent}` : 'Say hi'
+        const lastLine = lastContent ? (mediaLabel ? `${lastPrefix}: ${mediaLabel}` : `${lastPrefix}: ${lastContent}`) : ''
         return {
           id: conv.id,
           name,

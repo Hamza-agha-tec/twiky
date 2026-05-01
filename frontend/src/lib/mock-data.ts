@@ -22,7 +22,9 @@ export interface Message {
   senderIsVerified?: boolean;
   avatar?: string;
   content: string;
-  type: 'text' | 'image' | 'voice' | 'video';
+  fileUrl?: string;
+  mime?: string;
+  type: 'text' | 'image' | 'voice' | 'video' | 'file';
   timestamp: string;
   isOwn: boolean;
   isRead: boolean;

@@ -68,6 +68,24 @@ function toUiMessage(
   const reactions = Object.entries(reactionMap).map(([emoji, { count, reactedByMe }]) => ({ emoji, count, reactedByMe }));
   const myReaction = (m.reactions ?? []).find((r) => r.userId === currentIdentity.id)?.emoji ?? null;
 
+  const rawMime = (m.metadata as any)?.mime as string | undefined
+  const fileUrl = m.file_url ?? m.content ?? ''
+  const urlExt = fileUrl.split('?')[0].split('.').pop()?.toLowerCase() ?? ''
+  const IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'avif', 'bmp', 'ico'])
+  const VIDEO_EXTS = new Set(['mp4', 'webm', 'mov', 'avi', 'mkv'])
+  const mimeFromExt = IMAGE_EXTS.has(urlExt) ? `image/${urlExt === 'jpg' ? 'jpeg' : urlExt}` :
+    VIDEO_EXTS.has(urlExt) ? `video/${urlExt}` : ''
+  const mime = (rawMime && rawMime.includes('/')) ? rawMime : (mimeFromExt || rawMime || '')
+  const rawType: string = m.type ?? 'text'
+  const resolvedType: Message['type'] =
+    rawType === 'voice' ? 'voice' :
+    rawType === 'image' ? 'image' :
+    rawType === 'video' ? 'video' :
+    (rawType === 'file' || rawType === 'image') && mime.startsWith('video/') ? 'video' :
+    (rawType === 'file' || rawType === 'image') && mime.startsWith('image/') ? 'image' :
+    rawType === 'file' ? 'file' :
+    'text'
+
   return {
     id: m.id,
     senderId: m.sender_id,
@@ -83,13 +101,15 @@ function toUiMessage(
       currentIdentity,
     ),
     avatar: m.sender.avatar_url ?? undefined,
+    fileUrl: m.file_url ?? undefined,
+    mime,
     content:
       m.type === 'voice'
         ? (typeof (m.metadata as any)?.duration === 'number'
             ? `${Math.round((m.metadata as any).duration)}s`
             : 'Voice message')
         : (m.file_url ?? m.content ?? ''),
-    type: (m.type as Message['type']) ?? 'text',
+    type: resolvedType,
     timestamp: m.created_at,
     isOwn: m.sender_id === currentIdentity.id,
     isRead: m.status === 'read',

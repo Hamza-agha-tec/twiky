@@ -218,14 +218,15 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
     setIsUploading(true);
     setUploadingLabel(file.name.length > 24 ? file.name.slice(0, 22) + '…' : file.name);
     try {
-      const { fileUrl, fileType } = await uploadFile.mutateAsync(file);
-      const type = fileType.startsWith('image/') ? 'image' : 'file';
+      const { fileUrl } = await uploadFile.mutateAsync(file);
+      const mime = file.type || 'application/octet-stream';
+      const type = mime.startsWith('image/') ? 'image' : 'file';
       onSendMessage?.({
         content: fileUrl,
         type,
         replyToId: replyTo?.id ?? null,
         fileUrl,
-        mime: fileType,
+        mime,
         size: file.size,
       });
       onCancelReply?.();
@@ -335,7 +336,7 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*,video/*,.pdf,.doc,.docx,.txt,.zip,.csv"
+            accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.zip,.csv"
             className="hidden"
             onChange={handleFileChange}
           />
