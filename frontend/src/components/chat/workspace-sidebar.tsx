@@ -44,6 +44,7 @@ interface WorkspaceSidebarProps {
   searchQuery: string
   syntheticDirectChats?: Chat[]
   unreadCounts?: Record<string, number>
+  typingConversations?: Record<string, boolean>
 }
 
 export type WorkspaceMode = 'direct' | 'channels'
@@ -132,6 +133,7 @@ export function WorkspaceSidebar({
   searchQuery,
   syntheticDirectChats = [],
   unreadCounts = {},
+  typingConversations = {},
 }: WorkspaceSidebarProps) {
   const [chatMeta, setChatMeta] = useState<Record<string, ChatMeta>>({})
   const [deleted, setDeleted] = useState<Set<string>>(new Set())
@@ -345,6 +347,8 @@ export function WorkspaceSidebar({
                 visibleDirectChats.map((chat, index) => {
                   const unread = unreadCounts[chat.id] ?? chat.unread ?? 0
                   const hasUnread = unread > 0
+                  const isTyping = typingConversations[chat.id] ?? false
+                  const hasGeekBanner = chat.subPlan === 'GEEK' && Boolean(chat.bannerUrl)
 
                   return (
                     <motion.button
@@ -355,7 +359,8 @@ export function WorkspaceSidebar({
                       onClick={() => onSelectChat(chat.id)}
                       onContextMenu={(event) => handleContextMenu(event, chat)}
                       className={cn(
-                        'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors',
+                        'group/dm-card relative flex w-full items-center gap-2 overflow-hidden rounded-lg px-2 py-1.5 text-left transition-colors',
+                        hasGeekBanner && 'transition-shadow duration-300 ease-out hover:shadow-[0_6px_18px_rgba(0,0,0,0.2)]',
                         activeChat === chat.id
                           ? 'bg-primary/10'
                           : hasUnread
@@ -363,7 +368,20 @@ export function WorkspaceSidebar({
                             : 'hover:bg-accent',
                       )}
                     >
-                      <div className="relative h-7 w-7 shrink-0">
+                      {hasGeekBanner && (
+                        <>
+                          <img
+                            src={chat.bannerUrl!}
+                            alt=""
+                            aria-hidden
+                            draggable={false}
+                            className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-300 group-hover/dm-card:opacity-100"
+                          />
+                          <span className="pointer-events-none absolute inset-0 bg-gradient-to-r from-sidebar/95 via-sidebar/58 to-sidebar/18 opacity-0 transition-opacity duration-300 group-hover/dm-card:opacity-100" />
+                          <span className="pointer-events-none absolute inset-y-0 left-0 w-14 opacity-0 shadow-[inset_16px_0_20px_rgba(0,0,0,0.82)] transition-opacity duration-300 group-hover/dm-card:opacity-100" />
+                        </>
+                      )}
+                      <div className="relative z-10 h-7 w-7 shrink-0">
                         <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-lg bg-muted text-[10px] font-semibold text-foreground">
                           {chat.avatar ? (
                             <img src={chat.avatar} alt={chat.name} className="block h-full w-full object-cover object-center" />
@@ -375,25 +393,49 @@ export function WorkspaceSidebar({
                           <span className="absolute -bottom-px -right-px h-2 w-2 rounded-full bg-emerald-500 ring-1 ring-sidebar" />
                         ) : null}
                       </div>
-                      <div className="min-w-0 flex-1">
+                      <div className="relative z-10 min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-1">
                           <span className={cn(
-                            'truncate text-[12px] leading-tight text-foreground',
+                            'truncate text-[12px] leading-tight text-foreground transition-colors duration-300',
                             hasUnread ? 'font-semibold' : 'font-medium',
+                            hasGeekBanner && 'group-hover/dm-card:text-white',
                           )}>
                             {chat.name}
                           </span>
-                          <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
+                          <span className={cn(
+                            'shrink-0 text-[10px] tabular-nums transition-colors duration-300',
+                            hasGeekBanner ? 'text-muted-foreground group-hover/dm-card:text-white/70' : 'text-muted-foreground',
+                          )}>
                             {chat.timestamp
                               ? new Date(chat.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                               : ''}
                           </span>
                         </div>
-                        {(chat.lastMessage || hasUnread) ? (
+                        {isTyping ? (
+                          <div className="mt-0.5 flex items-center gap-1">
+                            <span className={cn(
+                              'text-[11px] leading-tight italic',
+                              hasGeekBanner ? 'text-muted-foreground group-hover/dm-card:text-white/70' : 'text-muted-foreground',
+                            )}>
+                              typing
+                            </span>
+                            <span className="flex items-center gap-px">
+                              {[0, 0.2, 0.4].map((delay, i) => (
+                                <motion.span
+                                  key={i}
+                                  className="block h-1 w-1 rounded-full bg-emerald-500"
+                                  animate={{ y: [0, -3, 0] }}
+                                  transition={{ duration: 0.6, repeat: Infinity, delay, ease: 'easeInOut' }}
+                                />
+                              ))}
+                            </span>
+                          </div>
+                        ) : (chat.lastMessage || hasUnread) ? (
                           <div className="mt-0.5 flex items-center justify-between gap-1">
                             <span className={cn(
-                              'truncate text-[11px] leading-tight',
+                              'truncate text-[11px] leading-tight transition-colors duration-300',
                               hasUnread ? 'font-semibold text-foreground' : 'text-muted-foreground',
+                              hasGeekBanner && 'group-hover/dm-card:text-white/80',
                             )}>
                               {chat.lastMessage || ''}
                             </span>

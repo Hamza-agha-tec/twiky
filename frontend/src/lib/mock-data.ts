@@ -11,6 +11,7 @@ export interface Chat {
   isOnline?: boolean;
   subPlan?: string | null;
   isVerified?: boolean;
+  bannerUrl?: string | null;
   pinnedMessage?: string;
 }
 

@@ -36,8 +36,8 @@ export type DirectConversation = {
   user_one_id: string
   user_two_id: string
   created_at: string
-  user_one?: { id: string; username: string | null; avatar_url: string | null } | null
-  user_two?: { id: string; username: string | null; avatar_url: string | null } | null
+  user_one?: { id: string; username: string | null; avatar_url: string | null; banner?: string | null; sub_plan?: string | null; is_verified?: boolean | null } | null
+  user_two?: { id: string; username: string | null; avatar_url: string | null; banner?: string | null; sub_plan?: string | null; is_verified?: boolean | null } | null
   last_message?: Array<{ id: string; content: string | null; type?: string | null; file_url?: string | null; sender_id: string; created_at: string }> | null
   unread_count?: number
 }

@@ -122,7 +122,7 @@ function toUiMessage(
   };
 }
 
-export function ChatWindow({ chatOverride, messages: providedMessages = [], onSendMessage, onTyping, otherIsTyping = false, onReact, onDelete, onProfileClick }: ChatWindowProps) {
+export function ChatWindow({ activeChat, chatOverride, messages: providedMessages = [], onSendMessage, onTyping, otherIsTyping = false, onReact, onDelete, onProfileClick }: ChatWindowProps) {
   const { user } = useAuth();
   const { data: profile } = useProfile();
   const { resolved: chatTheme } = useChatThemeContext();
@@ -142,20 +142,30 @@ export function ChatWindow({ chatOverride, messages: providedMessages = [], onSe
     .slice()
     .map((m) => toUiMessage(m, currentIdentity));
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const initialScrollDone = useRef(false);
   const [replyTo, setReplyTo] = useState<ReplyTo | null>(null);
 
   useLayoutEffect(() => {
+    initialScrollDone.current = false;
+  }, [activeChat]);
+
+  useLayoutEffect(() => {
     if (messages.length === 0) return;
+    const el = scrollContainerRef.current;
+    if (!el) return;
 
-    const behavior = initialScrollDone.current ? 'smooth' : 'instant';
-    initialScrollDone.current = true;
-
-    // rAF ensures browser has finished layout before we scroll
-    requestAnimationFrame(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior });
-    });
-  }, [messages.length]);
+    if (!initialScrollDone.current) {
+      initialScrollDone.current = true;
+      el.scrollTop = el.scrollHeight;
+      requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+    } else {
+      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+      if (nearBottom) {
+        requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+      }
+    }
+  }, [messages.length, activeChat]);
 
 
   const chatName = chatOverride?.name ?? 'Chat';
@@ -257,6 +267,7 @@ export function ChatWindow({ chatOverride, messages: providedMessages = [], onSe
 
       {/* Messages Area */}
       <div
+        ref={scrollContainerRef}
         className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4"
         style={chatTheme.bg ? { backgroundColor: chatTheme.bg } : undefined}
       >

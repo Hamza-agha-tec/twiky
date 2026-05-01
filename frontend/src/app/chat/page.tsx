@@ -229,6 +229,7 @@ type ChatPageProps = {
 export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps = {}) {
   const [viewStateReady, setViewStateReady] = useState(false)
   const [activeDirectChat, setActiveDirectChat] = useState<string | null>(null)
+  const [typingConversations, setTypingConversations] = useState<Record<string, boolean>>({})
   const [activeViewState, setActiveViewState] = useState<ActiveView>(lockedView ?? 'chat')
   const activeView = lockedView ?? activeViewState
   const setActiveView = useCallback(
@@ -433,6 +434,28 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   useDirectMessageRealtime(visibleDirectConversationId, profile?.id, {
     onIncomingMessage: handleIncomingDirectMessage,
   })
+
+  useEffect(() => {
+    let mounted = true
+    getSocket().then((socket) => {
+      if (!mounted) return
+      const onUserTyping = ({ userId, isTyping, conversationId: convId }: { userId: string; isTyping: boolean; conversationId?: string }) => {
+        if (!mounted || userId === profile?.id) return
+        const id = convId ?? visibleDirectConversationId
+        if (!id) return
+        setTypingConversations((prev) => ({ ...prev, [id]: isTyping }))
+        if (isTyping) {
+          setTimeout(() => {
+            if (mounted) setTypingConversations((prev) => ({ ...prev, [id]: false }))
+          }, 4000)
+        }
+      }
+      socket.on('userTyping', onUserTyping)
+      return () => { socket.off('userTyping', onUserTyping) }
+    })
+    return () => { mounted = false }
+  }, [profile?.id, visibleDirectConversationId])
+
   const sendDirectMessage = useSendDirectMessage(activeDirectChat ?? '')
   const toggleDirectReaction = useToggleDirectMessageReaction(activeDirectChat ?? '')
 
@@ -853,6 +876,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           isOnline,
           subPlan: other?.sub_plan ?? null,
           isVerified: other?.is_verified ?? false,
+          bannerUrl: other?.banner ?? null,
         }
       })
     },
@@ -1151,7 +1175,12 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         onReact={(messageId, emoji) => {
           if (activeIsRealDirect) toggleDirectReaction.mutate({ messageId, emoji })
         }}
-        otherIsTyping={false}
+        onTyping={async (isTyping) => {
+          if (!activeDirectChat || !activeIsRealDirect) return
+          const socket = await getSocket()
+          socket.emit('typing', { roomId: `dm_${activeDirectChat}`, isTyping })
+        }}
+        otherIsTyping={activeDirectChat ? (typingConversations[activeDirectChat] ?? false) : false}
         onProfileClick={() => setShowDirectProfile((v) => !v)}
       />
     ) : (
@@ -1718,6 +1747,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
               onToggleCollapse={() => setWorkspaceCollapsed((prev) => !prev)}
               searchQuery={searchQuery}
               unreadCounts={unreadCounts}
+              typingConversations={typingConversations}
             />
 
           <ChannelsPanel

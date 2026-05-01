@@ -69,8 +69,8 @@ export class MessagingService {
             .from('direct_conversations')
             .select(`
                 *,
-                user_one:users!direct_conversations_user_one_id_fkey(id, username, avatar_url),
-                user_two:users!direct_conversations_user_two_id_fkey(id, username, avatar_url),
+                user_one:users!direct_conversations_user_one_id_fkey(id, username, avatar_url, banner, sub_plan, is_verified),
+                user_two:users!direct_conversations_user_two_id_fkey(id, username, avatar_url, banner, sub_plan, is_verified),
                 last_message:direct_messages!direct_messages_conversation_id_fkey(id, content, type, file_url, sender_id, created_at)
             `)
             .or(`user_one_id.eq.${userId},user_two_id.eq.${userId}`)
