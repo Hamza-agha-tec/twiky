@@ -1,189 +1,95 @@
 'use client'
 
-import { useState, useId, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
 import Link from 'next/link'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Mail, Lock, User } from 'lucide-react'
-import { useAuth } from '@/context/AuthContext'
-import { createClient } from '@/utils/supabase/client'
-import AuthButton from '@/components/AuthButton'
+import { Zap } from 'lucide-react'
+import { SignupForm } from '@/components/signup-form'
 
-const container = {
-  hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.06 } }
-}
-
-const item = {
-  hidden: { opacity: 0, y: 14 },
-  show: { opacity: 1, y: 0 }
-}
+const cards = [
+  { w: 240, h: 140, top: '6%',  right: '10%', rotate:  5, delay: '0s',    duration: '8s',  accent: '#92dce5' },
+  { w: 170, h: 210, top: '25%', left: '7%',   rotate: -7, delay: '1s',    duration: '9.5s',accent: '#0080c8' },
+  { w: 210, h: 120, top: '55%', right: '12%', rotate:  3, delay: '0.5s',  duration: '7s',  accent: null },
+  { w: 120, h: 85,  top: '40%', left: '50%',  rotate: -8, delay: '2.2s',  duration: '6.5s',accent: '#0080c8' },
+  { w: 190, h: 110, top: '74%', left: '10%',  rotate:  6, delay: '0.8s',  duration: '10s', accent: '#92dce5' },
+  { w: 95,  h: 95,  top: '16%', left: '42%',  rotate: -4, delay: '1.5s',  duration: '7.5s',accent: null },
+]
 
 export default function SignUpPage() {
-  const nameId = useId()
-  const emailId = useId()
-  const passwordId = useId()
-
-  useEffect(() => {
-    document.title = 'Sign Up - DigiPS';
-  }, []);
-
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-
-  const { signUp, linkEmailPassword } = useAuth()
-  const router = useRouter()
-  const supabase = createClient()
-
-  const onSubmit = async (e) => {
-    e.preventDefault()
-    if (loading) return
-
-    setLoading(true)
-    setError(null)
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-
-      if (user) {
-        const { error } = await linkEmailPassword(email.trim(), password)
-        if (error) throw error
-      } else {
-        const { error } = await signUp(email.trim(), password, name)
-        if (error) throw error
-      }
-
-      router.replace('/profile')
-    } catch (err) {
-      setError(err?.message || 'Unable to create account. Please try again.')
-    } finally {
-      setLoading(false)
-    }
-  }
+  useEffect(() => { document.title = 'Sign Up — twiky' }, [])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-indigo-50/40 flex items-center justify-center px-6">
-      <motion.div
-        className="w-full max-w-md"
-        variants={container}
-        initial="hidden"
-        animate="show"
-      >
-        <motion.div
-          className="bg-white/90 backdrop-blur rounded-2xl shadow-xl border border-gray-200 p-8"
-          variants={item}
+    <>
+      <style>{`
+        @keyframes float {
+          0%, 100% { transform: var(--r) translateY(0px); }
+          50%       { transform: var(--r) translateY(-10px); }
+        }
+        .deck-card { animation: float var(--dur) ease-in-out var(--delay) infinite; }
+      `}</style>
+
+      <div className="grid min-h-svh lg:grid-cols-2">
+        {/* Brand side */}
+        <div
+          className="relative hidden overflow-hidden lg:block"
+          style={{ background: 'linear-gradient(135deg, #020c14 0%, #041e30 50%, #020c14 100%)' }}
         >
-          {/* Header */}
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-semibold text-gray-900">Create account</h1>
-            <p className="text-sm text-gray-600 mt-1">
-              Get started with your digital products
-            </p>
-          </div>
+          {/* Blobs */}
+          <div className="absolute w-[500px] h-[500px] rounded-full blur-3xl opacity-25 pointer-events-none"
+            style={{ background: 'radial-gradient(circle, #92dce5 0%, transparent 65%)', top: '-10%', left: '-10%' }} />
+          <div className="absolute w-[400px] h-[400px] rounded-full blur-3xl opacity-20 pointer-events-none"
+            style={{ background: 'radial-gradient(circle, #0080c8 0%, transparent 65%)', bottom: '-5%', right: '-5%' }} />
+          {/* Dot grid */}
+          <div className="absolute inset-0 opacity-10 pointer-events-none"
+            style={{ backgroundImage: 'radial-gradient(rgba(255,255,255,0.6) 1px, transparent 1px)', backgroundSize: '28px 28px' }} />
 
-          <form onSubmit={onSubmit} className="space-y-5" noValidate>
-            {/* Name */}
-            <motion.div variants={item}>
-              <label htmlFor={nameId} className="block text-sm font-medium text-gray-700">
-                Full name
-              </label>
-              <div className="relative mt-1">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  id={nameId}
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="John Doe"
-                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition"
-                />
-              </div>
-            </motion.div>
-
-            {/* Email */}
-            <motion.div variants={item}>
-              <label htmlFor={emailId} className="block text-sm font-medium text-gray-700">
-                Email address
-              </label>
-              <div className="relative mt-1">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  id={emailId}
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition"
-                />
-              </div>
-            </motion.div>
-
-            {/* Password */}
-            <motion.div variants={item}>
-              <label htmlFor={passwordId} className="block text-sm font-medium text-gray-700">
-                Password
-              </label>
-              <div className="relative mt-1">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  id={passwordId}
-                  type="password"
-                  autoComplete="new-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition"
-                />
-              </div>
-            </motion.div>
-
-            {/* Error */}
-            <AnimatePresence>
-              {error && (
-                <motion.div
-                  initial={{ opacity: 0, y: -6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -6 }}
-                  className="rounded-xl border border-red-200 bg-red-50 p-3"
-                >
-                  <p className="text-sm text-red-700">{error}</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Submit */}
-            <motion.button
-              variants={item}
-              type="submit"
-              disabled={loading}
-              whileTap={{ scale: 0.98 }}
-              className="w-full rounded-xl bg-indigo-600 py-3 font-semibold text-white shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-60"
+          {/* Floating cards */}
+          {cards.map((c, i) => (
+            <div
+              key={i}
+              className="deck-card absolute rounded-2xl overflow-hidden"
+              style={{
+                width: c.w,
+                height: c.h,
+                top: c.top,
+                left: c.left,
+                right: c.right,
+                '--r': `rotate(${c.rotate}deg)`,
+                '--dur': c.duration,
+                '--delay': c.delay,
+                transform: `rotate(${c.rotate}deg)`,
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.07)',
+                backdropFilter: 'blur(12px)',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+              }}
             >
-              {loading ? 'Creating account…' : 'Create account'}
-            </motion.button>
+              {c.accent && (
+                <div
+                  className="absolute top-0 left-0 right-0 h-[2px]"
+                  style={{ background: `linear-gradient(90deg, transparent, ${c.accent}, transparent)` }}
+                />
+              )}
+            </div>
+          ))}
+        </div>
 
-            {/* Google Auth */}
-            <motion.div variants={item}>
-              <AuthButton />
-            </motion.div>
-
-            {/* Footer */}
-            <motion.p variants={item} className="text-center text-sm text-gray-600">
-              Already have an account?{' '}
-              <Link href="/account/signin" className="font-semibold text-indigo-600 hover:text-indigo-500">
-                Sign in
-              </Link>
-            </motion.p>
-          </form>
-        </motion.div>
-      </motion.div>
-    </div>
+        {/* Form side */}
+        <div className="flex flex-col gap-4 p-6 md:p-10">
+          <div className="flex justify-center gap-2 md:justify-start">
+            <Link href="/" className="flex items-center gap-2 font-medium">
+              <div className="flex size-6 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                <Zap className="size-4" />
+              </div>
+              twiky
+            </Link>
+          </div>
+          <div className="flex flex-1 items-center justify-center">
+            <div className="w-full max-w-xs">
+              <SignupForm />
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
   )
 }
