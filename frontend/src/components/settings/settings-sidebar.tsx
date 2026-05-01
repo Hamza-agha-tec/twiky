@@ -26,6 +26,7 @@ import { getInitial } from './shared'
 import type { UserProfile } from '@/lib/user-api'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useAuth } from '@/context/AuthContext'
 
 export type SettingsSectionId =
   | 'account' | 'profile' | 'privacy' | 'notifications'
@@ -82,6 +83,12 @@ export function SettingsSidebar({ profile, isVerified, avatarUrl }: {
   avatarUrl?: string | null
 }) {
   const pathname = usePathname()
+  const { signOut } = useAuth()
+
+  const handleLogout = async () => {
+    await signOut()
+    window.location.href = '/login'
+  }
 
   return (
     <nav className="flex w-[210px] flex-shrink-0 flex-col overflow-y-auto border-r border-border/60 bg-sidebar py-4">
@@ -151,7 +158,7 @@ export function SettingsSidebar({ profile, isVerified, avatarUrl }: {
 
       <div className="mt-auto px-2 pt-4">
         <div className="h-px bg-border/50 mb-3" />
-        <button className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-destructive/80 transition-colors hover:bg-destructive/8 hover:text-destructive">
+        <button onClick={handleLogout} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-destructive/80 transition-colors hover:bg-destructive/8 hover:text-destructive">
           <LogOut className="h-3.5 w-3.5" />
           <span className="text-[12.5px]">Log Out</span>
         </button>

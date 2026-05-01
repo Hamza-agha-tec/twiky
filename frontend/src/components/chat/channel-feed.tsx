@@ -53,6 +53,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { type ChatMessage } from '@/hooks/use-messaging'
 import { useRemoveGroupMember, useUpdateGroupMemberRole } from '@/hooks/use-groups'
 import { useProfile, useSendFollowRequest, useUserById, useUserFollowers, useUserFollowing, useUserPosts } from '@/hooks/use-user'
+import { useOnlineUsers } from '@/hooks/use-socket'
 import { useAuth } from '@/context/AuthContext'
 import { filesApi } from '@/lib/files-api'
 import type { GroupMember, GroupMessageMention } from '@/lib/groups-api'
@@ -697,6 +698,9 @@ function MessageRow({
   const [isFollowing, setIsFollowing] = useState(false)
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
 
+  const onlineUsers = useOnlineUsers()
+  const isOnline = memberProfile.id ? onlineUsers.has(memberProfile.id) : false
+
   const { data: realUser } = useUserById(profileOpen ? memberProfile.id : undefined)
   const { data: followersData } = useUserFollowers(profileOpen ? memberProfile.id : undefined)
   const { data: followingData } = useUserFollowing(profileOpen ? memberProfile.id : undefined)
@@ -889,7 +893,7 @@ function MessageRow({
                     </span>
                   )}
                 </div>
-                <span className="absolute bottom-1 right-0.5 h-[14px] w-[14px] rounded-full border-[2.5px] border-popover bg-emerald-500" />
+                {isOnline && <span className="absolute bottom-1 right-0.5 h-[14px] w-[14px] rounded-full border-[2.5px] border-popover bg-emerald-500" />}
               </div>
 
               {!post.isOwn ? (
@@ -922,8 +926,8 @@ function MessageRow({
 
               {/* Status */}
               <div className="flex items-center gap-2 text-foreground/80">
-                <span className="h-[8px] w-[8px] flex-shrink-0 rounded-full bg-emerald-500" />
-                {resolvedProfile.status}
+                <span className={cn('h-[8px] w-[8px] flex-shrink-0 rounded-full', isOnline ? 'bg-emerald-500' : 'bg-zinc-400')} />
+                {isOnline ? (resolvedProfile.status || 'Online') : 'Offline'}
               </div>
 
               {/* Stats */}
@@ -1223,6 +1227,9 @@ export function FeedMemberProfileView({
     subPlan: realUser?.sub_plan ?? memberProfile.subPlan ?? null,
   }
 
+  const onlineUsers = useOnlineUsers()
+  const isOnline = memberProfile.id ? onlineUsers.has(memberProfile.id) : false
+
   const bannerImage = realUser?.banner ?? null
   const avatarImage = resolvedProfile.avatarUrl ?? null
   const profileBadgeVariant = getVerifiedBadgeVariant(resolvedProfile.subPlan)
@@ -1395,7 +1402,7 @@ export function FeedMemberProfileView({
                 {resolvedProfile.name[0]?.toUpperCase() ?? 'U'}
               </AvatarFallback>
             </Avatar>
-            <span className="absolute bottom-0.5 right-0.5 h-[12px] w-[12px] rounded-full border-2 border-sidebar bg-emerald-400" />
+            {isOnline && <span className="absolute bottom-0.5 right-0.5 h-[12px] w-[12px] rounded-full border-2 border-sidebar bg-emerald-400" />}
           </div>
 
           {!isOwn && showMessageAction ? (
