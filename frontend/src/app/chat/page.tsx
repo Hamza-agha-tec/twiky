@@ -62,6 +62,10 @@ import { DIRECT_KEYS, useCreateDirectConversation, useDirectConversations, useDi
 import { useVoiceInvitationListener } from '@/hooks/use-voice-invitation-listener'
 import { invitationsApi, type Invitation } from '@/lib/invitations-api'
 import { getSocket } from '@/lib/socket'
+import { useStoriesFeed, useCreateStory, useDeleteStory, useRecordView } from '@/hooks/use-stories'
+import { StoriesStrip, type StoryBubble } from '@/components/chat/stories-strip'
+import { StoryViewer, type StorySlide } from '@/components/chat/story-viewer'
+import { StoryUploadDialog } from '@/components/chat/story-upload-dialog'
 import { useOnlineUsers, usePresenceSocket } from '@/hooks/use-socket'
 import type { Socket } from 'socket.io-client'
 import { toast } from 'sonner'
@@ -270,10 +274,57 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     return {}
   })
 
+  const [storyViewUserId, setStoryViewUserId] = useState<string | null>(null)
+  const [storyUploadOpen, setStoryUploadOpen] = useState(false)
+
   const queryClient = useQueryClient()
   const { data: profile } = useProfile()
   usePresenceSocket(Boolean(profile?.id))
   const onlineUsers = useOnlineUsers()
+
+  const { data: storiesFeed = [] } = useStoriesFeed()
+  const createStory = useCreateStory()
+  const deleteStory = useDeleteStory()
+  const recordView = useRecordView()
+
+  const storyBubbles: StoryBubble[] = (() => {
+    const ownGroup = storiesFeed.find((g) => g.user.id === profile?.id)
+    const others = storiesFeed.filter((g) => g.user.id !== profile?.id)
+    const own: StoryBubble = {
+      userId: profile?.id ?? 'me',
+      username: profile?.username ?? 'You',
+      avatar_url: profile?.avatar_url ?? null,
+      hasStory: (ownGroup?.stories.length ?? 0) > 0,
+      hasUnseen: false,
+      isOwn: true,
+    }
+    const rest: StoryBubble[] = others.map((g) => ({
+      userId: g.user.id,
+      username: g.user.username,
+      avatar_url: g.user.avatar_url ?? null,
+      hasStory: g.stories.length > 0,
+      hasUnseen: g.stories.length > 0,
+      isOwn: false,
+    }))
+    return [own, ...rest]
+  })()
+
+  const storySlides: StorySlide[] = storiesFeed.flatMap((g) =>
+    g.stories.map((s) => ({
+      id: s.id,
+      media_url: s.media_url,
+      type: s.type,
+      caption: s.caption,
+      created_at: s.created_at,
+      user: g.user,
+      isOwn: g.user.id === profile?.id,
+      viewsCount: s.views_count?.[0]?.count ?? 0,
+    }))
+  )
+
+  const storyStartId = storyViewUserId
+    ? (storiesFeed.find((g) => g.user.id === storyViewUserId)?.stories[0]?.id ?? storySlides[0]?.id ?? '')
+    : ''
 
   const voiceMyInfo = profile
     ? {
@@ -1736,6 +1787,15 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
               channels={workspaceChannels}
               collapsed={workspaceCollapsed}
               mode={workspaceMode}
+              storiesSlot={
+                storyBubbles.length > 0 ? (
+                  <StoriesStrip
+                    bubbles={storyBubbles}
+                    onAdd={() => setStoryUploadOpen(true)}
+                    onOpen={(userId) => setStoryViewUserId(userId)}
+                  />
+                ) : null
+              }
               onCreateChannel={handleCreateChannel}
               onModeChange={handleModeChange}
               onNavItem={handleNavItem}
@@ -1852,6 +1912,27 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       {Array.from(webrtc.remoteStreams.entries()).map(([userId, stream]) => (
         <RemoteAudio key={userId} stream={stream} deafened={deafened} />
       ))}
+
+      {storyViewUserId && storySlides.length > 0 && storyStartId && (
+        <StoryViewer
+          slides={storySlides}
+          startId={storyStartId}
+          onClose={() => setStoryViewUserId(null)}
+          onView={(id) => recordView.mutate(id)}
+          onDelete={(id) => {
+            deleteStory.mutate(id)
+            setStoryViewUserId(null)
+          }}
+        />
+      )}
+
+      <StoryUploadDialog
+        open={storyUploadOpen}
+        onOpenChange={setStoryUploadOpen}
+        onSubmit={async (file, caption) => {
+          await createStory.mutateAsync({ file, caption })
+        }}
+      />
 
       <Dialog open={startDmOpen} onOpenChange={setStartDmOpen}>
         <DialogContent className="sm:max-w-[420px] p-0 overflow-hidden">

@@ -7,14 +7,11 @@ import {
   ChevronRight,
   Globe,
   Hash,
-  ListTodo,
   Lock,
   MessageSquare,
   MessagesSquare,
-  NotebookPen,
   Plus,
   Search,
-  Target,
 } from 'lucide-react'
 
 import { CreateEntityDialog, type CreateEntityValues } from '@/components/chat/create-entity-dialog'
@@ -28,15 +25,14 @@ import { cn } from '@/lib/utils'
 interface WorkspaceSidebarProps {
   activeChannelId?: string | null
   activeChat: string
-  activeNav?: WorkspaceNavTarget | null
   channelAssets?: Record<string, { avatar: string | null }>
   channels?: WorkspaceChannel[]
   collapsed?: boolean
   mode: WorkspaceMode
+  storiesSlot?: React.ReactNode
   onCreateChannel?: (values: CreateEntityValues) => void
   onNewDirectMessage?: () => void
   onModeChange: (mode: WorkspaceMode) => void
-  onNavItem?: (tab: WorkspaceNavTarget) => void
   onSearchChange: (query: string) => void
   onSelectChannel?: (channelId: string) => void
   onSelectChat: (id: string) => void
@@ -64,15 +60,6 @@ interface ContextMenuState {
 
 type SidebarChat = Chat & { isSynthetic?: boolean }
 
-const PERSONAL_ITEMS: {
-  id: WorkspaceNavTarget
-  icon: typeof NotebookPen
-  label: string
-}[] = [
-  { id: 'notes', icon: NotebookPen, label: 'My Notes' },
-  { id: 'tasks', icon: ListTodo, label: 'My Tasks' },
-  { id: 'goals', icon: Target, label: 'My Goals' },
-]
 
 const CHANNEL_TONES = [
   'from-sky-500 via-cyan-500 to-blue-600',
@@ -117,15 +104,14 @@ function formatUnreadCount(count: number) {
 export function WorkspaceSidebar({
   activeChannelId = null,
   activeChat,
-  activeNav = null,
   channelAssets = {},
   channels = [],
   collapsed = false,
   mode,
+  storiesSlot,
   onCreateChannel,
   onNewDirectMessage,
   onModeChange,
-  onNavItem,
   onSearchChange,
   onSelectChannel,
   onSelectChat,
@@ -237,55 +223,6 @@ export function WorkspaceSidebar({
           )}
         </div>
 
-        {!collapsed ? (
-          <div className="border-b border-border px-3 py-3">
-            <p className="mb-2 px-1.5 text-[10px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">
-              You
-            </p>
-            <div className="space-y-1">
-              {PERSONAL_ITEMS.map(({ id, icon: Icon, label }) => {
-                const isActive = activeNav === id
-
-                return (
-                  <button
-                    key={id}
-                    onClick={() => onNavItem?.(id)}
-                    className={cn(
-                      'flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-[12px] font-medium transition-colors',
-                      isActive
-                        ? 'bg-primary/10 text-primary'
-                        : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                    )}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                    {label}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        ) : (
-          <div className="border-b border-border px-2 py-2">
-            <div className="flex flex-col items-center gap-2">
-              {PERSONAL_ITEMS.map(({ id, icon: Icon }) => {
-                const isActive = activeNav === id
-
-                return (
-                  <Button
-                    key={id}
-                    variant={isActive ? 'secondary' : 'ghost'}
-                    size="icon"
-                    className="h-9 w-9 rounded-xl"
-                    onClick={() => onNavItem?.(id)}
-                  >
-                    <Icon className="h-4 w-4" />
-                  </Button>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
         <div className="border-b border-border px-3 py-3">
           {!collapsed ? (
             <>
@@ -327,6 +264,7 @@ export function WorkspaceSidebar({
 
         {mode === 'direct' && !collapsed ? (
           <>
+            {storiesSlot}
             <div className="flex-1 overflow-y-auto px-2.5 py-2">
               <div className="mb-2 flex items-center justify-between px-1.5">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">

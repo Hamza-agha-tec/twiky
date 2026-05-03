@@ -221,7 +221,6 @@ export class FilesService {
     return this.uploadObject(STORAGE_BUCKETS.groups, objectPath, file, resolvedMimeType ?? file.mimetype);
   }
 
-  /** Single “file” slot under the group folder (diagram); good for one primary attachment. */
   async uploadGroupPrimaryFile(userId: string, groupId: string, file: Express.Multer.File) {
     await this.assertGroupUploader(userId, groupId);
     this.assertGroupFile(file);
@@ -230,10 +229,6 @@ export class FilesService {
     return this.uploadObject(STORAGE_BUCKETS.groups, objectPath, file);
   }
 
-  /**
-   * Extra objects under `{groupId}/...` (diagram “…”).
-   * Stored as `{groupId}/files/{timestamp}_{safeOriginalName}`.
-   */
   async uploadMessageFile(userId: string, file: Express.Multer.File) {
     if (!file?.buffer?.length) throw new BadRequestException('Missing file');
     if (file.size > MAX_GROUP_FILE_BYTES) throw new BadRequestException('File too large (max 25 MiB)');
@@ -280,5 +275,28 @@ export class FilesService {
     const base = (nameHasExt ? rawName.replace(/\.[^.]+$/, '') : rawName) || 'file';
     const objectPath = `${groupId}/files/${Date.now()}_${base}${ext}`;
     return this.uploadObject(STORAGE_BUCKETS.groups, objectPath, file);
+  }
+
+  async uploadStoryMedia(userId: string, file: Express.Multer.File) {
+    if (!file?.buffer?.length) throw new BadRequestException('Missing file');
+    if (file.size > MAX_BANNER_BYTES) throw new BadRequestException('File too large (max 20 MiB)');
+
+    const isVideo = file.mimetype?.startsWith('video/') || file.originalname?.match(/\.(mp4|mov|webm|mkv)$/i);
+    if (isVideo) {
+      const rawName = (file.originalname || 'story').replace(/[^\w.\-]+/g, '_').slice(0, 120);
+      const ext = rawName.match(/\.[a-z0-9]+$/i)?.[0] ?? '.mp4';
+      const objectPath = `stories/${userId}/${Date.now()}${ext}`;
+      const { publicUrl } = await this.uploadObject(STORAGE_BUCKETS.messages, objectPath, file, file.mimetype);
+      return { publicUrl, type: 'video' };
+    }
+
+    const resolvedMime = this.inferImageMimeType(file) ?? file.mimetype;
+    if (!IMAGE_MIME_TYPES.has(resolvedMime)) {
+      throw new BadRequestException('File must be an image or video');
+    }
+    const ext = this.extFromMime(resolvedMime) || '.jpg';
+    const objectPath = `stories/${userId}/${Date.now()}${ext}`;
+    const { publicUrl } = await this.uploadObject(STORAGE_BUCKETS.messages, objectPath, file, resolvedMime);
+    return { publicUrl, type: 'image' };
   }
 }

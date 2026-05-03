@@ -112,4 +112,13 @@ export class FilesController {
   ) {
     return this.filesService.uploadMessageFile(req.user.userId, file);
   }
+
+  @Post('stories/upload')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadStoryMedia(
+    @Request() req: { user: { userId: string } },
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.filesService.uploadStoryMedia(req.user.userId, file);
+  }
 }
