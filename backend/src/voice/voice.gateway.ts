@@ -73,6 +73,19 @@ interface VoiceRoom {
 const participantRoom = (id: string) => `voice-room-${id}`;
 const presenceRoom = (id: string) => `voice-presence-${id}`;
 
+interface DmCallInvite {
+  conversationId: string;
+  calleeId: string;
+  type: 'audio' | 'video';
+}
+
+interface PendingDmCall {
+  callerId: string;
+  calleeId: string;
+  type: 'audio' | 'video';
+  timeout: ReturnType<typeof setTimeout>;
+}
+
 @WebSocketGateway({
   cors: {
     origin: '*',
@@ -86,6 +99,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
   private voiceRooms = new Map<string, VoiceRoom>();
   private userSockets = new Map<string, Set<Socket>>();
   private activeRoomByUser = new Map<string, string>();
+  private pendingDmCalls = new Map<string, PendingDmCall>();
 
   constructor(private readonly configService: ConfigService) {}
 
@@ -591,6 +605,124 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
       roomId: data.roomId,
       participants: participants.map((u) => u.id),
       users: participants,
+    });
+  }
+
+  private emitToUser(userId: string, event: string, data: unknown) {
+    const sockets = this.userSockets.get(userId);
+    if (!sockets) return;
+    for (const s of sockets) s.emit(event, data);
+  }
+
+  @SubscribeMessage('dm-call-invite')
+  handleDmCallInvite(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: DmCallInvite,
+  ) {
+    const callerId = client.data.user?.userId;
+    if (!callerId || !data.conversationId || !data.calleeId) return;
+    if (callerId === data.calleeId) return;
+
+    const roomKey = `dm-${data.conversationId}`;
+
+    // Cancel any existing pending call for this conversation
+    const existing = this.pendingDmCalls.get(roomKey);
+    if (existing) {
+      clearTimeout(existing.timeout);
+      this.pendingDmCalls.delete(roomKey);
+    }
+
+    const timeout = setTimeout(() => {
+      this.pendingDmCalls.delete(roomKey);
+      client.emit('dm-call-rejected', { conversationId: data.conversationId, reason: 'timeout' });
+    }, 30_000);
+
+    this.pendingDmCalls.set(roomKey, {
+      callerId,
+      calleeId: data.calleeId,
+      type: data.type ?? 'audio',
+      timeout,
+    });
+
+    this.emitToUser(data.calleeId, 'dm-call-invite', {
+      conversationId: data.conversationId,
+      callerId,
+      type: data.type ?? 'audio',
+    });
+  }
+
+  @SubscribeMessage('dm-call-accepted')
+  handleDmCallAccepted(
+    @ConnectedSocket() _client: Socket,
+    @MessageBody() data: { conversationId: string; callerId: string },
+  ) {
+    const calleeId = _client.data.user?.userId;
+    if (!calleeId || !data.conversationId || !data.callerId) return;
+
+    const roomKey = `dm-${data.conversationId}`;
+    const pending = this.pendingDmCalls.get(roomKey);
+    if (!pending || pending.callerId !== data.callerId) return;
+
+    clearTimeout(pending.timeout);
+    this.pendingDmCalls.delete(roomKey);
+
+    this.emitToUser(data.callerId, 'dm-call-accepted', {
+      conversationId: data.conversationId,
+      calleeId,
+    });
+  }
+
+  @SubscribeMessage('dm-call-rejected')
+  handleDmCallRejected(
+    @ConnectedSocket() _client: Socket,
+    @MessageBody() data: { conversationId: string; callerId: string },
+  ) {
+    const calleeId = _client.data.user?.userId;
+    if (!calleeId || !data.conversationId || !data.callerId) return;
+
+    const roomKey = `dm-${data.conversationId}`;
+    const pending = this.pendingDmCalls.get(roomKey);
+    if (pending) {
+      clearTimeout(pending.timeout);
+      this.pendingDmCalls.delete(roomKey);
+    }
+
+    this.emitToUser(data.callerId, 'dm-call-rejected', {
+      conversationId: data.conversationId,
+      reason: 'declined',
+    });
+  }
+
+  @SubscribeMessage('dm-call-cancelled')
+  handleDmCallCancelled(
+    @ConnectedSocket() _client: Socket,
+    @MessageBody() data: { conversationId: string; calleeId: string },
+  ) {
+    const callerId = _client.data.user?.userId;
+    if (!callerId || !data.conversationId || !data.calleeId) return;
+
+    const roomKey = `dm-${data.conversationId}`;
+    const pending = this.pendingDmCalls.get(roomKey);
+    if (pending) {
+      clearTimeout(pending.timeout);
+      this.pendingDmCalls.delete(roomKey);
+    }
+
+    this.emitToUser(data.calleeId, 'dm-call-cancelled', {
+      conversationId: data.conversationId,
+    });
+  }
+
+  @SubscribeMessage('dm-call-ended')
+  handleDmCallEnded(
+    @ConnectedSocket() _client: Socket,
+    @MessageBody() data: { conversationId: string; peerId: string },
+  ) {
+    const userId = _client.data.user?.userId;
+    if (!userId || !data.conversationId || !data.peerId) return;
+
+    this.emitToUser(data.peerId, 'dm-call-ended', {
+      conversationId: data.conversationId,
     });
   }
 }

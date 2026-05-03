@@ -66,6 +66,9 @@ import { useStoriesFeed, useCreateStory, useDeleteStory, useRecordView } from '@
 import { StoriesStrip, type StoryBubble } from '@/components/chat/stories-strip'
 import { StoryViewer, type StorySlide } from '@/components/chat/story-viewer'
 import { StoryUploadDialog } from '@/components/chat/story-upload-dialog'
+import { useDmCall } from '@/hooks/use-dm-call'
+import { DmCallIncoming } from '@/components/chat/dm-call-incoming'
+import { DmCallWindow, DmCallOutgoing } from '@/components/chat/dm-call-window'
 import { useOnlineUsers, usePresenceSocket } from '@/hooks/use-socket'
 import type { Socket } from 'socket.io-client'
 import { toast } from 'sonner'
@@ -281,6 +284,8 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const { data: profile } = useProfile()
   usePresenceSocket(Boolean(profile?.id))
   const onlineUsers = useOnlineUsers()
+
+  const { status: dmCallStatus, startCall, acceptCall, rejectCall, hangUp } = useDmCall({ myId: profile?.id })
 
   const { data: storiesFeed = [] } = useStoriesFeed()
   const createStory = useCreateStory()
@@ -1233,6 +1238,20 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         }}
         otherIsTyping={activeDirectChat ? (typingConversations[activeDirectChat] ?? false) : false}
         onProfileClick={() => setShowDirectProfile((v) => !v)}
+        onVoiceCall={activeIsRealDirect && activeDirectOther ? () => startCall(
+          activeDirectChat!,
+          activeDirectOther.id,
+          activeDirectOther.username ?? 'User',
+          activeDirectOther.avatar_url ?? null,
+          'audio',
+        ) : undefined}
+        onVideoCall={activeIsRealDirect && activeDirectOther ? () => startCall(
+          activeDirectChat!,
+          activeDirectOther.id,
+          activeDirectOther.username ?? 'User',
+          activeDirectOther.avatar_url ?? null,
+          'video',
+        ) : undefined}
       />
     ) : (
     <div className="flex flex-1 items-center justify-center bg-sidebar p-6">
@@ -1782,7 +1801,6 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             <WorkspaceSidebar
               activeChannelId={activeChannel?.id}
               activeChat={activeDirectChat ?? ''}
-              activeNav={activeNav}
               channelAssets={channelAssets}
               channels={workspaceChannels}
               collapsed={workspaceCollapsed}
@@ -1798,7 +1816,6 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
               }
               onCreateChannel={handleCreateChannel}
               onModeChange={handleModeChange}
-              onNavItem={handleNavItem}
               onSearchChange={setSearchQuery}
               onSelectChannel={(channelId) => openChannelSurface(channelId)}
               onSelectChat={openDirectChat}
@@ -1933,6 +1950,52 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           await createStory.mutateAsync({ file, caption })
         }}
       />
+
+      {/* DM call overlays */}
+      {dmCallStatus.state === 'incoming' && (() => {
+        const conv = (directConversations ?? []).find((c: any) =>
+          c.user_one_id === dmCallStatus.callerId || c.user_two_id === dmCallStatus.callerId
+        )
+        const caller = conv
+          ? (conv.user_one_id === dmCallStatus.callerId ? conv.user_one : conv.user_two)
+          : null
+        const callerName = caller?.username ?? 'Unknown'
+        const callerAvatar = caller?.avatar_url ?? null
+        return (
+          <DmCallIncoming
+            callerName={callerName}
+            callerAvatar={callerAvatar}
+            type={dmCallStatus.type}
+            onAccept={() => acceptCall(
+              dmCallStatus.conversationId,
+              dmCallStatus.callerId,
+              dmCallStatus.type,
+              callerName,
+              callerAvatar,
+            )}
+            onReject={() => rejectCall(dmCallStatus.conversationId, dmCallStatus.callerId)}
+          />
+        )
+      })()}
+      {dmCallStatus.state === 'outgoing' && (
+        <DmCallOutgoing
+          peerName={dmCallStatus.calleeName}
+          peerAvatar={dmCallStatus.calleeAvatar}
+          type={dmCallStatus.type}
+          onCancel={hangUp}
+        />
+      )}
+      {dmCallStatus.state === 'active' && profile?.id && (
+        <DmCallWindow
+          roomId={dmCallStatus.roomId}
+          myId={profile.id}
+          peerId={dmCallStatus.peerId}
+          peerName={dmCallStatus.peerName}
+          peerAvatar={dmCallStatus.peerAvatar}
+          type={dmCallStatus.type}
+          onHangUp={hangUp}
+        />
+      )}
 
       <Dialog open={startDmOpen} onOpenChange={setStartDmOpen}>
         <DialogContent className="sm:max-w-[420px] p-0 overflow-hidden">

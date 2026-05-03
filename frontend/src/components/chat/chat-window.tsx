@@ -41,6 +41,8 @@ interface ChatWindowProps {
   onEdit?: (messageId: string, content: string) => void;
   onDelete?: (messageId: string) => void;
   onProfileClick?: () => void;
+  onVoiceCall?: () => void;
+  onVideoCall?: () => void;
 }
 
 interface ReplyTo {
@@ -122,7 +124,7 @@ function toUiMessage(
   };
 }
 
-export function ChatWindow({ activeChat, chatOverride, messages: providedMessages = [], onSendMessage, onTyping, otherIsTyping = false, onReact, onDelete, onProfileClick }: ChatWindowProps) {
+export function ChatWindow({ activeChat, chatOverride, messages: providedMessages = [], onSendMessage, onTyping, otherIsTyping = false, onReact, onDelete, onProfileClick, onVoiceCall, onVideoCall }: ChatWindowProps) {
   const { user } = useAuth();
   const { data: profile } = useProfile();
   const { resolved: chatTheme } = useChatThemeContext();
@@ -253,10 +255,10 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
           <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
             <Search className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
+          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={onVoiceCall} disabled={!onVoiceCall}>
             <Phone className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
+          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={onVideoCall} disabled={!onVideoCall}>
             <Video className="h-4 w-4" />
           </Button>
           <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
