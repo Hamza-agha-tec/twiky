@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Search, Phone, Video, MoreVertical } from 'lucide-react';
 import type { Message } from '@/lib/mock-data';
 import { MessageBubble } from './message-bubble';
+import { CallLogBubble } from './call-log-bubble';
 import { Composer } from './composer';
 import { format } from 'date-fns';
 import { ChatMessage } from '@/hooks/use-messaging';
@@ -56,6 +57,13 @@ function getDisabledConversationMetadata(): { is_group: boolean; participants: u
   return null;
 }
 
+function formatCallDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  return s > 0 ? `${m}m ${s}s` : `${m}m`
+}
+
 function toUiMessage(
   m: ChatMessage,
   currentIdentity: { id?: string | null; isVerified: boolean; sub_plan?: string | null },
@@ -81,12 +89,17 @@ function toUiMessage(
   const rawType: string = m.type ?? 'text'
   const resolvedType: Message['type'] =
     rawType === 'voice' ? 'voice' :
+    rawType === 'call' ? 'call' :
     rawType === 'image' ? 'image' :
     rawType === 'video' ? 'video' :
     (rawType === 'file' || rawType === 'image') && mime.startsWith('video/') ? 'video' :
     (rawType === 'file' || rawType === 'image') && mime.startsWith('image/') ? 'image' :
     rawType === 'file' ? 'file' :
     'text'
+
+  const callDurationSecs = rawType === 'call' && typeof (m.metadata as any)?.duration === 'number'
+    ? (m.metadata as any).duration as number
+    : null
 
   return {
     id: m.id,
@@ -104,13 +117,16 @@ function toUiMessage(
     ),
     avatar: m.sender.avatar_url ?? undefined,
     fileUrl: m.file_url ?? undefined,
-    mime,
+    mime: rawType === 'call' ? ((m.metadata as any)?.mime as string ?? '') : mime,
     content:
       m.type === 'voice'
         ? (typeof (m.metadata as any)?.duration === 'number'
             ? `${Math.round((m.metadata as any).duration)}s`
             : 'Voice message')
+        : m.type === 'call'
+        ? (m.content ?? 'ended')
         : (m.file_url ?? m.content ?? ''),
+    duration: callDurationSecs != null ? formatCallDuration(callDurationSecs) : undefined,
     type: resolvedType,
     timestamp: m.created_at,
     isOwn: m.sender_id === currentIdentity.id,
@@ -286,19 +302,23 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
 
             <div className="space-y-1.5">
               {dayMessages.map((message, index) => (
-                <MessageBubble
-                  key={message.id}
-                  message={message}
-                  showAvatar={
-                    !message.isOwn &&
-                    (index === 0 ||
-                      dayMessages[index - 1].isOwn ||
-                      dayMessages[index - 1].senderId !== message.senderId)
-                  }
-                  onReply={handleReply}
-                  onDelete={() => onDelete?.(message.id)}
-                  onReact={(emoji) => onReact?.(message.id, emoji)}
-                />
+                message.type === 'call' ? (
+                  <CallLogBubble key={message.id} message={message} />
+                ) : (
+                  <MessageBubble
+                    key={message.id}
+                    message={message}
+                    showAvatar={
+                      !message.isOwn &&
+                      (index === 0 ||
+                        dayMessages[index - 1].isOwn ||
+                        dayMessages[index - 1].senderId !== message.senderId)
+                    }
+                    onReply={handleReply}
+                    onDelete={() => onDelete?.(message.id)}
+                    onReact={(emoji) => onReact?.(message.id, emoji)}
+                  />
+                )
               ))}
             </div>
           </div>

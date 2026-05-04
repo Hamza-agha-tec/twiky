@@ -25,7 +25,7 @@ export interface Message {
   content: string;
   fileUrl?: string;
   mime?: string;
-  type: 'text' | 'image' | 'voice' | 'video' | 'file';
+  type: 'text' | 'image' | 'voice' | 'video' | 'file' | 'call';
   timestamp: string;
   isOwn: boolean;
   isRead: boolean;

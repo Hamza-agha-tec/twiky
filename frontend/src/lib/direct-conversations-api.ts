@@ -47,7 +47,7 @@ export type BackendDirectMessage = {
   conversation_id: string
   sender_id: string
   content: string | null
-  type?: 'text' | 'image' | 'file' | 'voice' | string | null
+  type?: 'text' | 'image' | 'file' | 'voice' | 'call' | string | null
   file_url: string | null
   mime?: string | null
   duration?: number | null

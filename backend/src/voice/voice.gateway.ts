@@ -12,6 +12,7 @@ import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { SocketAuthMiddleware } from '../messaging/middlewares/ws-auth.middleware';
 import { ConfigService } from '@nestjs/config';
+import { SupabaseService } from '../supabase/supabase.module';
 import { randomUUID } from 'crypto';
 
 interface WebRTCSignal {
@@ -86,6 +87,13 @@ interface PendingDmCall {
   timeout: ReturnType<typeof setTimeout>;
 }
 
+interface ActiveCallMeta {
+  startedAt: number;
+  callerId: string;
+  calleeId: string;
+  type: 'audio' | 'video';
+}
+
 @WebSocketGateway({
   cors: {
     origin: '*',
@@ -100,8 +108,12 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
   private userSockets = new Map<string, Set<Socket>>();
   private activeRoomByUser = new Map<string, string>();
   private pendingDmCalls = new Map<string, PendingDmCall>();
+  private activeCallMeta = new Map<string, ActiveCallMeta>();
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly supabaseService: SupabaseService,
+  ) {}
 
   afterInit(server: Server) {
     const supabaseUrl = this.configService.get<string>('NEXT_PUBLIC_SUPABASE_URL') as string;
@@ -614,6 +626,46 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
     for (const s of sockets) s.emit(event, data);
   }
 
+  private async saveCallLog(
+    conversationId: string,
+    callerId: string,
+    calleeId: string,
+    callType: 'audio' | 'video',
+    outcome: 'ended' | 'missed' | 'declined' | 'cancelled',
+    durationSeconds?: number,
+  ) {
+    try {
+      const { data: message, error } = await this.supabaseService
+        .getClient()
+        .from('direct_messages')
+        .insert({
+          conversation_id: conversationId,
+          sender_id: callerId,
+          content: outcome,
+          type: 'call',
+          mime: callType,
+          duration: durationSeconds ?? null,
+          file_urls: [],
+          entity_mentions: [],
+        })
+        .select('*, sender:users!direct_messages_sender_id_fkey(id, username, fullname, avatar_url, is_verified, sub_plan)')
+        .single();
+
+      if (error || !message) {
+        this.logger.error(`Failed to save call log: ${error?.message}`);
+        return;
+      }
+
+      this.server.to(`dm_${conversationId}`).emit('newDirectMessage', message);
+      this.server
+        .to(`user_${callerId}`)
+        .to(`user_${calleeId}`)
+        .emit('newDirectMessageNotification', message);
+    } catch (err) {
+      this.logger.error('Error saving call log', err);
+    }
+  }
+
   @SubscribeMessage('dm-call-invite')
   handleDmCallInvite(
     @ConnectedSocket() client: Socket,
@@ -632,9 +684,11 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
       this.pendingDmCalls.delete(roomKey);
     }
 
+    const callType = data.type ?? 'audio';
     const timeout = setTimeout(() => {
       this.pendingDmCalls.delete(roomKey);
       client.emit('dm-call-rejected', { conversationId: data.conversationId, reason: 'timeout' });
+      void this.saveCallLog(data.conversationId, callerId, data.calleeId, callType, 'missed');
     }, 30_000);
 
     this.pendingDmCalls.set(roomKey, {
@@ -666,6 +720,13 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
     clearTimeout(pending.timeout);
     this.pendingDmCalls.delete(roomKey);
 
+    this.activeCallMeta.set(roomKey, {
+      startedAt: Date.now(),
+      callerId: data.callerId,
+      calleeId,
+      type: pending.type,
+    });
+
     this.emitToUser(data.callerId, 'dm-call-accepted', {
       conversationId: data.conversationId,
       calleeId,
@@ -673,7 +734,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
   }
 
   @SubscribeMessage('dm-call-rejected')
-  handleDmCallRejected(
+  async handleDmCallRejected(
     @ConnectedSocket() _client: Socket,
     @MessageBody() data: { conversationId: string; callerId: string },
   ) {
@@ -685,6 +746,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
     if (pending) {
       clearTimeout(pending.timeout);
       this.pendingDmCalls.delete(roomKey);
+      await this.saveCallLog(data.conversationId, data.callerId, calleeId, pending.type, 'declined');
     }
 
     this.emitToUser(data.callerId, 'dm-call-rejected', {
@@ -694,7 +756,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
   }
 
   @SubscribeMessage('dm-call-cancelled')
-  handleDmCallCancelled(
+  async handleDmCallCancelled(
     @ConnectedSocket() _client: Socket,
     @MessageBody() data: { conversationId: string; calleeId: string },
   ) {
@@ -706,6 +768,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
     if (pending) {
       clearTimeout(pending.timeout);
       this.pendingDmCalls.delete(roomKey);
+      await this.saveCallLog(data.conversationId, callerId, data.calleeId, pending.type, 'cancelled');
     }
 
     this.emitToUser(data.calleeId, 'dm-call-cancelled', {
@@ -714,12 +777,20 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
   }
 
   @SubscribeMessage('dm-call-ended')
-  handleDmCallEnded(
+  async handleDmCallEnded(
     @ConnectedSocket() _client: Socket,
     @MessageBody() data: { conversationId: string; peerId: string },
   ) {
     const userId = _client.data.user?.userId;
     if (!userId || !data.conversationId || !data.peerId) return;
+
+    const roomKey = `dm-${data.conversationId}`;
+    const meta = this.activeCallMeta.get(roomKey);
+    if (meta) {
+      this.activeCallMeta.delete(roomKey);
+      const durationSeconds = Math.round((Date.now() - meta.startedAt) / 1000);
+      await this.saveCallLog(data.conversationId, meta.callerId, meta.calleeId, meta.type, 'ended', durationSeconds);
+    }
 
     this.emitToUser(data.peerId, 'dm-call-ended', {
       conversationId: data.conversationId,
