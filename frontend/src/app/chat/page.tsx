@@ -1893,7 +1893,6 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                     >
                       {showDirectProfile && activeDirectChat ? (
                         <DirectProfileSidebar
-                          activeChat={activeDirectChat}
                           userId={activeDirectOther?.id}
                           chatOverride={activeSyntheticChat
                             ? {
@@ -1907,6 +1906,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                             : activeDirectOther
                               ? {
                                   avatarUrl: activeDirectOther.avatar_url ?? null,
+                                  bannerUrl: (activeDirectOther as any).banner ?? null,
                                   isOnline: activeDirectOtherIsOnline,
                                   subPlan: (activeDirectOther as any).sub_plan ?? null,
                                   isVerified: (activeDirectOther as any).is_verified ?? false,
@@ -1915,6 +1915,18 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                                 }
                               : undefined}
                           onClose={() => setShowDirectProfile(false)}
+                          onVoiceCall={activeIsRealDirect && activeDirectOther ? () => {
+                            setShowDirectProfile(false)
+                            startCall(activeDirectChat!, activeDirectOther.id, activeDirectOther.username ?? 'User', activeDirectOther.avatar_url ?? null, 'audio')
+                          } : undefined}
+                          onVideoCall={activeIsRealDirect && activeDirectOther ? () => {
+                            setShowDirectProfile(false)
+                            startCall(activeDirectChat!, activeDirectOther.id, activeDirectOther.username ?? 'User', activeDirectOther.avatar_url ?? null, 'video')
+                          } : undefined}
+                          onOpenPixelRoom={() => {
+                            setShowDirectProfile(false)
+                            setActiveView('game')
+                          }}
                         />
                       ) : null}
                     </FeedProfileSidebarDock>
