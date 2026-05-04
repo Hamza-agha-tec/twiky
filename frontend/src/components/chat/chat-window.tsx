@@ -1,14 +1,15 @@
 'use client';
 
-import { useState, useRef, useLayoutEffect } from 'react';
+import { useState, useRef, useLayoutEffect, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Search, Phone, Video, MoreVertical } from 'lucide-react';
+import { Search, Phone, Video, MoreVertical, X, ChevronUp, ChevronDown, User, BellOff, Archive, ShieldOff, Pin } from 'lucide-react';
 import type { Message } from '@/lib/mock-data';
 import { MessageBubble } from './message-bubble';
 import { CallLogBubble } from './call-log-bubble';
 import { Composer } from './composer';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { format } from 'date-fns';
 import { ChatMessage } from '@/hooks/use-messaging';
 import { useProfile } from '@/hooks/use-user';
@@ -44,6 +45,13 @@ interface ChatWindowProps {
   onProfileClick?: () => void;
   onVoiceCall?: () => void;
   onVideoCall?: () => void;
+  onMute?: () => void;
+  onArchive?: () => void;
+  onBlock?: () => void;
+  onPin?: (messageId: string) => void;
+  onDelete?: (messageId: string) => void;
+  conversations?: { id: string; name: string; avatarUrl?: string | null }[];
+  onForwardMessage?: (messageId: string, content: string, toConversationId: string) => void;
 }
 
 interface ReplyTo {
@@ -132,6 +140,8 @@ function toUiMessage(
     isOwn: m.sender_id === currentIdentity.id,
     isRead: m.status === 'read',
     isDelivered: m.status === 'delivered' || m.status === 'read',
+    isPinned: m.is_pinned ?? false,
+    isForwarded: m.is_forwarded ?? false,
     reactions: reactions.length ? reactions : undefined,
     myReaction,
     reply: m.reply_to?.sender
@@ -140,7 +150,7 @@ function toUiMessage(
   };
 }
 
-export function ChatWindow({ activeChat, chatOverride, messages: providedMessages = [], onSendMessage, onTyping, otherIsTyping = false, onReact, onDelete, onProfileClick, onVoiceCall, onVideoCall }: ChatWindowProps) {
+export function ChatWindow({ activeChat, chatOverride, messages: providedMessages = [], onSendMessage, onTyping, otherIsTyping = false, onReact, onDelete, onPin, onProfileClick, onVoiceCall, onVideoCall, onMute, onArchive, onBlock, conversations = [], onForwardMessage }: ChatWindowProps) {
   const { user } = useAuth();
   const { data: profile } = useProfile();
   const { resolved: chatTheme } = useChatThemeContext();
@@ -163,6 +173,46 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const initialScrollDone = useRef(false);
   const [replyTo, setReplyTo] = useState<ReplyTo | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchMatchIndex, setSearchMatchIndex] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const searchMatches = searchQuery.trim().length > 0
+    ? messages.filter(m => m.type === 'text' && m.content.toLowerCase().includes(searchQuery.toLowerCase()))
+    : [];
+  const activeMatchId = searchMatches[searchMatchIndex]?.id ?? null;
+
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus();
+    else { setSearchQuery(''); setSearchMatchIndex(0); }
+  }, [searchOpen]);
+
+  useEffect(() => { setSearchMatchIndex(0); }, [searchQuery]);
+
+  useEffect(() => {
+    if (!activeMatchId || !scrollContainerRef.current) return;
+    const el = scrollContainerRef.current.querySelector(`[data-message-id="${activeMatchId}"]`);
+    if (!el) return;
+    const containerRect = scrollContainerRef.current.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const offset = elRect.top - containerRect.top + scrollContainerRef.current.scrollTop - containerRect.height / 2 + elRect.height / 2;
+    scrollContainerRef.current.scrollTo({ top: offset, behavior: 'smooth' });
+  }, [activeMatchId]);
+
+  const goToPrev = useCallback(() => {
+    if (!searchMatches.length) return;
+    setSearchMatchIndex(i => (i + 1) % searchMatches.length);
+  }, [searchMatches.length]);
+
+  const goToNext = useCallback(() => {
+    if (!searchMatches.length) return;
+    setSearchMatchIndex(i => (i - 1 + searchMatches.length) % searchMatches.length);
+  }, [searchMatches.length]);
+
+  const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
+  const [forwardSearch, setForwardSearch] = useState('');
+  const pinnedMessage = messages.find(m => m.isPinned);
 
   useLayoutEffect(() => {
     initialScrollDone.current = false;
@@ -231,57 +281,167 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
     <div className="flex-1 flex flex-col bg-sidebar h-full min-w-0">
       {/* Header */}
       <div className="h-14 border-b border-border px-4 flex items-center justify-between bg-sidebar shrink-0">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={onProfileClick}
-            disabled={!onProfileClick}
-            className="rounded-full hover:ring-2 ring-primary/40 transition-all shrink-0 disabled:cursor-default disabled:hover:ring-0"
-          >
-            <div className="relative">
-              <Avatar className="h-9 w-9">
-                <AvatarImage src={resolvedChatAvatar} alt={chatName} />
-                <AvatarFallback className="bg-primary text-primary-foreground text-sm">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
-            </div>
-          </motion.button>
+        <AnimatePresence mode="wait" initial={false}>
+          {searchOpen ? (
+            <motion.div
+              key="search-bar"
+              initial={{ opacity: 0, x: 16 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 16 }}
+              transition={{ duration: 0.15 }}
+              className="flex flex-1 items-center gap-2 min-w-0"
+            >
+              <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+              <input
+                ref={searchInputRef}
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Escape') setSearchOpen(false); if (e.key === 'Enter') goToPrev(); }}
+                placeholder="Search messages…"
+                className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60 text-foreground min-w-0"
+              />
+              {searchQuery.length > 0 && (
+                <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
+                  {searchMatches.length > 0 ? `${searchMatchIndex + 1}/${searchMatches.length}` : '0/0'}
+                </span>
+              )}
+              <div className="flex gap-0.5 shrink-0">
+                <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full" onClick={goToPrev} disabled={searchMatches.length === 0}>
+                  <ChevronUp className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full" onClick={goToNext} disabled={searchMatches.length === 0}>
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full" onClick={() => setSearchOpen(false)}>
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="header-info"
+              initial={{ opacity: 0, x: -16 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -16 }}
+              transition={{ duration: 0.15 }}
+              className="flex items-center gap-3 flex-1 min-w-0"
+            >
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={onProfileClick}
+                disabled={!onProfileClick}
+                className="rounded-full hover:ring-2 ring-primary/40 transition-all shrink-0 disabled:cursor-default disabled:hover:ring-0"
+              >
+                <Avatar className="h-9 w-9">
+                  <AvatarImage src={resolvedChatAvatar} alt={chatName} />
+                  <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+              </motion.button>
 
-          <div className="flex-1 min-w-0">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <h2 className="truncate text-sm font-semibold leading-tight text-foreground">{chatName}</h2>
-              {chatOverride?.isVerified ? <VerifiedBadge size="sm" variant={getVerifiedBadgeVariant(chatOverride.subPlan)} /> : null}
-            </div>
-            {conv?.is_group ? (
-              <p className="text-xs text-muted-foreground">
-                Channel · {conv.participants.length} members
-              </p>
-            ) : (isOnline || chatSubtitle) ? (
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <span className={`inline-block h-1.5 w-1.5 rounded-full ${isOnline ? 'bg-green-500' : 'bg-muted-foreground/55'}`} />
-                {isOnline ? (chatSubtitle ?? 'Online') : chatSubtitle}
-              </p>
-            ) : null}
+              <div className="flex-1 min-w-0">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <h2 className="truncate text-sm font-semibold leading-tight text-foreground">{chatName}</h2>
+                  {chatOverride?.isVerified ? <VerifiedBadge size="sm" variant={getVerifiedBadgeVariant(chatOverride.subPlan)} /> : null}
+                </div>
+                {conv?.is_group ? (
+                  <p className="text-xs text-muted-foreground">
+                    Channel · {conv.participants.length} members
+                  </p>
+                ) : (isOnline || chatSubtitle) ? (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <span className={`inline-block h-1.5 w-1.5 rounded-full ${isOnline ? 'bg-green-500' : 'bg-muted-foreground/55'}`} />
+                    {isOnline ? (chatSubtitle ?? 'Online') : chatSubtitle}
+                  </p>
+                ) : null}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {!searchOpen && (
+          <div className="flex gap-1 shrink-0">
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setSearchOpen(true)}>
+              <Search className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={onVoiceCall} disabled={!onVoiceCall}>
+              <Phone className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={onVideoCall} disabled={!onVideoCall}>
+              <Video className="h-4 w-4" />
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                {onProfileClick && (
+                  <DropdownMenuItem onClick={onProfileClick} className="gap-2">
+                    <User className="h-4 w-4" />
+                    View profile
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={() => setSearchOpen(true)} className="gap-2">
+                  <Search className="h-4 w-4" />
+                  Search
+                </DropdownMenuItem>
+                {onMute && (
+                  <DropdownMenuItem onClick={onMute} className="gap-2">
+                    <BellOff className="h-4 w-4" />
+                    Mute
+                  </DropdownMenuItem>
+                )}
+                {onArchive && (
+                  <DropdownMenuItem onClick={onArchive} className="gap-2">
+                    <Archive className="h-4 w-4" />
+                    Archive
+                  </DropdownMenuItem>
+                )}
+                {onBlock && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={onBlock} className="gap-2 text-destructive focus:text-destructive">
+                      <ShieldOff className="h-4 w-4" />
+                      Block
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-        </div>
-
-        <div className="flex gap-1 shrink-0">
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
-            <Search className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={onVoiceCall} disabled={!onVoiceCall}>
-            <Phone className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={onVideoCall} disabled={!onVideoCall}>
-            <Video className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
-            <MoreVertical className="h-4 w-4" />
-          </Button>
-        </div>
+        )}
       </div>
+
+      {/* Pinned message banner */}
+      <AnimatePresence>
+        {pinnedMessage && (
+          <motion.button
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            onClick={() => {
+              const el = scrollContainerRef.current?.querySelector(`[data-message-id="${pinnedMessage.id}"]`);
+              if (el && scrollContainerRef.current) {
+                const containerRect = scrollContainerRef.current.getBoundingClientRect();
+                const elRect = el.getBoundingClientRect();
+                const offset = elRect.top - containerRect.top + scrollContainerRef.current.scrollTop - containerRect.height / 2 + elRect.height / 2;
+                scrollContainerRef.current.scrollTo({ top: offset, behavior: 'smooth' });
+              }
+            }}
+            className="flex w-full items-center gap-2 border-b border-border bg-muted/40 px-4 py-1.5 text-left hover:bg-muted/60 transition-colors shrink-0"
+          >
+            <Pin className="h-3 w-3 shrink-0 text-primary" />
+            <span className="text-xs text-muted-foreground truncate">
+              <span className="font-medium text-foreground">Pinned: </span>
+              {pinnedMessage.content}
+            </span>
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       {/* Messages Area */}
       <div
@@ -302,23 +462,31 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
 
             <div className="space-y-1.5">
               {dayMessages.map((message, index) => (
-                message.type === 'call' ? (
-                  <CallLogBubble key={message.id} message={message} />
-                ) : (
-                  <MessageBubble
-                    key={message.id}
-                    message={message}
-                    showAvatar={
-                      !message.isOwn &&
-                      (index === 0 ||
-                        dayMessages[index - 1].isOwn ||
-                        dayMessages[index - 1].senderId !== message.senderId)
-                    }
-                    onReply={handleReply}
-                    onDelete={() => onDelete?.(message.id)}
-                    onReact={(emoji) => onReact?.(message.id, emoji)}
-                  />
-                )
+                <div
+                  key={message.id}
+                  data-message-id={message.id}
+                  className={message.id === activeMatchId ? 'rounded-xl ring-2 ring-primary/50 ring-offset-1 ring-offset-sidebar transition-all' : ''}
+                >
+                  {message.type === 'call' ? (
+                    <CallLogBubble message={message} />
+                  ) : (
+                    <MessageBubble
+                      message={message}
+                      searchHighlight={searchOpen && searchQuery.trim() ? searchQuery : undefined}
+                      showAvatar={
+                        !message.isOwn &&
+                        (index === 0 ||
+                          dayMessages[index - 1].isOwn ||
+                          dayMessages[index - 1].senderId !== message.senderId)
+                      }
+                      onReply={handleReply}
+                      onPin={() => onPin?.(message.id)}
+                      onForward={() => setForwardingMessage(message)}
+                      onDelete={() => onDelete?.(message.id)}
+                      onReact={(emoji) => onReact?.(message.id, emoji)}
+                    />
+                  )}
+                </div>
               ))}
             </div>
           </div>
@@ -367,6 +535,75 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
         replyTo={replyTo}
         onCancelReply={() => setReplyTo(null)}
       />
+
+      {/* Forward dialog */}
+      <AnimatePresence>
+        {forwardingMessage && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => { setForwardingMessage(null); setForwardSearch(''); }}
+              className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 12 }}
+              transition={{ duration: 0.15 }}
+              className="fixed left-1/2 top-1/2 z-50 w-80 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-sidebar border border-border shadow-2xl overflow-hidden"
+            >
+              <div className="px-4 pt-4 pb-3 border-b border-border">
+                <h3 className="text-sm font-semibold text-foreground mb-2">Forward message</h3>
+                <div className="text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2 line-clamp-2 italic">
+                  {forwardingMessage.content}
+                </div>
+              </div>
+              <div className="px-3 pt-2">
+                <input
+                  autoFocus
+                  value={forwardSearch}
+                  onChange={e => setForwardSearch(e.target.value)}
+                  placeholder="Search conversations…"
+                  className="w-full bg-muted/40 rounded-lg px-3 py-1.5 text-sm outline-none placeholder:text-muted-foreground/60 mb-1"
+                />
+              </div>
+              <div className="max-h-56 overflow-y-auto py-1">
+                {conversations
+                  .filter(c => c.name.toLowerCase().includes(forwardSearch.toLowerCase()))
+                  .map(conv => (
+                    <button
+                      key={conv.id}
+                      onClick={() => {
+                        onForwardMessage?.(forwardingMessage.id, forwardingMessage.content, conv.id);
+                        setForwardingMessage(null);
+                        setForwardSearch('');
+                      }}
+                      className="flex w-full items-center gap-3 px-4 py-2.5 hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
+                        {conv.avatarUrl
+                          ? <img src={conv.avatarUrl} className="h-8 w-8 rounded-full object-cover" />
+                          : conv.name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <span className="text-sm text-foreground truncate">{conv.name}</span>
+                    </button>
+                  ))}
+                {conversations.filter(c => c.name.toLowerCase().includes(forwardSearch.toLowerCase())).length === 0 && (
+                  <p className="px-4 py-3 text-xs text-muted-foreground">No conversations found</p>
+                )}
+              </div>
+              <div className="px-4 py-3 border-t border-border">
+                <button
+                  onClick={() => { setForwardingMessage(null); setForwardSearch(''); }}
+                  className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >Cancel</button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

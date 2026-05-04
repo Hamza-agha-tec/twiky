@@ -54,4 +54,7 @@ export class SendDirectMessageDto {
     @ValidateNested({ each: true })
     @Type(() => EntityMentionDto)
     entityMentions?: EntityMentionDto[];
+
+    @IsOptional()
+    isForwarded?: boolean;
 }

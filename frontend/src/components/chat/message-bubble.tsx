@@ -13,15 +13,32 @@ import { useChatThemeContext } from '@/context/ChatThemeContext';
 interface MessageBubbleProps {
   message: Message;
   showAvatar?: boolean;
+  searchHighlight?: string;
   onReply?: (message: Message) => void;
+  onPin?: () => void;
+  onForward?: () => void;
   onDelete?: () => void;
   onReact?: (emoji: string) => void;
+}
+
+function HighlightedText({ text, query }: { text: string; query: string }) {
+  if (!query) return <>{text}</>;
+  const parts = text.split(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'));
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.toLowerCase() === query.toLowerCase()
+          ? <mark key={i} className="bg-yellow-400/50 text-inherit rounded-[2px] px-px">{part}</mark>
+          : part
+      )}
+    </>
+  );
 }
 
 // Realistic waveform bar heights
 const WAVEFORM = [30, 55, 40, 75, 60, 45, 85, 50, 65, 35, 70, 80, 45, 60, 40, 75, 55, 90, 35, 65, 50, 80, 45, 70, 55];
 
-export function MessageBubble({ message, showAvatar = true, onReply, onDelete, onReact }: MessageBubbleProps) {
+export function MessageBubble({ message, showAvatar = true, searchHighlight, onReply, onPin, onForward, onDelete, onReact }: MessageBubbleProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -174,7 +191,9 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
 
           {/* Text */}
           {message.type === 'text' && (
-            <p className="text-sm wrap-break-word whitespace-pre-wrap leading-relaxed">{message.content}</p>
+            <p className="text-sm wrap-break-word whitespace-pre-wrap leading-relaxed">
+              {searchHighlight ? <HighlightedText text={message.content} query={searchHighlight} /> : message.content}
+            </p>
           )}
 
           {/* Image / GIF */}
@@ -330,6 +349,11 @@ export function MessageBubble({ message, showAvatar = true, onReply, onDelete, o
           onClose={() => setContextMenu(null)}
           onReact={handleAddReaction}
           onReply={onReply ? () => { onReply(message); setContextMenu(null); } : undefined}
+          isPinned={message.isPinned}
+          isOwn={message.isOwn}
+          onPin={onPin ? () => { onPin(); setContextMenu(null); } : undefined}
+          onForward={onForward ? () => { onForward(); setContextMenu(null); } : undefined}
+          onCopy={message.type === 'text' ? () => { navigator.clipboard.writeText(message.content); setContextMenu(null); } : undefined}
           onDelete={onDelete ? () => { onDelete(); setContextMenu(null); } : undefined}
         />
       )}

@@ -287,6 +287,19 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
 
   const { status: dmCallStatus, startCall, acceptCall, rejectCall, hangUp } = useDmCall({ myId: profile?.id })
 
+  const dmContactAction = useCallback(async (targetUserId: string, path: string, body: Record<string, unknown>) => {
+    const { createClient } = await import('@/utils/supabase/client')
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token ?? ''
+    const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3500'
+    await fetch(`${API_URL}/contacts/${targetUserId}/${path}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  }, [])
+
   const { data: storiesFeed = [] } = useStoriesFeed()
   const createStory = useCreateStory()
   const deleteStory = useDeleteStory()
@@ -1228,6 +1241,23 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             payload.fileUrl ?? undefined,
           )
         }}
+        onDelete={activeIsRealDirect ? async (messageId) => {
+          const socket = await getSocket()
+          socket.emit('deleteDirectMessage', { messageId, conversationId: activeDirectChat })
+        } : undefined}
+        onPin={activeIsRealDirect ? async (messageId) => {
+          const socket = await getSocket()
+          socket.emit('pinDirectMessage', { messageId, conversationId: activeDirectChat })
+        } : undefined}
+        conversations={(directConversations ?? []).filter((c: any) => c.id !== activeDirectChat).map((c: any) => {
+          const myId = profile?.id
+          const other = c.user_one_id === myId ? c.user_two : c.user_one
+          return { id: c.id, name: other?.username ?? 'DM', avatarUrl: other?.avatar_url ?? null }
+        })}
+        onForwardMessage={activeIsRealDirect ? async (_msgId, content, toConversationId) => {
+          const { directConversationsApi } = await import('@/lib/direct-conversations-api')
+          await directConversationsApi.sendMessage(toConversationId, { content, isForwarded: true })
+        } : undefined}
         onReact={(messageId, emoji) => {
           if (activeIsRealDirect) toggleDirectReaction.mutate({ messageId, emoji })
         }}
@@ -1252,6 +1282,18 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           activeDirectOther.avatar_url ?? null,
           'video',
         ) : undefined}
+        onMute={activeIsRealDirect && activeDirectOther ? async () => {
+          await dmContactAction(activeDirectOther.id, 'mute', { is_muted: true })
+          toast.success(`${activeDirectOther.username ?? 'User'} muted`)
+        } : undefined}
+        onArchive={activeIsRealDirect && activeDirectOther ? async () => {
+          await dmContactAction(activeDirectOther.id, 'archive', { is_archived: true })
+          toast.success('Conversation archived')
+        } : undefined}
+        onBlock={activeIsRealDirect && activeDirectOther ? async () => {
+          await dmContactAction(activeDirectOther.id, 'block', { is_blocked: true })
+          toast.success(`${activeDirectOther.username ?? 'User'} blocked`)
+        } : undefined}
       />
     ) : (
     <div className="flex flex-1 items-center justify-center bg-sidebar p-6">

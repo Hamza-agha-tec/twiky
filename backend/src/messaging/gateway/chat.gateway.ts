@@ -274,6 +274,20 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     }
   }
 
+  @SubscribeMessage('pinDirectMessage')
+  async handlePinDirectMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { messageId: string; conversationId: string },
+  ) {
+    const userId = client.data.user.userId;
+    try {
+      const updated = await this.messagingService.toggleDirectMessagePin(userId, payload.messageId, payload.conversationId);
+      this.emitDirectMessageUpdated(payload.conversationId, updated);
+    } catch (error) {
+      this.logger.error(`Pin DM failed: ${error.message}`);
+    }
+  }
+
   @SubscribeMessage('deleteDirectMessage')
   async handleDeleteDirectMessage(
     @ConnectedSocket() client: Socket,

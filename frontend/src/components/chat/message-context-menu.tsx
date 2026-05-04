@@ -1,13 +1,13 @@
 'use client';
 
 import { AnimatePresence, motion } from 'framer-motion';
-import { Copy, Forward, Pin, Reply, Trash2 } from 'lucide-react';
+import { Copy, Forward, Pin, PinOff, Reply, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '😍'];
 const REACT_ICON = '😊';
 const MENU_WIDTH = 192;
-const MENU_HEIGHT = 280;
+const MENU_HEIGHT = 300;
 const EMOJI_MENU_WIDTH = 328;
 const EMOJI_MENU_HEIGHT = 56;
 const VIEWPORT_PADDING = 8;
@@ -15,9 +15,14 @@ const VIEWPORT_PADDING = 8;
 interface MessageContextMenuProps {
   x: number;
   y: number;
+  isPinned?: boolean;
+  isOwn?: boolean;
   onClose: () => void;
   onReact: (emoji: string) => void;
   onReply?: () => void;
+  onPin?: () => void;
+  onForward?: () => void;
+  onCopy?: () => void;
   onDelete?: () => void;
 }
 
@@ -25,44 +30,23 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-export function MessageContextMenu({ x, y, onClose, onReact, onReply, onDelete }: MessageContextMenuProps) {
+export function MessageContextMenu({ x, y, isPinned, isOwn, onClose, onReact, onReply, onPin, onForward, onCopy, onDelete }: MessageContextMenuProps) {
   const [showEmojis, setShowEmojis] = useState(false);
   const viewportWidth = typeof window === 'undefined' ? MENU_WIDTH + VIEWPORT_PADDING * 2 : window.innerWidth;
   const viewportHeight = typeof window === 'undefined' ? MENU_HEIGHT + VIEWPORT_PADDING * 2 : window.innerHeight;
 
-  const menuLeft = clamp(
-    x,
-    VIEWPORT_PADDING,
-    Math.max(VIEWPORT_PADDING, viewportWidth - MENU_WIDTH - VIEWPORT_PADDING),
-  );
-  const menuTop = clamp(
-    y,
-    VIEWPORT_PADDING,
-    Math.max(VIEWPORT_PADDING, viewportHeight - MENU_HEIGHT - VIEWPORT_PADDING),
-  );
-  const emojiLeft = clamp(
-    x - EMOJI_MENU_WIDTH / 2,
-    VIEWPORT_PADDING,
-    Math.max(VIEWPORT_PADDING, viewportWidth - EMOJI_MENU_WIDTH - VIEWPORT_PADDING),
-  );
-  const emojiTop = clamp(
-    y - EMOJI_MENU_HEIGHT - 12,
-    VIEWPORT_PADDING,
-    Math.max(VIEWPORT_PADDING, viewportHeight - EMOJI_MENU_HEIGHT - VIEWPORT_PADDING),
-  );
+  const menuLeft = clamp(x, VIEWPORT_PADDING, Math.max(VIEWPORT_PADDING, viewportWidth - MENU_WIDTH - VIEWPORT_PADDING));
+  const menuTop = clamp(y, VIEWPORT_PADDING, Math.max(VIEWPORT_PADDING, viewportHeight - MENU_HEIGHT - VIEWPORT_PADDING));
+  const emojiLeft = clamp(x - EMOJI_MENU_WIDTH / 2, VIEWPORT_PADDING, Math.max(VIEWPORT_PADDING, viewportWidth - EMOJI_MENU_WIDTH - VIEWPORT_PADDING));
+  const emojiTop = clamp(y - EMOJI_MENU_HEIGHT - 12, VIEWPORT_PADDING, Math.max(VIEWPORT_PADDING, viewportHeight - EMOJI_MENU_HEIGHT - VIEWPORT_PADDING));
 
   const menuItems = [
-    {
-      icon: REACT_ICON,
-      label: 'React',
-      onClick: () => setShowEmojis(true),
-      isEmoji: true,
-    },
+    { icon: REACT_ICON, label: 'React', onClick: () => setShowEmojis(true), isEmoji: true },
     ...(onReply ? [{ icon: Reply, label: 'Reply', onClick: () => { onReply(); onClose(); } }] : []),
-    { icon: Forward, label: 'Forward', onClick: onClose },
-    { icon: Pin, label: 'Pin message', onClick: onClose },
-    { icon: Copy, label: 'Copy', onClick: onClose },
-    { icon: Trash2, label: 'Delete', onClick: () => { onDelete?.(); onClose(); }, danger: true },
+    ...(onForward ? [{ icon: Forward, label: 'Forward', onClick: () => { onForward(); onClose(); } }] : []),
+    ...(onPin ? [{ icon: isPinned ? PinOff : Pin, label: isPinned ? 'Unpin' : 'Pin', onClick: () => { onPin(); onClose(); } }] : []),
+    ...(onCopy ? [{ icon: Copy, label: 'Copy', onClick: () => { onCopy(); onClose(); } }] : []),
+    ...(onDelete ? [{ icon: Trash2, label: 'Delete', onClick: () => { onDelete(); onClose(); }, danger: true }] : []),
   ];
 
   return (
@@ -101,10 +85,7 @@ export function MessageContextMenu({ x, y, onClose, onReact, onReply, onDelete }
           exit={{ opacity: 0, scale: 0.92 }}
           transition={{ duration: 0.12 }}
           onClick={(e) => e.stopPropagation()}
-          style={{
-            left: `${menuLeft}px`,
-            top: `${menuTop}px`,
-          }}
+          style={{ left: `${menuLeft}px`, top: `${menuTop}px` }}
           className="fixed z-50 bg-sidebar border border-border rounded-xl shadow-xl overflow-hidden min-w-44 py-1"
         >
           {menuItems.map((item, i) => {
@@ -114,9 +95,7 @@ export function MessageContextMenu({ x, y, onClose, onReact, onReply, onDelete }
                 key={i}
                 onClick={item.onClick}
                 className={`w-full px-3 py-2 flex items-center gap-3 text-sm transition-colors ${
-                  isDanger
-                    ? 'text-destructive hover:bg-destructive/10'
-                    : 'text-foreground hover:bg-accent'
+                  isDanger ? 'text-destructive hover:bg-destructive/10' : 'text-foreground hover:bg-accent'
                 }`}
               >
                 {item.isEmoji ? (

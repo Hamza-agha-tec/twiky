@@ -46,6 +46,8 @@ export interface ChatMessage {
   status: 'sent' | 'delivered' | 'read';
   reactions: { userId: string; emoji: string }[];
   reply_to: { id: string; content: string | null; sender: { id: string; username: string } } | null;
+  is_pinned?: boolean;
+  is_forwarded?: boolean;
   created_at: string;
   sender: {
     id: string;

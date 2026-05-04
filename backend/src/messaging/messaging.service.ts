@@ -134,7 +134,8 @@ export class MessagingService {
                 size: dto.size ?? null,
                 file_urls: dto.fileUrls || [],
                 reply_to_id: dto.replyToId || null,
-                entity_mentions: dto.entityMentions || []
+                entity_mentions: dto.entityMentions || [],
+                is_forwarded: dto.isForwarded ?? false
             })
             .select('*, sender:users!direct_messages_sender_id_fkey(id, username, fullname, avatar_url, is_verified, sub_plan)')
             .single();
@@ -177,6 +178,29 @@ export class MessagingService {
             .single();
 
         if (error) throw new Error(`Failed to edit DM: ${error.message}`);
+        return data;
+    }
+
+    async toggleDirectMessagePin(userId: string, messageId: string, conversationId: string) {
+        const { data: msg } = await this.supabaseService
+            .getClient()
+            .from('direct_messages')
+            .select('is_pinned, conversation_id')
+            .eq('id', messageId)
+            .eq('conversation_id', conversationId)
+            .single();
+
+        if (!msg) throw new Error('Message not found');
+
+        const { data, error } = await this.supabaseService
+            .getClient()
+            .from('direct_messages')
+            .update({ is_pinned: !msg.is_pinned })
+            .eq('id', messageId)
+            .select('*, sender:users!direct_messages_sender_id_fkey(id, username, fullname, avatar_url, is_verified, sub_plan)')
+            .single();
+
+        if (error) throw new Error(`Failed to pin DM: ${error.message}`);
         return data;
     }
 
