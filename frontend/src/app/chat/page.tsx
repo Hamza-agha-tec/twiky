@@ -286,6 +286,12 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const onlineUsers = useOnlineUsers()
 
   const { status: dmCallStatus, startCall, acceptCall, rejectCall, hangUp } = useDmCall({ myId: profile?.id })
+  const [dmCallMinimized, setDmCallMinimized] = useState(false)
+
+  // Reset minimized when a new call starts
+  useEffect(() => {
+    if (dmCallStatus.state === 'active') setDmCallMinimized(false)
+  }, [dmCallStatus.state])
 
   const dmContactAction = useCallback(async (targetUserId: string, path: string, body: Record<string, unknown>) => {
     const { createClient } = await import('@/utils/supabase/client')
@@ -1927,7 +1933,21 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
               : activeSurface === 'direct'
                 ? (
                   <div className="flex min-w-0 flex-1 overflow-hidden bg-background">
-                    {directFeedContent}
+                    {dmCallStatus.state === 'active' && profile?.id &&
+                     dmCallStatus.conversationId === activeDirectChat && !dmCallMinimized ? (
+                      <DmCallWindow
+                        roomId={dmCallStatus.roomId}
+                        myId={profile.id}
+                        peerId={dmCallStatus.peerId}
+                        peerName={dmCallStatus.peerName}
+                        peerAvatar={dmCallStatus.peerAvatar}
+                        type={dmCallStatus.type}
+                        mode="conversation"
+                        onHangUp={hangUp}
+                        onMinimize={() => setDmCallMinimized(true)}
+                        onExpand={() => setDmCallMinimized(false)}
+                      />
+                    ) : directFeedContent}
                     <FeedProfileSidebarDock
                       open={showDirectProfile && !!activeDirectChat}
                       width={360}
@@ -2039,7 +2059,8 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           onCancel={hangUp}
         />
       )}
-      {dmCallStatus.state === 'active' && profile?.id && (
+      {dmCallStatus.state === 'active' && profile?.id &&
+       (dmCallMinimized || dmCallStatus.conversationId !== activeDirectChat) && (
         <DmCallWindow
           roomId={dmCallStatus.roomId}
           myId={profile.id}
@@ -2047,7 +2068,13 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           peerName={dmCallStatus.peerName}
           peerAvatar={dmCallStatus.peerAvatar}
           type={dmCallStatus.type}
+          mode="pip"
           onHangUp={hangUp}
+          onMinimize={() => setDmCallMinimized(true)}
+          onExpand={() => {
+            setDmCallMinimized(false)
+            openDirectChat(dmCallStatus.conversationId)
+          }}
         />
       )}
 

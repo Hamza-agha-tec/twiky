@@ -403,7 +403,6 @@ export function useWebRTC(
 
       const addTrackToStream = () => {
         if (!mountedRef.current || track.readyState !== 'live') return
-        if (track.kind === 'video' && track.muted) return
         addRemoteTrack(setStream, peerId, track)
       }
 

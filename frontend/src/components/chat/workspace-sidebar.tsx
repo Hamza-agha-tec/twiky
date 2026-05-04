@@ -230,7 +230,7 @@ export function WorkspaceSidebar({
                 Browse
               </p>
               <Tabs value={mode} onValueChange={(value) => onModeChange(value as WorkspaceMode)}>
-                <TabsList className="h-9 w-full rounded-xl bg-muted p-1">
+                <TabsList className="h-9 w-full rounded-xl bg-background p-1">
                   <TabsTrigger value="direct" className="flex-1 rounded-lg text-[11px] font-semibold">
                     Direct
                   </TabsTrigger>
