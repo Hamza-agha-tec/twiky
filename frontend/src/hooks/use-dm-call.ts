@@ -14,22 +14,28 @@ export type DmCallStatus =
 
 interface UseDmCallOptions {
   myId: string | undefined
+  isInGroupVoiceCall?: boolean
   onCallStarted?: (roomId: string, type: DmCallType) => void
   onCallEnded?: (roomId: string) => void
+  onCallRejected?: (calleeName: string, reason?: string) => void
 }
 
-export function useDmCall({ myId, onCallStarted, onCallEnded }: UseDmCallOptions) {
+export function useDmCall({ myId, isInGroupVoiceCall, onCallStarted, onCallEnded, onCallRejected }: UseDmCallOptions) {
   const [status, setStatus] = useState<DmCallStatus>({ state: 'idle' })
   const socketRef = useRef<Socket | null>(null)
   const myIdRef = useRef(myId)
   const statusRef = useRef(status)
   const onCallStartedRef = useRef(onCallStarted)
   const onCallEndedRef = useRef(onCallEnded)
+  const onCallRejectedRef = useRef(onCallRejected)
+  const isInGroupVoiceCallRef = useRef(isInGroupVoiceCall)
 
   useEffect(() => { myIdRef.current = myId }, [myId])
   useEffect(() => { statusRef.current = status }, [status])
   useEffect(() => { onCallStartedRef.current = onCallStarted }, [onCallStarted])
   useEffect(() => { onCallEndedRef.current = onCallEnded }, [onCallEnded])
+  useEffect(() => { onCallRejectedRef.current = onCallRejected }, [onCallRejected])
+  useEffect(() => { isInGroupVoiceCallRef.current = isInGroupVoiceCall }, [isInGroupVoiceCall])
 
   const endActiveCall = useCallback((conversationId: string, peerId: string) => {
     socketRef.current?.emit('leave-voice-room', { roomId: `dm-${conversationId}` })
@@ -96,9 +102,8 @@ export function useDmCall({ myId, onCallStarted, onCallEnded }: UseDmCallOptions
 
       const onInvite = (data: { conversationId: string; callerId: string; type: DmCallType }) => {
         if (!mounted) return
-        // Don't interrupt active calls
-        if (statusRef.current.state === 'active') {
-          socket.emit('dm-call-rejected', { conversationId: data.conversationId, callerId: data.callerId })
+        if (statusRef.current.state === 'active' || isInGroupVoiceCallRef.current) {
+          socket.emit('dm-call-rejected', { conversationId: data.conversationId, callerId: data.callerId, reason: 'busy' })
           return
         }
         setStatus({
@@ -135,6 +140,7 @@ export function useDmCall({ myId, onCallStarted, onCallEnded }: UseDmCallOptions
         if (!mounted) return
         const s = statusRef.current
         if (s.state !== 'outgoing' || s.conversationId !== data.conversationId) return
+        onCallRejectedRef.current?.(s.calleeName, data.reason)
         setStatus({ state: 'idle' })
       }
 

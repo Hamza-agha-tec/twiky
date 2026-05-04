@@ -285,13 +285,35 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   usePresenceSocket(Boolean(profile?.id))
   const onlineUsers = useOnlineUsers()
 
-  const { status: dmCallStatus, startCall, acceptCall, rejectCall, hangUp } = useDmCall({ myId: profile?.id })
+  const { status: dmCallStatus, startCall, acceptCall, rejectCall, hangUp } = useDmCall({
+    myId: profile?.id,
+    isInGroupVoiceCall: !!activeVoiceGroupId,
+    onCallRejected: (calleeName, reason) => {
+      if (reason === 'busy') toast.error(`${calleeName} is currently in another call`)
+    },
+  })
   const [dmCallMinimized, setDmCallMinimized] = useState(false)
+  const [pendingDmCall, setPendingDmCall] = useState<{
+    conversationId: string; calleeId: string; calleeName: string
+    calleeAvatar: string | null; type: 'audio' | 'video'
+  } | null>(null)
 
   // Reset minimized when a new call starts
   useEffect(() => {
     if (dmCallStatus.state === 'active') setDmCallMinimized(false)
   }, [dmCallStatus.state])
+
+  // Guard startCall — prompt to leave group voice first
+  const handleStartCall = useCallback((
+    conversationId: string, calleeId: string, calleeName: string,
+    calleeAvatar: string | null, type: 'audio' | 'video',
+  ) => {
+    if (activeVoiceGroupId) {
+      setPendingDmCall({ conversationId, calleeId, calleeName, calleeAvatar, type })
+      return
+    }
+    startCall(conversationId, calleeId, calleeName, calleeAvatar, type)
+  }, [activeVoiceGroupId, startCall])
 
   const dmContactAction = useCallback(async (targetUserId: string, path: string, body: Record<string, unknown>) => {
     const { createClient } = await import('@/utils/supabase/client')
@@ -1274,14 +1296,14 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         }}
         otherIsTyping={activeDirectChat ? (typingConversations[activeDirectChat] ?? false) : false}
         onProfileClick={() => setShowDirectProfile((v) => !v)}
-        onVoiceCall={activeIsRealDirect && activeDirectOther ? () => startCall(
+        onVoiceCall={activeIsRealDirect && activeDirectOther ? () => handleStartCall(
           activeDirectChat!,
           activeDirectOther.id,
           activeDirectOther.username ?? 'User',
           activeDirectOther.avatar_url ?? null,
           'audio',
         ) : undefined}
-        onVideoCall={activeIsRealDirect && activeDirectOther ? () => startCall(
+        onVideoCall={activeIsRealDirect && activeDirectOther ? () => handleStartCall(
           activeDirectChat!,
           activeDirectOther.id,
           activeDirectOther.username ?? 'User',
@@ -1979,11 +2001,11 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                           onClose={() => setShowDirectProfile(false)}
                           onVoiceCall={activeIsRealDirect && activeDirectOther ? () => {
                             setShowDirectProfile(false)
-                            startCall(activeDirectChat!, activeDirectOther.id, activeDirectOther.username ?? 'User', activeDirectOther.avatar_url ?? null, 'audio')
+                            handleStartCall(activeDirectChat!, activeDirectOther.id, activeDirectOther.username ?? 'User', activeDirectOther.avatar_url ?? null, 'audio')
                           } : undefined}
                           onVideoCall={activeIsRealDirect && activeDirectOther ? () => {
                             setShowDirectProfile(false)
-                            startCall(activeDirectChat!, activeDirectOther.id, activeDirectOther.username ?? 'User', activeDirectOther.avatar_url ?? null, 'video')
+                            handleStartCall(activeDirectChat!, activeDirectOther.id, activeDirectOther.username ?? 'User', activeDirectOther.avatar_url ?? null, 'video')
                           } : undefined}
                           onOpenPixelRoom={() => {
                             setShowDirectProfile(false)
@@ -2060,7 +2082,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         />
       )}
       {dmCallStatus.state === 'active' && profile?.id &&
-       (dmCallMinimized || dmCallStatus.conversationId !== activeDirectChat) && (
+       (dmCallMinimized || dmCallStatus.conversationId !== activeDirectChat || activeSurface !== 'direct') && (
         <DmCallWindow
           roomId={dmCallStatus.roomId}
           myId={profile.id}
@@ -2077,6 +2099,41 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           }}
         />
       )}
+
+      {/* Leave group voice → start DM call confirm */}
+      <Dialog open={!!pendingDmCall} onOpenChange={(open) => { if (!open) setPendingDmCall(null) }}>
+        <DialogContent className="sm:max-w-[340px] p-0 overflow-hidden">
+          <div className="px-5 py-5 flex flex-col gap-4">
+            <div>
+              <p className="text-sm font-semibold text-foreground">You're in a voice channel</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Leave the voice channel to start a {pendingDmCall?.type === 'video' ? 'video' : 'voice'} call with{' '}
+                <span className="font-medium text-foreground">{pendingDmCall?.calleeName}</span>?
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPendingDmCall(null)}
+                className="flex-1 h-8 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:bg-accent transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!pendingDmCall) return
+                  await voice.leave()
+                  setActiveVoiceGroupId(null)
+                  startCall(pendingDmCall.conversationId, pendingDmCall.calleeId, pendingDmCall.calleeName, pendingDmCall.calleeAvatar, pendingDmCall.type)
+                  setPendingDmCall(null)
+                }}
+                className="flex-1 h-8 rounded-lg text-xs font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+              >
+                Leave &amp; Call
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={startDmOpen} onOpenChange={setStartDmOpen}>
         <DialogContent className="sm:max-w-[420px] p-0 overflow-hidden">
