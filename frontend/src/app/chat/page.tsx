@@ -1956,20 +1956,9 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                 ? (
                   <div className="flex min-w-0 flex-1 overflow-hidden bg-background">
                     {dmCallStatus.state === 'active' && profile?.id &&
-                     dmCallStatus.conversationId === activeDirectChat && !dmCallMinimized ? (
-                      <DmCallWindow
-                        roomId={dmCallStatus.roomId}
-                        myId={profile.id}
-                        peerId={dmCallStatus.peerId}
-                        peerName={dmCallStatus.peerName}
-                        peerAvatar={dmCallStatus.peerAvatar}
-                        type={dmCallStatus.type}
-                        mode="conversation"
-                        onHangUp={hangUp}
-                        onMinimize={() => setDmCallMinimized(true)}
-                        onExpand={() => setDmCallMinimized(false)}
-                      />
-                    ) : directFeedContent}
+                     dmCallStatus.conversationId === activeDirectChat && !dmCallMinimized
+                      ? <div id="dm-call-portal-target" className="flex flex-col flex-1 min-w-0 overflow-hidden" />
+                      : directFeedContent}
                     <FeedProfileSidebarDock
                       open={showDirectProfile && !!activeDirectChat}
                       width={360}
@@ -2081,8 +2070,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           onCancel={hangUp}
         />
       )}
-      {dmCallStatus.state === 'active' && profile?.id &&
-       (dmCallMinimized || dmCallStatus.conversationId !== activeDirectChat || activeSurface !== 'direct') && (
+      {dmCallStatus.state === 'active' && profile?.id && (
         <DmCallWindow
           roomId={dmCallStatus.roomId}
           myId={profile.id}
@@ -2090,7 +2078,11 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           peerName={dmCallStatus.peerName}
           peerAvatar={dmCallStatus.peerAvatar}
           type={dmCallStatus.type}
-          mode="pip"
+          inConversation={
+            !dmCallMinimized &&
+            dmCallStatus.conversationId === activeDirectChat &&
+            activeSurface === 'direct'
+          }
           onHangUp={hangUp}
           onMinimize={() => setDmCallMinimized(true)}
           onExpand={() => {
