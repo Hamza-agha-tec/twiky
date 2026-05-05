@@ -5,6 +5,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Socket } from 'socket.io-client';
 import { getSocket } from '@/lib/socket';
 import { MESSAGING_KEYS, ChatMessage, Conversation } from './use-messaging';
+import { DIRECT_KEYS } from './use-direct-conversations';
+import type { DirectConversation } from '@/lib/direct-conversations-api';
 
 export function useSocket(conversationId: string | null) {
   const queryClient = useQueryClient();
@@ -297,6 +299,28 @@ export function usePresenceSocket(enabled: boolean = true) {
         queryClient.setQueryData(['messaging', 'online-users'], new Set(userIds));
       };
 
+      const onPresencePrivacyChanged = ({ userId }: { userId?: string }) => {
+        if (!mounted || !userId) return;
+
+        queryClient.setQueryData<Record<string, number>>(['messaging', 'last-seen'], (prev = {}) => {
+          const next = { ...prev };
+          delete next[userId];
+          return next;
+        });
+        queryClient.setQueryData<DirectConversation[]>(DIRECT_KEYS.conversations, (old = []) =>
+          old.map((conversation) => ({
+            ...conversation,
+            user_one: conversation.user_one?.id === userId
+              ? { ...conversation.user_one, last_seen_at: null, last_seen_hidden: true }
+              : conversation.user_one,
+            user_two: conversation.user_two?.id === userId
+              ? { ...conversation.user_two, last_seen_at: null, last_seen_hidden: true }
+              : conversation.user_two,
+          })),
+        );
+        queryClient.invalidateQueries({ queryKey: DIRECT_KEYS.conversations });
+      };
+
       const syncOnlineUsers = () => {
         s.emit('getOnlineUsers');
       };
@@ -304,6 +328,7 @@ export function usePresenceSocket(enabled: boolean = true) {
       s.on('userStatusChange', onUserStatusChange);
       s.on('lastSeenMap', onLastSeenMap);
       s.on('onlineUsersList', onOnlineUsersList);
+      s.on('presencePrivacyChanged', onPresencePrivacyChanged);
       s.on('connect', syncOnlineUsers);
 
       syncOnlineUsers();
@@ -312,6 +337,7 @@ export function usePresenceSocket(enabled: boolean = true) {
         s.off('userStatusChange', onUserStatusChange);
         s.off('lastSeenMap', onLastSeenMap);
         s.off('onlineUsersList', onOnlineUsersList);
+        s.off('presencePrivacyChanged', onPresencePrivacyChanged);
         s.off('connect', syncOnlineUsers);
       };
     });

@@ -9,6 +9,7 @@ import {
   type UserSearchResult,
   userApi,
 } from '@/lib/user-api';
+import { getSocket } from '@/lib/socket';
 
 const PROFILE_STALE_TIME = 2 * 60 * 1000; // 2 min
 
@@ -131,8 +132,16 @@ export function useUpdateSettings() {
     onError: (_err, _vars, context) => {
       queryClient.setQueryData(USER_KEYS.settings, context?.previous);
     },
-    onSuccess: (updated) => {
+    onSuccess: (updated, variables) => {
       queryClient.setQueryData(USER_KEYS.settings, updated);
+      if (
+        'who_can_see_my_last_seen' in variables ||
+        'who_can_see_me_online' in variables
+      ) {
+        void getSocket().then((socket) => {
+          socket.emit('presencePrivacyChanged');
+        });
+      }
     },
   });
 }

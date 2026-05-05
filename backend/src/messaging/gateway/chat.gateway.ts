@@ -56,7 +56,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     }
   }
 
-  handleDisconnect(client: Socket) {
+  async handleDisconnect(client: Socket) {
     const userId = client.data.user?.userId;
     if (userId && this.onlineUsers.has(userId)) {
       const userSockets = this.onlineUsers.get(userId)!;
@@ -64,7 +64,8 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
 
       if (userSockets.size === 0) {
         this.onlineUsers.delete(userId);
-        this.server.emit('userStatusChange', { userId, status: 'offline', lastSeenAt: new Date().toISOString() });
+        const lastSeenAt = await this.messagingService.updateUserLastSeen(userId);
+        this.server.emit('userStatusChange', { userId, status: 'offline', lastSeenAt });
       }
     }
 
@@ -141,6 +142,28 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const userIds = Array.from(this.onlineUsers.keys());
     client.emit('onlineUsersList', userIds);
     return userIds;
+  }
+
+  @SubscribeMessage('getLastSeen')
+  async handleGetLastSeen(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() targetUserIds: string[],
+  ) {
+    const viewerUserId = client.data.user?.userId;
+    if (!viewerUserId || !Array.isArray(targetUserIds)) return {};
+
+    const lastSeenMap = await this.messagingService.getVisibleLastSeenMap(viewerUserId, targetUserIds);
+    client.emit('lastSeenMap', lastSeenMap);
+    return lastSeenMap;
+  }
+
+  @SubscribeMessage('presencePrivacyChanged')
+  handlePresencePrivacyChanged(@ConnectedSocket() client: Socket) {
+    const userId = client.data.user?.userId;
+    if (!userId) return;
+
+    this.server.emit('presencePrivacyChanged', { userId });
+    return { status: 'broadcast', userId };
   }
 
   // ==========================================

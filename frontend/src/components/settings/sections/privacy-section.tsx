@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Progress } from '@/components/ui/progress'
 import { Switch } from '@/components/ui/switch'
 import {
@@ -12,17 +12,55 @@ import {
 } from '@/components/ui/select'
 import { SectionHeader, SectionBlock, SettingRow } from '../shared'
 import { cn } from '@/lib/utils'
+import { useSettings, useUpdateSettings } from '@/hooks/use-user'
+
+type VisibilityOption = 'everyone' | 'followers' | 'nobody'
+
+type PrivacySettings = {
+  read_confirmation?: boolean | null
+  who_can_see_me_online?: VisibilityOption | null
+  who_can_see_my_last_seen?: VisibilityOption | null
+}
 
 export function PrivacySection() {
+  const { data: rawSettings } = useSettings()
+  const settings = rawSettings as PrivacySettings | undefined
+  const updateSettings = useUpdateSettings()
   const [readReceipts, setReadReceipts] = useState(true)
   const [onlineStatus, setOnlineStatus] = useState(true)
   const [typingIndicators, setTypingIndicators] = useState(true)
   const [linkPreviews, setLinkPreviews] = useState(true)
-  const [lastSeen, setLastSeen] = useState('followers')
+  const [lastSeen, setLastSeen] = useState<VisibilityOption>('followers')
   const [profilePhoto, setProfilePhoto] = useState('everyone')
   const [visibility, setVisibility] = useState('followers')
   const [dmFromStrangers, setDmFromStrangers] = useState(true)
   const score = [readReceipts, onlineStatus, visibility !== 'public', lastSeen !== 'everyone'].filter(Boolean).length * 25
+
+  useEffect(() => {
+    if (!settings) return
+    if (typeof settings.read_confirmation === 'boolean') {
+      setReadReceipts(settings.read_confirmation)
+    }
+    setOnlineStatus(settings.who_can_see_me_online !== 'nobody')
+    if (settings.who_can_see_my_last_seen) {
+      setLastSeen(settings.who_can_see_my_last_seen)
+    }
+  }, [settings])
+
+  const updateReadReceipts = (checked: boolean) => {
+    setReadReceipts(checked)
+    updateSettings.mutate({ read_confirmation: checked })
+  }
+
+  const updateOnlineStatus = (checked: boolean) => {
+    setOnlineStatus(checked)
+    updateSettings.mutate({ who_can_see_me_online: checked ? 'everyone' : 'nobody' })
+  }
+
+  const updateLastSeen = (value: VisibilityOption) => {
+    setLastSeen(value)
+    updateSettings.mutate({ who_can_see_my_last_seen: value })
+  }
 
   return (
     <>
@@ -36,13 +74,13 @@ export function PrivacySection() {
         <p className="mt-2 text-[11px] text-muted-foreground">{score >= 75 ? 'Strong privacy setup.' : score >= 50 ? 'Good baseline. Consider hiding last seen.' : 'Low privacy — review settings below.'}</p>
       </div>
       <SectionBlock title="Activity & Presence">
-        <SettingRow title="Read receipts" description="Show when you've read a message."><Switch checked={readReceipts} onCheckedChange={setReadReceipts} /></SettingRow>
-        <SettingRow title="Online status" description="Show your activity indicator."><Switch checked={onlineStatus} onCheckedChange={setOnlineStatus} /></SettingRow>
+        <SettingRow title="Read receipts" description="Show when you've read a message."><Switch checked={readReceipts} onCheckedChange={updateReadReceipts} /></SettingRow>
+        <SettingRow title="Online status" description="Show your activity indicator."><Switch checked={onlineStatus} onCheckedChange={updateOnlineStatus} /></SettingRow>
         <SettingRow title="Typing indicators" description="Show when you're composing."><Switch checked={typingIndicators} onCheckedChange={setTypingIndicators} /></SettingRow>
       </SectionBlock>
       <SectionBlock title="Visibility">
         <SettingRow title="Last seen" description="Who can see when you were last active.">
-          <Select value={lastSeen} onValueChange={setLastSeen}><SelectTrigger className="h-8 w-[130px] rounded-xl text-[12px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="everyone">Everyone</SelectItem><SelectItem value="followers">Followers</SelectItem><SelectItem value="nobody">Nobody</SelectItem></SelectContent></Select>
+          <Select value={lastSeen} onValueChange={(value) => updateLastSeen(value as VisibilityOption)}><SelectTrigger className="h-8 w-[130px] rounded-xl text-[12px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="everyone">Everyone</SelectItem><SelectItem value="followers">Followers</SelectItem><SelectItem value="nobody">Nobody</SelectItem></SelectContent></Select>
         </SettingRow>
         <SettingRow title="Profile photo" description="Who can see your avatar.">
           <Select value={profilePhoto} onValueChange={setProfilePhoto}><SelectTrigger className="h-8 w-[130px] rounded-xl text-[12px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="everyone">Everyone</SelectItem><SelectItem value="followers">Followers</SelectItem><SelectItem value="nobody">Nobody</SelectItem></SelectContent></Select>

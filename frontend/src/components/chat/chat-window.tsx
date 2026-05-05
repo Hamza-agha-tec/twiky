@@ -266,6 +266,7 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
   }, [messages.length, activeChat]);
 
 
+  const conversationBackgroundStyle = chatTheme.bg ? { backgroundColor: chatTheme.bg } : undefined;
   const chatName = chatOverride?.name ?? 'Chat';
   const resolvedChatAvatar = chatOverride?.avatarUrl ?? undefined;
   const initials = chatName
@@ -474,7 +475,8 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
                 setPinnedIndex(i => (i + 1) % pinnedMessages.length);
               }
             }}
-            className="flex w-full items-center gap-2 border-b border-[var(--twiky-blue-border)] bg-[var(--twiky-blue-bg)] px-4 py-1.5 text-left transition-colors hover:bg-[rgba(0,128,200,0.16)] shrink-0"
+            className="flex w-full items-center gap-2 border-b border-border bg-sidebar px-4 py-1.5 text-left transition-colors shrink-0"
+            style={conversationBackgroundStyle}
           >
             <Pin className="h-3 w-3 shrink-0 text-[color:var(--twiky-blue)]" />
             <div className="flex-1 min-w-0">
@@ -497,7 +499,7 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
       <div
         ref={scrollContainerRef}
         className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4"
-        style={chatTheme.bg ? { backgroundColor: chatTheme.bg } : undefined}
+        style={conversationBackgroundStyle}
       >
         {Object.entries(groupedMessages).map(([date, dayMessages]) => (
           <div key={date}>

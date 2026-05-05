@@ -69,7 +69,7 @@ import { StoryUploadDialog } from '@/components/chat/story-upload-dialog'
 import { useDmCall } from '@/hooks/use-dm-call'
 import { DmCallIncoming } from '@/components/chat/dm-call-incoming'
 import { DmCallWindow, DmCallOutgoing } from '@/components/chat/dm-call-window'
-import { useOnlineUsers, usePresenceSocket } from '@/hooks/use-socket'
+import { useLastSeen, useOnlineUsers, usePresenceSocket } from '@/hooks/use-socket'
 import type { Socket } from 'socket.io-client'
 import { toast } from 'sonner'
 
@@ -202,6 +202,28 @@ function getEffectiveRole(channelRole?: string, groupRole?: string): string {
   const cr = channelRole ?? 'Member'
   const gr = groupRole ?? 'Member'
   return (ROLE_RANK[cr] ?? 1) >= (ROLE_RANK[gr] ?? 1) ? cr : gr
+}
+
+function formatLastSeen(value?: string | number | null) {
+  if (!value) return null
+
+  const timestamp = typeof value === 'number' ? value : new Date(value).getTime()
+  if (!Number.isFinite(timestamp)) return null
+
+  const diffSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000))
+  if (diffSeconds < 60) return 'Last seen just now'
+
+  const diffMinutes = Math.floor(diffSeconds / 60)
+  if (diffMinutes < 60) return `Last seen ${diffMinutes}m ago`
+
+  const diffHours = Math.floor(diffMinutes / 60)
+  if (diffHours < 24) return `Last seen ${diffHours}h ago`
+
+  const diffDays = Math.floor(diffHours / 24)
+  if (diffDays === 1) return 'Last seen yesterday'
+  if (diffDays < 7) return `Last seen ${diffDays}d ago`
+
+  return `Last seen ${new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
 }
 
 function toWorkspaceChannel(
@@ -1216,6 +1238,10 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     return conv.user_one_id === myId ? conv.user_two : conv.user_one
   })()
   const activeDirectOtherIsOnline = activeDirectOther?.id ? onlineUsers.has(activeDirectOther.id) : false
+  const activeDirectOtherRealtimeLastSeen = useLastSeen(activeDirectOther?.id ?? null)
+  const activeDirectOtherLastSeenLabel = activeDirectOtherIsOnline || activeDirectOther?.last_seen_hidden
+    ? null
+    : formatLastSeen(activeDirectOtherRealtimeLastSeen ?? activeDirectOther?.last_seen_at ?? null)
 
   useEffect(() => {
     if (!visibleDirectConversationId || !profile?.id) return
@@ -1267,7 +1293,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                   subPlan: (activeDirectOther as any).sub_plan ?? null,
                   isVerified: (activeDirectOther as any).is_verified ?? false,
                   name: activeDirectOther.username ?? 'Direct message',
-                  subtitle: activeDirectOtherIsOnline ? 'Online' : 'Offline',
+                  subtitle: activeDirectOtherIsOnline ? null : activeDirectOtherLastSeenLabel,
                 }
               : undefined
         }
@@ -1999,7 +2025,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                                   subPlan: (activeDirectOther as any).sub_plan ?? null,
                                   isVerified: (activeDirectOther as any).is_verified ?? false,
                                   name: activeDirectOther.username ?? 'Direct message',
-                                  subtitle: activeDirectOtherIsOnline ? 'Online' : 'Offline',
+                                  subtitle: activeDirectOtherIsOnline ? null : activeDirectOtherLastSeenLabel,
                                 }
                               : undefined}
                           onClose={() => setShowDirectProfile(false)}

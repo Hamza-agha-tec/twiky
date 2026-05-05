@@ -69,8 +69,8 @@ export class MessagingService {
             .from('direct_conversations')
             .select(`
                 *,
-                user_one:users!direct_conversations_user_one_id_fkey(id, username, avatar_url, banner, sub_plan, is_verified),
-                user_two:users!direct_conversations_user_two_id_fkey(id, username, avatar_url, banner, sub_plan, is_verified),
+                user_one:users!direct_conversations_user_one_id_fkey(id, username, avatar_url, banner, sub_plan, is_verified, last_seen_at),
+                user_two:users!direct_conversations_user_two_id_fkey(id, username, avatar_url, banner, sub_plan, is_verified, last_seen_at),
                 last_message:direct_messages!direct_messages_conversation_id_fkey(id, content, type, file_url, sender_id, created_at)
             `)
             .or(`user_one_id.eq.${userId},user_two_id.eq.${userId}`)
@@ -80,7 +80,7 @@ export class MessagingService {
 
         if (error) throw new Error(`Failed to fetch inboxes: ${error.message}`);
 
-        const conversations = data ?? [];
+        const conversations = await this.applyLastSeenVisibility(userId, data ?? []);
         const conversationIds = conversations.map((conversation) => conversation.id);
         if (!conversationIds.length) return conversations;
 
@@ -104,6 +104,107 @@ export class MessagingService {
         return conversations.map((conversation) => ({
             ...conversation,
             unread_count: unreadByConversation.get(conversation.id) ?? 0,
+        }));
+    }
+
+    async updateUserLastSeen(userId: string, lastSeenAt = new Date().toISOString()) {
+        const { error } = await this.supabaseService
+            .getClient()
+            .from('users')
+            .update({ last_seen_at: lastSeenAt })
+            .eq('id', userId);
+
+        if (error) {
+            this.logger.warn(`Failed to update last_seen_at for ${userId}: ${error.message}`);
+        }
+
+        return lastSeenAt;
+    }
+
+    async getVisibleLastSeenMap(viewerUserId: string, targetUserIds: string[]) {
+        const targetIds = Array.from(new Set(targetUserIds.filter((id) => id && id !== viewerUserId)));
+        if (!targetIds.length) return {};
+
+        const client = this.supabaseService.getClient();
+        const [{ data: users }, { data: settings }, { data: follows }] = await Promise.all([
+            client
+                .from('users')
+                .select('id, last_seen_at')
+                .in('id', targetIds),
+            client
+                .from('user_settings')
+                .select('user_id, who_can_see_my_last_seen')
+                .in('user_id', targetIds),
+            client
+                .from('follows')
+                .select('following_id')
+                .eq('follower_id', viewerUserId)
+                .in('following_id', targetIds),
+        ]);
+
+        const settingsByUserId = new Map((settings ?? []).map((setting: any) => [setting.user_id, setting]));
+        const followedIds = new Set((follows ?? []).map((follow: any) => follow.following_id));
+        const result: Record<string, string> = {};
+
+        for (const user of users ?? []) {
+            const visibility = settingsByUserId.get(user.id)?.who_can_see_my_last_seen ?? 'followers';
+            if (user.last_seen_at && this.canSeeLastSeen(visibility, followedIds.has(user.id))) {
+                result[user.id] = user.last_seen_at;
+            }
+        }
+
+        return result;
+    }
+
+    private canSeeLastSeen(setting: string | null | undefined, viewerFollowsTarget: boolean) {
+        if (setting === 'nobody') return false;
+        if (setting === 'everyone') return true;
+        return viewerFollowsTarget;
+    }
+
+    private async applyLastSeenVisibility(userId: string, conversations: any[]) {
+        const targetIds = Array.from(new Set(
+            conversations
+                .flatMap((conversation) => [conversation.user_one_id, conversation.user_two_id])
+                .filter((id) => id && id !== userId),
+        ));
+
+        if (targetIds.length === 0) return conversations;
+
+        const client = this.supabaseService.getClient();
+        const [{ data: settings }, { data: follows }] = await Promise.all([
+            client
+                .from('user_settings')
+                .select('user_id, who_can_see_my_last_seen')
+                .in('user_id', targetIds),
+            client
+                .from('follows')
+                .select('following_id')
+                .eq('follower_id', userId)
+                .in('following_id', targetIds),
+        ]);
+
+        const settingsByUserId = new Map((settings ?? []).map((setting: any) => [setting.user_id, setting]));
+        const followedIds = new Set((follows ?? []).map((follow: any) => follow.following_id));
+
+        const decorateUser = (user: any) => {
+            if (!user?.id || user.id === userId) return user;
+
+            const lastSeenVisibility = settingsByUserId.get(user.id)?.who_can_see_my_last_seen ?? 'followers';
+            const canSee = this.canSeeLastSeen(lastSeenVisibility, followedIds.has(user.id));
+
+            return {
+                ...user,
+                who_can_see_my_last_seen: lastSeenVisibility,
+                last_seen_at: canSee ? user.last_seen_at ?? null : null,
+                last_seen_hidden: !canSee,
+            };
+        };
+
+        return conversations.map((conversation) => ({
+            ...conversation,
+            user_one: decorateUser(conversation.user_one),
+            user_two: decorateUser(conversation.user_two),
         }));
     }
 

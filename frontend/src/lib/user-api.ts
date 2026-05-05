@@ -109,7 +109,13 @@ export const userApi = {
   updateProfile: (data: UpdateProfileInput) =>
     authedFetch<UserProfile>('/users/profile', { method: 'PATCH', body: JSON.stringify(data) }),
   getSettings: () => authedFetch('/users/settings'),
-  updateSettings: (data: { theme?: string; notifications_enabled?: boolean }) =>
+  updateSettings: (data: {
+    theme?: string;
+    notifications_enabled?: boolean;
+    who_can_see_me_online?: 'everyone' | 'followers' | 'nobody';
+    who_can_see_my_last_seen?: 'everyone' | 'followers' | 'nobody';
+    read_confirmation?: boolean;
+  }) =>
     authedFetch('/users/settings', { method: 'PATCH', body: JSON.stringify(data) }),
   getFollowers: (userId: string) =>
     authedFetch<FollowerRecord[]>(`/users/${userId}/followers`),

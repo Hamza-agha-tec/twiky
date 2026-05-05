@@ -69,7 +69,7 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
     const ta = textareaRef.current;
     if (ta) {
       ta.style.height = 'auto';
-      ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`;
+      ta.style.height = `${Math.max(34, Math.min(ta.scrollHeight, 120))}px`;
     }
   }, [message]);
 
@@ -108,7 +108,7 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
       setMessage('');
       onCancelReply?.();
       onTyping?.(false);
-      if (textareaRef.current) textareaRef.current.style.height = 'auto';
+      if (textareaRef.current) textareaRef.current.style.height = '34px';
       textareaRef.current?.focus();
     }
   };
@@ -351,7 +351,7 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
               placeholder={placeholder ?? 'Message'}
               rows={1}
               disabled={isRecording}
-              className="max-h-[120px] min-h-[34px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[13px] leading-[1.4] shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 focus:outline-none disabled:opacity-0"
+              className="block h-[34px] max-h-[120px] min-h-[34px] w-full resize-none overflow-y-hidden border-0 bg-transparent px-1 py-[7px] text-[13px] leading-5 shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 focus:outline-none disabled:opacity-0"
             />
           </div>
 
