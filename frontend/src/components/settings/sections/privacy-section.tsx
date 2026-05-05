@@ -22,6 +22,8 @@ type PrivacySettings = {
   who_can_see_my_last_seen?: VisibilityOption | null
 }
 
+const TYPING_INDICATORS_KEY = 'twiky-typing-indicators-enabled'
+
 export function PrivacySection() {
   const { data: rawSettings } = useSettings()
   const settings = rawSettings as PrivacySettings | undefined
@@ -45,6 +47,11 @@ export function PrivacySection() {
     if (settings.who_can_see_my_last_seen) {
       setLastSeen(settings.who_can_see_my_last_seen)
     }
+    try {
+      setTypingIndicators(localStorage.getItem(TYPING_INDICATORS_KEY) !== 'false')
+    } catch {
+      setTypingIndicators(true)
+    }
   }, [settings])
 
   const updateReadReceipts = (checked: boolean) => {
@@ -62,6 +69,14 @@ export function PrivacySection() {
     updateSettings.mutate({ who_can_see_my_last_seen: value })
   }
 
+  const updateTypingIndicators = (checked: boolean) => {
+    setTypingIndicators(checked)
+    try {
+      localStorage.setItem(TYPING_INDICATORS_KEY, checked ? 'true' : 'false')
+      window.dispatchEvent(new Event('twiky-typing-indicators-change'))
+    } catch {}
+  }
+
   return (
     <>
       <SectionHeader title="Privacy & Safety" description="Control your visibility and what others see." />
@@ -76,7 +91,7 @@ export function PrivacySection() {
       <SectionBlock title="Activity & Presence">
         <SettingRow title="Read receipts" description="Show when you've read a message."><Switch checked={readReceipts} onCheckedChange={updateReadReceipts} /></SettingRow>
         <SettingRow title="Online status" description="Show your activity indicator."><Switch checked={onlineStatus} onCheckedChange={updateOnlineStatus} /></SettingRow>
-        <SettingRow title="Typing indicators" description="Show when you're composing."><Switch checked={typingIndicators} onCheckedChange={setTypingIndicators} /></SettingRow>
+        <SettingRow title="Typing indicators" description="Show when you're composing."><Switch checked={typingIndicators} onCheckedChange={updateTypingIndicators} /></SettingRow>
       </SectionBlock>
       <SectionBlock title="Visibility">
         <SettingRow title="Last seen" description="Who can see when you were last active.">

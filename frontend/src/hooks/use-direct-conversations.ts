@@ -86,6 +86,7 @@ function updateConversationPreview(conversation: DirectConversation, message: Ch
 
 interface DirectMessageRealtimeOptions {
   onIncomingMessage?: (message: ChatMessage, isVisibleConversation: boolean) => void
+  readReceiptsEnabled?: boolean
 }
 
 export function useDirectMessageRealtime(
@@ -131,7 +132,7 @@ export function useDirectMessageRealtime(
             messageId: message.id,
           })
 
-          if (isVisibleConversation) {
+          if (isVisibleConversation && optionsRef.current.readReceiptsEnabled !== false) {
             socket.emit('markDirectRead', {
               conversationId: message.conversation_id,
               messageId: message.id,

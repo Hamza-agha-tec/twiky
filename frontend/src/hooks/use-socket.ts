@@ -299,6 +299,10 @@ export function usePresenceSocket(enabled: boolean = true) {
         queryClient.setQueryData(['messaging', 'online-users'], new Set(userIds));
       };
 
+      const syncOnlineUsers = () => {
+        s.emit('getOnlineUsers');
+      };
+
       const onPresencePrivacyChanged = ({ userId }: { userId?: string }) => {
         if (!mounted || !userId) return;
 
@@ -319,10 +323,7 @@ export function usePresenceSocket(enabled: boolean = true) {
           })),
         );
         queryClient.invalidateQueries({ queryKey: DIRECT_KEYS.conversations });
-      };
-
-      const syncOnlineUsers = () => {
-        s.emit('getOnlineUsers');
+        syncOnlineUsers();
       };
 
       s.on('userStatusChange', onUserStatusChange);

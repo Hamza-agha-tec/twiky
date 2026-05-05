@@ -47,7 +47,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       client.join(`user_${userId}`);
       if (!this.onlineUsers.has(userId)) {
         this.onlineUsers.set(userId, new Set());
-        this.server.emit('userStatusChange', { userId, status: 'online' });
+        this.server.emit('presencePrivacyChanged', { userId });
       }
       this.onlineUsers.get(userId)!.add(client.id);
       this.logger.log(`User ${userId} connected [${client.id}]`);
@@ -64,8 +64,8 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
 
       if (userSockets.size === 0) {
         this.onlineUsers.delete(userId);
-        const lastSeenAt = await this.messagingService.updateUserLastSeen(userId);
-        this.server.emit('userStatusChange', { userId, status: 'offline', lastSeenAt });
+        await this.messagingService.updateUserLastSeen(userId);
+        this.server.emit('presencePrivacyChanged', { userId });
       }
     }
 
@@ -138,8 +138,12 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   }
 
   @SubscribeMessage('getOnlineUsers')
-  handleGetOnlineUsers(@ConnectedSocket() client: Socket) {
-    const userIds = Array.from(this.onlineUsers.keys());
+  async handleGetOnlineUsers(@ConnectedSocket() client: Socket) {
+    const viewerUserId = client.data.user?.userId;
+    const onlineUserIds = Array.from(this.onlineUsers.keys());
+    const userIds = viewerUserId
+      ? await this.messagingService.getVisibleOnlineUserIds(viewerUserId, onlineUserIds)
+      : [];
     client.emit('onlineUsersList', userIds);
     return userIds;
   }

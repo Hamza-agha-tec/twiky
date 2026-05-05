@@ -156,6 +156,34 @@ export class MessagingService {
         return result;
     }
 
+    async getVisibleOnlineUserIds(viewerUserId: string, onlineUserIds: string[]) {
+        const targetIds = Array.from(new Set(onlineUserIds.filter((id) => id && id !== viewerUserId)));
+        if (!targetIds.length) return [];
+
+        const client = this.supabaseService.getClient();
+        const [{ data: settings }, { data: follows }] = await Promise.all([
+            client
+                .from('user_settings')
+                .select('user_id, who_can_see_me_online')
+                .in('user_id', targetIds),
+            client
+                .from('follows')
+                .select('following_id')
+                .eq('follower_id', viewerUserId)
+                .in('following_id', targetIds),
+        ]);
+
+        const settingsByUserId = new Map((settings ?? []).map((setting: any) => [setting.user_id, setting]));
+        const followedIds = new Set((follows ?? []).map((follow: any) => follow.following_id));
+
+        return targetIds.filter((id) => {
+            const visibility = settingsByUserId.get(id)?.who_can_see_me_online ?? 'everyone';
+            if (visibility === 'nobody') return false;
+            if (visibility === 'followers') return followedIds.has(id);
+            return true;
+        });
+    }
+
     private canSeeLastSeen(setting: string | null | undefined, viewerFollowsTarget: boolean) {
         if (setting === 'nobody') return false;
         if (setting === 'everyone') return true;

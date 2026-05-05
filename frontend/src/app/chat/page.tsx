@@ -50,7 +50,7 @@ import { useQueryClient, useQueries } from '@tanstack/react-query'
 import { GROUP_KEYS } from '@/hooks/use-groups'
 import type { FeedPost } from '@/components/chat/channel-feed'
 import { type ChatMessage } from '@/hooks/use-messaging'
-import { useMutualFollowers, useProfile } from '@/hooks/use-user'
+import { useMutualFollowers, useProfile, useSettings } from '@/hooks/use-user'
 import { useNotifications, useMarkAsRead } from '@/hooks/use-notifications'
 import type { BackendChannel } from '@/lib/channel-api'
 import { filesApi } from '@/lib/files-api'
@@ -129,6 +129,7 @@ const PERSONAL_SURFACE_META = {
 } as const
 
 const CHAT_VIEW_STATE_KEY = 'twiky-chat-view-state'
+const TYPING_INDICATORS_KEY = 'twiky-typing-indicators-enabled'
 const CHAT_SURFACES = ['channel', 'direct', 'personal-goals', 'personal-notes', 'personal-tasks'] as const
 const WORKSPACE_MODES = ['direct', 'channels'] as const
 const MAIN_AREA_TABS = ['feed', 'notes', 'tasks', 'goals'] as const
@@ -304,6 +305,10 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
 
   const queryClient = useQueryClient()
   const { data: profile } = useProfile()
+  const { data: rawSettings } = useSettings()
+  const settings = rawSettings as { read_confirmation?: boolean | null } | undefined
+  const readReceiptsEnabled = settings?.read_confirmation !== false
+  const [typingIndicatorsEnabled, setTypingIndicatorsEnabled] = useState(true)
   usePresenceSocket(Boolean(profile?.id))
   const onlineUsers = useOnlineUsers()
 
@@ -558,7 +563,27 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   }, [])
   useDirectMessageRealtime(visibleDirectConversationId, profile?.id, {
     onIncomingMessage: handleIncomingDirectMessage,
+    readReceiptsEnabled,
   })
+
+  useEffect(() => {
+    const readTypingPreference = () => {
+      try {
+        setTypingIndicatorsEnabled(localStorage.getItem(TYPING_INDICATORS_KEY) !== 'false')
+      } catch {
+        setTypingIndicatorsEnabled(true)
+      }
+    }
+
+    readTypingPreference()
+    window.addEventListener('storage', readTypingPreference)
+    window.addEventListener('twiky-typing-indicators-change', readTypingPreference)
+
+    return () => {
+      window.removeEventListener('storage', readTypingPreference)
+      window.removeEventListener('twiky-typing-indicators-change', readTypingPreference)
+    }
+  }, [])
 
   useEffect(() => {
     let mounted = true
@@ -1249,6 +1274,8 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       prev[visibleDirectConversationId] ? { ...prev, [visibleDirectConversationId]: 0 } : prev,
     )
 
+    if (!readReceiptsEnabled) return
+
     const unreadIncoming = activeDirectRealMessages.filter(
       (message) => message.sender_id !== profile.id && message.status !== 'read',
     )
@@ -1270,7 +1297,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         })
       })
     })
-  }, [activeDirectRealMessages, profile?.id, queryClient, visibleDirectConversationId])
+  }, [activeDirectRealMessages, profile?.id, queryClient, readReceiptsEnabled, visibleDirectConversationId])
 
   const directFeedContent = activeDirectChat ? (
       <ChatWindow
@@ -1333,7 +1360,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           if (activeIsRealDirect) toggleDirectReaction.mutate({ messageId, emoji })
         }}
         onTyping={async (isTyping) => {
-          if (!activeDirectChat || !activeIsRealDirect) return
+          if (!activeDirectChat || !activeIsRealDirect || !typingIndicatorsEnabled) return
           const socket = await getSocket()
           socket.emit('typing', { roomId: `dm_${activeDirectChat}`, isTyping })
         }}
