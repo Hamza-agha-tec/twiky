@@ -35,8 +35,8 @@ export function DmCallIncoming({ callerName, callerAvatar, type, onAccept, onRej
                 {initials}
               </AvatarFallback>
             </Avatar>
-            <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-green-500">
-              {isVideo ? <Video className="h-2.5 w-2.5 text-white" /> : <Phone className="h-2.5 w-2.5 text-white" />}
+            <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary">
+              {isVideo ? <Video className="h-2.5 w-2.5 text-primary-foreground" /> : <Phone className="h-2.5 w-2.5 text-primary-foreground" />}
             </span>
           </div>
 
@@ -60,7 +60,7 @@ export function DmCallIncoming({ callerName, callerAvatar, type, onAccept, onRej
             {/* Accept */}
             <div className="flex flex-col items-center gap-1.5">
               <Button size="icon" variant="ghost" onClick={onAccept}
-                className="h-12 w-12 rounded-full bg-green-500/10 hover:bg-green-500/20 text-green-500">
+                className="h-12 w-12 rounded-full bg-primary/10 hover:bg-primary/20 text-primary">
                 {isVideo ? <Video className="h-5 w-5" /> : <Phone className="h-5 w-5" />}
               </Button>
               <span className="text-[10px] text-muted-foreground">Accept</span>

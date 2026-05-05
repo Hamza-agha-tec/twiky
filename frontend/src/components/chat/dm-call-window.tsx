@@ -7,7 +7,30 @@ import { Mic, MicOff, PhoneOff, Video, VideoOff, Monitor, MonitorOff, Minimize2,
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { useWebRTC } from '@/hooks/use-webrtc'
+import { cn } from '@/lib/utils'
 import type { DmCallType } from '@/hooks/use-dm-call'
+
+const WAVE_HEIGHTS = Array.from({ length: 26 }, (_, i) => {
+  const t = i / 25
+  return 0.2 + Math.abs(Math.sin(t * Math.PI * 2.5)) * 0.55 + Math.abs(Math.sin(t * Math.PI * 6.3)) * 0.25
+})
+
+function CallWaveform({ active, compact = false }: { active: boolean; compact?: boolean }) {
+  return (
+    <div className={cn('flex items-center justify-center gap-[2px]', compact ? 'h-5 w-28' : 'h-8 w-full')}>
+      {WAVE_HEIGHTS.map((h, i) => (
+        <div
+          key={i}
+          className={cn('w-[2px] rounded-full transition-all duration-500', active ? 'bg-primary' : 'bg-muted-foreground/25')}
+          style={{
+            height: active ? `${Math.max(15, h * 100)}%` : '18%',
+            transitionDelay: active ? `${i * 18}ms` : '0ms',
+          }}
+        />
+      ))}
+    </div>
+  )
+}
 
 interface DmCallWindowProps {
   roomId: string
@@ -155,7 +178,7 @@ export function DmCallWindow({
             <p className="text-[11px] text-muted-foreground font-mono">{fmt(elapsed)}</p>
           </div>
           {isSpeaking && (
-            <span className="flex items-center gap-1 rounded-full bg-green-500/15 px-2 py-0.5 text-[10px] text-green-500 font-medium">
+            <span className="flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] text-primary font-medium">
               <Mic className="h-2.5 w-2.5" /> Speaking
             </span>
           )}
@@ -172,9 +195,27 @@ export function DmCallWindow({
       <div className="relative flex-1 flex items-center justify-center overflow-hidden bg-background">
         {hasRemoteVideo
           ? <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-contain" />
+          : type === 'audio'
+          ? (
+            <div className="flex flex-col items-center gap-4 w-full max-w-[260px] px-4">
+              <div className={cn('rounded-full transition-all duration-300', peerSpeaking ? 'ring-2 ring-primary ring-offset-4 ring-offset-background' : '')}>
+                <Avatar className="h-20 w-20">
+                  {peerAvatar && <AvatarImage src={peerAvatar} alt={peerName} />}
+                  <AvatarFallback className="bg-primary text-primary-foreground text-2xl">{initials}</AvatarFallback>
+                </Avatar>
+              </div>
+              <div className="text-center">
+                <p className="text-base font-semibold text-foreground">{peerName}</p>
+                <p className="text-xs text-muted-foreground font-mono mt-0.5">{fmt(elapsed)}</p>
+              </div>
+              <div className="w-full rounded-2xl border border-border bg-sidebar px-4 py-3">
+                <CallWaveform active={peerSpeaking} />
+              </div>
+            </div>
+          )
           : (
             <div className="flex flex-col items-center gap-3">
-              <div className={`rounded-full p-1.5 transition-all ${peerSpeaking ? 'ring-2 ring-green-500 ring-offset-4 ring-offset-background' : ''}`}>
+              <div className={cn('rounded-full p-1.5 transition-all', peerSpeaking ? 'ring-2 ring-primary ring-offset-4 ring-offset-background' : '')}>
                 <Avatar className="h-20 w-20">
                   {peerAvatar && <AvatarImage src={peerAvatar} alt={peerName} />}
                   <AvatarFallback className="bg-primary text-primary-foreground text-2xl">{initials}</AvatarFallback>
@@ -223,12 +264,28 @@ export function DmCallWindow({
       transition={{ duration: 0.15 }}
       className="fixed bottom-6 right-6 z-50 w-64 rounded-xl overflow-hidden shadow-xl border border-border bg-sidebar"
     >
-      <div className="relative aspect-video bg-background flex items-center justify-center">
+      <div className="relative bg-background flex items-center justify-center" style={{ aspectRatio: type === 'audio' ? 'unset' : '16/9' }}>
         {hasRemoteVideo
           ? <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
+          : type === 'audio'
+          ? (
+            <div className="flex items-center gap-3 px-4 py-3 w-full">
+              <div className={cn('rounded-full shrink-0 transition-all duration-300', peerSpeaking ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : '')}>
+                <Avatar className="h-9 w-9">
+                  {peerAvatar && <AvatarImage src={peerAvatar} alt={peerName} />}
+                  <AvatarFallback className="bg-primary text-primary-foreground text-xs">{initials}</AvatarFallback>
+                </Avatar>
+              </div>
+              <div className="flex-1 min-w-0 flex flex-col gap-1">
+                <p className="text-xs font-semibold text-foreground truncate">{peerName}</p>
+                <CallWaveform active={peerSpeaking} compact />
+                <p className="text-[9px] font-mono text-muted-foreground">{fmt(elapsed)}</p>
+              </div>
+            </div>
+          )
           : (
-            <div className="flex flex-col items-center gap-1.5">
-              <div className={`rounded-full ${peerSpeaking ? 'ring-2 ring-green-500 ring-offset-2 ring-offset-background' : ''}`}>
+            <div className="flex flex-col items-center gap-1.5 py-4">
+              <div className={cn('rounded-full', peerSpeaking ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : '')}>
                 <Avatar className="h-10 w-10">
                   {peerAvatar && <AvatarImage src={peerAvatar} alt={peerName} />}
                   <AvatarFallback className="bg-primary text-primary-foreground text-xs">{initials}</AvatarFallback>
@@ -242,11 +299,16 @@ export function DmCallWindow({
           <video ref={localVideoRef} autoPlay playsInline muted
             className="absolute bottom-1.5 right-1.5 h-12 w-[44px] rounded object-cover border border-border" />
         )}
-        <div className="absolute top-1.5 left-1.5 rounded-full bg-sidebar/90 px-1.5 py-0.5 text-[9px] font-mono text-muted-foreground">
-          {fmt(elapsed)}
-        </div>
+        {type !== 'audio' && (
+          <div className="absolute top-1.5 left-1.5 rounded-full bg-sidebar/90 px-1.5 py-0.5 text-[9px] font-mono text-muted-foreground">
+            {fmt(elapsed)}
+          </div>
+        )}
         <button onClick={onExpand}
-          className="absolute top-1.5 right-1.5 rounded-full bg-sidebar/90 p-1 text-muted-foreground hover:text-foreground hover:bg-sidebar transition-colors">
+          className={cn(
+            'absolute rounded-full bg-sidebar/90 p-1 text-muted-foreground hover:text-foreground hover:bg-sidebar transition-colors',
+            type === 'audio' ? 'top-2 right-2' : 'top-1.5 right-1.5'
+          )}>
           <Maximize2 className="h-2.5 w-2.5" />
         </button>
       </div>

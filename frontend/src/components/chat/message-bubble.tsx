@@ -2,7 +2,8 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { Check, CheckCheck, Forward, Play, Pause, FileText, Download, X } from 'lucide-react';
+import { Check, CheckCheck, Forward, FileText, Download, X } from 'lucide-react';
+import { VoiceMessagePlayer } from './voice-message-player';
 import { Message } from '@/lib/mock-data';
 import { format } from 'date-fns';
 import { useState, useEffect, useRef } from 'react';
@@ -36,17 +37,12 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
 }
 
 // Realistic waveform bar heights
-const WAVEFORM = [30, 55, 40, 75, 60, 45, 85, 50, 65, 35, 70, 80, 45, 60, 40, 75, 55, 90, 35, 65, 50, 80, 45, 70, 55];
 
 export function MessageBubble({ message, showAvatar = true, searchHighlight, onReply, onPin, onForward, onDelete, onReact }: MessageBubbleProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [audioDuration, setAudioDuration] = useState<string | null>(null);
-  const [audioProgress, setAudioProgress] = useState(0);
   const [lightbox, setLightbox] = useState(false);
   const messageRef = useRef<HTMLDivElement>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const { resolved: theme } = useChatThemeContext();
 
   const messageReactions = message.reactions ?? [];
@@ -71,38 +67,6 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
     onReact?.(emoji);
   };
 
-  const handlePlayToggle = () => {
-    const src = message.fileUrl || (message.type === 'voice' ? '' : message.content);
-    if (!src) return;
-
-    if (!audioRef.current) {
-      const audio = new Audio(src);
-      audio.onended = () => { setIsPlaying(false); setAudioProgress(0); };
-      audio.ontimeupdate = () => {
-        if (audio.duration) setAudioProgress(audio.currentTime / audio.duration);
-      };
-      audio.onloadedmetadata = () => {
-        if (Number.isFinite(audio.duration)) {
-          const m = Math.floor(audio.duration / 60);
-          const s = Math.floor(audio.duration % 60).toString().padStart(2, '0');
-          setAudioDuration(`${m}:${s}`);
-        }
-      };
-      audioRef.current = audio;
-    }
-
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      audioRef.current.play().catch(() => {});
-      setIsPlaying(true);
-    }
-  };
-
-  useEffect(() => {
-    return () => { audioRef.current?.pause(); };
-  }, []);
 
   return (
     <motion.div
@@ -139,13 +103,14 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
         <div
           ref={messageRef}
           className={`rounded-2xl relative cursor-context-menu ${
-            message.type === 'image' || message.type === 'video' ? 'p-0 overflow-hidden' : message.type === 'file' ? 'p-0' : 'px-4 py-2.5'
+            message.type === 'image' || message.type === 'video' ? 'p-0 overflow-hidden' : message.type === 'file' || message.type === 'voice' ? 'p-0' : 'px-4 py-2.5'
           } ${
-            message.isOwn
+            message.type === 'voice' ? '' : message.isOwn
               ? `rounded-br-sm ${!theme.own ? 'bg-primary text-primary-foreground' : ''}`
               : `rounded-bl-sm ${!theme.other ? 'bg-muted text-foreground' : ''}`
           }`}
           style={
+            message.type === 'voice' ? undefined :
             message.isOwn && theme.own
               ? { backgroundColor: theme.own, color: theme.ownText }
               : !message.isOwn && theme.other
@@ -208,53 +173,13 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
 
           {/* Voice Message */}
           {message.type === 'voice' && (
-            <div className="flex items-center gap-3 min-w-[200px] py-0.5">
-              <motion.button
-                whileHover={{ scale: 1.08 }}
-                whileTap={{ scale: 0.92 }}
-                onClick={handlePlayToggle}
-                className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${
-                  message.isOwn ? 'bg-white/20 hover:bg-white/30' : 'bg-primary/15 hover:bg-primary/25'
-                } transition-colors`}
-              >
-                {isPlaying ? (
-                  <Pause className="h-3.5 w-3.5 fill-current" />
-                ) : (
-                  <Play className="h-3.5 w-3.5 fill-current ml-0.5" />
-                )}
-              </motion.button>
-
-              {/* Waveform bars */}
-              <div className="flex items-center gap-px h-8 flex-1">
-                {WAVEFORM.map((h, i) => {
-                  const played = i / WAVEFORM.length < audioProgress;
-                  return (
-                    <motion.div
-                      key={i}
-                      className={`w-1 rounded-full shrink-0 ${
-                        played
-                          ? (message.isOwn ? 'bg-white' : 'bg-primary')
-                          : (message.isOwn ? 'bg-white/40' : 'bg-primary/35')
-                      }`}
-                      style={{ height: `${h}%` }}
-                      animate={isPlaying ? {
-                        scaleY: [1, 1.5 + Math.random(), 1],
-                        opacity: [0.6, 1, 0.6],
-                      } : { scaleY: 1, opacity: 0.7 }}
-                      transition={isPlaying ? {
-                        duration: 0.4 + Math.random() * 0.3,
-                        repeat: Infinity,
-                        delay: i * 0.02,
-                      } : {}}
-                    />
-                  );
-                })}
-              </div>
-
-              <span className="text-xs whitespace-nowrap opacity-75">
-                {audioDuration ?? message.content}
-              </span>
-            </div>
+            <VoiceMessagePlayer
+              src={message.fileUrl || message.content}
+              durationSeconds={(() => {
+                const m = message.content?.match(/^(\d+):(\d{2})$/)
+                return m ? parseInt(m[1]) * 60 + parseInt(m[2]) : null
+              })()}
+            />
           )}
 
           {/* Video */}
