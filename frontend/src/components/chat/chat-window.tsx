@@ -43,13 +43,13 @@ interface ChatWindowProps {
   onEdit?: (messageId: string, content: string) => void;
   onDelete?: (messageId: string) => void;
   onProfileClick?: () => void;
+  onMessageAvatarClick?: (senderId: string) => void;
   onVoiceCall?: () => void;
   onVideoCall?: () => void;
   onMute?: () => void;
   onArchive?: () => void;
   onBlock?: () => void;
   onPin?: (messageId: string) => void;
-  onDelete?: (messageId: string) => void;
   conversations?: { id: string; name: string; avatarUrl?: string | null }[];
   onForwardMessage?: (messageId: string, content: string, toConversationId: string) => void;
 }
@@ -150,7 +150,7 @@ function toUiMessage(
   };
 }
 
-export function ChatWindow({ activeChat, chatOverride, messages: providedMessages = [], onSendMessage, onTyping, otherIsTyping = false, onReact, onDelete, onPin, onProfileClick, onVoiceCall, onVideoCall, onMute, onArchive, onBlock, conversations = [], onForwardMessage }: ChatWindowProps) {
+export function ChatWindow({ activeChat, chatOverride, messages: providedMessages = [], onSendMessage, onTyping, otherIsTyping = false, onReact, onDelete, onPin, onProfileClick, onMessageAvatarClick, onVoiceCall, onVideoCall, onMute, onArchive, onBlock, conversations = [], onForwardMessage }: ChatWindowProps) {
   const { user } = useAuth();
   const { data: profile } = useProfile();
   const { resolved: chatTheme } = useChatThemeContext();
@@ -212,7 +212,37 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
 
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const [forwardSearch, setForwardSearch] = useState('');
-  const pinnedMessage = messages.find(m => m.isPinned);
+  const [pinnedIndex, setPinnedIndex] = useState(0);
+  const pinnedMessages = messages.filter(m => m.isPinned).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const pinnedMessage = pinnedMessages[pinnedIndex % Math.max(1, pinnedMessages.length)] ?? null;
+  const [pinnedSpotlight, setPinnedSpotlight] = useState<{ id: string; nonce: number } | null>(null);
+  const pinnedSpotlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const spotlightPinnedMessage = useCallback((messageId: string) => {
+    const nonce = Date.now();
+
+    if (pinnedSpotlightTimeoutRef.current) {
+      clearTimeout(pinnedSpotlightTimeoutRef.current);
+    }
+
+    setPinnedSpotlight({ id: messageId, nonce });
+    pinnedSpotlightTimeoutRef.current = setTimeout(() => {
+      setPinnedSpotlight((current) => current?.nonce === nonce ? null : current);
+    }, 1400);
+  }, []);
+
+  // Reset index when pin count changes
+  useEffect(() => {
+    setPinnedIndex(0);
+  }, [pinnedMessages.length]);
+
+  useEffect(() => {
+    return () => {
+      if (pinnedSpotlightTimeoutRef.current) {
+        clearTimeout(pinnedSpotlightTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useLayoutEffect(() => {
     initialScrollDone.current = false;
@@ -247,6 +277,7 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
 
   const isOnline = chatOverride?.isOnline ?? false;
   const chatSubtitle = chatOverride?.subtitle ?? null;
+  const visibleChatSubtitle = chatSubtitle === 'Online' || chatSubtitle === 'Offline' ? null : chatSubtitle;
 
   const groupedMessages = messages.reduce(
     (acc, message) => {
@@ -331,7 +362,7 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
                 whileTap={{ scale: 0.95 }}
                 onClick={onProfileClick}
                 disabled={!onProfileClick}
-                className="rounded-full hover:ring-2 ring-primary/40 transition-all shrink-0 disabled:cursor-default disabled:hover:ring-0"
+                className="relative rounded-full hover:ring-2 ring-primary/40 transition-all shrink-0 disabled:cursor-default disabled:hover:ring-0"
               >
                 <Avatar className="h-9 w-9">
                   <AvatarImage src={resolvedChatAvatar} alt={chatName} />
@@ -339,6 +370,11 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
                     {initials}
                   </AvatarFallback>
                 </Avatar>
+                <span
+                  className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-sidebar ${
+                    isOnline ? 'bg-green-500' : 'bg-muted-foreground/55'
+                  }`}
+                />
               </motion.button>
 
               <div className="flex-1 min-w-0">
@@ -350,10 +386,9 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
                   <p className="text-xs text-muted-foreground">
                     Channel · {conv.participants.length} members
                   </p>
-                ) : (isOnline || chatSubtitle) ? (
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <span className={`inline-block h-1.5 w-1.5 rounded-full ${isOnline ? 'bg-green-500' : 'bg-muted-foreground/55'}`} />
-                    {isOnline ? (chatSubtitle ?? 'Online') : chatSubtitle}
+                ) : visibleChatSubtitle ? (
+                  <p className="text-xs text-muted-foreground">
+                    {visibleChatSubtitle}
                   </p>
                 ) : null}
               </div>
@@ -420,10 +455,13 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
       <AnimatePresence>
         {pinnedMessage && (
           <motion.button
+            key={pinnedMessage.id}
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             onClick={() => {
+              spotlightPinnedMessage(pinnedMessage.id);
+              // Scroll to current pinned message
               const el = scrollContainerRef.current?.querySelector(`[data-message-id="${pinnedMessage.id}"]`);
               if (el && scrollContainerRef.current) {
                 const containerRect = scrollContainerRef.current.getBoundingClientRect();
@@ -431,14 +469,26 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
                 const offset = elRect.top - containerRect.top + scrollContainerRef.current.scrollTop - containerRect.height / 2 + elRect.height / 2;
                 scrollContainerRef.current.scrollTo({ top: offset, behavior: 'smooth' });
               }
+              // Cycle to next pinned message
+              if (pinnedMessages.length > 1) {
+                setPinnedIndex(i => (i + 1) % pinnedMessages.length);
+              }
             }}
-            className="flex w-full items-center gap-2 border-b border-border bg-muted/40 px-4 py-1.5 text-left hover:bg-muted/60 transition-colors shrink-0"
+            className="flex w-full items-center gap-2 border-b border-[var(--twiky-blue-border)] bg-[var(--twiky-blue-bg)] px-4 py-1.5 text-left transition-colors hover:bg-[rgba(0,128,200,0.16)] shrink-0"
           >
-            <Pin className="h-3 w-3 shrink-0 text-primary" />
-            <span className="text-xs text-muted-foreground truncate">
-              <span className="font-medium text-foreground">Pinned: </span>
-              {pinnedMessage.content}
-            </span>
+            <Pin className="h-3 w-3 shrink-0 text-[color:var(--twiky-blue)]" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="truncate text-xs font-medium text-[color:var(--twiky-blue)]">
+                  {pinnedMessage.senderName}: {pinnedMessage.type === 'text' ? pinnedMessage.content : `[${pinnedMessage.type}]`}
+                </span>
+              </div>
+            </div>
+            {pinnedMessages.length > 1 && (
+              <span className="shrink-0 text-[10px] tabular-nums text-[color:var(--twiky-blue)] opacity-80">
+                {(pinnedIndex % pinnedMessages.length) + 1}/{pinnedMessages.length}
+              </span>
+            )}
           </motion.button>
         )}
       </AnimatePresence>
@@ -453,41 +503,53 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
           <div key={date}>
             {/* Day Separator */}
             <div className="flex items-center gap-3 my-4">
-              <div className="flex-1 h-px bg-border" />
-              <span className="text-[11px] font-medium text-muted-foreground px-3 py-1 rounded-full bg-muted">
+              <div className="h-px flex-1 bg-[var(--twiky-blue-border)]" />
+              <span className="rounded-full border border-[var(--twiky-blue-border)] bg-[var(--twiky-blue-bg)] px-3 py-1 text-[11px] font-medium text-[color:var(--twiky-blue)]">
                 {getDayLabel(date)}
               </span>
-              <div className="flex-1 h-px bg-border" />
+              <div className="h-px flex-1 bg-[var(--twiky-blue-border)]" />
             </div>
 
-            <div className="space-y-1.5">
-              {dayMessages.map((message, index) => (
-                <div
-                  key={message.id}
-                  data-message-id={message.id}
-                  className={message.id === activeMatchId ? 'rounded-xl ring-2 ring-primary/50 ring-offset-1 ring-offset-sidebar transition-all' : ''}
-                >
-                  {message.type === 'call' ? (
-                    <CallLogBubble message={message} />
-                  ) : (
-                    <MessageBubble
-                      message={message}
-                      searchHighlight={searchOpen && searchQuery.trim() ? searchQuery : undefined}
-                      showAvatar={
-                        !message.isOwn &&
-                        (index === 0 ||
-                          dayMessages[index - 1].isOwn ||
-                          dayMessages[index - 1].senderId !== message.senderId)
-                      }
-                      onReply={handleReply}
-                      onPin={() => onPin?.(message.id)}
-                      onForward={() => setForwardingMessage(message)}
-                      onDelete={() => onDelete?.(message.id)}
-                      onReact={(emoji) => onReact?.(message.id, emoji)}
-                    />
-                  )}
-                </div>
-              ))}
+            <div className="space-y-0.5">
+              {dayMessages.map((message) => {
+                const isSearchMatch = message.id === activeMatchId;
+                const isPinnedSpotlight = pinnedSpotlight?.id === message.id;
+                const messageFrameClassName = [
+                  'transition-all duration-300',
+                  isSearchMatch ? 'rounded-xl ring-2 ring-primary/50 ring-offset-1 ring-offset-sidebar' : '',
+                  isPinnedSpotlight ? 'rounded-xl bg-yellow-500/10 shadow-lg shadow-yellow-500/15' : '',
+                ].filter(Boolean).join(' ');
+
+                return (
+                  <div
+                    key={message.id}
+                    data-message-id={message.id}
+                    className={messageFrameClassName}
+                  >
+                    {message.type === 'call' ? (
+                      <CallLogBubble message={message} />
+                    ) : (
+                      <MessageBubble
+                        message={message}
+                        searchHighlight={searchOpen && searchQuery.trim() ? searchQuery : undefined}
+                        showAvatar={true}
+                        onReply={handleReply}
+                        onPin={() => onPin?.(message.id)}
+                        onForward={() => setForwardingMessage(message)}
+                        onDelete={() => onDelete?.(message.id)}
+                        onReact={(emoji) => onReact?.(message.id, emoji)}
+                        onAvatarClick={(senderId) => {
+                          if (onMessageAvatarClick) {
+                            onMessageAvatarClick(senderId);
+                            return;
+                          }
+                          if (senderId !== profile?.id) onProfileClick?.();
+                        }}
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         ))}

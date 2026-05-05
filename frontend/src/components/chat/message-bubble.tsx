@@ -2,14 +2,13 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { Check, CheckCheck, Forward, FileText, Download, X } from 'lucide-react';
+import { Check, CheckCheck, Forward, FileText, Download, X, Pin } from 'lucide-react';
 import { VoiceMessagePlayer } from './voice-message-player';
 import { Message } from '@/lib/mock-data';
 import { format } from 'date-fns';
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { MessageContextMenu } from './message-context-menu';
-import { useChatThemeContext } from '@/context/ChatThemeContext';
 
 interface MessageBubbleProps {
   message: Message;
@@ -20,6 +19,7 @@ interface MessageBubbleProps {
   onForward?: () => void;
   onDelete?: () => void;
   onReact?: (emoji: string) => void;
+  onAvatarClick?: (senderId: string) => void;
 }
 
 function HighlightedText({ text, query }: { text: string; query: string }) {
@@ -36,14 +36,11 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
   );
 }
 
-// Realistic waveform bar heights
-
-export function MessageBubble({ message, showAvatar = true, searchHighlight, onReply, onPin, onForward, onDelete, onReact }: MessageBubbleProps) {
+export function MessageBubble({ message, showAvatar = true, searchHighlight, onReply, onPin, onForward, onDelete, onReact, onAvatarClick }: MessageBubbleProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [lightbox, setLightbox] = useState(false);
   const messageRef = useRef<HTMLDivElement>(null);
-  const { resolved: theme } = useChatThemeContext();
 
   const messageReactions = message.reactions ?? [];
 
@@ -67,124 +64,119 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
     onReact?.(emoji);
   };
 
-
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.18 }}
-      className={`flex gap-2 group relative ${message.isOwn ? 'justify-end' : 'justify-start'}`}
+      transition={{ duration: 0.15 }}
+      className="flex gap-3 group relative px-1 py-0.5 rounded-md hover:bg-white/[0.03] transition-colors"
+      onContextMenu={handleContextMenu}
     >
-      {!message.isOwn && (
-        <div className="shrink-0 self-end">
-          {showAvatar ? (
-            <Avatar className="h-8 w-8">
+      {/* Avatar column — always left */}
+      <div className="shrink-0 w-9 pt-0.5">
+        {showAvatar ? (
+          <button
+            type="button"
+            onClick={() => onAvatarClick?.(message.senderId)}
+            className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 hover:opacity-80 transition-opacity cursor-pointer"
+          >
+            <Avatar className="h-9 w-9">
               <AvatarImage src={message.avatar} alt={message.senderName} />
               <AvatarFallback className="bg-primary text-primary-foreground text-xs">
                 {initials}
               </AvatarFallback>
             </Avatar>
-          ) : (
-            <div className="h-8 w-8" />
-          )}
-        </div>
-      )}
+          </button>
+        ) : (
+          <div className="h-9 w-9" />
+        )}
+      </div>
 
-<div className={`flex flex-col max-w-sm ${message.isOwn ? 'items-end' : 'items-start'}`}>
-        {/* Forwarded Indicator */}
+      {/* Content column */}
+      <div className="flex flex-col flex-1 min-w-0">
+        {/* Header: name + timestamp — only when avatar shown */}
+        {showAvatar && (
+          <div className="flex items-baseline gap-2 mb-0.5">
+            <span className={`text-sm font-semibold leading-tight ${message.isOwn ? 'text-blue-400' : 'text-foreground'}`}>
+              {message.senderName}
+            </span>
+            {isMounted && (
+              <span className="text-[11px] text-muted-foreground/60 tabular-nums">
+                {format(new Date(message.timestamp), 'MMM d, h:mm a')}
+              </span>
+            )}
+            {message.isOwn && (
+              <span className="ml-0.5">
+                {message.isRead ? (
+                  <CheckCheck aria-label="Read" className="h-3 w-3 text-blue-500 inline" />
+                ) : message.isDelivered ? (
+                  <CheckCheck aria-label="Received" className="h-3 w-3 text-muted-foreground/60 inline" />
+                ) : (
+                  <Check aria-label="Sent" className="h-3 w-3 text-muted-foreground/60 inline" />
+                )}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Pinned indicator */}
+        {message.isPinned && (
+          <div className="flex items-center gap-1 mb-0.5 text-[11px] text-yellow-500/80">
+            <Pin className="h-2.5 w-2.5" />
+            <span>Pinned</span>
+          </div>
+        )}
+
+        {/* Forwarded indicator */}
         {message.isForwarded && (
-          <div className="text-[11px] text-muted-foreground flex items-center gap-1 mb-1 px-1">
+          <div className="text-[11px] text-muted-foreground flex items-center gap-1 mb-0.5">
             <Forward className="h-3 w-3" />
             <span>Forwarded</span>
           </div>
         )}
 
-        {/* Message Content */}
-        <div
-          ref={messageRef}
-          className={`rounded-2xl relative cursor-context-menu ${
-            message.type === 'image' || message.type === 'video' ? 'p-0 overflow-hidden' : message.type === 'file' || message.type === 'voice' ? 'p-0' : 'px-4 py-2.5'
-          } ${
-            message.type === 'voice' ? '' : message.isOwn
-              ? `rounded-br-sm ${!theme.own ? 'bg-primary text-primary-foreground' : ''}`
-              : `rounded-bl-sm ${!theme.other ? 'bg-muted text-foreground' : ''}`
-          }`}
-          style={
-            message.type === 'voice' ? undefined :
-            message.isOwn && theme.own
-              ? { backgroundColor: theme.own, color: theme.ownText }
-              : !message.isOwn && theme.other
-              ? { backgroundColor: theme.other, color: theme.otherText }
-              : undefined
-          }
-          onContextMenu={handleContextMenu}
-        >
-          {/* Reply Quote */}
-          {message.reply && (
-            <div
-              className={`mb-2.5 rounded-lg overflow-hidden border-l-[3px] ${
-                message.isOwn
-                  ? !theme.own ? 'border-primary-foreground/60 bg-primary-foreground/10' : ''
-                  : !theme.other ? 'border-primary bg-primary/8' : ''
-              }`}
-              style={
-                message.isOwn && theme.own
-                  ? { borderLeftColor: 'rgba(255,255,255,0.55)', backgroundColor: 'rgba(0,0,0,0.18)' }
-                  : !message.isOwn && theme.other
-                  ? { borderLeftColor: 'rgba(255,255,255,0.4)', backgroundColor: 'rgba(255,255,255,0.1)' }
-                  : undefined
-              }
-            >
-              <div className="px-3 py-2">
-                <p className={`text-[11px] font-semibold mb-0.5 truncate ${
-                  message.isOwn
-                    ? !theme.own ? 'text-primary-foreground/80' : 'text-white/85'
-                    : !theme.other ? 'text-primary' : 'text-white/85'
-                }`}>
-                  {message.reply.senderName}
-                </p>
-                <p className={`text-[12px] truncate leading-snug ${
-                  message.isOwn
-                    ? !theme.own ? 'text-primary-foreground/55' : 'text-white/55'
-                    : 'text-foreground/60'
-                }`}>
-                  {message.reply.content}
-                </p>
-              </div>
+        {/* Reply quote */}
+        {message.reply && (
+          <div className="flex items-start gap-2 mb-1 pl-2 border-l-2 border-primary/50">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold text-primary truncate">{message.reply.senderName}</p>
+              <p className="text-[12px] text-muted-foreground truncate">{message.reply.content}</p>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Text */}
+        {/* Message content — no bubble */}
+        <div ref={messageRef} className="max-w-xl">
           {message.type === 'text' && (
-            <p className="text-sm wrap-break-word whitespace-pre-wrap leading-relaxed">
+            <p className="text-sm text-foreground/90 wrap-break-word whitespace-pre-wrap leading-relaxed">
               {searchHighlight ? <HighlightedText text={message.content} query={searchHighlight} /> : message.content}
+              {message.isEdited && <span className="text-[10px] text-muted-foreground ml-1.5">(edited)</span>}
             </p>
           )}
 
-          {/* Image / GIF */}
           {message.type === 'image' && (
             <img
               src={message.fileUrl || message.content}
               alt="Shared image"
-              className="max-w-[200px] max-h-44 object-cover block cursor-zoom-in"
+              className="max-w-[300px] max-h-56 object-cover rounded-lg cursor-zoom-in mt-1"
               onClick={() => setLightbox(true)}
             />
           )}
 
-          {/* Voice Message */}
           {message.type === 'voice' && (
-            <VoiceMessagePlayer
-              src={message.fileUrl || message.content}
-              durationSeconds={(() => {
-                const m = message.content?.match(/^(\d+):(\d{2})$/)
-                return m ? parseInt(m[1]) * 60 + parseInt(m[2]) : null
-              })()}
-            />
+            <div className="mt-0.5">
+              <VoiceMessagePlayer
+                src={message.fileUrl || message.content}
+                durationSeconds={(() => {
+                  const m = message.content?.match(/^(\d+):(\d{2})$/)
+                  return m ? parseInt(m[1]) * 60 + parseInt(m[2]) : null
+                })()}
+              />
+            </div>
           )}
 
-          {/* Video */}
           {message.type === 'video' && (
-            <div className="max-w-xs overflow-hidden">
+            <div className="max-w-xs overflow-hidden rounded-lg mt-1">
               <video
                 src={message.fileUrl || message.content}
                 controls
@@ -194,20 +186,15 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
             </div>
           )}
 
-          {/* File attachment */}
           {message.type === 'file' && (
             <a
               href={message.fileUrl || message.content}
               target="_blank"
               rel="noopener noreferrer"
-              className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 min-w-[180px] transition-colors ${
-                message.isOwn ? 'bg-white/10 hover:bg-white/20' : 'bg-primary/8 hover:bg-primary/15'
-              }`}
+              className="flex items-center gap-2.5 rounded-xl bg-muted/50 hover:bg-muted/80 px-3 py-2.5 mt-1 max-w-[240px] transition-colors border border-border"
             >
-              <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${
-                message.isOwn ? 'bg-white/15' : 'bg-primary/15'
-              }`}>
-                <FileText className="h-5 w-5" />
+              <div className="h-9 w-9 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
+                <FileText className="h-5 w-5 text-primary" />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-[12px] font-medium truncate">
@@ -218,16 +205,11 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
               <Download className="h-3.5 w-3.5 opacity-60 shrink-0" />
             </a>
           )}
-
-          {/* Edited */}
-          {message.isEdited && (
-            <p className="text-[10px] opacity-60 mt-0.5">(edited)</p>
-          )}
         </div>
 
         {/* Reactions */}
         {messageReactions.length > 0 && (
-          <div className={`flex gap-1 mt-1 flex-wrap ${message.isOwn ? 'justify-end' : 'justify-start'}`}>
+          <div className="flex gap-1 mt-1 flex-wrap">
             {messageReactions.map(({ emoji, count, reactedByMe }, idx) => (
               <motion.button
                 key={`${message.id}-r-${idx}`}
@@ -248,23 +230,16 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
             ))}
           </div>
         )}
-
-        {/* Timestamp + Read Status */}
-        <div className="flex items-center gap-1 mt-1 px-1 text-[11px] text-muted-foreground">
-          {isMounted && <span>{format(new Date(message.timestamp), 'HH:mm')}</span>}
-          {message.isOwn && (
-            <>
-              {message.isRead ? (
-                <CheckCheck aria-label="Read" className="h-3 w-3 text-blue-500" />
-              ) : message.isDelivered ? (
-                <CheckCheck aria-label="Received" className="h-3 w-3 text-muted-foreground/70" />
-              ) : (
-                <Check aria-label="Sent" className="h-3 w-3 text-muted-foreground/70" />
-              )}
-            </>
-          )}
-        </div>
       </div>
+
+      {/* Hover timestamp (no-avatar rows) */}
+      {!showAvatar && isMounted && (
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-9 flex justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+          <span className="text-[10px] text-muted-foreground/50 tabular-nums leading-tight">
+            {format(new Date(message.timestamp), 'h:mm')}
+          </span>
+        </div>
+      )}
 
       {/* Context Menu */}
       {contextMenu && (

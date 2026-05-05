@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { SmilePlus, Paperclip, SendHorizontal, Mic, Square, X, Reply, Loader2, FileText, Image as ImageIcon } from 'lucide-react';
+import { SmilePlus, Paperclip, SendHorizontal, Mic, Square, X, Reply, Loader2, Gift, Sticker } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   Popover,
@@ -357,6 +357,51 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
 
           {/* Right actions */}
           <div className="flex items-center gap-0.5 shrink-0">
+            {/* GIF */}
+            {!isRecording && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground"
+                title="GIF"
+                disabled={busy}
+                onClick={() => {}}
+              >
+                <span className="text-[10px] font-bold leading-none">GIF</span>
+              </Button>
+            )}
+
+            {/* Sticker */}
+            {!isRecording && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground"
+                title="Sticker"
+                disabled={busy}
+                onClick={() => {}}
+              >
+                <Sticker className="h-[15px] w-[15px]" />
+              </Button>
+            )}
+
+            {/* Gift */}
+            {!isRecording && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground"
+                title="Gift"
+                disabled={busy}
+                onClick={() => {}}
+              >
+                <Gift className="h-[15px] w-[15px]" />
+              </Button>
+            )}
+
             {/* Emoji */}
             {!isRecording && (
               <Popover>

@@ -31,7 +31,7 @@ export function CallLogBubble({ message }: CallLogBubbleProps) {
 
   return (
     <div className="flex justify-center my-0.5">
-      <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted/60 text-xs text-muted-foreground select-none">
+      <div className="flex items-center gap-1.5 rounded-full border border-[var(--twiky-blue-border)] bg-[var(--twiky-blue-bg)] px-3 py-1 text-xs text-[color:var(--twiky-blue)] select-none">
         {isMissed ? (
           <MissedIcon className="h-3 w-3 text-red-400 shrink-0" />
         ) : (

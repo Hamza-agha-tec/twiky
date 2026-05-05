@@ -131,7 +131,7 @@ export function VoiceMessagePlayer({
       <button
         type="button"
         onClick={() => void togglePlay()}
-        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 transition-colors hover:bg-emerald-100 active:scale-95 dark:bg-emerald-500/10 dark:text-emerald-400"
+        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600 transition-colors hover:bg-blue-100 active:scale-95 dark:bg-blue-500/10 dark:text-blue-400"
         disabled={!ready}
       >
         {playing ? (
@@ -156,7 +156,7 @@ export function VoiceMessagePlayer({
                 key={idx}
                 className={cn(
                   'w-[2px] rounded-full transition-all duration-300',
-                  active ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-zinc-700'
+                  active ? 'bg-blue-500' : 'bg-gray-200 dark:bg-zinc-700'
                 )}
                 style={{ height: `${Math.max(25, h * 100)}%` }}
               />
@@ -164,7 +164,7 @@ export function VoiceMessagePlayer({
           })}
         </div>
         <div className="flex items-center gap-1 text-[10px] font-medium tabular-nums text-gray-400 dark:text-zinc-500">
-          <span className={cn(currentTime > 0 && "text-emerald-500")}>
+          <span className={cn(currentTime > 0 && "text-blue-500")}>
             {formatTime(currentTime)}
           </span>
           <span>/</span>
@@ -176,7 +176,7 @@ export function VoiceMessagePlayer({
       <button
         type="button"
         onClick={() => setPlaybackRate((r) => (r === 1 ? 1.5 : r === 1.5 ? 2 : 1))}
-        className="flex h-8 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-gray-50 text-[10px] font-bold text-gray-500 transition-colors hover:bg-gray-100 hover:text-emerald-600 dark:bg-zinc-800 dark:text-zinc-400"
+        className="flex h-8 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-gray-50 text-[10px] font-bold text-gray-500 transition-colors hover:bg-gray-100 hover:text-blue-600 dark:bg-zinc-800 dark:text-zinc-400"
       >
         {playbackRate}x
       </button>

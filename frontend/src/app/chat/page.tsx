@@ -998,9 +998,18 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
 
   const router = useRouter()
 
-  const handleAvatarClick = () => {
+  const handleAvatarClick = useCallback(() => {
     router.push('/settings/profile')
-  }
+  }, [router])
+
+  const handleDirectMessageAvatarClick = useCallback((senderId: string) => {
+    if (senderId === profile?.id) {
+      handleAvatarClick()
+      return
+    }
+
+    setShowDirectProfile(true)
+  }, [handleAvatarClick, profile?.id])
 
   const openDirectChat = useCallback(async (conversation: string | FeedDirectConversationTarget) => {
     const conversationId =
@@ -1304,6 +1313,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         }}
         otherIsTyping={activeDirectChat ? (typingConversations[activeDirectChat] ?? false) : false}
         onProfileClick={() => setShowDirectProfile((v) => !v)}
+        onMessageAvatarClick={handleDirectMessageAvatarClick}
         onVoiceCall={activeIsRealDirect && activeDirectOther ? () => handleStartCall(
           activeDirectChat!,
           activeDirectOther.id,
