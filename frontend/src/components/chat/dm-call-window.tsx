@@ -274,15 +274,16 @@ export function DmCallWindow({
   return pipContent
 }
 
-// Outgoing call
+// Outgoing call / No answer
 interface DmCallOutgoingProps {
   peerName: string
   peerAvatar: string | null
   type: DmCallType
+  noAnswer?: boolean
   onCancel: () => void
 }
 
-export function DmCallOutgoing({ peerName, peerAvatar, type, onCancel }: DmCallOutgoingProps) {
+export function DmCallOutgoing({ peerName, peerAvatar, type, noAnswer = false, onCancel }: DmCallOutgoingProps) {
   const initials = peerName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
   return (
     <motion.div
@@ -299,14 +300,19 @@ export function DmCallOutgoing({ peerName, peerAvatar, type, onCancel }: DmCallO
         </Avatar>
         <div className="text-center">
           <p className="text-sm font-semibold text-foreground">{peerName}</p>
-          <p className="text-xs text-muted-foreground mt-0.5 animate-pulse">
-            Calling{type === 'video' ? ' (video)' : ''}…
+          <p className={`text-xs mt-0.5 ${noAnswer ? 'text-destructive' : 'text-muted-foreground animate-pulse'}`}>
+            {noAnswer ? 'Didn\'t answer' : type === 'video' ? 'Video calling…' : 'Calling…'}
           </p>
         </div>
-        <Button size="icon" variant="ghost" onClick={onCancel}
-          className="h-10 w-10 rounded-full bg-destructive/10 hover:bg-destructive/20 text-destructive">
-          <PhoneOff className="h-4 w-4" />
-        </Button>
+        {!noAnswer && (
+          <div className="flex flex-col items-center gap-1.5">
+            <Button size="icon" variant="ghost" onClick={onCancel}
+              className="h-10 w-10 rounded-full bg-destructive/10 hover:bg-destructive/20 text-destructive">
+              {type === 'video' ? <VideoOff className="h-4 w-4" /> : <PhoneOff className="h-4 w-4" />}
+            </Button>
+            <span className="text-[10px] text-muted-foreground">Cancel</span>
+          </div>
+        )}
       </div>
     </motion.div>
   )

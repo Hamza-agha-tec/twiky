@@ -292,7 +292,13 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       if (reason === 'busy') toast.error(`${calleeName} is currently in another call`)
     },
   })
+  const dmCallStatusRef = useRef(dmCallStatus)
+  useEffect(() => { dmCallStatusRef.current = dmCallStatus }, [dmCallStatus])
   const [dmCallMinimized, setDmCallMinimized] = useState(false)
+  const [pendingVoiceJoin, setPendingVoiceJoin] = useState<string | null>(null)
+  const prevGroupIdRef = useRef<string>('')
+  const activeGroupIdRef = useRef(activeGroupId)
+  useEffect(() => { activeGroupIdRef.current = activeGroupId }, [activeGroupId])
   const [pendingDmCall, setPendingDmCall] = useState<{
     conversationId: string; calleeId: string; calleeName: string
     calleeAvatar: string | null; type: 'audio' | 'video'
@@ -616,10 +622,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
               <button
                 onClick={() => {
                   toast.dismiss(t)
-                  const ch = workspaceChannels.find((c) => c.groups.some((g) => g.id === groupId))
-                  if (ch) { setActiveChannelId(ch.id); setActiveGroupId(groupId) }
-                  setActiveVoiceGroupId(groupId)
-                  void voice.join(groupId)
+                  handleJoinVoiceGroup(groupId)
                 }}
                 className="rounded-lg bg-primary px-3 py-1.5 text-[11px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
               >
@@ -658,6 +661,11 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   }, [voice.joinedGroupId])
 
   const handleJoinVoiceGroup = useCallback((groupId: string) => {
+    if (dmCallStatusRef.current.state === 'active') {
+      prevGroupIdRef.current = activeGroupIdRef.current
+      setPendingVoiceJoin(groupId)
+      return
+    }
     const channelForGroup = workspaceChannels.find((ch) => ch.groups.some((g) => g.id === groupId))
     if (channelForGroup) {
       setActiveChannelId(channelForGroup.id)
@@ -1648,10 +1656,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             isMuted={voice.isMuted}
             joinedAt={voice.joinedAt}
             myId={profile?.id}
-            onJoin={() => {
-              setActiveVoiceGroupId(activeGroup.id)
-              voice.join(activeGroup.id)
-            }}
+            onJoin={() => handleJoinVoiceGroup(activeGroup.id)}
             onLeave={async () => {
               await voice.leave()
               setActiveVoiceGroupId(null)
@@ -2062,11 +2067,12 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           />
         )
       })()}
-      {dmCallStatus.state === 'outgoing' && (
+      {(dmCallStatus.state === 'outgoing' || dmCallStatus.state === 'no-answer') && (
         <DmCallOutgoing
           peerName={dmCallStatus.calleeName}
           peerAvatar={dmCallStatus.calleeAvatar}
           type={dmCallStatus.type}
+          noAnswer={dmCallStatus.state === 'no-answer'}
           onCancel={hangUp}
         />
       )}
@@ -2121,6 +2127,42 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                 className="flex-1 h-8 rounded-lg text-xs font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
               >
                 Leave &amp; Call
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* End DM call → join voice group confirm */}
+      <Dialog open={!!pendingVoiceJoin} onOpenChange={(open) => { if (!open) { setActiveGroupId(prevGroupIdRef.current); setPendingVoiceJoin(null) } }}>
+        <DialogContent className="sm:max-w-[340px] p-0 overflow-hidden">
+          <div className="px-5 py-5 flex flex-col gap-4">
+            <div>
+              <p className="text-sm font-semibold text-foreground">You're in a call</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                End the current call to join the voice channel?
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setActiveGroupId(prevGroupIdRef.current); setPendingVoiceJoin(null) }}
+                className="flex-1 h-8 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:bg-accent transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (!pendingVoiceJoin) return
+                  hangUp()
+                  const channelForGroup = workspaceChannels.find((ch) => ch.groups.some((g) => g.id === pendingVoiceJoin))
+                  if (channelForGroup) { setActiveChannelId(channelForGroup.id); setActiveGroupId(pendingVoiceJoin) }
+                  setActiveVoiceGroupId(pendingVoiceJoin)
+                  void voice.join(pendingVoiceJoin)
+                  setPendingVoiceJoin(null)
+                }}
+                className="flex-1 h-8 rounded-lg text-xs font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+              >
+                End call &amp; Join
               </button>
             </div>
           </div>

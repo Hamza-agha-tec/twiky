@@ -9,6 +9,7 @@ export type DmCallType = 'audio' | 'video'
 export type DmCallStatus =
   | { state: 'idle' }
   | { state: 'outgoing'; conversationId: string; calleeId: string; calleeName: string; calleeAvatar: string | null; type: DmCallType }
+  | { state: 'no-answer'; calleeName: string; calleeAvatar: string | null; type: DmCallType }
   | { state: 'incoming'; conversationId: string; callerId: string; callerName: string; callerAvatar: string | null; type: DmCallType }
   | { state: 'active'; conversationId: string; peerId: string; peerName: string; peerAvatar: string | null; type: DmCallType; roomId: string }
 
@@ -29,6 +30,8 @@ export function useDmCall({ myId, isInGroupVoiceCall, onCallStarted, onCallEnded
   const onCallEndedRef = useRef(onCallEnded)
   const onCallRejectedRef = useRef(onCallRejected)
   const isInGroupVoiceCallRef = useRef(isInGroupVoiceCall)
+  const noAnswerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const incomingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => { myIdRef.current = myId }, [myId])
   useEffect(() => { statusRef.current = status }, [status])
@@ -45,6 +48,20 @@ export function useDmCall({ myId, isInGroupVoiceCall, onCallStarted, onCallEnded
     setStatus({ state: 'idle' })
   }, [])
 
+  const clearNoAnswerTimer = useCallback(() => {
+    if (noAnswerTimerRef.current) {
+      clearTimeout(noAnswerTimerRef.current)
+      noAnswerTimerRef.current = null
+    }
+  }, [])
+
+  const clearIncomingTimer = useCallback(() => {
+    if (incomingTimerRef.current) {
+      clearTimeout(incomingTimerRef.current)
+      incomingTimerRef.current = null
+    }
+  }, [])
+
   const startCall = useCallback((
     conversationId: string,
     calleeId: string,
@@ -57,11 +74,22 @@ export function useDmCall({ myId, isInGroupVoiceCall, onCallStarted, onCallEnded
 
     socketRef.current.emit('dm-call-invite', { conversationId, calleeId, type })
     setStatus({ state: 'outgoing', conversationId, calleeId, calleeName, calleeAvatar, type })
-  }, [])
+
+    // Auto-cancel after 65s — matches callee's 65s incoming timeout
+    clearNoAnswerTimer()
+    noAnswerTimerRef.current = setTimeout(() => {
+      const s = statusRef.current
+      if (s.state !== 'outgoing' || s.conversationId !== conversationId) return
+      socketRef.current?.emit('dm-call-cancelled', { conversationId, calleeId })
+      setStatus({ state: 'no-answer', calleeName, calleeAvatar, type })
+      // Auto-dismiss the "no answer" card after 4s
+      noAnswerTimerRef.current = setTimeout(() => setStatus({ state: 'idle' }), 4_000)
+    }, 65_000)
+  }, [clearNoAnswerTimer])
 
   const acceptCall = useCallback((conversationId: string, callerId: string, type: DmCallType, callerName: string, callerAvatar: string | null) => {
     if (!socketRef.current) return
-
+    clearIncomingTimer()
     socketRef.current.emit('dm-call-accepted', { conversationId, callerId })
 
     const roomId = `dm-${conversationId}`
@@ -69,17 +97,19 @@ export function useDmCall({ myId, isInGroupVoiceCall, onCallStarted, onCallEnded
 
     setStatus({ state: 'active', conversationId, peerId: callerId, peerName: callerName, peerAvatar: callerAvatar, type, roomId })
     onCallStartedRef.current?.(roomId, type)
-  }, [])
+  }, [clearIncomingTimer])
 
   const rejectCall = useCallback((conversationId: string, callerId: string) => {
+    clearIncomingTimer()
     socketRef.current?.emit('dm-call-rejected', { conversationId, callerId })
     setStatus({ state: 'idle' })
-  }, [])
+  }, [clearIncomingTimer])
 
   const cancelCall = useCallback((conversationId: string, calleeId: string) => {
+    clearNoAnswerTimer()
     socketRef.current?.emit('dm-call-cancelled', { conversationId, calleeId })
     setStatus({ state: 'idle' })
-  }, [])
+  }, [clearNoAnswerTimer])
 
   const hangUp = useCallback(() => {
     const s = statusRef.current
@@ -89,12 +119,16 @@ export function useDmCall({ myId, isInGroupVoiceCall, onCallStarted, onCallEnded
       cancelCall(s.conversationId, s.calleeId)
     } else if (s.state === 'incoming') {
       rejectCall(s.conversationId, s.callerId)
+    } else if (s.state === 'no-answer') {
+      clearNoAnswerTimer()
+      setStatus({ state: 'idle' })
     }
-  }, [endActiveCall, cancelCall, rejectCall])
+  }, [endActiveCall, cancelCall, rejectCall, clearNoAnswerTimer])
 
   useEffect(() => {
     if (!myId) return
     let mounted = true
+    let cleanup: (() => void) | undefined
 
     getSocket().then((socket) => {
       if (!mounted) return
@@ -106,6 +140,9 @@ export function useDmCall({ myId, isInGroupVoiceCall, onCallStarted, onCallEnded
           socket.emit('dm-call-rejected', { conversationId: data.conversationId, callerId: data.callerId, reason: 'busy' })
           return
         }
+        // Already ringing for this call — ignore re-invite (server resends periodically)
+        if (statusRef.current.state === 'incoming' && statusRef.current.conversationId === data.conversationId) return
+        clearIncomingTimer()
         setStatus({
           state: 'incoming',
           conversationId: data.conversationId,
@@ -114,12 +151,17 @@ export function useDmCall({ myId, isInGroupVoiceCall, onCallStarted, onCallEnded
           callerAvatar: null,
           type: data.type ?? 'audio',
         })
+        // Auto-dismiss after 65s if caller's cancel event is missed
+        incomingTimerRef.current = setTimeout(() => {
+          setStatus(prev => prev.state === 'incoming' ? { state: 'idle' } : prev)
+        }, 65_000)
       }
 
       const onAccepted = (data: { conversationId: string; calleeId: string }) => {
         if (!mounted) return
         const s = statusRef.current
         if (s.state !== 'outgoing' || s.conversationId !== data.conversationId) return
+        clearNoAnswerTimer()
 
         const roomId = `dm-${data.conversationId}`
         socket.emit('join-voice-room', { roomId })
@@ -140,14 +182,17 @@ export function useDmCall({ myId, isInGroupVoiceCall, onCallStarted, onCallEnded
         if (!mounted) return
         const s = statusRef.current
         if (s.state !== 'outgoing' || s.conversationId !== data.conversationId) return
-        onCallRejectedRef.current?.(s.calleeName, data.reason)
+        clearNoAnswerTimer()
+        if (data.reason === 'busy') onCallRejectedRef.current?.(s.calleeName, data.reason)
         setStatus({ state: 'idle' })
       }
 
-      const onCancelled = (data: { conversationId: string }) => {
+      const onCancelled = (data: { conversationId?: string }) => {
         if (!mounted) return
-        const s = statusRef.current
-        if (s.state !== 'incoming' || s.conversationId !== data.conversationId) return
+        const prev = statusRef.current
+        if (prev.state !== 'incoming') return
+        if (data.conversationId && prev.conversationId !== data.conversationId) return
+        clearIncomingTimer()
         setStatus({ state: 'idle' })
       }
 
@@ -166,7 +211,7 @@ export function useDmCall({ myId, isInGroupVoiceCall, onCallStarted, onCallEnded
       socket.on('dm-call-cancelled', onCancelled)
       socket.on('dm-call-ended', onEnded)
 
-      return () => {
+      cleanup = () => {
         socket.off('dm-call-invite', onInvite)
         socket.off('dm-call-accepted', onAccepted)
         socket.off('dm-call-rejected', onRejected)
@@ -175,8 +220,13 @@ export function useDmCall({ myId, isInGroupVoiceCall, onCallStarted, onCallEnded
       }
     })
 
-    return () => { mounted = false }
-  }, [myId])
+    return () => {
+      mounted = false
+      cleanup?.()
+      clearNoAnswerTimer()
+      clearIncomingTimer()
+    }
+  }, [myId, clearNoAnswerTimer, clearIncomingTimer])
 
   return { status, startCall, acceptCall, rejectCall, cancelCall, hangUp }
 }

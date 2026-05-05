@@ -689,7 +689,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
       this.pendingDmCalls.delete(roomKey);
       client.emit('dm-call-rejected', { conversationId: data.conversationId, reason: 'timeout' });
       void this.saveCallLog(data.conversationId, callerId, data.calleeId, callType, 'missed');
-    }, 30_000);
+    }, 65_000);
 
     this.pendingDmCalls.set(roomKey, {
       callerId,
