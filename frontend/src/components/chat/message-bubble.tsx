@@ -155,12 +155,17 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
           )}
 
           {message.type === 'image' && (
-            <img
-              src={message.fileUrl || message.content}
-              alt="Shared image"
-              className="max-w-[300px] max-h-56 object-cover rounded-lg cursor-zoom-in mt-1"
-              onClick={() => setLightbox(true)}
-            />
+            <div className="mt-1">
+              {message.content && !message.content.startsWith('http') && (
+                <p className="text-sm text-foreground/90 leading-relaxed mb-1">{message.content}</p>
+              )}
+              <img
+                src={message.fileUrl || message.content}
+                alt="Shared image"
+                className="max-w-[300px] max-h-56 object-cover rounded-lg cursor-zoom-in"
+                onClick={() => setLightbox(true)}
+              />
+            </div>
           )}
 
           {message.type === 'voice' && (
@@ -177,6 +182,9 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
 
           {message.type === 'video' && (
             <div className="max-w-xs overflow-hidden rounded-lg mt-1">
+              {message.content && !message.content.startsWith('http') && (
+                <p className="text-sm text-foreground/90 leading-relaxed mb-1">{message.content}</p>
+              )}
               <video
                 src={message.fileUrl || message.content}
                 controls
@@ -187,11 +195,15 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
           )}
 
           {message.type === 'file' && (
+            <div className="mt-1">
+              {message.content && !message.content.startsWith('http') && (
+                <p className="text-sm text-foreground/90 leading-relaxed mb-1">{message.content}</p>
+              )}
             <a
               href={message.fileUrl || message.content}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2.5 rounded-xl bg-muted/50 hover:bg-muted/80 px-3 py-2.5 mt-1 max-w-[240px] transition-colors border border-border"
+              className="flex items-center gap-2.5 rounded-xl bg-muted/50 hover:bg-muted/80 px-3 py-2.5 max-w-[240px] transition-colors border border-border"
             >
               <div className="h-9 w-9 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
                 <FileText className="h-5 w-5 text-primary" />
@@ -204,6 +216,7 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
               </div>
               <Download className="h-3.5 w-3.5 opacity-60 shrink-0" />
             </a>
+            </div>
           )}
         </div>
 

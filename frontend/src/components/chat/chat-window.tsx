@@ -133,7 +133,7 @@ function toUiMessage(
             : 'Voice message')
         : m.type === 'call'
         ? (m.content ?? 'ended')
-        : (m.file_url ?? m.content ?? ''),
+        : (m.content ?? m.file_url ?? ''),
     duration: callDurationSecs != null ? formatCallDuration(callDurationSecs) : undefined,
     type: resolvedType,
     timestamp: m.created_at,
