@@ -416,10 +416,12 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         .filter((group) => group.stories.length > 0)
         .map((group) => [
           group.user.id,
-          group.stories.some((story) => !seen.has(story.id)) ? 'unseen' : 'seen',
+          group.user.id === profile?.id
+            ? 'seen'
+            : group.stories.some((story) => !seen.has(story.id)) ? 'unseen' : 'seen',
         ]),
     )
-  }, [storiesFeed])
+  }, [storiesFeed, profile?.id])
 
   const storyUserIds = useMemo(
     () => new Set(userStoryRingStates.keys()),

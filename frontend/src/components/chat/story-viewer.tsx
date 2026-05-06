@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { X, ChevronLeft, ChevronRight, Eye, Trash2, Music, Volume2, VolumeX } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { VerifiedBadge, getVerifiedBadgeVariant, hasPremiumPlan } from '@/components/chat/verified-badge';
@@ -59,6 +59,9 @@ interface FlyingHeart {
   id: number;
   x: number;
   emoji: string;
+  size: number;
+  duration: number;
+  delay: number;
 }
 
 interface Viewer {
@@ -79,6 +82,7 @@ export function StoryViewer({ slides, startId, onClose, onView, onDelete }: Stor
   const [showViewers, setShowViewers] = useState(false);
   const [viewers, setViewers] = useState<Viewer[]>([]);
   const [viewersLoading, setViewersLoading] = useState(false);
+  const [previewViewers, setPreviewViewers] = useState<Viewer[]>([]);
   const heartIdRef = useRef(0);
   const frameRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
@@ -166,6 +170,43 @@ export function StoryViewer({ slides, startId, onClose, onView, onDelete }: Stor
 
   useEffect(() => () => { audioRef.current?.pause(); }, []);
 
+  // Silently fetch viewers for own stories to show avatar preview
+  useEffect(() => {
+    if (!active?.isOwn) { setPreviewViewers([]); setFlyingHearts([]); return; }
+    setFlyingHearts([]);
+    let cancelled = false;
+    storiesApi.getViewers(active.id).then(data => {
+      if (cancelled) return;
+      // Sort: reactions first, then by time; take max 3
+      const sorted = [...data].sort((a, b) => {
+        if (a.reaction && !b.reaction) return -1;
+        if (!a.reaction && b.reaction) return 1;
+        return 0;
+      }).slice(0, 3);
+      setPreviewViewers(sorted);
+      // Bubble up reaction emojis from the avatar area
+      const reactors = sorted.filter(v => v.reaction);
+      if (reactors.length > 0) {
+        const particles = reactors.flatMap((v, ri) =>
+          Array.from({ length: 3 }, (_, i) => ({
+            id: ++heartIdRef.current,
+            emoji: REACTIONS.find(r => r.type === v.reaction)?.emoji ?? v.reaction ?? '❤️',
+            x: 10 + ri * 22 + Math.random() * 14,
+            size: 11 + Math.random() * 7,
+            duration: 1400 + Math.random() * 400,
+            delay: ri * 180 + i * 80,
+          }))
+        );
+        setFlyingHearts(prev => [...prev, ...particles]);
+        setTimeout(() => {
+          const ids = new Set(particles.map(p => p.id));
+          setFlyingHearts(p => p.filter(h => !ids.has(h.id)));
+        }, 3000);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [idx]);
+
   async function openViewers() {
     if (!active?.isOwn) return;
     setShowViewers(true);
@@ -191,17 +232,12 @@ export function StoryViewer({ slides, startId, onClose, onView, onDelete }: Stor
     setPickerOpen(false);
 
     if (prev === reaction) {
-      // toggle off
       setMyReactions(r => ({ ...r, [storyId]: null }));
       storiesApi.removeReaction(storyId).catch(() =>
         setMyReactions(r => ({ ...r, [storyId]: reaction }))
       );
     } else {
       setMyReactions(r => ({ ...r, [storyId]: reaction }));
-      const id = ++heartIdRef.current;
-      const x = 28 + Math.random() * 44;
-      setFlyingHearts(prev => [...prev, { id, x, emoji: REACTIONS.find(r => r.type === reaction)!.emoji }]);
-      setTimeout(() => setFlyingHearts(p => p.filter(h => h.id !== id)), 1100);
       storiesApi.reactToStory(storyId, reaction).catch(() =>
         setMyReactions(r => ({ ...r, [storyId]: prev ?? null }))
       );
@@ -229,14 +265,24 @@ export function StoryViewer({ slides, startId, onClose, onView, onDelete }: Stor
           0%, 100% { transform: scaleY(0.3); opacity: 0.5; }
           50%       { transform: scaleY(1); opacity: 1; }
         }
-        @keyframes emoji-fly {
-          0%   { transform: translateY(0) scale(1.2); opacity: 1; }
-          55%  { transform: translateY(-110px) scale(1.6); opacity: 1; }
-          100% { transform: translateY(-170px) scale(0.6); opacity: 0; }
+        @keyframes vapor-rise {
+          0%   { transform: translateY(0) scale(0.6); opacity: 0; }
+          30%  { opacity: 1; }
+          100% { transform: translateY(-90px) scale(0.8); opacity: 0; }
         }
         @keyframes viewers-up {
           from { transform: translateY(100%); }
           to   { transform: translateY(0); }
+        }
+        @keyframes avatar-pop {
+          0%   { transform: scale(0) translateY(8px); opacity: 0; }
+          65%  { transform: scale(1.15) translateY(-2px); opacity: 1; }
+          100% { transform: scale(1) translateY(0); opacity: 1; }
+        }
+        @keyframes reaction-bounce {
+          0%   { transform: scale(0) translateY(4px); opacity: 0; }
+          60%  { transform: scale(1.3) translateY(-3px); opacity: 1; }
+          100% { transform: scale(1) translateY(0); opacity: 1; }
         }
         @keyframes picker-pop {
           0%   { transform: scale(0.5) translateY(12px); opacity: 0; }
@@ -374,13 +420,20 @@ export function StoryViewer({ slides, startId, onClose, onView, onDelete }: Stor
           </div>
         </div>
 
-        {/* Flying emojis */}
+        {/* Vapor reaction particles */}
         <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden">
           {flyingHearts.map((h) => (
             <div
               key={h.id}
-              className="absolute bottom-24 text-3xl select-none"
-              style={{ left: `${h.x}%`, animation: 'emoji-fly 1.1s ease-out forwards' }}
+              className="absolute select-none"
+              style={{
+                bottom: 48,
+                left: `${h.x}px`,
+                fontSize: `${h.size}px`,
+                lineHeight: 1,
+                willChange: 'transform, opacity',
+                animation: `vapor-rise ${h.duration}ms ${h.delay}ms cubic-bezier(0.22, 1, 0.36, 1) forwards`,
+              }}
             >
               {h.emoji}
             </div>
@@ -401,10 +454,43 @@ export function StoryViewer({ slides, startId, onClose, onView, onDelete }: Stor
               <button
                 onPointerDown={(e) => e.stopPropagation()}
                 onPointerUp={(e) => { e.stopPropagation(); openViewers(); }}
-                className="flex items-center gap-1.5 text-[11px] text-white/60 hover:text-white transition-colors"
+                className="flex items-center gap-2.5 group"
               >
-                <Eye className="h-3.5 w-3.5" />
-                {active.viewsCount ?? 0} {(active.viewsCount ?? 0) === 1 ? 'view' : 'views'}
+                {/* Stacked viewer avatars with reaction badges */}
+                {previewViewers.length > 0 && (
+                  <div className="flex items-center">
+                    {previewViewers.map((v, i) => (
+                      <div
+                        key={v.user.id}
+                        className="relative"
+                        style={{
+                          marginLeft: i === 0 ? 0 : -8,
+                          zIndex: previewViewers.length - i,
+                          animation: `avatar-pop 0.35s ${i * 80}ms cubic-bezier(0.34,1.56,0.64,1) both`,
+                        }}
+                      >
+                        <img
+                          src={v.user.avatar_url || '/defaultprofile.jpg'}
+                          alt={v.user.username}
+                          className="h-6 w-6 rounded-full object-cover ring-[1.5px] ring-black"
+                          onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/defaultprofile.jpg'; }}
+                        />
+                        {v.reaction && (
+                          <span
+                            className="absolute -bottom-1 -right-1 text-[10px] leading-none"
+                            style={{ animation: `reaction-bounce 0.4s ${i * 80 + 180}ms cubic-bezier(0.34,1.56,0.64,1) both` }}
+                          >
+                            {REACTIONS.find(r => r.type === v.reaction)?.emoji ?? v.reaction}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-1 text-[11px] text-white/60 group-hover:text-white transition-colors">
+                  <Eye className="h-3.5 w-3.5" />
+                  {active.viewsCount ?? 0}
+                </div>
               </button>
             ) : (
               <div />
