@@ -157,8 +157,62 @@ export class StoriesService {
     return { success: true, ownerId: story?.user_id ?? null, storyId, viewsCount: count ?? 0 };
   }
 
+  async deleteStory(userId: string, storyId: string) {
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('stories')
+      .delete()
+      .eq('id', storyId)
+      .eq('user_id', userId);
+
+    if (error) throw new Error(`Failed to delete story: ${error.message}`);
+    return { success: true };
+  }
+
+  async reactToStory(userId: string, storyId: string, reaction = 'heart') {
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('story_reactions')
+      .upsert({ story_id: storyId, user_id: userId, reaction }, { onConflict: 'story_id,user_id' });
+
+    if (error) throw new Error(`Failed to react: ${error.message}`);
+
+    const { data: story } = await this.supabaseService
+      .getClient()
+      .from('stories')
+      .select('user_id')
+      .eq('id', storyId)
+      .single();
+
+    const { count } = await this.supabaseService
+      .getClient()
+      .from('story_reactions')
+      .select('*', { count: 'exact', head: true })
+      .eq('story_id', storyId);
+
+    return { success: true, ownerId: story?.user_id ?? null, storyId, reactionsCount: count ?? 0 };
+  }
+
+  async removeReaction(userId: string, storyId: string) {
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('story_reactions')
+      .delete()
+      .eq('story_id', storyId)
+      .eq('user_id', userId);
+
+    if (error) throw new Error(`Failed to remove reaction: ${error.message}`);
+
+    const { count } = await this.supabaseService
+      .getClient()
+      .from('story_reactions')
+      .select('*', { count: 'exact', head: true })
+      .eq('story_id', storyId);
+
+    return { success: true, storyId, reactionsCount: count ?? 0 };
+  }
+
   async getStoryViewers(userId: string, storyId: string) {
-    // Verify ownership
     const { data: story } = await this.supabaseService
       .getClient()
       .from('stories')
@@ -170,29 +224,26 @@ export class StoriesService {
       throw new ForbiddenException('Only the owner can see the viewers list.');
     }
 
-    const { data, error } = await this.supabaseService
+    const { data: views, error } = await this.supabaseService
       .getClient()
       .from('story_views')
-      .select(`
-        viewed_at,
-        user:users!story_views_user_id_fkey(id, username, avatar_url)
-      `)
+      .select(`viewed_at, user:users!story_views_user_id_fkey(id, username, avatar_url)`)
       .eq('story_id', storyId)
       .order('viewed_at', { ascending: false });
 
     if (error) throw new Error(`Failed to fetch viewers: ${error.message}`);
-    return data;
-  }
 
-  async deleteStory(userId: string, storyId: string) {
-    const { error } = await this.supabaseService
+    const { data: reactions } = await this.supabaseService
       .getClient()
-      .from('stories')
-      .delete()
-      .eq('id', storyId)
-      .eq('user_id', userId);
+      .from('story_reactions')
+      .select('user_id, reaction')
+      .eq('story_id', storyId);
 
-    if (error) throw new Error(`Failed to delete story: ${error.message}`);
-    return { success: true };
+    const reactionMap = new Map((reactions ?? []).map((r: any) => [r.user_id, r.reaction]));
+
+    return (views ?? []).map((v: any) => ({
+      ...v,
+      reaction: reactionMap.get(v.user?.id) ?? null,
+    }));
   }
 }

@@ -111,6 +111,18 @@ export const storiesApi = {
     return apiFetch(`/stories/${storyId}/view`, { method: 'POST' });
   },
 
+  getViewers(storyId: string): Promise<{ viewed_at: string; user: { id: string; username: string; avatar_url?: string | null }; reaction: string | null }[]> {
+    return apiFetch(`/stories/${storyId}/viewers`);
+  },
+
+  reactToStory(storyId: string, reaction: string): Promise<{ success: boolean }> {
+    return apiFetch(`/stories/${storyId}/react`, { method: 'POST', body: JSON.stringify({ reaction }) });
+  },
+
+  removeReaction(storyId: string): Promise<{ success: boolean }> {
+    return apiFetch(`/stories/${storyId}/react`, { method: 'DELETE' });
+  },
+
   deleteStory(storyId: string): Promise<{ success: boolean }> {
     return apiFetch(`/stories/${storyId}`, { method: 'DELETE' });
   },
