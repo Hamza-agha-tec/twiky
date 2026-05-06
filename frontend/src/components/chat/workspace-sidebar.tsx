@@ -22,6 +22,8 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Chat } from '@/lib/mock-data'
 import { cn } from '@/lib/utils'
 
+const DEFAULT_PROFILE_IMAGE = '/defaultprofile.jpg'
+
 interface WorkspaceSidebarProps {
   activeChannelId?: string | null
   activeChat: string
@@ -93,7 +95,7 @@ function getChannelTone(seed: string) {
 
 function resolveConversationAvatar(_name: string, avatar?: string | null) {
   if (avatar && avatar.trim().length > 0) return avatar
-  return ''
+  return DEFAULT_PROFILE_IMAGE
 }
 
 function formatUnreadCount(count: number) {
@@ -322,7 +324,7 @@ export function WorkspaceSidebar({
                       <div className="relative z-10 h-7 w-7 shrink-0">
                         <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-lg bg-muted text-[10px] font-semibold text-foreground">
                           {chat.avatar ? (
-                            <img src={chat.avatar} alt={chat.name} className="block h-full w-full object-cover object-center" />
+                            <img src={chat.avatar} alt={chat.name} className="block h-full w-full object-cover object-center" onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_PROFILE_IMAGE }} />
                           ) : (
                             chat.name[0]?.toUpperCase() ?? '?'
                           )}
@@ -478,7 +480,7 @@ export function WorkspaceSidebar({
                   >
                     <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg">
                       {chat.avatar ? (
-                        <img src={chat.avatar} alt={chat.name} className="block h-full w-full object-cover object-center" />
+                        <img src={chat.avatar} alt={chat.name} className="block h-full w-full object-cover object-center" onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_PROFILE_IMAGE }} />
                       ) : (
                         chat.name[0]?.toUpperCase() ?? '?'
                       )}

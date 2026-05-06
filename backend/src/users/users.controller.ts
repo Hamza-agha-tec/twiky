@@ -12,7 +12,7 @@ export class UsersController {
     @UseGuards(JwtAuthGuard)
     @Get("profile")
     async getProfile(@Request() req: any) {
-        return this.usersService.getUserById(req.user.userId);
+        return this.usersService.getUserById(req.user.userId, req.user.userId);
     }
 
     @UseGuards(JwtAuthGuard)
@@ -57,14 +57,16 @@ export class UsersController {
         return this.usersService.unfollowUser(req.user.userId, followingId);
     }
 
+    @UseGuards(OptionalJwtAuthGuard)
     @Get(":id/followers")
-    async getFollowers(@Param("id") id: string) {
-        return this.usersService.getFollowers(id);
+    async getFollowers(@Param("id") id: string, @Request() req: any) {
+        return this.usersService.getFollowers(id, req.user?.userId ?? null);
     }
 
+    @UseGuards(OptionalJwtAuthGuard)
     @Get(":id/following")
-    async getFollowing(@Param("id") id: string) {
-        return this.usersService.getFollowing(id);
+    async getFollowing(@Param("id") id: string, @Request() req: any) {
+        return this.usersService.getFollowing(id, req.user?.userId ?? null);
     }
 
     @UseGuards(OptionalJwtAuthGuard)

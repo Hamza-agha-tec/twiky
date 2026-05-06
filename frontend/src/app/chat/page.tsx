@@ -66,6 +66,7 @@ import { useStoriesFeed, useCreateStory, useDeleteStory, useRecordView, useStory
 import { StoriesStrip, type StoryBubble } from '@/components/chat/stories-strip'
 import { StoryViewer, type StorySlide } from '@/components/chat/story-viewer'
 import { StoryUploadDialog } from '@/components/chat/story-upload-dialog'
+import { UserAvatar } from '@/components/chat/user-avatar'
 import { useDmCall } from '@/hooks/use-dm-call'
 import { DmCallIncoming } from '@/components/chat/dm-call-incoming'
 import { DmCallWindow, DmCallOutgoing } from '@/components/chat/dm-call-window'
@@ -737,13 +738,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       toast.custom(
         (t) => (
           <div className="flex w-80 items-start gap-3 rounded-2xl border border-border bg-popover p-4 shadow-xl">
-            {invitation.inviter?.avatar_url ? (
-              <img src={invitation.inviter.avatar_url} alt={inviterName} className="h-9 w-9 shrink-0 rounded-full object-cover" />
-            ) : (
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[13px] font-bold text-primary">
-                {inviterName[0]?.toUpperCase()}
-              </div>
-            )}
+            <UserAvatar src={invitation.inviter?.avatar_url} alt={inviterName} className="h-9 w-9 shrink-0 rounded-full object-cover" />
             <div className="min-w-0 flex-1">
               <p className="text-[12px] font-semibold text-foreground">
                 <span className="text-primary">{inviterName}</span> invited you to
@@ -1513,13 +1508,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       toast.custom(
         (t) => (
           <div className="flex w-80 items-start gap-3 rounded-2xl border border-border bg-popover p-4 shadow-xl">
-            {payload.user?.avatar_url ? (
-              <img src={payload.user.avatar_url} alt={payload.user.username ?? ''} className="h-9 w-9 shrink-0 rounded-full object-cover" />
-            ) : (
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[13px] font-bold text-primary">
-                {(payload.user?.username?.[0] ?? '?').toUpperCase()}
-              </div>
-            )}
+            <UserAvatar src={payload.user?.avatar_url} alt={payload.user?.username ?? ''} className="h-9 w-9 shrink-0 rounded-full object-cover" />
             <div className="min-w-0 flex-1">
               <p className="text-[12px] font-semibold text-foreground">
                 <span className="text-primary">@{payload.user?.username ?? 'Someone'}</span> wants to join
@@ -1585,13 +1574,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       toast.custom(
         (t) => (
           <div className="flex w-80 items-start gap-3 rounded-2xl border border-border bg-popover p-4 shadow-xl">
-            {payload.user?.avatar_url ? (
-              <img src={payload.user.avatar_url} alt={payload.user.username ?? ''} className="h-9 w-9 shrink-0 rounded-full object-cover" />
-            ) : (
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[13px] font-bold text-primary">
-                {(payload.user?.username?.[0] ?? '?').toUpperCase()}
-              </div>
-            )}
+            <UserAvatar src={payload.user?.avatar_url} alt={payload.user?.username ?? ''} className="h-9 w-9 shrink-0 rounded-full object-cover" />
             <div className="min-w-0 flex-1">
               <p className="text-[12px] font-semibold text-foreground">
                 <span className="text-primary">@{payload.user?.username ?? 'Someone'}</span> wants to join
@@ -1792,13 +1775,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             <div className="flex flex-col gap-0 border-b border-border bg-muted/30">
               {(pendingJoinRequests[activeGroup.id] ?? []).map((req) => (
                 <div key={req.requestId} className="flex items-center gap-3 px-4 py-2.5">
-                  {req.user?.avatar_url ? (
-                    <img src={req.user.avatar_url} alt={req.user.username ?? ''} className="h-7 w-7 shrink-0 rounded-full object-cover" />
-                  ) : (
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-bold text-primary">
-                      {(req.user?.username?.[0] ?? '?').toUpperCase()}
-                    </div>
-                  )}
+                  <UserAvatar src={req.user?.avatar_url} alt={req.user?.username ?? ''} className="h-7 w-7 shrink-0 rounded-full object-cover" />
                   <p className="min-w-0 flex-1 text-[12px] text-foreground">
                     <span className="font-semibold text-primary">@{req.user?.username ?? 'Someone'}</span>
                     <span className="text-muted-foreground"> wants to join </span>
@@ -2277,13 +2254,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                     }
                   }}
                 >
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-[12px] font-semibold text-primary">
-                    {u.avatar_url ? (
-                      <img src={u.avatar_url} alt={u.username ?? ''} className="h-full w-full object-cover" />
-                    ) : (
-                      (u.username?.[0] ?? '?').toUpperCase()
-                    )}
-                  </div>
+                  <UserAvatar src={u.avatar_url} alt={u.username ?? ''} className="h-8 w-8 shrink-0 rounded-full object-cover" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] font-medium text-foreground">
                       {normalizedUserLabel(u)}

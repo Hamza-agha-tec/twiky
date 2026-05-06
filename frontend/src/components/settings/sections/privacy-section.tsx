@@ -38,7 +38,7 @@ export function PrivacySection() {
   const [profilePhoto, setProfilePhoto] = useState<VisibilityOption>('everyone')
   const [visibility, setVisibility] = useState<VisibilityOption>('followers')
   const [dmFromStrangers, setDmFromStrangers] = useState(true)
-  const score = [readReceipts, onlineStatus, visibility !== 'public', lastSeen !== 'everyone'].filter(Boolean).length * 25
+  const score = [readReceipts, onlineStatus, visibility !== 'everyone', lastSeen !== 'everyone'].filter(Boolean).length * 25
 
   useEffect(() => {
     if (!settings) return

@@ -2,6 +2,7 @@ import { Injectable, ConflictException, NotFoundException, BadRequestException }
 import { SupabaseService } from '../supabase/supabase.module';
 import { UsersService } from '../users/users.service';
 import { CreateContactDto, UpdateContactDto } from './dto/contacts.dto';
+import { applyAvatarPrivacyBatch } from '../common/avatar-privacy.util';
 
 @Injectable()
 export class ContactsService {
@@ -11,8 +12,8 @@ export class ContactsService {
   ) {}
 
   async findAll(userId: string) {
-    const { data, error } = await this.supabaseService
-      .getClient()
+    const client = this.supabaseService.getClient();
+    const { data, error } = await client
       .from('contacts')
       .select('nickname, is_blocked, is_archived, is_favorite, is_pinned, is_muted, contact:users!contact_id(id, username, avatar_url, phone_number)')
       .eq('user_id', userId);
@@ -21,15 +22,18 @@ export class ContactsService {
       throw new Error(`Failed to fetch contacts: ${error.message}`);
     }
 
-    // Flattening the response for a cleaner API
-    return data.map((item: any) => ({
+    const contactUsers = (data ?? []).map((item: any) => item.contact).filter(Boolean);
+    const processed = await applyAvatarPrivacyBatch(client, contactUsers, userId);
+    const privacyMap = new Map(processed.map((u: any) => [u.id, u]));
+
+    return (data ?? []).map((item: any) => ({
       nickname: item.nickname,
       is_blocked: item.is_blocked,
       is_archived: item.is_archived,
       is_favorite: item.is_favorite,
       is_pinned: item.is_pinned,
       is_muted: item.is_muted,
-      ...item.contact,
+      ...(privacyMap.get(item.contact?.id) ?? item.contact),
     }));
   }
 

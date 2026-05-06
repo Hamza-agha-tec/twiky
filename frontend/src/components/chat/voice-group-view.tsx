@@ -27,6 +27,7 @@ import {
   Check,
   Smile,
 } from 'lucide-react'
+import { UserAvatar } from '@/components/chat/user-avatar'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { Socket } from 'socket.io-client'
 import { toast } from 'sonner'
@@ -316,13 +317,7 @@ export function VoiceGroupView({
             }}
             className="flex w-80 items-start gap-3 rounded-2xl border border-border bg-popover p-3 text-left shadow-xl transition-colors hover:bg-accent"
           >
-            {message.avatar ? (
-              <img src={message.avatar} alt={message.name} className="h-10 w-10 shrink-0 rounded-full object-cover" />
-            ) : (
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[13px] font-bold text-primary">
-                {message.name[0]?.toUpperCase() ?? '?'}
-              </span>
-            )}
+            <UserAvatar src={message.avatar} alt={message.name} className="h-10 w-10 shrink-0 rounded-full object-cover" />
             <span className="min-w-0 flex-1">
               <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-primary">
                 <MessageSquare className="h-3 w-3" />
@@ -669,13 +664,7 @@ export function VoiceGroupView({
                           {/* Avatar when no video */}
                           {!showVideo && !showRemoteVideo && (
                             <div className="relative z-10 flex flex-col items-center gap-2">
-                              {member.avatarUrl ? (
-                                <img src={member.avatarUrl} alt={member.name} className="h-16 w-16 rounded-full object-cover shadow-lg" />
-                              ) : (
-                                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/20 text-[24px] font-bold text-primary shadow-lg">
-                                  {member.name[0]?.toUpperCase()}
-                                </div>
-                              )}
+                              <UserAvatar src={member.avatarUrl} alt={member.name} className="h-16 w-16 rounded-full object-cover shadow-lg" />
                             </div>
                           )}
 
@@ -1063,19 +1052,9 @@ export function VoiceGroupView({
                   <div key={msg.id} className={cn('group flex gap-2.5', grouped ? 'mt-0.5' : 'mt-3')}>
                     {!grouped ? (
                       <div className="shrink-0">
-                        {msg.avatar ? (
-                          <button type="button" onClick={() => openChatProfile(msg)} className="block rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                            <img src={msg.avatar} alt={msg.name} className="h-7 w-7 rounded-full object-cover" />
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => openChatProfile(msg)}
-                            className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-[11px] font-bold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          >
-                            {msg.name[0]?.toUpperCase()}
-                          </button>
-                        )}
+                        <button type="button" onClick={() => openChatProfile(msg)} className="block rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                          <UserAvatar src={msg.avatar} alt={msg.name} className="h-7 w-7 rounded-full object-cover" />
+                        </button>
                       </div>
                     ) : (
                       <div className="w-7 shrink-0" />
@@ -1298,13 +1277,7 @@ export function VoiceGroupView({
                   className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-muted/50 transition-colors"
                 >
                   {/* Avatar */}
-                  {user.avatar_url ? (
-                    <img src={user.avatar_url} alt={username} className="h-8 w-8 rounded-full object-cover shrink-0" />
-                  ) : (
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[13px] font-bold text-primary">
-                      {username[0]?.toUpperCase()}
-                    </div>
-                  )}
+                  <UserAvatar src={user.avatar_url} alt={username} className="h-8 w-8 rounded-full object-cover shrink-0" />
 
                   {/* Name */}
                   <div className="min-w-0 flex-1">

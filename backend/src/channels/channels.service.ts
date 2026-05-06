@@ -5,6 +5,7 @@ import { UpdateChannelDto } from './dto/update-channel.dto';
  import { AddMemberDto } from './dto/add-member.dto';
 import { GroupsService } from '../groups/groups.service';
 import { ChatGateway } from '../messaging/gateway/chat.gateway';
+import { applyAvatarPrivacyBatch } from '../common/avatar-privacy.util';
 
 @Injectable()
 export class ChannelsService {
@@ -125,18 +126,22 @@ export class ChannelsService {
         return { success: true };
     }
 
-    async getMembers(channelId: string) {
-        const { data, error } = await this.supabaseService
-            .getClient()
+    async getMembers(channelId: string, viewerId: string) {
+        const client = this.supabaseService.getClient();
+        const { data, error } = await client
             .from('channel_members')
             .select('role, joined_at, users!channel_members_user_id_fkey(id, username, avatar_url, banner, bio, sub_plan, is_verified)')
             .eq('channel_id', channelId);
 
         if (error) throw new Error(`Failed to get channel members: ${error.message}`);
+        const users = (data ?? []).map((m: any) => m.users).filter(Boolean);
+        const filtered = await applyAvatarPrivacyBatch(client, users, viewerId);
+        const userMap = new Map(filtered.map((user: any) => [user.id, user]));
+
         return data.map(m => ({
             role: m.role,
             joined_at: m.joined_at,
-            user: m.users
+            user: userMap.get((m as any).users?.id) ?? m.users
         }));
     }
 
@@ -310,7 +315,8 @@ export class ChannelsService {
             throw new UnauthorizedException('Only channel admins can view join requests');
         }
 
-        const { data, error } = await this.supabaseService.getClient()
+        const client = this.supabaseService.getClient();
+        const { data, error } = await client
             .from('invitations')
             .select('id, status, created_at, users!invitations_inviter_id_fkey(id, username, avatar_url)')
             .eq('entity_id', channelId)
@@ -319,7 +325,16 @@ export class ChannelsService {
             .order('created_at', { ascending: true });
 
         if (error) throw new Error(`Failed to fetch channel join requests: ${error.message}`);
-        return (data ?? []).map((r: any) => ({ id: r.id, status: r.status, created_at: r.created_at, user: r.users }));
+        const users = (data ?? []).map((r: any) => r.users).filter(Boolean);
+        const filtered = await applyAvatarPrivacyBatch(client, users, adminUserId);
+        const userMap = new Map(filtered.map((user: any) => [user.id, user]));
+
+        return (data ?? []).map((r: any) => ({
+            id: r.id,
+            status: r.status,
+            created_at: r.created_at,
+            user: userMap.get(r.users?.id) ?? r.users,
+        }));
     }
 
     async respondToChannelJoinRequest(channelId: string, requestId: string, status: 'ACCEPTED' | 'REJECTED', adminUserId: string) {

@@ -3,6 +3,7 @@
 import { Bell, Check } from 'lucide-react'
 
 import { useNotifications, useMarkAllAsRead, useMarkAsRead } from '@/hooks/use-notifications'
+import { UserAvatar } from '@/components/chat/user-avatar'
 import { usePendingInvitations, useRespondToInvitation } from '@/hooks/use-invitations'
 
 function formatTime(iso: string) {
@@ -127,13 +128,7 @@ export function NotificationsView({ onAcceptGroupInvitation }: { onAcceptGroupIn
                   onClick={() => { if (!notif.is_read) markAsRead.mutate(notif.id) }}
                   className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-left transition-all hover:bg-accent ${!notif.is_read ? 'border border-primary/20 bg-primary/5' : 'border border-border bg-card'}`}
                 >
-                  {notif.actor.avatar_url ? (
-                    <img src={notif.actor.avatar_url} alt={notif.actor.username} className="h-10 w-10 flex-shrink-0 rounded-xl object-cover" />
-                  ) : (
-                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-muted text-[13px] font-bold text-foreground">
-                      {notif.actor.username[0].toUpperCase()}
-                    </div>
-                  )}
+                  <UserAvatar src={notif.actor.avatar_url} alt={notif.actor.username} className="h-10 w-10 flex-shrink-0 rounded-xl object-cover" />
                   <div className="min-w-0 flex-1">
                     <p className="text-[13px] text-foreground">
                       <span className="font-semibold">@{notif.actor.username}</span>{' '}
@@ -172,13 +167,7 @@ function InvitationRow({
 }) {
   return (
     <div className="flex items-center gap-4 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
-      {inv.inviter.avatar_url ? (
-        <img src={inv.inviter.avatar_url} alt={inv.inviter.username} className="h-11 w-11 flex-shrink-0 rounded-2xl object-cover" />
-      ) : (
-        <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-primary text-[15px] font-bold text-primary-foreground">
-          {inv.inviter.username[0].toUpperCase()}
-        </div>
-      )}
+      <UserAvatar src={inv.inviter.avatar_url} alt={inv.inviter.username} className="h-11 w-11 flex-shrink-0 rounded-2xl object-cover" />
       <div className="min-w-0 flex-1">
         <p className="text-[14px] font-semibold text-foreground">@{inv.inviter.username}</p>
         <p className="text-[12px] text-muted-foreground">{label}</p>

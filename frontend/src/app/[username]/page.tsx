@@ -7,6 +7,7 @@ import { useNotifications } from '@/hooks/use-notifications'
 import { useEffect, useState } from 'react'
 import { ArrowLeft, Gamepad2, Globe, ImageIcon, MessageSquare } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { UserAvatar } from '@/components/chat/user-avatar'
 import { toast } from 'sonner'
 
 function formatCount(n: number) {
@@ -176,11 +177,7 @@ export default function ProfilePage() {
                   const uInitial = uName.charAt(0).toUpperCase()
                   return (
                     <div key={id} className="flex items-center gap-4 px-6 py-3">
-                      <div className="h-10 w-10 flex-shrink-0 overflow-hidden rounded-full bg-muted">
-                        {u.avatar_url
-                          ? <img src={u.avatar_url} alt={uName} className="h-full w-full object-cover" />
-                          : <div className="flex h-full w-full items-center justify-center text-[13px] font-bold text-foreground">{uInitial}</div>}
-                      </div>
+                      <UserAvatar src={u.avatar_url} alt={uName} className="h-10 w-10 flex-shrink-0 rounded-full object-cover" />
                       <div className="min-w-0">
                         <p className="text-[14px] font-semibold text-foreground">{uName}</p>
                         {u.username ? <p className="text-[12px] text-muted-foreground">@{u.username}</p> : null}

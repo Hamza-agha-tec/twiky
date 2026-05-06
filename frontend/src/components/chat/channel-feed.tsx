@@ -42,6 +42,7 @@ import {
 } from 'lucide-react'
 
 import { FeedPostContextMenu } from '@/components/chat/feed-post-context-menu'
+import { UserAvatar } from '@/components/chat/user-avatar'
 import { VoiceMessagePlayer } from '@/components/chat/voice-message-player'
 import { VerifiedBadge, getVerifiedBadgeVariant, hasPremiumPlan, isVerifiedAccountIdentity } from '@/components/chat/verified-badge'
 import type { MockChannelGroup, WorkspaceChannel } from '@/components/chat/channels-panel'
@@ -66,7 +67,6 @@ interface FeedMedia {
   src: string
 }
 
-const fallbackAvatar = '/placeholder-user.jpg'
 export type FeedSubPlan = 'FREE' | 'PRO' | 'GEEK'
 
 function isProbablyImageUrl(url: string): boolean {
@@ -731,7 +731,6 @@ function MessageRow({
   }
 
   const roleColor = ROLE_COLORS[post.role] ?? 'text-primary'
-  const initial = post.author[0].toUpperCase()
   const displayAvatar = post.isOwn
     ? (authorAvatarUrl ?? myAvatarUrl ?? resolvedProfile.avatarUrl ?? null)
     : (authorAvatarUrl ?? resolvedProfile.avatarUrl ?? null)
@@ -762,7 +761,7 @@ function MessageRow({
                 className="flex h-10 w-10 cursor-pointer overflow-hidden rounded-full ring-2 ring-background focus:outline-none"
                 aria-label={`Open ${post.author} actions`}
               >
-                <img src={displayAvatar ?? undefined} alt={post.author} className="h-full w-full rounded-full object-cover" />
+                <UserAvatar src={displayAvatar} alt={post.author} className="h-full w-full rounded-full object-cover" />
               </button>
             </PopoverTrigger>
           </div>
@@ -875,23 +874,7 @@ function MessageRow({
             <div className="-mt-11 mb-3 flex items-end justify-between">
               <div className="relative">
                 <div className="h-[80px] w-[80px] overflow-hidden rounded-full border-[5px] border-popover bg-muted shadow-sm">
-                  {displayAvatar ? (
-                    <img
-                      src={displayAvatar ?? fallbackAvatar}
-                      alt={post.author}
-                      className="h-full w-full rounded-full object-cover"
-                      onError={(e) => {
-                        if (!e.currentTarget.src.endsWith(fallbackAvatar)) e.currentTarget.src = fallbackAvatar
-                      }}
-                    />
-                  ) : (
-                    <span className={cn(
-                      'flex h-full w-full items-center justify-center text-[22px] font-black',
-                      post.isOwn ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground',
-                    )}>
-                      {initial}
-                    </span>
-                  )}
+                  <UserAvatar src={displayAvatar} alt={post.author} className="h-full w-full rounded-full object-cover" />
                 </div>
                 {isOnline && <span className="absolute bottom-1 right-0.5 h-[14px] w-[14px] rounded-full border-[2.5px] border-popover bg-emerald-500" />}
               </div>
@@ -1347,12 +1330,7 @@ export function FeedMemberProfileView({
                 onClick={() => setViewingUser(buildStandaloneFeedMemberProfile({ id: u.id, avatarUrl: u.avatar_url, name: u.username, handle: u.username, isVerified: Boolean(u.is_verified || hasPremiumPlan(u.sub_plan)), subPlan: u.sub_plan }))}
                 className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-accent"
               >
-                <div className="h-9 w-9 flex-shrink-0 overflow-hidden rounded-full bg-muted">
-                  {u.avatar_url
-                    ? <img src={u.avatar_url} alt={u.username} className="h-full w-full object-cover" />
-                    : <span className="flex h-full w-full items-center justify-center text-[13px] font-bold text-muted-foreground">{u.username[0]?.toUpperCase()}</span>
-                  }
-                </div>
+                <UserAvatar src={u.avatar_url} alt={u.username} className="h-9 w-9 flex-shrink-0 rounded-full object-cover" />
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-1 truncate text-[12px] font-semibold text-foreground">
                     @{u.username}
@@ -1774,14 +1752,7 @@ function FeedProfileRow({
             className="flex h-10 w-10 cursor-pointer overflow-hidden rounded-full ring-2 ring-background focus:outline-none"
             aria-label={`Open ${post.author} profile`}
           >
-            <img
-              src={displayAvatar ?? fallbackAvatar}
-              alt={post.author}
-              className="h-full w-full object-cover"
-              onError={(e) => {
-                if (!e.currentTarget.src.endsWith(fallbackAvatar)) e.currentTarget.src = fallbackAvatar
-              }}
-            />
+            <UserAvatar src={displayAvatar} alt={post.author} className="h-full w-full object-cover" />
           </button>
         ) : null}
       </div>

@@ -30,11 +30,11 @@ export class DirectMessagingController {
     @Post(':id/messages')
     async sendDirectMessage(@Request() req: any, @Param('id') conversationId: string, @Body() dto: SendDirectMessageDto) {
         const message = await this.messagingService.sendDirectMessage(req.user.userId, conversationId, dto);
-        this.chatGateway.emitDirectMessageCreated(conversationId, message);
+        await this.chatGateway.emitDirectMessageCreated(conversationId, message);
         const conversations = await this.messagingService.getDirectConversations(req.user.userId);
         const conversation = conversations.find((item) => item.id === conversationId);
         if (conversation) {
-            this.chatGateway.emitDirectMessageNotification(conversation.user_one_id, conversation.user_two_id, message);
+            await this.chatGateway.emitDirectMessageNotification(conversation.user_one_id, conversation.user_two_id, message);
         }
         return message;
     }
@@ -42,7 +42,7 @@ export class DirectMessagingController {
     @Post('messages/:messageId/reactions')
     async toggleReaction(@Request() req: any, @Param('messageId') messageId: string, @Body() dto: { emoji: string }) {
         const message = await this.messagingService.toggleDirectMessageReaction(req.user.userId, messageId, dto.emoji);
-        this.chatGateway.emitDirectMessageUpdated(message.conversation_id, message);
+        await this.chatGateway.emitDirectMessageUpdated(message.conversation_id, message);
         return message;
     }
 }

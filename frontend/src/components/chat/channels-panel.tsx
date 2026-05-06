@@ -29,6 +29,7 @@ import {
   X,
 } from 'lucide-react'
 import { CreateEntityDialog, type CreateEntityValues } from '@/components/chat/create-entity-dialog'
+import { UserAvatar } from '@/components/chat/user-avatar'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -653,13 +654,7 @@ function ChannelSettingsSheet({
                 <div className="space-y-2">
                   {channelJoinRequests.map((req) => (
                     <div key={req.id} className="flex items-center gap-2.5 rounded-2xl border border-border bg-muted/30 px-3 py-2.5">
-                      {req.user?.avatar_url ? (
-                        <img src={req.user.avatar_url} alt={req.user.username ?? ''} className="h-7 w-7 shrink-0 rounded-full object-cover" />
-                      ) : (
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-bold text-primary">
-                          {(req.user?.username?.[0] ?? '?').toUpperCase()}
-                        </div>
-                      )}
+                      <UserAvatar src={req.user?.avatar_url} alt={req.user?.username ?? ''} className="h-7 w-7 shrink-0 rounded-full object-cover" />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[12px] font-medium text-foreground">
                           @{req.user?.username ?? 'Unknown'}
@@ -727,13 +722,7 @@ function ChannelSettingsSheet({
                     const alreadyMember = channelMembers.some((m) => m.user?.id === u.id)
                     return (
                       <div key={u.id} className="flex items-center gap-2.5 border-b border-border px-3 py-2 last:border-0">
-                        {u.avatar_url ? (
-                          <img src={u.avatar_url} alt={u.username} className="h-6 w-6 rounded-full object-cover" />
-                        ) : (
-                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary">
-                            {u.username[0]?.toUpperCase()}
-                          </div>
-                        )}
+                        <UserAvatar src={u.avatar_url} alt={u.username} className="h-6 w-6 rounded-full object-cover" />
                         <span className="min-w-0 flex-1 truncate text-[12px] text-foreground">@{u.username}</span>
                         {alreadyMember ? (
                           <span className="text-[10px] text-muted-foreground">Member</span>
@@ -768,13 +757,7 @@ function ChannelSettingsSheet({
               <div className="max-h-48 space-y-1 overflow-y-auto">
                 {channelMembers.map((m) => (
                   <div key={m.user?.id} className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 hover:bg-accent/50">
-                    {m.user?.avatar_url ? (
-                      <img src={m.user.avatar_url} alt={m.user.username ?? ''} className="h-6 w-6 rounded-full object-cover" />
-                    ) : (
-                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary">
-                        {(m.user?.username?.[0] ?? '?').toUpperCase()}
-                      </div>
-                    )}
+                    <UserAvatar src={m.user?.avatar_url} alt={m.user?.username ?? ''} className="h-6 w-6 rounded-full object-cover" />
                     <div className="min-w-0 flex-1">
                       <span className="truncate text-[12px] text-foreground">@{m.user?.username ?? 'Unknown'}</span>
                     </div>
@@ -1003,11 +986,7 @@ function InviteMembersDialog({
             const isSending = sending.has(user.id)
             return (
               <div key={user.id} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-accent">
-                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-[12px] font-semibold text-primary">
-                  {user.avatar_url
-                    ? <img src={user.avatar_url} alt={user.username ?? ''} className="h-full w-full object-cover" />
-                    : user.username?.[0]?.toUpperCase() ?? '?'}
-                </div>
+                <UserAvatar src={user.avatar_url} alt={user.username ?? ''} className="h-8 w-8 flex-shrink-0 rounded-full object-cover" />
                 <p className="flex-1 truncate text-[13px] text-foreground">@{user.username}</p>
                 <button
                   disabled={alreadyMember || alreadyInvited || isSending}
@@ -1323,13 +1302,7 @@ function GroupSettingsSheet({
                 <div className="space-y-2">
                   {joinRequests.map((req) => (
                     <div key={req.id} className="flex items-center gap-2.5 rounded-xl border border-border bg-card px-3 py-2">
-                      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
-                        {req.user.avatar_url ? (
-                          <img src={req.user.avatar_url} alt={req.user.username ?? ''} className="h-full w-full rounded-full object-cover" />
-                        ) : (
-                          req.user.username?.[0]?.toUpperCase() ?? '?'
-                        )}
-                      </div>
+                      <UserAvatar src={req.user.avatar_url} alt={req.user.username ?? ''} className="h-8 w-8 flex-shrink-0 rounded-full object-cover" />
                       <p className="flex-1 truncate text-[12px] text-foreground">@{req.user.username}</p>
                       <button
                         disabled={respondToRequest.isPending}
@@ -1846,18 +1819,7 @@ export function ChannelsPanel({
                                     boxShadow: `0 0 ${4 + avatarActivity * 12}px ${avatarActivity * 4}px rgba(74,222,128,${0.2 + avatarActivity * 0.6})`,
                                   } : undefined}
                                 >
-                                  {p.avatarUrl ? (
-                                    <img
-                                      src={p.avatarUrl}
-                                      alt={p.name}
-                                      draggable={false}
-                                      className="h-5 w-5 rounded-full object-cover"
-                                    />
-                                  ) : (
-                                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/15 text-[8px] font-bold text-primary">
-                                      {p.name[0]?.toUpperCase()}
-                                    </div>
-                                  )}
+                                  <UserAvatar src={p.avatarUrl} alt={p.name} className="h-5 w-5 rounded-full object-cover" />
                                   <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-background bg-green-500" />
                                 </div>
                                 <span className="relative z-10 flex min-w-0 items-center gap-1.5">

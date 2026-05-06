@@ -3,6 +3,7 @@ import { SupabaseService } from '../supabase/supabase.module';
 import { CreatePostDto } from './dto/create-post.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { applyAvatarPrivacyBatch } from '../common/avatar-privacy.util';
 
 @Injectable()
 export class PostsService {
@@ -23,16 +24,23 @@ export class PostsService {
         return data;
     }
 
-    async getFeed(userId: string) {
-        const { data, error } = await this.supabaseService
-            .getClient()
+    async getFeed(userId: string, viewerId?: string | null) {
+        const client = this.supabaseService.getClient();
+        const { data, error } = await client
             .from('user_posts')
             .select('*, users!user_posts_user_id_fkey(id, username, avatar_url)')
             .eq('user_id', userId)
             .order('created_at', { ascending: false });
 
         if (error) throw new Error(`Failed to get feed: ${error.message}`);
-        return data;
+        const users = (data ?? []).map((post: any) => post.users).filter(Boolean);
+        const filtered = await applyAvatarPrivacyBatch(client, users, viewerId);
+        const userMap = new Map(filtered.map((user: any) => [user.id, user]));
+
+        return (data ?? []).map((post: any) => ({
+            ...post,
+            users: userMap.get(post.users?.id) ?? post.users,
+        }));
     }
 
     async addComment(userId: string, postId: string, createCommentDto: CreateCommentDto) {

@@ -89,28 +89,42 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     }
   }
 
-  emitGroupMessageCreated(groupId: string, message: any) {
-    this.server?.to(`group_${groupId}`).emit('newGroupMessage', message);
+  private async emitMessageWithAvatarPrivacy(room: string, event: string, message: any) {
+    const sockets = await this.server.in(room).fetchSockets();
+    await Promise.all(
+      sockets.map(async (socket: any) => {
+        const viewerId = socket.data?.user?.userId ?? null;
+        const payload = await this.messagingService.applyMessageSenderAvatarPrivacy(message, viewerId);
+        socket.emit(event, payload);
+      }),
+    );
   }
 
-  emitGroupMessageUpdated(groupId: string, message: any) {
-    this.server?.to(`group_${groupId}`).emit('groupMessageUpdated', message);
+  async emitGroupMessageCreated(groupId: string, message: any) {
+    await this.emitMessageWithAvatarPrivacy(`group_${groupId}`, 'newGroupMessage', message);
+  }
+
+  async emitGroupMessageUpdated(groupId: string, message: any) {
+    await this.emitMessageWithAvatarPrivacy(`group_${groupId}`, 'groupMessageUpdated', message);
   }
 
   emitGroupMessageDeleted(groupId: string, messageId: string) {
     this.server?.to(`group_${groupId}`).emit('groupMessageDeleted', { groupId, messageId });
   }
 
-  emitDirectMessageCreated(conversationId: string, message: any) {
-    this.server?.to(`dm_${conversationId}`).emit('newDirectMessage', message);
+  async emitDirectMessageCreated(conversationId: string, message: any) {
+    await this.emitMessageWithAvatarPrivacy(`dm_${conversationId}`, 'newDirectMessage', message);
   }
 
-  emitDirectMessageNotification(userOneId: string, userTwoId: string, message: any) {
-    this.server?.to(`user_${userOneId}`).to(`user_${userTwoId}`).emit('newDirectMessageNotification', message);
+  async emitDirectMessageNotification(userOneId: string, userTwoId: string, message: any) {
+    await Promise.all([userOneId, userTwoId].map(async (viewerId) => {
+      const payload = await this.messagingService.applyMessageSenderAvatarPrivacy(message, viewerId);
+      this.server?.to(`user_${viewerId}`).emit('newDirectMessageNotification', payload);
+    }));
   }
 
-  emitDirectMessageUpdated(conversationId: string, message: any) {
-    this.server?.to(`dm_${conversationId}`).emit('directMessageUpdated', message);
+  async emitDirectMessageUpdated(conversationId: string, message: any) {
+    await this.emitMessageWithAvatarPrivacy(`dm_${conversationId}`, 'directMessageUpdated', message);
   }
 
   emitDirectMessageDeleted(conversationId: string, messageId: string) {
@@ -279,14 +293,14 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       const message = await this.messagingService.sendDirectMessage(senderId, payload.conversationId, payload);
 
       // Broadcast to local room
-      this.emitDirectMessageCreated(payload.conversationId, message);
+      await this.emitDirectMessageCreated(payload.conversationId, message);
 
       // Alert both users globally (for notification syncing)
       // Since DM has 2 users, we can just fetch the conv and emit to both
       const conv = await this.messagingService.getDirectConversations(senderId);
       const dmConv = conv.find(c => c.id === payload.conversationId);
       if (dmConv) {
-        this.emitDirectMessageNotification(dmConv.user_one_id, dmConv.user_two_id, message);
+        await this.emitDirectMessageNotification(dmConv.user_one_id, dmConv.user_two_id, message);
       }
 
       return { status: 'sent', messageId: message.id };
@@ -304,7 +318,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const userId = client.data.user.userId;
     try {
       const updated = await this.messagingService.editDirectMessage(userId, payload.messageId, payload.content);
-      this.emitDirectMessageUpdated(payload.conversationId, updated);
+      await this.emitDirectMessageUpdated(payload.conversationId, updated);
     } catch (error) {
       this.logger.error(`Edit DM failed: ${error.message}`);
     }
@@ -318,7 +332,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const userId = client.data.user.userId;
     try {
       const updated = await this.messagingService.toggleDirectMessagePin(userId, payload.messageId, payload.conversationId);
-      this.emitDirectMessageUpdated(payload.conversationId, updated);
+      await this.emitDirectMessageUpdated(payload.conversationId, updated);
     } catch (error) {
       this.logger.error(`Pin DM failed: ${error.message}`);
     }
@@ -346,7 +360,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const userId = client.data.user.userId;
     try {
       const updated = await this.messagingService.toggleDirectMessageReaction(userId, payload.messageId, payload.emoji);
-      this.emitDirectMessageUpdated(payload.conversationId, updated);
+      await this.emitDirectMessageUpdated(payload.conversationId, updated);
       return { status: 'updated', messageId: updated.id };
     } catch (error) {
       this.logger.error(`DM reaction failed: ${error.message}`);
@@ -384,7 +398,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const senderId = client.data.user.userId;
     try {
       const message = await this.messagingService.sendGroupMessage(senderId, payload.groupId, payload);
-      this.emitGroupMessageCreated(payload.groupId, message);
+      await this.emitGroupMessageCreated(payload.groupId, message);
       return { status: 'sent', messageId: message.id };
     } catch (error) {
       this.logger.error(`Send Group Message failed: ${error.message}`);
@@ -400,7 +414,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const userId = client.data.user.userId;
     try {
       const updated = await this.messagingService.editGroupMessage(userId, payload.messageId, payload.content);
-      this.emitGroupMessageUpdated(payload.groupId, updated);
+      await this.emitGroupMessageUpdated(payload.groupId, updated);
     } catch (error) {
       this.logger.error(`Edit Group Msg failed: ${error.message}`);
     }
@@ -414,7 +428,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const userId = client.data.user.userId;
     try {
       const updated = await this.messagingService.toggleGroupMessageReaction(userId, payload.messageId, payload.emoji);
-      this.emitGroupMessageUpdated(payload.groupId, updated);
+      await this.emitGroupMessageUpdated(payload.groupId, updated);
       return { status: 'updated', messageId: updated.id };
     } catch (error) {
       this.logger.error(`Group reaction failed: ${error.message}`);
@@ -430,7 +444,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const userId = client.data.user.userId;
     try {
       const updated = await this.messagingService.toggleGroupMessagePin(userId, payload.messageId);
-      this.emitGroupMessageUpdated(payload.groupId, updated);
+      await this.emitGroupMessageUpdated(payload.groupId, updated);
       return { status: 'updated', messageId: updated.id };
     } catch (error) {
       this.logger.error(`Group pin failed: ${error.message}`);

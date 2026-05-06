@@ -216,13 +216,12 @@ export function StoryViewer({ slides, startId, onClose, onView, onDelete }: Stor
           {/* Avatar + name row */}
           <div className="mt-2.5 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              {active.user.avatar_url ? (
-                <img src={active.user.avatar_url} alt="" className="h-7 w-7 rounded-full object-cover ring-1 ring-white/30 shrink-0" />
-              ) : (
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/20 text-[10px] font-bold text-white ring-1 ring-white/30">
-                  {active.user.username.slice(0, 2).toUpperCase()}
-                </div>
-              )}
+              <img
+                src={active.user.avatar_url || '/defaultprofile.jpg'}
+                alt=""
+                className="h-7 w-7 rounded-full object-cover ring-1 ring-white/30 shrink-0"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/defaultprofile.jpg' }}
+              />
               <div className="flex flex-col gap-0.5">
                 <div className="flex items-center gap-1.5">
                   <span className="text-[13px] font-semibold text-white drop-shadow">{active.user.username}</span>

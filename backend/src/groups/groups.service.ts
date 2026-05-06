@@ -4,6 +4,7 @@ import { CreateGroupDto } from './dto/create-group.dto';
  import { AddGroupMemberDto } from './dto/add-group-member.dto';
 import { MessagingService } from '../messaging/messaging.service';
 import { ChatGateway } from '../messaging/gateway/chat.gateway';
+import { applyAvatarPrivacyBatch } from '../common/avatar-privacy.util';
 
 @Injectable()
 export class GroupsService {
@@ -127,18 +128,22 @@ export class GroupsService {
         return data.map((g: any) => ({ ...g, is_member: memberSet.has(g.id) }));
     }
 
-    async getGroupMembers(groupId: string) {
-        const { data, error } = await this.supabaseService
-            .getClient()
+    async getGroupMembers(groupId: string, viewerId: string) {
+        const client = this.supabaseService.getClient();
+        const { data, error } = await client
             .from('group_members')
             .select('role, joined_at, users!group_members_user_id_fkey(id, username, avatar_url, banner, bio, sub_plan, is_verified)')
             .eq('group_id', groupId);
 
         if (error) throw new Error(`Failed to fetch group members: ${error.message}`);
+        const users = (data ?? []).map((m: any) => m.users).filter(Boolean);
+        const filtered = await applyAvatarPrivacyBatch(client, users, viewerId);
+        const userMap = new Map(filtered.map((user: any) => [user.id, user]));
+
         return data.map(m => ({
             role: m.role,
             joined_at: m.joined_at,
-            user: m.users
+            user: userMap.get((m as any).users?.id) ?? m.users
         }));
     }
 
@@ -351,8 +356,8 @@ export class GroupsService {
             throw new UnauthorizedException('Only group admins can view join requests');
         }
 
-        const { data, error } = await this.supabaseService
-            .getClient()
+        const client = this.supabaseService.getClient();
+        const { data, error } = await client
             .from('group_join_requests')
             .select('id, status, created_at, users!group_join_requests_user_id_fkey(id, username, avatar_url)')
             .eq('group_id', groupId)
@@ -360,7 +365,16 @@ export class GroupsService {
             .order('created_at', { ascending: true });
 
         if (error) throw new Error(`Failed to fetch join requests: ${error.message}`);
-        return data.map(r => ({ id: r.id, status: r.status, created_at: r.created_at, user: r.users }));
+        const users = (data ?? []).map((r: any) => r.users).filter(Boolean);
+        const filtered = await applyAvatarPrivacyBatch(client, users, adminUserId);
+        const userMap = new Map(filtered.map((user: any) => [user.id, user]));
+
+        return data.map(r => ({
+            id: r.id,
+            status: r.status,
+            created_at: r.created_at,
+            user: userMap.get((r as any).users?.id) ?? r.users,
+        }));
     }
 
     async respondToJoinRequest(groupId: string, requestId: string, status: 'ACCEPTED' | 'REJECTED', adminUserId: string) {

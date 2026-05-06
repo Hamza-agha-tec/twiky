@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Search, UserPlus, Users, X } from 'lucide-react'
+import { UserAvatar } from '@/components/chat/user-avatar'
 
 import { useProfile, useSearchUsers, useSendFollowRequest, useUserFollowing } from '@/hooks/use-user'
 
@@ -95,13 +96,7 @@ export function AddFriendsView() {
               const initial = (user.fullname ?? user.username ?? '?')[0].toUpperCase()
               return (
                 <div key={user.id} className="flex items-center gap-4 rounded-2xl border border-border bg-card px-4 py-3 transition-all hover:border-primary/20 hover:shadow-sm">
-                  {user.avatar_url ? (
-                    <img src={user.avatar_url} alt={user.username} className="h-11 w-11 flex-shrink-0 rounded-2xl object-cover" />
-                  ) : (
-                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-primary text-[15px] font-bold text-primary-foreground">
-                      {initial}
-                    </div>
-                  )}
+                  <UserAvatar src={user.avatar_url} alt={user.username} className="h-11 w-11 flex-shrink-0 rounded-2xl object-cover" />
                   <div className="min-w-0 flex-1">
                     <p className="text-[14px] font-semibold text-foreground">{user.fullname ?? user.username}</p>
                     <p className="text-[12px] text-muted-foreground">@{user.username}</p>

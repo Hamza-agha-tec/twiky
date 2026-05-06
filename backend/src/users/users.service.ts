@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.module';
+import { applyAvatarPrivacyBatch } from '../common/avatar-privacy.util';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -13,38 +14,10 @@ export class UsersService {
         private readonly invitationsService: InvitationsService,
     ) { }
 
-    private canSeeProfilePhoto(setting: string | null | undefined, viewerFollowsTarget: boolean): boolean {
-        if (setting === 'nobody') return false;
-        if (setting === 'everyone') return true;
-        return viewerFollowsTarget;
-    }
-
     private async applyPhotoVisibility(user: any, viewerId?: string | null): Promise<any> {
         if (!user) return user;
-        if (!viewerId || viewerId === user.id) return user;
-
-        const client = this.supabaseService.getClient();
-        const [{ data: settings }, { data: follow }] = await Promise.all([
-            client
-                .from('user_settings')
-                .select('who_can_see_my_profile_photo')
-                .eq('user_id', user.id)
-                .maybeSingle(),
-            client
-                .from('follows')
-                .select('follower_id')
-                .eq('follower_id', viewerId)
-                .eq('following_id', user.id)
-                .maybeSingle(),
-        ]);
-
-        const visibility = settings?.who_can_see_my_profile_photo ?? 'everyone';
-        const viewerFollows = !!follow;
-
-        if (!this.canSeeProfilePhoto(visibility, viewerFollows)) {
-            return { ...user, avatar_url: null };
-        }
-        return user;
+        const [filtered] = await applyAvatarPrivacyBatch(this.supabaseService.getClient(), [user], viewerId);
+        return filtered;
     }
 
     async getUserById(id: string, viewerId?: string | null) {
@@ -172,27 +145,36 @@ export class UsersService {
         return { success: true };
     }
 
-    async getFollowers(userId: string) {
-        const { data, error } = await this.supabaseService
-            .getClient()
+    async getFollowers(userId: string, viewerId?: string | null) {
+        const client = this.supabaseService.getClient();
+        const { data, error } = await client
             .from('follows')
-            // Using raw select here, client might need to adjust specific relationship alias based on Supabase generated types
             .select('follower_id, users!follows_follower_id_fkey(id, username, avatar_url, bio, sub_plan)')
             .eq('following_id', userId);
 
         if (error) throw new Error(`Failed to get followers: ${error.message}`);
-        return data;
+        if (!viewerId || !data) return data;
+
+        const users = data.map((r: any) => r.users).filter(Boolean);
+        const filtered = await applyAvatarPrivacyBatch(client, users, viewerId);
+        const map = new Map(filtered.map((u: any) => [u.id, u]));
+        return data.map((r: any) => ({ ...r, users: map.get(r.users?.id) ?? r.users }));
     }
 
-    async getFollowing(userId: string) {
-        const { data, error } = await this.supabaseService
-            .getClient()
+    async getFollowing(userId: string, viewerId?: string | null) {
+        const client = this.supabaseService.getClient();
+        const { data, error } = await client
             .from('follows')
             .select('following_id, users!follows_following_id_fkey(id, username, avatar_url, bio, sub_plan)')
             .eq('follower_id', userId);
 
         if (error) throw new Error(`Failed to get following: ${error.message}`);
-        return data;
+        if (!viewerId || !data) return data;
+
+        const users = data.map((r: any) => r.users).filter(Boolean);
+        const filtered = await applyAvatarPrivacyBatch(client, users, viewerId);
+        const map = new Map(filtered.map((u: any) => [u.id, u]));
+        return data.map((r: any) => ({ ...r, users: map.get(r.users?.id) ?? r.users }));
     }
 
     async getUsers() {
@@ -223,8 +205,8 @@ export class UsersService {
     }
 
     async searchByUsername(username: string, userId: string) {
-        const { data, error } = await this.supabaseService
-            .getClient()
+        const client = this.supabaseService.getClient();
+        const { data, error } = await client
             .from('users')
             .select('id, username, avatar_url, fullname')
             .ilike('username', `${username}%`)
@@ -233,7 +215,7 @@ export class UsersService {
         if (error) {
             throw new Error(`Error searching for users: ${error.message}`);
         }
-        return data;
+        return applyAvatarPrivacyBatch(client, data ?? [], userId);
     }
 
     async getMutualFollowers(userId: string) {
@@ -259,8 +241,8 @@ export class UsersService {
 
         if (mutualError) throw new Error(mutualError.message);
 
-        // Map to return the user objects directly
-        return mutuals.map((m: any) => m.users);
+        const users = mutuals.map((m: any) => m.users).filter(Boolean);
+        return applyAvatarPrivacyBatch(this.supabaseService.getClient(), users, userId);
     }
 
     async updateDodoCustomerId(userId: string, dodoCustomerId: string) {

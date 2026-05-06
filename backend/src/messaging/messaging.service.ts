@@ -1,5 +1,6 @@
 import { Injectable, ForbiddenException, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.module';
+import { applyAvatarPrivacyBatch } from '../common/avatar-privacy.util';
 import { StartDirectConversationDto, SendDirectMessageDto } from './dto/direct-messaging.dto';
 import { SendGroupMessageDto } from './dto/group-messaging.dto';
 
@@ -80,7 +81,17 @@ export class MessagingService {
 
         if (error) throw new Error(`Failed to fetch inboxes: ${error.message}`);
 
-        const conversations = await this.applyLastSeenVisibility(userId, data ?? []);
+        // Apply avatar privacy: collect both participants, filter, re-attach
+        const allPartners = (data ?? []).flatMap((c: any) => [c.user_one, c.user_two]).filter(Boolean);
+        const privacyApplied = await applyAvatarPrivacyBatch(client, allPartners, userId);
+        const privacyMap = new Map(privacyApplied.map((u: any) => [u.id, u]));
+        const privacyData = (data ?? []).map((c: any) => ({
+            ...c,
+            user_one: privacyMap.get(c.user_one?.id) ?? c.user_one,
+            user_two: privacyMap.get(c.user_two?.id) ?? c.user_two,
+        }));
+
+        const conversations = await this.applyLastSeenVisibility(userId, privacyData);
         const conversationIds = conversations.map((conversation) => conversation.id);
         if (!conversationIds.length) return conversations;
 
@@ -190,6 +201,35 @@ export class MessagingService {
         return viewerFollowsTarget;
     }
 
+    async applyMessageSenderAvatarPrivacy<T extends { sender?: any | null }>(
+        message: T,
+        viewerId?: string | null,
+    ): Promise<T> {
+        if (!message?.sender?.id) return message;
+        const [sender] = await applyAvatarPrivacyBatch(
+            this.supabaseService.getClient(),
+            [message.sender],
+            viewerId,
+        );
+        return { ...message, sender };
+    }
+
+    async applyMessageSenderAvatarPrivacyBatch<T extends { sender?: any | null }>(
+        messages: T[],
+        viewerId?: string | null,
+    ): Promise<T[]> {
+        const senders = messages.map((message) => message.sender).filter((sender) => sender?.id);
+        if (!senders.length) return messages;
+
+        const filtered = await applyAvatarPrivacyBatch(this.supabaseService.getClient(), senders, viewerId);
+        const senderMap = new Map(filtered.map((sender: any) => [sender.id, sender]));
+
+        return messages.map((message) => ({
+            ...message,
+            sender: message.sender?.id ? (senderMap.get(message.sender.id) ?? message.sender) : message.sender,
+        }));
+    }
+
     private async applyLastSeenVisibility(userId: string, conversations: any[]) {
         const targetIds = Array.from(new Set(
             conversations
@@ -270,7 +310,7 @@ export class MessagingService {
             .single();
 
         if (error) throw new Error(`Failed to send DM: ${error.message}`);
-        return data;
+        return this.applyMessageSenderAvatarPrivacy(data, userId);
     }
 
     async getDirectMessages(userId: string, conversationId: string) {
@@ -293,7 +333,7 @@ export class MessagingService {
             .order('created_at', { ascending: true });
 
         if (error) throw new Error(`Failed to fetch DMs: ${error.message}`);
-        return data;
+        return this.applyMessageSenderAvatarPrivacyBatch(data ?? [], userId);
     }
 
     async editDirectMessage(userId: string, messageId: string, content: string) {
@@ -307,7 +347,7 @@ export class MessagingService {
             .single();
 
         if (error) throw new Error(`Failed to edit DM: ${error.message}`);
-        return data;
+        return this.applyMessageSenderAvatarPrivacy(data, userId);
     }
 
     async toggleDirectMessagePin(userId: string, messageId: string, conversationId: string) {
@@ -330,7 +370,7 @@ export class MessagingService {
             .single();
 
         if (error) throw new Error(`Failed to pin DM: ${error.message}`);
-        return data;
+        return this.applyMessageSenderAvatarPrivacy(data, userId);
     }
 
     async deleteDirectMessage(userId: string, messageId: string) {
@@ -526,7 +566,7 @@ export class MessagingService {
 
         if (error) throw new Error(`Failed to send group message: ${error.message}`);
         await this.notifyMentionRecipients(userId, groupId, data.id, dto);
-        return data;
+        return this.applyMessageSenderAvatarPrivacy(data, userId);
     }
 
     async getGroupMessages(userId: string, groupId: string) {
@@ -550,7 +590,7 @@ export class MessagingService {
             .order('created_at', { ascending: true });
 
         if (error) throw new Error(`Failed to fetch group messages: ${error.message}`);
-        return data;
+        return this.applyMessageSenderAvatarPrivacyBatch(data ?? [], userId);
     }
 
     async editGroupMessage(userId: string, messageId: string, content: string) {
@@ -564,7 +604,7 @@ export class MessagingService {
             .single();
 
         if (error) throw new Error(`Failed to edit group message: ${error.message}`);
-        return data;
+        return this.applyMessageSenderAvatarPrivacy(data, userId);
     }
 
     async deleteGroupMessage(userId: string, messageId: string) {
@@ -659,7 +699,7 @@ export class MessagingService {
             .single();
 
         if (error) throw new Error(`Failed to toggle pin: ${error.message}`);
-        return updated;
+        return this.applyMessageSenderAvatarPrivacy(updated, userId);
     }
 
     private async toggleReactionInternal(table: string, userId: string, messageId: string, emoji: string) {
@@ -703,7 +743,7 @@ export class MessagingService {
             .single();
 
         if (updateError) throw new Error(`Failed to update reactions: ${updateError.message}`);
-        return updated;
+        return this.applyMessageSenderAvatarPrivacy(updated, userId);
     }
 
     async sendSystemMessage(groupId: string, content: string) {

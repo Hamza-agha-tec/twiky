@@ -84,7 +84,7 @@ export function useRecordView() {
 export function useStoryViewEvents() {
   const qc = useQueryClient();
   useEffect(() => {
-    let socket: ReturnType<typeof getSocket> | null = null;
+    let socket: Awaited<ReturnType<typeof getSocket>> | null = null;
     getSocket().then((s) => {
       socket = s;
       s.on('storyViewed', ({ storyId, viewsCount }: { storyId: string; viewsCount: number }) => {

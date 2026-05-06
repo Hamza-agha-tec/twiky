@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Delete, Param, Body, UseGuards, Request } from '@nestjs/common';
 import { PostsService } from './posts.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt.guard';
 import { CreatePostDto } from './dto/create-post.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 
@@ -14,9 +15,10 @@ export class PostsController {
         return this.postsService.createPost(req.user.userId, createPostDto);
     }
 
+    @UseGuards(OptionalJwtAuthGuard)
     @Get("users/:userId")
-    async getFeed(@Param("userId") userId: string) {
-        return this.postsService.getFeed(userId);
+    async getFeed(@Param("userId") userId: string, @Request() req: any) {
+        return this.postsService.getFeed(userId, req.user?.userId ?? null);
     }
 
     @UseGuards(JwtAuthGuard)

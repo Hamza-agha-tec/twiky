@@ -6,6 +6,12 @@ import { CreateStoryDto } from './dto/create-story.dto';
 export class StoriesService {
   constructor(private readonly supabaseService: SupabaseService) {}
 
+  private canSeeProfilePhoto(setting: string | null | undefined, viewerFollows: boolean): boolean {
+    if (setting === 'nobody') return false;
+    if (setting === 'everyone') return true;
+    return viewerFollows;
+  }
+
   async createStory(userId: string, dto: CreateStoryDto) {
     const { data, error } = await this.supabaseService
       .getClient()
@@ -68,15 +74,33 @@ export class StoriesService {
       .order('created_at', { ascending: true });
 
     if (error) throw new Error(`Failed to fetch story feed: ${error.message}`);
-    
+
+    // Fetch photo visibility settings for all story owners (excluding self)
+    const ownerIds = [...new Set(data.map(s => s.user.id))].filter(id => id !== userId);
+    let hiddenPhotoIds = new Set<string>();
+    if (ownerIds.length > 0) {
+      const { data: settingsRows } = await this.supabaseService
+        .getClient()
+        .from('user_settings')
+        .select('user_id, who_can_see_my_profile_photo')
+        .in('user_id', ownerIds);
+
+      for (const row of settingsRows ?? []) {
+        const visibility = row.who_can_see_my_profile_photo ?? 'everyone';
+        if (!this.canSeeProfilePhoto(visibility, followingIds.includes(row.user_id))) {
+          hiddenPhotoIds.add(row.user_id);
+        }
+      }
+    }
+
     // Grouping by user for a better frontend experience
     const grouped = data.reduce((acc, story) => {
       const uId = story.user.id;
       if (!acc[uId]) {
-        acc[uId] = {
-          user: story.user,
-          stories: [],
-        };
+        const user = hiddenPhotoIds.has(uId)
+          ? { ...story.user, avatar_url: null }
+          : story.user;
+        acc[uId] = { user, stories: [] };
       }
       acc[uId].stories.push(story);
       return acc;

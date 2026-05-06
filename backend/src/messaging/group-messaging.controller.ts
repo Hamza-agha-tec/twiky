@@ -20,21 +20,21 @@ export class GroupMessagingController {
     @Post(':groupId/messages')
     async sendGroupMessage(@Request() req: any, @Param('groupId') groupId: string, @Body() dto: SendGroupMessageDto) {
         const message = await this.messagingService.sendGroupMessage(req.user.userId, groupId, dto);
-        this.chatGateway.emitGroupMessageCreated(groupId, message);
+        await this.chatGateway.emitGroupMessageCreated(groupId, message);
         return message;
     }
 
     @Post('messages/:messageId/reactions')
     async toggleReaction(@Request() req: any, @Param('messageId') messageId: string, @Body() dto: { emoji: string }) {
         const message = await this.messagingService.toggleGroupMessageReaction(req.user.userId, messageId, dto.emoji);
-        this.chatGateway.emitGroupMessageUpdated(message.group_id, message);
+        await this.chatGateway.emitGroupMessageUpdated(message.group_id, message);
         return message;
     }
 
     @Patch('messages/:messageId/pin')
     async togglePin(@Request() req: any, @Param('messageId') messageId: string) {
         const message = await this.messagingService.toggleGroupMessagePin(req.user.userId, messageId);
-        this.chatGateway.emitGroupMessageUpdated(message.group_id, message);
+        await this.chatGateway.emitGroupMessageUpdated(message.group_id, message);
         return message;
     }
 

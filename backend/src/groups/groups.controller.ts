@@ -24,8 +24,8 @@ export class GroupsController {
     }
 
     @Get('groups/:groupId/members')
-    async getGroupMembers(@Param('groupId') groupId: string) {
-        return this.groupsService.getGroupMembers(groupId);
+    async getGroupMembers(@Request() req: any, @Param('groupId') groupId: string) {
+        return this.groupsService.getGroupMembers(groupId, req.user.userId);
     }
 
     @Patch('groups/:groupId')

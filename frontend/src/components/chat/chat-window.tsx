@@ -3,6 +3,7 @@
 import { useState, useRef, useLayoutEffect, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { UserAvatar } from '@/components/chat/user-avatar';
 import { Button } from '@/components/ui/button';
 import { Search, Phone, Video, MoreVertical, X, ChevronUp, ChevronDown, User, BellOff, Archive, ShieldOff, Pin } from 'lucide-react';
 import type { Message } from '@/lib/mock-data';
@@ -646,11 +647,7 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
                       }}
                       className="flex w-full items-center gap-3 px-4 py-2.5 hover:bg-muted/50 transition-colors"
                     >
-                      <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
-                        {conv.avatarUrl
-                          ? <img src={conv.avatarUrl} className="h-8 w-8 rounded-full object-cover" />
-                          : conv.name.slice(0, 2).toUpperCase()}
-                      </div>
+                      <UserAvatar src={conv.avatarUrl} alt={conv.name} className="h-8 w-8 rounded-full object-cover shrink-0" />
                       <span className="text-sm text-foreground truncate">{conv.name}</span>
                     </button>
                   ))}

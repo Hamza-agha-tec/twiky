@@ -46,8 +46,8 @@ export class ChannelsController {
     }
 
     @Get(":id/members")
-    async getMembers(@Param("id") channelId: string) {
-        return this.channelsService.getMembers(channelId);
+    async getMembers(@Request() req: any, @Param("id") channelId: string) {
+        return this.channelsService.getMembers(channelId, req.user.userId);
     }
 
     @Post(":id/members")

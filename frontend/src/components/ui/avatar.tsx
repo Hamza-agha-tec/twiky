@@ -21,14 +21,19 @@ function Avatar({
   )
 }
 
+const DEFAULT_AVATAR = '/defaultprofile.jpg'
+
 function AvatarImage({
   className,
+  src,
   ...props
 }: React.ComponentProps<typeof AvatarPrimitive.Image>) {
   return (
     <AvatarPrimitive.Image
       data-slot="avatar-image"
-      className={cn('aspect-square size-full', className)}
+      src={src || DEFAULT_AVATAR}
+      className={cn('aspect-square size-full object-cover', className)}
+      onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_AVATAR }}
       {...props}
     />
   )
@@ -36,17 +41,17 @@ function AvatarImage({
 
 function AvatarFallback({
   className,
+  children,
   ...props
 }: React.ComponentProps<typeof AvatarPrimitive.Fallback>) {
   return (
     <AvatarPrimitive.Fallback
       data-slot="avatar-fallback"
-      className={cn(
-        'bg-muted flex size-full items-center justify-center rounded-full',
-        className,
-      )}
+      className={cn('bg-muted flex size-full items-center justify-center rounded-full overflow-hidden', className)}
       {...props}
-    />
+    >
+      <img src={DEFAULT_AVATAR} alt="" className="size-full object-cover" />
+    </AvatarPrimitive.Fallback>
   )
 }
 
