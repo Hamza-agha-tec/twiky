@@ -246,7 +246,7 @@ function toWorkspaceChannel(
     avatarUrl: channel.avatar_url ?? undefined,
     bannerUrl: channel.banner_url ?? undefined,
     groups: groupsByChannel[channel.id] ?? base.groups,
-    membersLabel: getChannelRoleLabel(channel.role),
+    membersLabel: '',
     access_type: channel.access_type,
     role: (channel.role as 'OWNER' | 'ADMIN' | 'MEMBER') ?? 'MEMBER',
     type: channel.type ?? 'NORMAL',
@@ -312,7 +312,13 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const readReceiptsEnabled = settings?.read_confirmation !== false
   const [typingIndicatorsEnabled, setTypingIndicatorsEnabled] = useState(true)
   usePresenceSocket(Boolean(profile?.id))
-  const onlineUsers = useOnlineUsers()
+  const _onlineUsers = useOnlineUsers()
+  const onlineUsers = useMemo(() => {
+    if (!profile?.id) return _onlineUsers
+    const s = new Set(_onlineUsers)
+    s.add(profile.id)
+    return s
+  }, [_onlineUsers, profile?.id])
 
   const { status: dmCallStatus, startCall, acceptCall, rejectCall, hangUp } = useDmCall({
     myId: profile?.id,
@@ -2041,6 +2047,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             onViewVoiceParticipantProfile={(p) => setVoiceProfileTarget(p as VoicePresenceUser)}
             soundboardUserId={voice.soundboardUserId}
             soundboardIntensity={voice.soundboardIntensity}
+            onlineUsers={onlineUsers}
           />
 
             {activeSurface === 'channel'

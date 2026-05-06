@@ -167,6 +167,7 @@ interface ChannelsPanelProps {
   onViewVoiceParticipantProfile?: (participant: VoiceParticipant) => void
   soundboardUserId?: string | null
   soundboardIntensity?: number
+  onlineUsers?: Set<string>
 }
 
 const MEMBER_LABELS = ['26 online', '18 online', '12 online', '9 online', '6 online']
@@ -1414,6 +1415,7 @@ export function ChannelsPanel({
   onViewVoiceParticipantProfile,
   soundboardUserId,
   soundboardIntensity = 0,
+  onlineUsers = new Set(),
 }: ChannelsPanelProps) {
   const [showCreateGroup, setShowCreateGroup] = useState(false)
   const [channelSettingsOpen, setChannelSettingsOpen] = useState(false)
@@ -1424,6 +1426,7 @@ export function ChannelsPanel({
   const [dragOverVoiceGroupId, setDragOverVoiceGroupId] = useState<string | null>(null)
   const requestJoin = useRequestJoinGroup()
   const deleteGroup = useDeleteGroup(channel?.id ?? '')
+  const { data: allMembers = [] } = useChannelMembers(channel?.id)
   const isAdminForNotif = channel?.role === 'OWNER' || channel?.role === 'ADMIN'
   const { data: channelPendingRequests = [] } = useChannelJoinRequests(
     isAdminForNotif && channel?.access_type === 'PRIVATE' ? channel?.id : undefined,
@@ -1554,7 +1557,12 @@ export function ChannelsPanel({
                 {channel.label}
               </p>
               <p className={cn('truncate text-[10px]', displayBanner ? 'text-white/80' : 'text-muted-foreground')}>
-                {channel.membersLabel}
+                {(() => {
+                  const onlineCount = allMembers.filter(m => m.user?.id && onlineUsers.has(m.user.id)).length
+                  if (onlineCount > 0) return `${onlineCount} online`
+                  if (allMembers.length > 0) return `${allMembers.length} members`
+                  return null
+                })()}
               </p>
             </div>
           </div>
