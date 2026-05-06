@@ -9,6 +9,7 @@ import { useUserById } from '@/hooks/use-user'
 import { VerifiedBadge, getVerifiedBadgeVariant } from '@/components/chat/verified-badge'
 import { createClient } from '@/utils/supabase/client'
 import { toast } from 'sonner'
+import type { StoryRingState } from '@/components/chat/channel-feed'
 
 interface DirectProfileSidebarProps {
   userId?: string
@@ -25,6 +26,8 @@ interface DirectProfileSidebarProps {
   onVoiceCall?: () => void
   onVideoCall?: () => void
   onOpenPixelRoom?: () => void
+  onOpenStory?: (userId: string) => void
+  storyRingState?: StoryRingState
 }
 
 function Skeleton({ className }: { className?: string }) {
@@ -40,6 +43,8 @@ export function DirectProfileSidebar({
   onVoiceCall,
   onVideoCall,
   onOpenPixelRoom,
+  onOpenStory,
+  storyRingState = 'none',
 }: DirectProfileSidebarProps) {
   const { data: profile, isLoading } = useUserById(userId)
 
@@ -53,6 +58,7 @@ export function DirectProfileSidebar({
   const subPlan = profile?.sub_plan ?? chatOverride?.subPlan ?? null
   const isVerified = profile?.is_verified ?? chatOverride?.isVerified ?? false
   const showVerified = isVerified || subPlan === 'PRO' || subPlan === 'GEEK'
+  const canOpenStory = storyRingState !== 'none' && Boolean(userId && onOpenStory)
 
   const initials = name
     .split(' ')
@@ -124,12 +130,27 @@ export function DirectProfileSidebar({
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: 'spring', stiffness: 300, damping: 24 }}
           >
-            <Avatar className="h-14 w-14 ring-2 ring-sidebar shadow-lg">
-              <AvatarImage src={avatar ?? undefined} alt={name} />
-              <AvatarFallback className="bg-primary text-primary-foreground text-base font-semibold">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
+            <button
+              type="button"
+              disabled={!canOpenStory}
+              onClick={() => {
+                if (userId) onOpenStory?.(userId)
+              }}
+              className={[
+                'rounded-full p-[2px] text-left',
+                storyRingState === 'unseen' ? 'bg-gradient-to-tr from-[#0080c8] via-[#38b6d8] to-[#92dce5]' : '',
+                storyRingState === 'seen' ? 'bg-muted-foreground/35' : '',
+                storyRingState === 'none' ? 'bg-transparent' : '',
+                canOpenStory ? 'transition-transform hover:scale-[1.03]' : '',
+              ].join(' ')}
+            >
+              <Avatar className="h-14 w-14 ring-2 ring-sidebar shadow-lg">
+                <AvatarImage src={avatar ?? undefined} alt={name} />
+                <AvatarFallback className="bg-primary text-primary-foreground text-base font-semibold">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+            </button>
             {isOnline && (
               <span className="absolute bottom-0.5 right-0.5 h-3 w-3 rounded-full border-2 border-sidebar bg-green-500" />
             )}

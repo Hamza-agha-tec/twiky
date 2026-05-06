@@ -68,6 +68,7 @@ interface FeedMedia {
 }
 
 export type FeedSubPlan = 'FREE' | 'PRO' | 'GEEK'
+export type StoryRingState = 'none' | 'seen' | 'unseen'
 
 function isProbablyImageUrl(url: string): boolean {
   try {
@@ -1136,8 +1137,10 @@ export function FeedMemberProfileView({
   messagePending,
   onBack,
   onMessage,
+  onOpenStory,
   posts,
   showMessageAction = true,
+  storyRingState = 'none',
   hideRole = false,
 }: {
   currentGroupLabel: string
@@ -1146,8 +1149,10 @@ export function FeedMemberProfileView({
   messagePending: boolean
   onBack: () => void
   onMessage: () => void
+  onOpenStory?: (userId: string) => void
   posts: FeedPost[]
   showMessageAction?: boolean
+  storyRingState?: StoryRingState
   hideRole?: boolean
 }) {
   const [activeTab, setActiveTab] = useState<'posts' | 'articles' | 'pixel-room' | 'saved'>('posts')
@@ -1216,6 +1221,7 @@ export function FeedMemberProfileView({
   const bannerImage = realUser?.banner ?? null
   const avatarImage = resolvedProfile.avatarUrl ?? null
   const profileBadgeVariant = getVerifiedBadgeVariant(resolvedProfile.subPlan)
+  const canOpenStory = storyRingState !== 'none' && Boolean(memberProfile.id && onOpenStory)
 
   useEffect(() => {
     const refreshRoomPreview = () => {
@@ -1374,12 +1380,28 @@ export function FeedMemberProfileView({
       >
         <div className="-mt-9 mb-2.5 flex items-end justify-between">
           <div className="relative">
-            <Avatar className="h-[68px] w-[68px] overflow-hidden rounded-full border-[3px] border-sidebar bg-muted shadow-xl">
-              <AvatarImage src={avatarImage ?? undefined} alt={resolvedProfile.name} className="h-full w-full rounded-full object-cover" />
-              <AvatarFallback className="rounded-full bg-muted text-[18px] font-bold text-foreground">
-                {resolvedProfile.name[0]?.toUpperCase() ?? 'U'}
-              </AvatarFallback>
-            </Avatar>
+            <button
+              type="button"
+              disabled={!canOpenStory}
+              onClick={() => {
+                if (memberProfile.id) onOpenStory?.(memberProfile.id)
+              }}
+              className={cn(
+                'rounded-full p-[2px] text-left',
+                storyRingState === 'unseen' && 'bg-gradient-to-tr from-[#0080c8] via-[#38b6d8] to-[#92dce5]',
+                storyRingState === 'seen' && 'bg-muted-foreground/35',
+                storyRingState === 'none' && 'bg-transparent',
+                canOpenStory && 'transition-transform hover:scale-[1.03]',
+              )}
+              aria-label={canOpenStory ? `Open ${resolvedProfile.name}'s story` : undefined}
+            >
+              <Avatar className="h-[68px] w-[68px] overflow-hidden rounded-full border-[3px] border-sidebar bg-muted shadow-xl">
+                <AvatarImage src={avatarImage ?? undefined} alt={resolvedProfile.name} className="h-full w-full rounded-full object-cover" />
+                <AvatarFallback className="rounded-full bg-muted text-[18px] font-bold text-foreground">
+                  {resolvedProfile.name[0]?.toUpperCase() ?? 'U'}
+                </AvatarFallback>
+              </Avatar>
+            </button>
             {isOnline && <span className="absolute bottom-0.5 right-0.5 h-[12px] w-[12px] rounded-full border-2 border-sidebar bg-emerald-400" />}
           </div>
 
@@ -1883,6 +1905,8 @@ export function ChannelFeed({
   onSendPost,
   sendingPost = false,
   onOpenDirectConversation,
+  onOpenUserStories,
+  getUserStoryRingState,
   onProfilePanelWidthChange,
   onProfileSidebarContentChange,
   onProfileCloseRequestChange,
@@ -1908,6 +1932,8 @@ export function ChannelFeed({
   }) => Promise<void>
   sendingPost?: boolean
   onOpenDirectConversation?: (conversation: string | FeedDirectConversationTarget) => void
+  onOpenUserStories?: (userId: string) => void
+  getUserStoryRingState?: (userId: string) => StoryRingState
   onProfilePanelWidthChange?: (width: number) => void
   onProfileSidebarContentChange?: (content: ReactNode | null) => void
   onProfileCloseRequestChange?: (closeFn: (() => void) | null) => void
@@ -2070,15 +2096,19 @@ export function ChannelFeed({
         messagePending={false}
         onBack={() => setSelectedProfile(null)}
         onMessage={() => handleMessageAuthor(selectedProfile.post, selectedProfile.profile)}
+        onOpenStory={onOpenUserStories}
         posts={profilePosts}
+        storyRingState={selectedProfile.profile.id ? getUserStoryRingState?.(selectedProfile.profile.id) ?? 'none' : 'none'}
       />,
     )
   }, [
     group.kind,
     group.label,
     onProfileSidebarContentChange,
+    onOpenUserStories,
     profilePosts,
     selectedProfile,
+    getUserStoryRingState,
   ])
 
   useEffect(() => {

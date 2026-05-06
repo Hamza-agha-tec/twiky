@@ -8,6 +8,7 @@ import {
   buildStandaloneFeedMemberProfile,
   FeedMemberProfileView,
   type FeedDirectConversationTarget,
+  type StoryRingState,
 } from '@/components/chat/channel-feed'
 import {
   buildChannelGroup,
@@ -407,6 +408,33 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       music_cover_url: s.music_cover_url,
     }))
   )
+
+  const userStoryRingStates = useMemo(() => {
+    const seen = getSeenStoryIds()
+    return new Map<string, StoryRingState>(
+      storiesFeed
+        .filter((group) => group.stories.length > 0)
+        .map((group) => [
+          group.user.id,
+          group.stories.some((story) => !seen.has(story.id)) ? 'unseen' : 'seen',
+        ]),
+    )
+  }, [storiesFeed])
+
+  const storyUserIds = useMemo(
+    () => new Set(userStoryRingStates.keys()),
+    [userStoryRingStates],
+  )
+
+  const getUserStoryRingState = useCallback(
+    (userId: string): StoryRingState => userStoryRingStates.get(userId) ?? 'none',
+    [userStoryRingStates],
+  )
+
+  const openUserStories = useCallback((userId: string) => {
+    if (!storyUserIds.has(userId)) return
+    setStoryViewUserId(userId)
+  }, [storyUserIds])
 
   const storyStartId = storyViewUserId
     ? (storiesFeed.find((g) => g.user.id === storyViewUserId)?.stories[0]?.id ?? storySlides[0]?.id ?? '')
@@ -1758,8 +1786,10 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                 messagePending={false}
                 onBack={() => setVoiceProfileTarget(null)}
                 onMessage={() => {}}
+                onOpenStory={openUserStories}
                 posts={[]}
                 showMessageAction={false}
+                storyRingState={getUserStoryRingState(voiceProfileTarget.id)}
               />
             )}
           </FeedProfileSidebarDock>
@@ -1842,7 +1872,9 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             members={activeGroupMembers}
             myAvatarUrl={userAvatar}
             onOpenDirectConversation={openDirectChat}
+            onOpenUserStories={openUserStories}
             postsOverride={isRealGroupId ? groupPosts : undefined}
+            getUserStoryRingState={getUserStoryRingState}
           onSendPost={async ({ content, fileUrl, replyToId, entityMentions, type, mime, duration, size }) => {
               if (!isRealGroupId) return
             await groupsApi.sendGroupMessage(activeGroup.id, {
@@ -2051,6 +2083,8 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                             setShowDirectProfile(false)
                             setActiveView('game')
                           }}
+                          onOpenStory={openUserStories}
+                          storyRingState={activeDirectOther?.id ? getUserStoryRingState(activeDirectOther.id) : 'none'}
                         />
                       ) : null}
                     </FeedProfileSidebarDock>

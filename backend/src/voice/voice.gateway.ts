@@ -14,6 +14,7 @@ import { SocketAuthMiddleware } from '../messaging/middlewares/ws-auth.middlewar
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.module';
 import { randomUUID } from 'crypto';
+import { applyAvatarPrivacyBatch } from '../common/avatar-privacy.util';
 
 interface WebRTCSignal {
   type: 'offer' | 'answer' | 'ice-candidate';
@@ -160,7 +161,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
 
   // Observers: get presence updates without being a participant.
   @SubscribeMessage('subscribe-voice-rooms')
-  handleSubscribe(
+  async handleSubscribe(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomIds: string[] },
   ) {
@@ -171,7 +172,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
       // Send current state immediately
       client.emit('voice-room-users', {
         roomId,
-        participants: this.getRoomParticipants(roomId),
+        participants: await this.getVisibleRoomParticipants(roomId, client.data.user?.userId ?? null),
       });
     }
   }
@@ -240,28 +241,23 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
     client.join(participantRoom(data.roomId));
     client.join(presenceRoom(data.roomId));
 
-    // Notify all observers + participants
-    this.server.to(presenceRoom(data.roomId)).emit('user-joined-voice', {
-      userId,
-      roomId: data.roomId,
-      user: participant,
-    });
+    await this.emitUserJoinedVoice(data.roomId, userId, participant);
 
     // Send full participant list to the new joiner
-    const participants = this.getRoomParticipants(data.roomId).filter((u) => u.id !== userId);
+    const participants = (await this.getVisibleRoomParticipants(data.roomId, userId)).filter((u) => u.id !== userId);
     client.emit('voice-room-participants', {
       roomId: data.roomId,
       participants: participants.map((u) => u.id),
       users: participants,
     });
-    this.emitRoomUsers(data.roomId);
+    await this.emitRoomUsers(data.roomId);
 
     this.logger.log(`User ${userId} joined voice room ${data.roomId}`);
     return { success: true, roomId: data.roomId };
   }
 
   @SubscribeMessage('voice-chat-history')
-  handleVoiceChatHistory(
+  async handleVoiceChatHistory(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomId: string },
   ) {
@@ -273,12 +269,14 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
 
     client.emit('voice-chat-history', {
       roomId: data.roomId,
-      messages: room.messages,
+      messages: await Promise.all(
+        room.messages.map((message) => this.applyVoiceMessageAvatarPrivacy(message, userId)),
+      ),
     });
   }
 
   @SubscribeMessage('voice-chat-message')
-  handleVoiceChatMessage(
+  async handleVoiceChatMessage(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomId: string; text: string },
   ) {
@@ -304,11 +302,11 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
     };
 
     room.messages = [...room.messages, message].slice(-100);
-    this.server.to(participantRoom(data.roomId)).emit('voice-chat-message', message);
+    await this.emitVoiceChatMessage(data.roomId, 'voice-chat-message', message);
   }
 
   @SubscribeMessage('voice-chat-reaction')
-  handleVoiceChatReaction(
+  async handleVoiceChatReaction(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomId: string; messageId: string; emoji: string },
   ) {
@@ -334,7 +332,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
     }
     message.reactions = message.reactions.filter((r) => r.users.length > 0);
 
-    this.server.to(participantRoom(data.roomId)).emit('voice-chat-message-updated', message);
+    await this.emitVoiceChatMessage(data.roomId, 'voice-chat-message-updated', message);
   }
 
   @SubscribeMessage('leave-voice-room')
@@ -354,11 +352,67 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
     return Array.from(room.participants.values()).map((p) => p.user);
   }
 
-  private emitRoomUsers(roomId: string) {
-    this.server.to(presenceRoom(roomId)).emit('voice-room-users', {
-      roomId,
-      participants: this.getRoomParticipants(roomId),
-    });
+  private async applyParticipantAvatarPrivacy(
+    participants: VoiceParticipantInfo[],
+    viewerId?: string | null,
+  ): Promise<VoiceParticipantInfo[]> {
+    const users = participants.map((participant) => ({
+      id: participant.id,
+      avatar_url: participant.avatarUrl,
+    }));
+    const filtered = await applyAvatarPrivacyBatch(this.supabaseService.getClient(), users, viewerId);
+    const avatarMap = new Map(filtered.map((user) => [user.id, user.avatar_url ?? null]));
+
+    return participants.map((participant) => ({
+      ...participant,
+      avatarUrl: avatarMap.get(participant.id) ?? null,
+    }));
+  }
+
+  private async applyVoiceMessageAvatarPrivacy(
+    message: VoiceChatMessage,
+    viewerId?: string | null,
+  ): Promise<VoiceChatMessage> {
+    const [user] = await applyAvatarPrivacyBatch(
+      this.supabaseService.getClient(),
+      [{ id: message.userId, avatar_url: message.avatar }],
+      viewerId,
+    );
+
+    return { ...message, avatar: user.avatar_url ?? null };
+  }
+
+  private async emitVoiceChatMessage(roomId: string, event: string, message: VoiceChatMessage) {
+    const sockets = await this.server.in(participantRoom(roomId)).fetchSockets();
+    await Promise.all(sockets.map(async (socket: any) => {
+      socket.emit(event, await this.applyVoiceMessageAvatarPrivacy(message, socket.data?.user?.userId ?? null));
+    }));
+  }
+
+  private async getVisibleRoomParticipants(roomId: string, viewerId?: string | null) {
+    return this.applyParticipantAvatarPrivacy(this.getRoomParticipants(roomId), viewerId);
+  }
+
+  private async emitRoomUsers(roomId: string) {
+    const sockets = await this.server.in(presenceRoom(roomId)).fetchSockets();
+    await Promise.all(sockets.map(async (socket: any) => {
+      socket.emit('voice-room-users', {
+        roomId,
+        participants: await this.getVisibleRoomParticipants(roomId, socket.data?.user?.userId ?? null),
+      });
+    }));
+  }
+
+  private async emitUserJoinedVoice(roomId: string, userId: string, user: VoiceParticipantInfo) {
+    const sockets = await this.server.in(presenceRoom(roomId)).fetchSockets();
+    await Promise.all(sockets.map(async (socket: any) => {
+      const [visibleUser] = await this.applyParticipantAvatarPrivacy([user], socket.data?.user?.userId ?? null);
+      socket.emit('user-joined-voice', {
+        userId,
+        roomId,
+        user: visibleUser,
+      });
+    }));
   }
 
   private leaveVoiceRoom(roomId: string, userId: string) {
@@ -380,7 +434,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
       this.voiceRooms.delete(roomId);
       this.logger.log(`Voice room ${roomId} deleted (empty)`);
     } else {
-      this.emitRoomUsers(roomId);
+      void this.emitRoomUsers(roomId);
     }
   }
 
@@ -416,7 +470,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
     const participant = this.voiceRooms.get(data.roomId)?.participants.get(userId);
     if (participant) {
       participant.user = { ...participant.user, isMuted: data.muted };
-      this.emitRoomUsers(data.roomId);
+      void this.emitRoomUsers(data.roomId);
     }
     this.server.to(presenceRoom(data.roomId)).emit('user-audio-toggled', {
       userId,
@@ -435,7 +489,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
     const participant = this.voiceRooms.get(data.roomId)?.participants.get(userId);
     if (participant) {
       participant.user = { ...participant.user, isCameraOn: data.enabled };
-      this.emitRoomUsers(data.roomId);
+      void this.emitRoomUsers(data.roomId);
     }
     this.server.to(presenceRoom(data.roomId)).emit('user-video-toggled', {
       userId,
@@ -487,7 +541,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
     const participant = room.participants.get(userId);
     if (participant) {
       participant.user = { ...participant.user, isScreenSharing: data.enabled };
-      this.emitRoomUsers(data.roomId);
+      void this.emitRoomUsers(data.roomId);
     }
 
     this.server.to(presenceRoom(data.roomId)).emit('user-screen-toggled', {
@@ -554,7 +608,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
         muted: data.muted,
         mutedBy: userId,
       });
-      this.emitRoomUsers(data.roomId);
+      void this.emitRoomUsers(data.roomId);
     }
   }
 
@@ -600,7 +654,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
   }
 
   @SubscribeMessage('get-voice-room-info')
-  handleGetVoiceRoomInfo(
+  async handleGetVoiceRoomInfo(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomId: string },
   ) {
@@ -612,7 +666,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
     }
 
     // Send participant list so WebRTC can initialize peer connections
-    const participants = this.getRoomParticipants(data.roomId).filter((u) => u.id !== userId);
+    const participants = (await this.getVisibleRoomParticipants(data.roomId, userId)).filter((u) => u.id !== userId);
     client.emit('voice-room-participants', {
       roomId: data.roomId,
       participants: participants.map((u) => u.id),
