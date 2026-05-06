@@ -62,7 +62,7 @@ import { DIRECT_KEYS, useCreateDirectConversation, useDirectConversations, useDi
 import { useVoiceInvitationListener } from '@/hooks/use-voice-invitation-listener'
 import { invitationsApi, type Invitation } from '@/lib/invitations-api'
 import { getSocket } from '@/lib/socket'
-import { useStoriesFeed, useCreateStory, useDeleteStory, useRecordView } from '@/hooks/use-stories'
+import { useStoriesFeed, useCreateStory, useDeleteStory, useRecordView, useStoryViewEvents, getSeenStoryIds } from '@/hooks/use-stories'
 import { StoriesStrip, type StoryBubble } from '@/components/chat/stories-strip'
 import { StoryViewer, type StorySlide } from '@/components/chat/story-viewer'
 import { StoryUploadDialog } from '@/components/chat/story-upload-dialog'
@@ -365,6 +365,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const createStory = useCreateStory()
   const deleteStory = useDeleteStory()
   const recordView = useRecordView()
+  useStoryViewEvents()
 
   const storyBubbles: StoryBubble[] = (() => {
     const ownGroup = storiesFeed.find((g) => g.user.id === profile?.id)
@@ -377,12 +378,13 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       hasUnseen: false,
       isOwn: true,
     }
+    const seen = getSeenStoryIds()
     const rest: StoryBubble[] = others.map((g) => ({
       userId: g.user.id,
       username: g.user.username,
       avatar_url: g.user.avatar_url ?? null,
       hasStory: g.stories.length > 0,
-      hasUnseen: g.stories.length > 0,
+      hasUnseen: g.stories.some((s) => !seen.has(s.id)),
       isOwn: false,
     }))
     return [own, ...rest]
@@ -398,6 +400,10 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       user: g.user,
       isOwn: g.user.id === profile?.id,
       viewsCount: s.views_count?.[0]?.count ?? 0,
+      music_preview_url: s.music_preview_url,
+      music_title: s.music_title,
+      music_artist: s.music_artist,
+      music_cover_url: s.music_cover_url,
     }))
   )
 
@@ -2099,8 +2105,8 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       <StoryUploadDialog
         open={storyUploadOpen}
         onOpenChange={setStoryUploadOpen}
-        onSubmit={async (file, caption) => {
-          await createStory.mutateAsync({ file, caption })
+        onSubmit={async (file, caption, music) => {
+          await createStory.mutateAsync({ file, caption, music })
         }}
       />
 

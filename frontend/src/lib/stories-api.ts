@@ -34,10 +34,39 @@ export interface StoryRaw {
   created_at: string;
   expires_at: string;
   views_count?: Array<{ count: number }>;
+  music_preview_url?: string | null;
+  music_title?: string | null;
+  music_artist?: string | null;
+  music_cover_url?: string | null;
+}
+
+export interface SpotifyTrack {
+  id: string;
+  title: string;
+  artist: string;
+  cover_url: string | null;
+  preview_url: string | null;
+  duration_ms: number;
+}
+
+export async function searchMusicTracks(query: string): Promise<SpotifyTrack[]> {
+  const res = await fetch(
+    `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=12&media=music`,
+  );
+  if (!res.ok) return [];
+  const json = await res.json();
+  return (json.results ?? []).map((t: any) => ({
+    id: String(t.trackId),
+    title: t.trackName ?? '',
+    artist: t.artistName ?? '',
+    cover_url: t.artworkUrl100?.replace('100x100', '300x300') ?? null,
+    preview_url: t.previewUrl ?? null,
+    duration_ms: t.trackTimeMillis ?? 0,
+  }));
 }
 
 export interface FeedGroup {
-  user: { id: string; username: string; avatar_url?: string | null };
+  user: { id: string; username: string; avatar_url?: string | null; sub_plan?: string | null };
   stories: StoryRaw[];
 }
 
@@ -62,8 +91,20 @@ export const storiesApi = {
     return apiFetch('/stories/feed');
   },
 
-  createStory(dto: { media_url: string; type: 'image' | 'video'; caption?: string }): Promise<StoryRaw> {
+  createStory(dto: {
+    media_url: string;
+    type: 'image' | 'video';
+    caption?: string;
+    music_preview_url?: string;
+    music_title?: string;
+    music_artist?: string;
+    music_cover_url?: string;
+  }): Promise<StoryRaw> {
     return apiFetch('/stories', { method: 'POST', body: JSON.stringify(dto) });
+  },
+
+  searchSpotify(q: string): Promise<SpotifyTrack[]> {
+    return apiFetch(`/spotify/search?q=${encodeURIComponent(q)}`);
   },
 
   recordView(storyId: string): Promise<{ success: boolean }> {

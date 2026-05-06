@@ -14,7 +14,13 @@ export class StoriesService {
         user_id: userId,
         media_url: dto.media_url,
         type: dto.type,
-        caption: dto.caption,
+        caption: dto.caption ?? null,
+        ...(dto.music_title ? {
+          music_title: dto.music_title,
+          music_artist: dto.music_artist ?? null,
+          music_preview_url: dto.music_preview_url ?? null,
+          music_cover_url: dto.music_cover_url ?? null,
+        } : {}),
       })
       .select()
       .single();
@@ -54,12 +60,12 @@ export class StoriesService {
       .from('stories')
       .select(`
         *,
-        user:users!stories_user_id_fkey(id, username, avatar_url),
+        user:users!stories_user_id_fkey(id, username, avatar_url, sub_plan),
         views_count:story_views(count)
       `)
       .in('user_id', targetIds)
       .gt('expires_at', new Date().toISOString())
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: true });
 
     if (error) throw new Error(`Failed to fetch story feed: ${error.message}`);
     
@@ -106,13 +112,25 @@ export class StoriesService {
   }
 
   async recordView(userId: string, storyId: string) {
-    // Record the view (ignore errors if user already viewed as PK is story_id, user_id)
     await this.supabaseService
       .getClient()
       .from('story_views')
       .upsert({ story_id: storyId, user_id: userId });
 
-    return { success: true };
+    const { data: story } = await this.supabaseService
+      .getClient()
+      .from('stories')
+      .select('user_id')
+      .eq('id', storyId)
+      .single();
+
+    const { count } = await this.supabaseService
+      .getClient()
+      .from('story_views')
+      .select('*', { count: 'exact', head: true })
+      .eq('story_id', storyId);
+
+    return { success: true, ownerId: story?.user_id ?? null, storyId, viewsCount: count ?? 0 };
   }
 
   async getStoryViewers(userId: string, storyId: string) {

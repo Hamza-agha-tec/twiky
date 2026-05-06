@@ -403,6 +403,49 @@ export class SpotifyService {
     }
   }
 
+  private clientCredentialsToken: { token: string; expiresAt: number } | null = null;
+
+  private async getClientCredentialsToken(): Promise<string> {
+    if (this.clientCredentialsToken && Date.now() < this.clientCredentialsToken.expiresAt) {
+      return this.clientCredentialsToken.token;
+    }
+    const response = await firstValueFrom(
+      this.httpService.post<any>(
+        'https://accounts.spotify.com/api/token',
+        new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            Authorization: `Basic ${Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64')}`,
+          },
+        },
+      ),
+    );
+    this.clientCredentialsToken = {
+      token: response.data.access_token,
+      expiresAt: Date.now() + (response.data.expires_in - 60) * 1000,
+    };
+    return this.clientCredentialsToken.token;
+  }
+
+  async searchTracks(query: string, limit = 10) {
+    const token = await this.getClientCredentialsToken();
+    const response = await firstValueFrom(
+      this.httpService.get<any>(
+        `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=${limit}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      ),
+    );
+    return (response.data.tracks?.items ?? []).map((t: any) => ({
+      id: t.id,
+      title: t.name,
+      artist: t.artists?.map((a: any) => a.name).join(', ') ?? '',
+      cover_url: t.album?.images?.[0]?.url ?? null,
+      preview_url: t.preview_url ?? null,
+      duration_ms: t.duration_ms,
+    }));
+  }
+
   private async refreshAccessToken(userId: string, refreshToken: string) {
     try {
       const response = await firstValueFrom(

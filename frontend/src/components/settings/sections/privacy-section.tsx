@@ -20,6 +20,8 @@ type PrivacySettings = {
   read_confirmation?: boolean | null
   who_can_see_me_online?: VisibilityOption | null
   who_can_see_my_last_seen?: VisibilityOption | null
+  who_can_see_my_profile_photo?: VisibilityOption | null
+  who_can_discover_me?: VisibilityOption | null
 }
 
 const TYPING_INDICATORS_KEY = 'twiky-typing-indicators-enabled'
@@ -33,8 +35,8 @@ export function PrivacySection() {
   const [typingIndicators, setTypingIndicators] = useState(true)
   const [linkPreviews, setLinkPreviews] = useState(true)
   const [lastSeen, setLastSeen] = useState<VisibilityOption>('followers')
-  const [profilePhoto, setProfilePhoto] = useState('everyone')
-  const [visibility, setVisibility] = useState('followers')
+  const [profilePhoto, setProfilePhoto] = useState<VisibilityOption>('everyone')
+  const [visibility, setVisibility] = useState<VisibilityOption>('followers')
   const [dmFromStrangers, setDmFromStrangers] = useState(true)
   const score = [readReceipts, onlineStatus, visibility !== 'public', lastSeen !== 'everyone'].filter(Boolean).length * 25
 
@@ -46,6 +48,12 @@ export function PrivacySection() {
     setOnlineStatus(settings.who_can_see_me_online !== 'nobody')
     if (settings.who_can_see_my_last_seen) {
       setLastSeen(settings.who_can_see_my_last_seen)
+    }
+    if (settings.who_can_see_my_profile_photo) {
+      setProfilePhoto(settings.who_can_see_my_profile_photo)
+    }
+    if (settings.who_can_discover_me) {
+      setVisibility(settings.who_can_discover_me)
     }
     try {
       setTypingIndicators(localStorage.getItem(TYPING_INDICATORS_KEY) !== 'false')
@@ -67,6 +75,16 @@ export function PrivacySection() {
   const updateLastSeen = (value: VisibilityOption) => {
     setLastSeen(value)
     updateSettings.mutate({ who_can_see_my_last_seen: value })
+  }
+
+  const updateProfilePhoto = (value: VisibilityOption) => {
+    setProfilePhoto(value)
+    updateSettings.mutate({ who_can_see_my_profile_photo: value })
+  }
+
+  const updateVisibility = (value: VisibilityOption) => {
+    setVisibility(value)
+    updateSettings.mutate({ who_can_discover_me: value })
   }
 
   const updateTypingIndicators = (checked: boolean) => {
@@ -98,10 +116,10 @@ export function PrivacySection() {
           <Select value={lastSeen} onValueChange={(value) => updateLastSeen(value as VisibilityOption)}><SelectTrigger className="h-8 w-[130px] rounded-xl text-[12px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="everyone">Everyone</SelectItem><SelectItem value="followers">Followers</SelectItem><SelectItem value="nobody">Nobody</SelectItem></SelectContent></Select>
         </SettingRow>
         <SettingRow title="Profile photo" description="Who can see your avatar.">
-          <Select value={profilePhoto} onValueChange={setProfilePhoto}><SelectTrigger className="h-8 w-[130px] rounded-xl text-[12px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="everyone">Everyone</SelectItem><SelectItem value="followers">Followers</SelectItem><SelectItem value="nobody">Nobody</SelectItem></SelectContent></Select>
+          <Select value={profilePhoto} onValueChange={(v) => updateProfilePhoto(v as VisibilityOption)}><SelectTrigger className="h-8 w-[130px] rounded-xl text-[12px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="everyone">Everyone</SelectItem><SelectItem value="followers">Followers</SelectItem><SelectItem value="nobody">Nobody</SelectItem></SelectContent></Select>
         </SettingRow>
         <SettingRow title="Account discovery" description="Allow others to find you.">
-          <Select value={visibility} onValueChange={setVisibility}><SelectTrigger className="h-8 w-[130px] rounded-xl text-[12px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="public">Public</SelectItem><SelectItem value="followers">Followers</SelectItem><SelectItem value="private">Private</SelectItem></SelectContent></Select>
+          <Select value={visibility} onValueChange={(v) => updateVisibility(v as VisibilityOption)}><SelectTrigger className="h-8 w-[130px] rounded-xl text-[12px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="everyone">Everyone</SelectItem><SelectItem value="followers">Followers</SelectItem><SelectItem value="nobody">Nobody</SelectItem></SelectContent></Select>
         </SettingRow>
       </SectionBlock>
       <SectionBlock title="Messages">

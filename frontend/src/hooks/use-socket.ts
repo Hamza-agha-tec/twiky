@@ -6,6 +6,7 @@ import { Socket } from 'socket.io-client';
 import { getSocket } from '@/lib/socket';
 import { MESSAGING_KEYS, ChatMessage, Conversation } from './use-messaging';
 import { DIRECT_KEYS } from './use-direct-conversations';
+import { USER_KEYS } from './use-user';
 import type { DirectConversation } from '@/lib/direct-conversations-api';
 
 export function useSocket(conversationId: string | null) {
@@ -326,10 +327,18 @@ export function usePresenceSocket(enabled: boolean = true) {
         syncOnlineUsers();
       };
 
+      const onProfilePrivacyChanged = ({ userId }: { userId?: string }) => {
+        if (!mounted || !userId) return;
+        queryClient.invalidateQueries({ queryKey: USER_KEYS.byId(userId) });
+        queryClient.invalidateQueries({ queryKey: ['user', 'by-username'] });
+        queryClient.invalidateQueries({ queryKey: DIRECT_KEYS.conversations });
+      };
+
       s.on('userStatusChange', onUserStatusChange);
       s.on('lastSeenMap', onLastSeenMap);
       s.on('onlineUsersList', onOnlineUsersList);
       s.on('presencePrivacyChanged', onPresencePrivacyChanged);
+      s.on('profilePrivacyChanged', onProfilePrivacyChanged);
       s.on('connect', syncOnlineUsers);
 
       syncOnlineUsers();
@@ -339,6 +348,7 @@ export function usePresenceSocket(enabled: boolean = true) {
         s.off('lastSeenMap', onLastSeenMap);
         s.off('onlineUsersList', onOnlineUsersList);
         s.off('presencePrivacyChanged', onPresencePrivacyChanged);
+        s.off('profilePrivacyChanged', onProfilePrivacyChanged);
         s.off('connect', syncOnlineUsers);
       };
     });

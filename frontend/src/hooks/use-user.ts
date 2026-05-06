@@ -142,6 +142,11 @@ export function useUpdateSettings() {
           socket.emit('presencePrivacyChanged');
         });
       }
+      if ('who_can_see_my_profile_photo' in variables) {
+        void getSocket().then((socket) => {
+          socket.emit('profilePrivacyChanged');
+        });
+      }
     },
   });
 }

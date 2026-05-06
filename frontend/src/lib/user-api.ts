@@ -114,6 +114,8 @@ export const userApi = {
     notifications_enabled?: boolean;
     who_can_see_me_online?: 'everyone' | 'followers' | 'nobody';
     who_can_see_my_last_seen?: 'everyone' | 'followers' | 'nobody';
+    who_can_see_my_profile_photo?: 'everyone' | 'followers' | 'nobody';
+    who_can_discover_me?: 'everyone' | 'followers' | 'nobody';
     read_confirmation?: boolean;
   }) =>
     authedFetch('/users/settings', { method: 'PATCH', body: JSON.stringify(data) }),

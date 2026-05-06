@@ -13,7 +13,41 @@ export class UsersService {
         private readonly invitationsService: InvitationsService,
     ) { }
 
-    async getUserById(id: string) {
+    private canSeeProfilePhoto(setting: string | null | undefined, viewerFollowsTarget: boolean): boolean {
+        if (setting === 'nobody') return false;
+        if (setting === 'everyone') return true;
+        return viewerFollowsTarget;
+    }
+
+    private async applyPhotoVisibility(user: any, viewerId?: string | null): Promise<any> {
+        if (!user) return user;
+        if (!viewerId || viewerId === user.id) return user;
+
+        const client = this.supabaseService.getClient();
+        const [{ data: settings }, { data: follow }] = await Promise.all([
+            client
+                .from('user_settings')
+                .select('who_can_see_my_profile_photo')
+                .eq('user_id', user.id)
+                .maybeSingle(),
+            client
+                .from('follows')
+                .select('follower_id')
+                .eq('follower_id', viewerId)
+                .eq('following_id', user.id)
+                .maybeSingle(),
+        ]);
+
+        const visibility = settings?.who_can_see_my_profile_photo ?? 'everyone';
+        const viewerFollows = !!follow;
+
+        if (!this.canSeeProfilePhoto(visibility, viewerFollows)) {
+            return { ...user, avatar_url: null };
+        }
+        return user;
+    }
+
+    async getUserById(id: string, viewerId?: string | null) {
         const { data, error } = await this.supabaseService
             .getClient()
             .from('users')
@@ -25,10 +59,10 @@ export class UsersService {
             throw new NotFoundException('User not found');
         }
 
-        return data;
+        return this.applyPhotoVisibility(data, viewerId);
     }
 
-    async getUserByUsername(username: string) {
+    async getUserByUsername(username: string, viewerId?: string | null) {
         const { data, error } = await this.supabaseService
             .getClient()
             .from('users')
@@ -40,7 +74,7 @@ export class UsersService {
             throw new NotFoundException('User not found');
         }
 
-        return data;
+        return this.applyPhotoVisibility(data, viewerId);
     }
 
     async updateProfile(id: string, updateData: UpdateUserDto) {

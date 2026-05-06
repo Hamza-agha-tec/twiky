@@ -1,6 +1,7 @@
 import { Controller, Get, Param, Post, Delete, UseGuards, Request, Patch, Body, Query } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt.guard';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 
@@ -66,14 +67,16 @@ export class UsersController {
         return this.usersService.getFollowing(id);
     }
 
+    @UseGuards(OptionalJwtAuthGuard)
     @Get("username/:username")
-    async getUserByUsername(@Param("username") username: string) {
-        return this.usersService.getUserByUsername(username);
+    async getUserByUsername(@Param("username") username: string, @Request() req: any) {
+        return this.usersService.getUserByUsername(username, req.user?.userId ?? null);
     }
 
+    @UseGuards(OptionalJwtAuthGuard)
     @Get(":id")
-    getUserById(@Param("id") id: string) {
-        return this.usersService.getUserById(id);
+    getUserById(@Param("id") id: string, @Request() req: any) {
+        return this.usersService.getUserById(id, req.user?.userId ?? null);
     }
 
     @Get()

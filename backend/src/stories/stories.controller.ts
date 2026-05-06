@@ -2,11 +2,15 @@ import { Controller, Get, Post, Delete, Param, Body, UseGuards, Request } from '
 import { StoriesService } from './stories.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateStoryDto } from './dto/create-story.dto';
+import { ChatGateway } from '../messaging/gateway/chat.gateway';
 
 @UseGuards(JwtAuthGuard)
 @Controller('stories')
 export class StoriesController {
-  constructor(private readonly storiesService: StoriesService) {}
+  constructor(
+    private readonly storiesService: StoriesService,
+    private readonly chatGateway: ChatGateway,
+  ) {}
 
   @Post()
   async createStory(@Request() req: any, @Body() dto: CreateStoryDto) {
@@ -25,7 +29,14 @@ export class StoriesController {
 
   @Post(':id/view')
   async recordView(@Request() req: any, @Param('id') storyId: string) {
-    return this.storiesService.recordView(req.user.userId, storyId);
+    const result = await this.storiesService.recordView(req.user.userId, storyId);
+    if (result.ownerId && result.ownerId !== req.user.userId) {
+      this.chatGateway.server.to(`user_${result.ownerId}`).emit('storyViewed', {
+        storyId: result.storyId,
+        viewsCount: result.viewsCount,
+      });
+    }
+    return result;
   }
 
   @Get(':id/viewers')

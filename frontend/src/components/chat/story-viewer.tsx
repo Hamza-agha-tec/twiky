@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { X, ChevronLeft, ChevronRight, Eye, Trash2 } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Eye, Trash2, Music, Volume2, VolumeX } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { VerifiedBadge, getVerifiedBadgeVariant, hasPremiumPlan } from '@/components/chat/verified-badge';
 
 export interface StorySlide {
   id: string;
@@ -11,9 +11,13 @@ export interface StorySlide {
   type: 'image' | 'video';
   caption?: string | null;
   created_at: string;
-  user: { id: string; username: string; avatar_url?: string | null };
+  user: { id: string; username: string; avatar_url?: string | null; sub_plan?: string | null };
   isOwn: boolean;
   viewsCount?: number;
+  music_preview_url?: string | null;
+  music_title?: string | null;
+  music_artist?: string | null;
+  music_cover_url?: string | null;
 }
 
 interface StoryViewerProps {
@@ -24,25 +28,31 @@ interface StoryViewerProps {
   onDelete?: (storyId: string) => void;
 }
 
-const DURATION = 6000;
+const DURATION = 30000;
 
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60000);
   if (m < 1) return 'just now';
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+  if (h < 24) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
 }
+
+const WAVE_DELAYS = [0, 160, 80, 240, 120];
 
 export function StoryViewer({ slides, startId, onClose, onView, onDelete }: StoryViewerProps) {
   const [idx, setIdx] = useState(() => Math.max(0, slides.findIndex((s) => s.id === startId)));
   const [progress, setProgress] = useState(0);
   const [paused, setPaused] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [audioBlocked, setAudioBlocked] = useState(false);
   const frameRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
   const elapsedRef = useRef<number>(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const mutedRef = useRef(false);
 
   const active = slides[idx];
 
@@ -52,37 +62,45 @@ export function StoryViewer({ slides, startId, onClose, onView, onDelete }: Stor
       onClose();
       return i;
     });
-    setProgress(0);
     elapsedRef.current = 0;
   }, [slides.length, onClose]);
 
+  // Always-fresh ref so rAF tick never calls a stale goNext
+  const goNextRef = useRef(goNext);
+  useEffect(() => { goNextRef.current = goNext; }, [goNext]);
+
   const goPrev = useCallback(() => {
     setIdx((i) => Math.max(0, i - 1));
-    setProgress(0);
     elapsedRef.current = 0;
   }, []);
 
-  // Progress timer
+  // Reset progress on slide change
+  useEffect(() => {
+    setProgress(0);
+    elapsedRef.current = 0;
+  }, [idx]);
+
+  // Progress timer — idx and paused only; goNext via ref to avoid stale closure
   useEffect(() => {
     if (!active || paused) return;
-    onView?.(active.id);
-    startTimeRef.current = Date.now() - elapsedRef.current;
+    if (!active.isOwn) onView?.(active.id);
+    startTimeRef.current = performance.now() - elapsedRef.current;
 
     function tick() {
-      const elapsed = Date.now() - startTimeRef.current;
+      const elapsed = performance.now() - startTimeRef.current;
       elapsedRef.current = elapsed;
       const pct = Math.min((elapsed / DURATION) * 100, 100);
       setProgress(pct);
       if (pct < 100) {
         frameRef.current = requestAnimationFrame(tick);
       } else {
-        goNext();
+        goNextRef.current();
       }
     }
 
     frameRef.current = requestAnimationFrame(tick);
     return () => { if (frameRef.current) cancelAnimationFrame(frameRef.current); };
-  }, [idx, paused, active?.id]);
+  }, [idx, paused]);
 
   // Keyboard nav
   useEffect(() => {
@@ -95,143 +113,175 @@ export function StoryViewer({ slides, startId, onClose, onView, onDelete }: Stor
     return () => window.removeEventListener('keydown', onKey);
   }, [goNext, goPrev, onClose]);
 
-  // Reset on idx change
+  useEffect(() => { mutedRef.current = muted; }, [muted]);
+
   useEffect(() => {
-    setProgress(0);
-    elapsedRef.current = 0;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    const url = slides[idx]?.music_preview_url;
+    if (!url) return;
+    const audio = new Audio(url);
+    audio.loop = true;
+    audio.volume = mutedRef.current ? 0 : 0.75;
+    audioRef.current = audio;
+    audio.play().then(() => setAudioBlocked(false)).catch(() => setAudioBlocked(true));
+    return () => { audio.pause(); };
   }, [idx]);
+
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = muted ? 0 : 0.75;
+  }, [muted]);
+
+  useEffect(() => () => { audioRef.current?.pause(); }, []);
 
   if (!active) return null;
 
+  const hasMusic = !!active.music_title;
+  const hasAudio = !!active.music_preview_url;
+  const showWaves = hasAudio && !audioBlocked && !muted;
+
+  function handlePointerDown() {
+    elapsedRef.current = performance.now() - startTimeRef.current;
+    setPaused(true);
+  }
+  function handlePointerUp() {
+    setPaused(false);
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95">
-      {/* top bar — prev/close/next for desktop */}
-      <div className="absolute inset-x-0 top-4 z-20 flex items-center justify-between px-4 sm:px-6">
-        <button
-          onClick={goPrev}
-          disabled={idx === 0}
-          className="rounded-full bg-white/10 p-2 text-white backdrop-blur-sm transition-opacity hover:bg-white/20 disabled:pointer-events-none disabled:opacity-20"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </button>
+      <style>{`
+        @keyframes sv-wave {
+          0%, 100% { height: 2px; opacity: 0.5; }
+          50%       { height: 10px; opacity: 1; }
+        }
+      `}</style>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onClose}
-            className="rounded-full bg-white/10 p-2 text-white backdrop-blur-sm hover:bg-white/20"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+      {/* Desktop prev/next */}
+      <button onClick={goPrev} disabled={idx === 0}
+        className="absolute left-4 top-1/2 z-20 hidden -translate-y-1/2 rounded-full bg-white/10 p-2 text-white backdrop-blur-sm transition hover:bg-white/20 disabled:pointer-events-none disabled:opacity-20 sm:flex">
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+      <button onClick={goNext} disabled={idx === slides.length - 1}
+        className="absolute right-4 top-1/2 z-20 hidden -translate-y-1/2 rounded-full bg-white/10 p-2 text-white backdrop-blur-sm transition hover:bg-white/20 disabled:pointer-events-none disabled:opacity-20 sm:flex">
+        <ChevronRight className="h-4 w-4" />
+      </button>
 
-        <button
-          onClick={goNext}
-          disabled={idx === slides.length - 1}
-          className="rounded-full bg-white/10 p-2 text-white backdrop-blur-sm transition-opacity hover:bg-white/20 disabled:pointer-events-none disabled:opacity-20"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </button>
-      </div>
-
-      {/* story card */}
+      {/* Story card */}
       <div
-        className="relative flex h-[88vh] w-full max-w-[360px] flex-col overflow-hidden rounded-2xl bg-zinc-900 shadow-2xl"
-        onMouseEnter={() => setPaused(true)}
-        onMouseLeave={() => { setPaused(false); elapsedRef.current = Date.now() - startTimeRef.current; }}
+        className="relative flex h-[92vh] w-full max-w-[380px] flex-col overflow-hidden rounded-2xl bg-black shadow-2xl"
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerUp}
       >
-        {/* progress bars */}
-        <div className="absolute inset-x-3 top-3 z-10 flex gap-1">
-          {slides.map((s, i) => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => { setIdx(i); setProgress(0); elapsedRef.current = 0; }}
-              className="h-0.5 flex-1 overflow-hidden rounded-full bg-white/25"
-            >
-              <div
-                className="h-full rounded-full bg-white"
-                style={{
-                  width: i < idx ? '100%' : i === idx ? `${progress}%` : '0%',
-                  transition: i === idx ? 'none' : undefined,
-                }}
-              />
-            </button>
-          ))}
+        {/* Media */}
+        <div className="absolute inset-0">
+          {active.type === 'video' ? (
+            <video key={active.id} src={active.media_url}
+              className="h-full w-full object-cover" autoPlay muted playsInline loop={false} onEnded={goNext} />
+          ) : (
+            <img key={active.id} src={active.media_url} alt={active.caption ?? ''}
+              className="h-full w-full object-cover" draggable={false} />
+          )}
         </div>
 
-        {/* user header */}
-        <div className="absolute inset-x-0 top-7 z-10 flex items-center justify-between px-3 pt-2">
-          <div className="flex items-center gap-2 rounded-full bg-black/30 px-2.5 py-1.5 backdrop-blur-sm">
-            <Avatar className="h-7 w-7 border border-white/20">
-              <AvatarImage src={active.user.avatar_url ?? ''} alt={active.user.username} />
-              <AvatarFallback className="bg-white/10 text-[10px] text-white">
-                {active.user.username.slice(0, 2).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <p className="text-[11px] font-semibold leading-none text-white">
-                {active.user.username}
-              </p>
-              <p className="mt-0.5 text-[9px] leading-none text-white/50">
-                {timeAgo(active.created_at)}
-              </p>
-            </div>
+        {/* Tap zones — pointer events only for nav, not pause */}
+        <button
+          className="absolute inset-y-0 left-0 z-10 w-1/3 select-none"
+          onPointerDown={(e) => { e.stopPropagation(); handlePointerDown(); }}
+          onPointerUp={(e) => { e.stopPropagation(); handlePointerUp(); goPrev(); }}
+          aria-label="Previous"
+        />
+        <button
+          className="absolute inset-y-0 right-0 z-10 w-2/3 select-none"
+          onPointerDown={(e) => { e.stopPropagation(); handlePointerDown(); }}
+          onPointerUp={(e) => { e.stopPropagation(); handlePointerUp(); goNext(); }}
+          aria-label="Next"
+        />
+
+        {/* Top overlay */}
+        <div className="absolute inset-x-0 top-0 z-20 px-3 pt-3">
+          {/* Progress bars */}
+          <div className="flex gap-1">
+            {slides.map((s, i) => (
+              <div key={s.id} className="h-[2px] flex-1 overflow-hidden rounded-full bg-white/25">
+                <div className="h-full rounded-full bg-white transition-none"
+                  style={{ width: i < idx ? '100%' : i === idx ? `${progress}%` : '0%' }} />
+              </div>
+            ))}
           </div>
 
-          {active.isOwn && (
-            <button
-              onClick={() => onDelete?.(active.id)}
-              className="rounded-full bg-black/30 p-1.5 text-white/60 backdrop-blur-sm hover:text-red-400 transition-colors"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          )}
+          {/* Avatar + name row */}
+          <div className="mt-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {active.user.avatar_url ? (
+                <img src={active.user.avatar_url} alt="" className="h-7 w-7 rounded-full object-cover ring-1 ring-white/30 shrink-0" />
+              ) : (
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/20 text-[10px] font-bold text-white ring-1 ring-white/30">
+                  {active.user.username.slice(0, 2).toUpperCase()}
+                </div>
+              )}
+              <div className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[13px] font-semibold text-white drop-shadow">{active.user.username}</span>
+                  {hasPremiumPlan(active.user.sub_plan) && (
+                    <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(active.user.sub_plan)} />
+                  )}
+                  <span className="text-[11px] text-white/45">{timeAgo(active.created_at)}</span>
+                </div>
+                {hasMusic && (
+                  <div className="flex items-center gap-[3px]">
+                    <Music className="h-[7px] w-[7px] shrink-0 text-white/30" />
+                    <span className="text-[7.5px] text-white/50 truncate max-w-[70px]">{active.music_title}</span>
+                    {active.music_artist && (
+                      <span className="text-[7px] text-white/30 truncate max-w-[45px]">· {active.music_artist}</span>
+                    )}
+                    <div className="flex items-end gap-[1.5px]" style={{ height: 6 }}>
+                      {WAVE_DELAYS.map((delay, i) => (
+                        <div key={i} className="w-[1px] rounded-full bg-white/40"
+                          style={{ height: '1.5px', animation: showWaves ? `sv-wave 0.75s ${delay}ms ease-in-out infinite` : 'none' }} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-0.5">
+              {hasAudio && (
+                <button
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onPointerUp={(e) => { e.stopPropagation(); setMuted(m => !m); }}
+                  className="rounded-full p-1.5 text-white/60 hover:text-white transition-colors">
+                  {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                </button>
+              )}
+              {active.isOwn && (
+                <button
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onPointerUp={(e) => { e.stopPropagation(); onDelete?.(active.id); }}
+                  className="rounded-full p-1.5 text-white/60 hover:text-red-400 transition-colors">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+              <button
+                onPointerDown={(e) => e.stopPropagation()}
+                onPointerUp={(e) => { e.stopPropagation(); onClose(); }}
+                className="rounded-full p-1.5 text-white/60 hover:text-white transition-colors">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
         </div>
 
-        {/* media */}
-        <div className="relative flex-1 overflow-hidden bg-black">
-          {active.type === 'video' ? (
-            <video
-              key={active.id}
-              src={active.media_url}
-              className="h-full w-full object-cover"
-              autoPlay
-              muted
-              playsInline
-              loop={false}
-              onEnded={goNext}
-            />
-          ) : (
-            <img
-              key={active.id}
-              src={active.media_url}
-              alt={active.caption ?? ''}
-              className="h-full w-full object-cover"
-              draggable={false}
-            />
-          )}
-
-          {/* tap zones */}
-          <button
-            className="absolute inset-y-0 left-0 w-1/3 select-none"
-            onClick={goPrev}
-            aria-label="Previous story"
-          />
-          <button
-            className="absolute inset-y-0 right-0 w-2/3 select-none"
-            onClick={goNext}
-            aria-label="Next story"
-          />
-        </div>
-
-        {/* bottom overlay */}
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent px-4 pb-5 pt-16">
+        {/* Bottom overlay */}
+        <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/70 via-black/10 to-transparent px-4 pb-5 pt-20">
           {active.caption && (
             <p className="mb-2 text-[13px] font-medium leading-snug text-white drop-shadow">
               {active.caption}
             </p>
           )}
-
           {active.isOwn && active.viewsCount !== undefined && (
             <div className="flex items-center gap-1.5 text-[11px] text-white/50">
               <Eye className="h-3 w-3" />
@@ -241,17 +291,13 @@ export function StoryViewer({ slides, startId, onClose, onView, onDelete }: Stor
         </div>
       </div>
 
-      {/* side thumbnails — visible on wider screens */}
+      {/* Side thumbnails on wide screens */}
       <div className="absolute right-4 top-1/2 hidden -translate-y-1/2 flex-col gap-2 xl:flex">
         {slides.slice(0, 6).map((s, i) => (
-          <button
-            key={s.id}
-            onClick={() => { setIdx(i); setProgress(0); elapsedRef.current = 0; }}
-            className={cn(
-              'h-14 w-10 overflow-hidden rounded-lg border-2 transition-all',
-              i === idx ? 'border-white scale-105' : 'border-transparent opacity-50 hover:opacity-80',
-            )}
-          >
+          <button key={s.id}
+            onClick={() => { setIdx(i); elapsedRef.current = 0; }}
+            className={cn('h-14 w-10 overflow-hidden rounded-lg border-2 transition-all',
+              i === idx ? 'border-white scale-105' : 'border-transparent opacity-50 hover:opacity-80')}>
             <img src={s.media_url} alt="" className="h-full w-full object-cover" />
           </button>
         ))}

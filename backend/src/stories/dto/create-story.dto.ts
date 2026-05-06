@@ -10,4 +10,20 @@ export class CreateStoryDto {
   @IsString()
   @IsOptional()
   caption?: string;
+
+  @IsString()
+  @IsOptional()
+  music_preview_url?: string;
+
+  @IsString()
+  @IsOptional()
+  music_title?: string;
+
+  @IsString()
+  @IsOptional()
+  music_artist?: string;
+
+  @IsString()
+  @IsOptional()
+  music_cover_url?: string;
 }

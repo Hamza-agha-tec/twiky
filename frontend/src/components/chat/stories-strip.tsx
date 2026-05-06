@@ -51,7 +51,7 @@ export function StoriesStrip({ bubbles, onAdd, onOpen }: StoriesStripProps) {
               className={cn(
                 'relative rounded-full p-[2px] transition-transform group-hover:scale-105',
                 b.hasUnseen
-                  ? 'bg-gradient-to-tr from-violet-500 via-fuchsia-500 to-pink-500'
+                  ? 'bg-gradient-to-tr from-[#0080c8] via-[#38b6d8] to-[#92dce5]'
                   : b.hasStory
                     ? 'bg-muted-foreground/30'
                     : 'bg-border',

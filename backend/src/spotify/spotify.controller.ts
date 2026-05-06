@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Delete, Get, Param, Query, Request, Res, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Delete, Get, Param, Query, Request, Res, UseGuards, ParseIntPipe, Optional } from '@nestjs/common';
 import type { Response } from 'express';
 import { SpotifyService } from './spotify.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -64,5 +64,12 @@ export class SpotifyController {
   @Get('profile/:userId')
   async getProfile(@Request() req: any, @Param('userId') targetUserId: string) {
     return this.spotifyService.getDetailedProfile(targetUserId, req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('search')
+  async search(@Query('q') q: string) {
+    if (!q?.trim()) throw new BadRequestException('Missing search query');
+    return this.spotifyService.searchTracks(q.trim());
   }
 }

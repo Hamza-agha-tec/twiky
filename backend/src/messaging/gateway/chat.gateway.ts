@@ -170,6 +170,15 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     return { status: 'broadcast', userId };
   }
 
+  @SubscribeMessage('profilePrivacyChanged')
+  handleProfilePrivacyChanged(@ConnectedSocket() client: Socket) {
+    const userId = client.data.user?.userId;
+    if (!userId) return;
+
+    this.server.emit('profilePrivacyChanged', { userId });
+    return { status: 'broadcast', userId };
+  }
+
   // ==========================================
   // SPOTIFY NOW PLAYING
   // ==========================================
