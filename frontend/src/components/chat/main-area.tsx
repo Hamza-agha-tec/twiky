@@ -57,43 +57,20 @@ export function MainArea({
     : children
 
   const header = (
-    <div className="flex-shrink-0 border-b border-border bg-sidebar">
-      <div className="flex h-[52px] items-center gap-3 px-4">
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <GroupIcon className="h-4 w-4" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <p className="text-[13px] font-semibold text-foreground">{groupScopeLabel}</p>
-            <span className="hidden text-[12px] text-muted-foreground sm:block">
-              — {activeGroup.membersLabel}
-            </span>
-          </div>
-          <p className="hidden truncate text-[11px] text-muted-foreground sm:block">
-            {activeChannel.label} · {activeChannel.groups.length} groups
-          </p>
-        </div>
+    <div className="flex h-[52px] flex-shrink-0 items-center gap-3 border-b border-border bg-sidebar px-4">
+      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        <GroupIcon className="h-4 w-4" />
       </div>
-
-      <div className="flex items-center gap-0 border-t border-border/40 px-2">
-        {CHANNEL_TABS.filter(tab => activeChannel.type === 'WORKSPACE' || tab.id === 'feed').map(({ id, label, icon: Icon }) => {
-          const isActive = activeTab === id
-          return (
-            <button
-              key={id}
-              onClick={() => onTabChange?.(id)}
-              className={cn(
-                'flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-[12px] font-semibold transition-colors',
-                isActive
-                  ? 'border-primary text-foreground'
-                  : 'border-transparent text-muted-foreground hover:border-border hover:text-foreground/80',
-              )}
-            >
-              <Icon className={cn('h-3.5 w-3.5', isActive ? 'text-primary' : '')} />
-              {label}
-            </button>
-          )
-        })}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p className="text-[13px] font-semibold text-foreground">{groupScopeLabel}</p>
+          <span className="hidden text-[12px] text-muted-foreground sm:block">
+            — {activeGroup.membersLabel}
+          </span>
+        </div>
+        <p className="hidden truncate text-[11px] text-muted-foreground sm:block">
+          {activeChannel.label} · {activeChannel.groups.length} groups
+        </p>
       </div>
     </div>
   )

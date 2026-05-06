@@ -751,15 +751,16 @@ function MessageRow({
       <Popover open={profileOpen} onOpenChange={setProfileOpen}>
         <div
           className={cn(
-            'group relative flex gap-3 px-4 transition-colors hover:bg-accent/20',
-            isGrouped ? 'py-0.5' : 'mt-4 pt-1 pb-0.5',
+            'group relative flex gap-3 px-4 py-0.5 transition-colors hover:bg-accent/20',
+            !isGrouped && 'mt-3 pt-1',
           )}
           onContextMenu={onContextMenu}
         >
-          <div className="mt-0.5 w-10 flex-shrink-0">
+          {/* Avatar — always shown */}
+          <div className="mt-0.5 w-9 flex-shrink-0">
             <PopoverTrigger asChild>
               <button
-                className="flex h-10 w-10 cursor-pointer overflow-hidden rounded-full ring-2 ring-background focus:outline-none"
+                className="flex h-9 w-9 cursor-pointer overflow-hidden rounded-full ring-2 ring-background focus:outline-none"
                 aria-label={`Open ${post.author} actions`}
               >
                 <UserAvatar src={displayAvatar} alt={post.author} className="h-full w-full rounded-full object-cover" />
@@ -768,20 +769,18 @@ function MessageRow({
           </div>
 
           <div className="min-w-0 flex-1">
-            {!isGrouped ? (
-              <div className="mb-0.5 flex items-baseline gap-2">
-                <button
-                  onClick={() => setProfileOpen(true)}
-                  className={cn('inline-flex items-center gap-1 text-[14px] font-semibold leading-none hover:underline', roleColor)}
-                >
-                  {post.author}
-                  {resolvedProfile.isVerified ? <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(resolvedProfile.subPlan)} /> : null}
-                </button>
-                <RoleBadge role={post.role} />
-                <span className="text-[11px] text-muted-foreground">{post.time}</span>
-                {post.pinned ? <Pin className="h-3 w-3 text-primary" /> : null}
-              </div>
-            ) : null}
+            {/* Name + time — always shown */}
+            <div className="mb-0.5 flex items-baseline gap-2">
+              <button
+                onClick={() => setProfileOpen(true)}
+                className={cn('inline-flex items-center gap-1 text-[14px] font-semibold leading-none hover:underline', roleColor)}
+              >
+                {post.author}
+                {resolvedProfile.isVerified ? <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(resolvedProfile.subPlan)} /> : null}
+              </button>
+              <span className="text-[11px] text-muted-foreground">{post.time}</span>
+              {post.pinned ? <Pin className="h-3 w-3 text-primary" /> : null}
+            </div>
 
             {post.replyTo ? (
               <div className="mb-1 flex cursor-pointer items-center gap-2 opacity-70 transition-opacity hover:opacity-100">
@@ -804,7 +803,7 @@ function MessageRow({
                     <img
                       src={post.imageUrl}
                       alt="Uploaded"
-                      className="max-h-32 max-w-[200px] cursor-pointer rounded-xl transition-opacity hover:opacity-90"
+                      className="max-h-56 max-w-[300px] cursor-pointer rounded-lg object-cover transition-opacity hover:opacity-90"
                       onClick={() => setLightboxSrc(post.imageUrl!)}
                     />
                   ) : (
@@ -1013,20 +1012,11 @@ function formatProfileTime(value: string) {
 
 function formatUserPostTime(value: string) {
   const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return 'RECENTLY'
-
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMinutes = Math.floor(diffMs / 60000)
-  const diffHours = Math.floor(diffMinutes / 60)
-  const diffDays = Math.floor(diffHours / 24)
-
-  if (diffMinutes < 1) return 'JUST NOW'
-  if (diffMinutes < 60) return `${diffMinutes}M AGO`
-  if (diffHours < 24) return `${diffHours}H AGO`
-  if (diffDays < 7) return `${diffDays}D AGO`
-
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }).toUpperCase()
+  if (Number.isNaN(date.getTime())) return 'Today'
+  const month = date.toLocaleDateString('en-US', { month: 'short' })
+  const day = date.getDate()
+  const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+  return `${month} ${day}, ${time}`
 }
 
 function FeedMemberProfileSkeleton({ onBack }: { onBack: () => void }) {
@@ -1726,6 +1716,7 @@ export function FeedMemberProfileView({
 function FeedProfileRow({
   authorAvatarUrl,
   memberProfile,
+  mentionRef,
   onOpenProfile,
   post,
   isGrouped,
@@ -1739,6 +1730,7 @@ function FeedProfileRow({
 }: {
   authorAvatarUrl?: string | null
   memberProfile: FeedMemberProfile
+  mentionRef?: (el: HTMLDivElement | null) => void
   onOpenProfile: () => void
   post: FeedPost
   isGrouped: boolean
@@ -1759,42 +1751,39 @@ function FeedProfileRow({
   return (
     <>
     <div
+      ref={mentionRef}
+      data-post-id={post.id}
       className={cn(
         'group relative flex gap-3 px-4 transition-colors hover:bg-accent/20',
-        isGrouped ? 'py-0.5' : 'mt-4 pt-1 pb-0.5',
-        isMentioned && 'bg-amber-500/10 border-l-2 border-amber-400',
+        'mt-2 py-0.5',
+        isMentioned && 'border-l-2 border-primary bg-primary/[0.06]',
       )}
       onContextMenu={onContextMenu}
     >
-      <div className="mt-0.5 w-10 flex-shrink-0">
-        {!isGrouped ? (
-          <button
-            type="button"
-            onClick={onOpenProfile}
-            className="flex h-10 w-10 cursor-pointer overflow-hidden rounded-full ring-2 ring-background focus:outline-none"
-            aria-label={`Open ${post.author} profile`}
-          >
-            <UserAvatar src={displayAvatar} alt={post.author} className="h-full w-full object-cover" />
-          </button>
-        ) : null}
+      <div className="mt-0.5 w-9 flex-shrink-0">
+        <button
+          type="button"
+          onClick={onOpenProfile}
+          className="flex h-9 w-9 cursor-pointer overflow-hidden rounded-full ring-2 ring-background focus:outline-none"
+          aria-label={`Open ${post.author} profile`}
+        >
+          <UserAvatar src={displayAvatar} alt={post.author} className="h-full w-full object-cover" />
+        </button>
       </div>
 
       <div className="min-w-0 flex-1">
-        {!isGrouped ? (
-          <div className="mb-0.5 flex items-baseline gap-2">
-            <button
-              type="button"
-              onClick={onOpenProfile}
-              className={cn('inline-flex items-center gap-1 text-[14px] font-semibold leading-none hover:underline', roleColor)}
-            >
-              {post.author}
-              {memberProfile.isVerified ? <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(memberProfile.subPlan)} /> : null}
-            </button>
-            <RoleBadge role={post.role} />
-            <span className="text-[11px] text-muted-foreground">{post.time}</span>
-            {post.pinned ? <Pin className="h-3 w-3 text-primary" /> : null}
-          </div>
-        ) : null}
+        <div className="mb-0.5 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onOpenProfile}
+            className={cn('inline-flex items-center gap-1 text-[14px] font-semibold leading-none hover:underline', roleColor)}
+          >
+            {post.author}
+            {memberProfile.isVerified ? <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(memberProfile.subPlan)} /> : null}
+          </button>
+          <span className="text-[11px] text-muted-foreground">{post.time}</span>
+          {post.pinned ? <Pin className="h-3 w-3 text-primary" /> : null}
+        </div>
 
         {post.replyTo ? (
           <div className="mb-1 flex cursor-pointer items-center gap-2 opacity-70 transition-opacity hover:opacity-100">
@@ -1817,7 +1806,7 @@ function FeedProfileRow({
                 <img
                   src={post.imageUrl}
                   alt="Uploaded"
-                  className="max-h-32 max-w-[200px] cursor-pointer rounded-xl transition-opacity hover:opacity-90"
+                  className="max-h-56 max-w-[300px] cursor-pointer rounded-lg object-cover transition-opacity hover:opacity-90"
                   onClick={() => setLightboxSrc(post.imageUrl!)}
                 />
               ) : (
@@ -1951,6 +1940,30 @@ export function ChannelFeed({
   const [selectedProfile, setSelectedProfile] = useState<FeedProfileSelection | null>(null)
   const [mentionCursorByGroup, setMentionCursorByGroup] = useState<Record<string, number>>({})
   const [activeMentionIndex, setActiveMentionIndex] = useState(0)
+  const [pinnedBarDismissed, setPinnedBarDismissed] = useState(false)
+  const [mentionIndex, setMentionIndex] = useState(0)
+  const [unseenMentionIds, setUnseenMentionIds] = useState<Set<string>>(new Set())
+  const mentionRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const mentionObserverRef = useRef<IntersectionObserver | null>(null)
+
+  function seenStorageKey() { return `twiky-seen-mentions:${group.id}` }
+  function getPersistedSeen(): Set<string> {
+    try { return new Set(JSON.parse(localStorage.getItem(seenStorageKey()) ?? '[]')) }
+    catch { return new Set() }
+  }
+  function persistSeen(ids: Set<string>) {
+    try { localStorage.setItem(seenStorageKey(), JSON.stringify([...ids])) }
+    catch {}
+  }
+
+  // Reset per-group state when switching groups
+  useEffect(() => {
+    setPinnedBarDismissed(false)
+    setMentionIndex(0)
+    setUnseenMentionIds(new Set())
+    mentionRefs.current.clear()
+    mentionObserverRef.current?.disconnect()
+  }, [group.id])
 
   const removeMember = useRemoveGroupMember(group.id)
   const updateMemberRole = useUpdateGroupMemberRole(group.id)
@@ -2361,7 +2374,7 @@ export function ChannelFeed({
       id: `${group.id}-${Date.now()}`,
       author: 'You',
       role: channel.role ? channel.role.charAt(0).toUpperCase() + channel.role.slice(1).toLowerCase() : 'Member',
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      time: formatUserPostTime(new Date().toISOString()),
       body,
       isOwn: true,
       imageUrl: draftImage,
@@ -2604,16 +2617,18 @@ export function ChannelFeed({
   }
 
   function handleTogglePin(postId: string) {
-    if (onTogglePin) {
-      void Promise.resolve(onTogglePin(postId)).catch((err) => {
-        toast.error(err instanceof Error ? err.message : 'Could not update pin')
-      })
-      return
-    }
-
     updatePosts((current) =>
       current.map((p) => (p.id === postId ? { ...p, pinned: !p.pinned } : p)),
     )
+    if (onTogglePin) {
+      void Promise.resolve(onTogglePin(postId)).catch((err) => {
+        // revert on failure
+        updatePosts((current) =>
+          current.map((p) => (p.id === postId ? { ...p, pinned: !p.pinned } : p)),
+        )
+        toast.error(err instanceof Error ? err.message : 'Could not update pin')
+      })
+    }
   }
 
   function handleDelete(postId: string) {
@@ -2646,9 +2661,137 @@ export function ChannelFeed({
     pendingGenericFile
   )
 
+  const myUsername = profile?.username
+  const pinnedPosts = posts.filter(p => p.pinned && !p.isSystem)
+  const latestPin = pinnedPosts[pinnedPosts.length - 1] ?? null
+  const mentionedPosts = posts.filter(p =>
+    !p.isOwn && !p.isSystem && p.role !== 'Automation' && !!myUsername && !!p.body && (
+      p.body.toLowerCase().includes(`@${myUsername.toLowerCase()}`) ||
+      /(?:^|\s)@all\b/i.test(p.body)
+    )
+  )
+
+  // Sync unseen set — exclude already-seen from localStorage
+  useEffect(() => {
+    if (mentionedPosts.length === 0) return
+    const alreadySeen = getPersistedSeen()
+    setUnseenMentionIds(prev => {
+      const next = new Set(prev)
+      let changed = false
+      mentionedPosts.forEach(p => {
+        if (!alreadySeen.has(p.id) && !next.has(p.id)) {
+          next.add(p.id)
+          changed = true
+        }
+      })
+      return changed ? next : prev
+    })
+  }, [mentionedPosts.map(p => p.id).join(',')])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // IntersectionObserver — mark mention as seen when scrolled into view, persist to localStorage
+  useEffect(() => {
+    mentionObserverRef.current?.disconnect()
+    if (mentionRefs.current.size === 0) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const newlySeen: string[] = []
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const id = (entry.target as HTMLElement).dataset.postId
+            if (id) newlySeen.push(id)
+          }
+        })
+        if (newlySeen.length === 0) return
+        setUnseenMentionIds(prev => {
+          const next = new Set(prev)
+          newlySeen.forEach(id => next.delete(id))
+          if (next.size === prev.size) return prev
+          // Persist the newly-seen IDs
+          const allSeen = getPersistedSeen()
+          newlySeen.forEach(id => allSeen.add(id))
+          persistSeen(allSeen)
+          return next
+        })
+      },
+      { threshold: 0.6 },
+    )
+
+    mentionRefs.current.forEach(el => observer.observe(el))
+    mentionObserverRef.current = observer
+    return () => observer.disconnect()
+  }, [mentionedPosts.map(p => p.id).join(',')])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const unseenMentions = mentionedPosts.filter(p => unseenMentionIds.has(p.id))
+
+  function jumpToMention(dir: 1 | -1 = 1) {
+    if (unseenMentions.length === 0) return
+    const next = (mentionIndex + dir + unseenMentions.length) % unseenMentions.length
+    setMentionIndex(next)
+    const el = mentionRefs.current.get(unseenMentions[next].id)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
+  function scrollToPinnedMessage(postId: string) {
+    const el = feedScrollRef.current?.querySelector(`[data-post-id="${postId}"]`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
   return (
     <div className="flex flex-1 overflow-hidden bg-background">
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+
+      {/* Pinned message bar */}
+      {latestPin && !pinnedBarDismissed && (
+        <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-1.5 text-[12px]">
+          <Pin className="h-3 w-3 shrink-0 text-primary" />
+          <button
+            type="button"
+            onClick={() => scrollToPinnedMessage(latestPin.id)}
+            className="min-w-0 flex-1 truncate text-left font-medium text-foreground hover:underline"
+          >
+            <span className="text-muted-foreground mr-1">{latestPin.author}:</span>
+            {latestPin.body || 'Attachment'}
+          </button>
+          {pinnedPosts.length > 1 && (
+            <span className="shrink-0 text-[10px] text-muted-foreground">{pinnedPosts.length} pinned</span>
+          )}
+          <button
+            type="button"
+            onClick={() => setPinnedBarDismissed(true)}
+            className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
+
+      {/* Discord-style mention jump button — hides when all mentions seen */}
+      {unseenMentions.length > 0 && (
+        <div className="absolute bottom-20 right-4 z-20 flex items-center overflow-hidden rounded-full bg-primary shadow-xl">
+          <button
+            type="button"
+            onClick={() => jumpToMention(-1)}
+            className="px-2 py-1.5 text-[12px] font-bold text-primary-foreground transition-colors hover:bg-white/15"
+            title="Previous mention"
+          >↑</button>
+          <button
+            type="button"
+            onClick={() => jumpToMention(1)}
+            className="flex items-center gap-1 border-x border-white/20 px-2.5 py-1.5 text-primary-foreground transition-colors hover:bg-white/15"
+          >
+            <span className="text-[12px] font-bold">@</span>
+            <span className="text-[11px] font-semibold">{unseenMentions.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => jumpToMention(1)}
+            className="px-2 py-1.5 text-[12px] font-bold text-primary-foreground transition-colors hover:bg-white/15"
+            title="Next mention"
+          >↓</button>
+        </div>
+      )}
+
       {/* Messages list */}
       <div ref={feedScrollRef} className="flex-1 overflow-y-auto py-2">
         <div className="pb-2">
@@ -2664,8 +2807,7 @@ export function ChannelFeed({
             const isSystem = post.isSystem || (post.author === 'System' && post.role === 'Automation')
             const isGrouped = !!prevPost && !isSystem && !prevPost.isSystem && prevPost.author === post.author
             const authorContext = getAuthorContext(post)
-            const myUsername = profile?.username
-            const isMentioned = !post.isOwn && !!myUsername && !!post.body && (
+            const isMentioned = !post.isOwn && !post.isSystem && post.role !== 'Automation' && !!myUsername && !!post.body && (
               post.body.toLowerCase().includes(`@${myUsername.toLowerCase()}`) ||
               /(?:^|\s)@all\b/i.test(post.body)
             )
@@ -2679,6 +2821,7 @@ export function ChannelFeed({
                 authorAvatarUrl={authorContext.profile.avatarUrl}
                 key={post.id}
                 memberProfile={authorContext.profile}
+                mentionRef={isMentioned ? (el) => { if (el) mentionRefs.current.set(post.id, el); else mentionRefs.current.delete(post.id) } : undefined}
                 onOpenProfile={() => {
                   setContextMenu(null)
                   setSelectedProfile({

@@ -556,7 +556,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       authorSubPlan: msg.sender?.sub_plan ?? null,
       isSystem,
       role: isSystem ? 'Automation' : getEffectiveRole(channelMemberRoleByUserId.get(msg.sender_id), groupMemberRoleByUserId.get(msg.sender_id)),
-      time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      time: (() => { const d = new Date(msg.created_at); return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`; })(),
       body: msg.content,
       isOwn: msg.sender_id === profile?.id,
       imageUrl: msg.file_url ?? undefined,
@@ -829,7 +829,15 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                   toast.dismiss(t)
                   try {
                     await invitationsApi.respond(invitation.id, 'ACCEPTED')
-                    handleJoinVoiceGroup(groupId)
+                    if (group?.kind === 'voice') {
+                      handleJoinVoiceGroup(groupId)
+                    } else {
+                      const channelForGroup = workspaceChannels.find((ch) => ch.groups.some((g) => g.id === groupId))
+                      if (channelForGroup) {
+                        setActiveChannelId(channelForGroup.id)
+                        setActiveGroupId(groupId)
+                      }
+                    }
                   } catch {}
                 }}
                 className="rounded-lg bg-primary px-3 py-1.5 text-[11px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
