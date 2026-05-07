@@ -23,7 +23,7 @@ import {
 import { ChatWindow } from '@/components/chat/chat-window'
 import { VoiceGroupView } from '@/components/chat/voice-group-view'
 import { useVoicePresence, type VoicePresenceUser } from '@/hooks/use-voice-presence'
-import { useWebRTC } from '@/hooks/use-webrtc'
+import { useLiveKitVoice } from '@/hooks/use-livekit-voice'
 import { DirectProfileSidebar } from '@/components/chat/direct-profile-sidebar'
 import { FeedProfileSidebarDock } from '@/components/chat/feed-profile-sidebar-dock'
 import { GoalsPanel } from '@/components/chat/goals-panel'
@@ -732,7 +732,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     )
   })
 
-  const webrtc = useWebRTC(voice.joinedGroupId, profile?.id ?? null, voice.isMuted)
+  const webrtc = useLiveKitVoice(voice.joinedGroupId, profile?.id ?? null, voice.isMuted)
 
   const handleCameraToggle = useCallback(async (enabled: boolean) => {
     const groupId = voice.joinedGroupId
