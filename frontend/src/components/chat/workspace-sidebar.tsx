@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Chat } from '@/lib/mock-data'
 import { cn } from '@/lib/utils'
+import { AppleText } from '@/components/chat/apple-text'
 
 const DEFAULT_PROFILE_IMAGE = '/defaultprofile.jpg'
 
@@ -379,7 +380,7 @@ export function WorkspaceSidebar({
                               hasUnread ? 'font-semibold text-foreground' : 'text-muted-foreground',
                               hasGeekBanner && 'group-hover/dm-card:text-white/80',
                             )}>
-                              {chat.lastMessage || ''}
+                              <AppleText text={chat.lastMessage || ''} emojiSize={11} />
                             </span>
                             {hasUnread ? (
                               <span className="shrink-0 rounded-full bg-primary px-1 py-0.5 text-center text-[9px] font-bold leading-none text-primary-foreground">

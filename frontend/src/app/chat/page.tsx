@@ -651,7 +651,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   }, [profile?.id, visibleDirectConversationId])
 
   const sendDirectMessage = useSendDirectMessage(activeDirectChat ?? '')
-  const toggleDirectReaction = useToggleDirectMessageReaction(activeDirectChat ?? '')
+  const toggleDirectReaction = useToggleDirectMessageReaction(profile?.id)
 
   const mentionedGroupIds = useMemo(
     () => new Set(
@@ -1409,7 +1409,8 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           })
         } : undefined}
         onReact={(messageId, emoji) => {
-          if (activeIsRealDirect) toggleDirectReaction.mutate({ messageId, emoji })
+          if (!activeIsRealDirect || !profile?.id) return
+          toggleDirectReaction.mutate({ messageId, emoji })
         }}
         onTyping={async (isTyping) => {
           if (!activeDirectChat || !activeIsRealDirect || !typingIndicatorsEnabled) return

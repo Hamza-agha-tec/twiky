@@ -133,6 +133,22 @@
   --animate-spotlight: spotlight 2s ease 0.75s 1 forwards;
 }
 
+/* ── emoji-mart theme sync ───────────────────────────────────────── */
+:root {
+  --em-rgb-background: 255, 255, 255;
+  --em-rgb-input: 242, 242, 242;
+  --em-rgb-color: 20, 20, 20;
+  --em-rgb-border: 214, 214, 214;
+  --em-rgb-accent: 0, 128, 200;
+}
+.dark {
+  --em-rgb-background: 36, 36, 36;
+  --em-rgb-input: 50, 50, 50;
+  --em-rgb-color: 240, 240, 240;
+  --em-rgb-border: 55, 55, 55;
+  --em-rgb-accent: 0, 128, 200;
+}
+
 /* ── Theme bubble transition (View Transitions API) ─────────────── */
 ::view-transition {
   pointer-events: none;

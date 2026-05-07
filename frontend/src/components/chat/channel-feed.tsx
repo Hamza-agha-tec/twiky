@@ -18,7 +18,6 @@ import {
   Bookmark,
   Crown,
   Heart,
-  ImagePlus,
   Mic,
   Square,
   MessageSquare,
@@ -32,7 +31,6 @@ import {
   SendHorizontal,
   Share2,
   Shield,
-  SmilePlus,
   Trash2,
   UserCheck,
   UserMinus,
@@ -45,13 +43,15 @@ import { FeedPostContextMenu } from '@/components/chat/feed-post-context-menu'
 import { UserAvatar } from '@/components/chat/user-avatar'
 import { VoiceMessagePlayer } from '@/components/chat/voice-message-player'
 import { VideoPlayer } from '@/components/chat/video-player'
+import { EmojiButton, GifButton, StickerButton, GiftButton } from '@/components/chat/media-picker'
+import { AppleText, EmojiImg } from '@/components/chat/apple-text'
+import { EmojiInput, type EmojiInputHandle } from '@/components/chat/emoji-input'
 import { VerifiedBadge, getVerifiedBadgeVariant, hasPremiumPlan, isVerifiedAccountIdentity } from '@/components/chat/verified-badge'
 import type { MockChannelGroup, WorkspaceChannel } from '@/components/chat/channels-panel'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Textarea } from '@/components/ui/textarea'
 import { type ChatMessage } from '@/hooks/use-messaging'
 import { useRemoveGroupMember, useUpdateGroupMemberRole } from '@/hooks/use-groups'
 import { useProfile, useSendFollowRequest, useUserById, useUserFollowers, useUserFollowing, useUserPosts } from '@/hooks/use-user'
@@ -160,7 +160,7 @@ function SystemFeedRow({ post }: { post: FeedPost }) {
     <div className="flex justify-center px-4 py-2">
       <div className="max-w-[80%] rounded-full border border-border/70 bg-muted/45 px-3 py-1.5 text-center">
         <p className="text-[12px] leading-5 text-muted-foreground">
-          {post.body}
+          <AppleText text={post.body} />
           <span className="ml-2 text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground/70">
             {post.time}
           </span>
@@ -283,13 +283,6 @@ const FEED_MEMBER_PROFILES: Record<string, Omit<FeedMemberProfile, 'avatarUrl' |
   },
 }
 
-const QUICK_EMOJIS = ['👍', '❤️', '😂', '🔥', '🎉', '😮']
-const ALL_EMOJIS = [
-  '👍','❤️','😂','😮','😢','😡','🔥','🎉',
-  '👀','✅','💯','🚀','⭐','💪','🙌','🤔',
-  '👏','🙏','😍','🤣','😎','💀','🫡','🤯',
-  '🥹','🫶','😤','🤝','👋','🎯','💡','🔔',
-]
 
 const ROLE_COLORS: Record<string, string> = {
   'Studio Lead':    'text-amber-500',
@@ -603,34 +596,10 @@ function getSuggestedAttachment(channel: WorkspaceChannel, group: MockChannelGro
   return FEED_MEDIA_LIBRARY.releaseBoard
 }
 
-function EmojiPickerPopover({
-  onSelect,
-  trigger,
-}: {
-  onSelect: (emoji: string) => void
-  trigger: React.ReactNode
-}) {
-  const [open, setOpen] = useState(false)
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent className="w-64 p-2" align="start">
-        <div className="grid grid-cols-8 gap-0.5">
-          {ALL_EMOJIS.map((emoji) => (
-            <button
-              key={emoji}
-              onClick={() => { onSelect(emoji); setOpen(false) }}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-lg transition-colors hover:bg-accent"
-            >
-              {emoji}
-            </button>
-          ))}
-        </div>
-      </PopoverContent>
-    </Popover>
-  )
-}
 
+function emojiToUnified(emoji: string): string {
+  return [...emoji].map(c => c.codePointAt(0)!.toString(16).toLowerCase()).join('-')
+}
 
 function ReactionsBar({
   reactions,
@@ -639,39 +608,29 @@ function ReactionsBar({
   reactions: FeedReaction[]
   onReact: (emoji: string) => void
 }) {
+  if (reactions.length === 0) return null
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-1 mt-1">
       {reactions.map((reaction) => (
-          <button
-            key={reaction.emoji}
-            type="button"
-            onClick={() => onReact(reaction.emoji)}
-            className={cn(
-              'inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[12px] font-medium transition-colors duration-100',
-              reaction.mine
-                ? 'border-primary/50 bg-primary/10 text-primary'
-                : 'border-border bg-background text-foreground hover:border-primary/40 hover:bg-primary/5',
-            )}
-            title={reaction.mine ? 'Click to remove your reaction' : 'Click to react'}
-          >
-            <span className="leading-none">{reaction.emoji}</span>
-            <span className="text-[10px] tabular-nums text-muted-foreground">{reaction.count}</span>
-          </button>
-        ))}
-
-        <EmojiPickerPopover
-          onSelect={onReact}
-          trigger={
-            <button
-              type="button"
-              className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-border bg-background px-2.5 py-1 text-[12px] font-medium text-muted-foreground transition-colors duration-100 hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
-            >
-              <SmilePlus className="h-3.5 w-3.5" />
-              {reactions.length > 0 ? 'Add' : 'React'}
-            </button>
-          }
-        />
+        <button
+          key={reaction.emoji}
+          type="button"
+          onClick={() => onReact(reaction.emoji)}
+          title={reaction.mine ? 'Remove reaction' : 'React'}
+          className={cn(
+            'group inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-all duration-150 select-none',
+            reaction.mine
+              ? 'bg-primary/15 text-primary ring-1 ring-primary/40 hover:bg-primary/20'
+              : 'bg-muted/60 text-muted-foreground ring-1 ring-border hover:bg-muted hover:text-foreground hover:ring-border/80',
+          )}
+        >
+          <EmojiImg value={reaction.emoji} unified={emojiToUnified(reaction.emoji)} size={15} />
+          <span className={cn('tabular-nums leading-none', reaction.mine ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')}>
+            {reaction.count}
+          </span>
+        </button>
+      ))}
     </div>
   )
 }
@@ -797,12 +756,12 @@ function MessageRow({
               <div className="mb-1 flex cursor-pointer items-center gap-2 opacity-70 transition-opacity hover:opacity-100">
                 <div className="ml-2 h-3 w-3 flex-shrink-0 rounded-tl border-l-2 border-t-2 border-muted-foreground" />
                 <span className="text-[11px] font-semibold text-muted-foreground">{post.replyTo.author}</span>
-                <span className="truncate text-[11px] text-muted-foreground">{post.replyTo.body}</span>
+                <AppleText text={post.replyTo.body ?? ''} className="truncate text-[11px] text-muted-foreground" />
               </div>
             ) : null}
 
             {post.body ? (
-              <p className="text-[13.5px] leading-[1.55] text-foreground">{post.body}</p>
+              <AppleText text={post.body} className="text-[13.5px] leading-[1.55] text-foreground" />
             ) : null}
 
             {(post.media?.length || post.imageUrl) ? (
@@ -1601,7 +1560,7 @@ export function FeedMemberProfileView({
                         <MoreHorizontal className="h-3.5 w-3.5" />
                       </button>
                     </div>
-                    <p className="mt-1.5 text-[11px] leading-[1.6] text-foreground">{post.body}</p>
+                    <AppleText text={post.body} className="mt-1.5 text-[11px] leading-[1.6] text-foreground" />
                   </div>
 
                   {mediaSource ? (
@@ -1807,7 +1766,7 @@ function FeedProfileRow({
         ) : null}
 
         {post.body ? (
-          <p className="text-[13.5px] leading-[1.55] text-foreground">{post.body}</p>
+          <AppleText text={post.body} className="text-[13.5px] leading-[1.55] text-foreground" />
         ) : null}
 
         {(post.media?.length || post.imageUrl) ? (
@@ -1997,7 +1956,7 @@ export function ChannelFeed({
   const imageInputRef = useRef<HTMLInputElement>(null)
   const genericFileInputRef = useRef<HTMLInputElement>(null)
   const feedScrollRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const textareaRef = useRef<EmojiInputHandle>(null)
   const blobUrlsRef = useRef<string[]>([])
   const previousGroupIdRef = useRef<string | null>(null)
 
@@ -2264,7 +2223,7 @@ export function ChannelFeed({
   }
 
   function syncMentionCursor() {
-    setMentionCursor(textareaRef.current?.selectionStart ?? draft.length)
+    setMentionCursor(textareaRef.current?.getCaretOffset() ?? draft.length)
   }
 
   function insertMention(option: MentionOption) {
@@ -2280,7 +2239,7 @@ export function ChannelFeed({
 
     requestAnimationFrame(() => {
       textareaRef.current?.focus()
-      textareaRef.current?.setSelectionRange(nextCursor, nextCursor)
+      textareaRef.current?.setCaretOffset(nextCursor)
     })
   }
 
@@ -2563,7 +2522,7 @@ export function ChannelFeed({
     }
   }
 
-  function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+  function handleKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     if (showMentionMenu) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
@@ -2873,7 +2832,7 @@ export function ChannelFeed({
               <div className="flex items-center gap-2 border-b border-border/60 bg-background/40 px-3 py-1.5">
                 <Reply className="h-3.5 w-3.5 flex-shrink-0 text-primary" />
                 <span className="text-[11px] font-semibold text-primary">Replying to {replyingTo.author}</span>
-                <span className="flex-1 truncate text-[11px] text-muted-foreground">{replyingTo.body}</span>
+                <AppleText text={replyingTo.body ?? ''} className="flex-1 truncate text-[11px] text-muted-foreground" />
                 <button
                   onClick={() => setReplyingTo(null)}
                   className="flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -2960,16 +2919,6 @@ export function ChannelFeed({
             <div className="flex items-end gap-1 px-2 py-2">
               {/* Left actions */}
               <div className="flex items-center gap-0.5">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
-                  onClick={() => imageInputRef.current?.click()}
-                  title="Upload image"
-                >
-                  <ImagePlus className="h-4 w-4" />
-                </Button>
                 <Button
                   type="button"
                   variant="ghost"
@@ -3062,12 +3011,12 @@ export function ChannelFeed({
                     })}
                   </div>
                 ) : null}
-                <Textarea
+                <EmojiInput
                   ref={textareaRef}
                   value={draft}
-                  onChange={(e) => {
-                    setDraft(e.target.value)
-                    setMentionCursor(e.target.selectionStart ?? e.target.value.length)
+                  onChange={(val) => {
+                    setDraft(val)
+                    syncMentionCursor()
                   }}
                   onBlur={() => {
                     window.setTimeout(() => setMentionCursor(0), 100)
@@ -3079,27 +3028,20 @@ export function ChannelFeed({
                   }}
                   onSelect={syncMentionCursor}
                   placeholder={`Message ${group.kind === 'voice' ? group.label : `#${group.label}`}`}
-                  rows={1}
-                  className="max-h-40 min-h-[36px] w-full resize-none border-0 bg-transparent px-2 py-2 text-[13px] leading-[1.5] shadow-none focus-visible:ring-0"
+                  className="max-h-40 min-h-[36px] w-full border-0 bg-transparent px-2 py-2 text-[13px] leading-[1.5] overflow-y-auto"
                 />
               </div>
 
               {/* Right actions */}
               <div className="flex items-center gap-0.5">
-                <EmojiPickerPopover
-                  onSelect={(emoji) => setDraft(draft + emoji)}
-                  trigger={
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
-                      title="Emoji"
-                    >
-                      <SmilePlus className="h-4 w-4" />
-                    </Button>
-                  }
+                <GifButton
+                  onGifSelect={(url) => onSendPost?.({ content: '', fileUrl: url, mime: 'image/gif', entityMentions: [] })}
                 />
+                <StickerButton
+                  onStickerSelect={(url) => onSendPost?.({ content: '', fileUrl: url, mime: 'image/gif', entityMentions: [] })}
+                />
+                <GiftButton />
+                <EmojiButton onEmojiSelect={(unified) => textareaRef.current?.insertEmoji(unified)} />
                 <Button
                   type="button"
                   onClick={() => void sendDraft()}
@@ -3113,13 +3055,6 @@ export function ChannelFeed({
             </div>
           </div>
 
-          <input
-            ref={imageInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleImageFile}
-          />
           <input
             ref={genericFileInputRef}
             type="file"
@@ -3144,6 +3079,7 @@ export function ChannelFeed({
             targetRole={selectedPost.role}
             viewerRole={channel.role}
             onClose={() => setContextMenu(null)}
+            onReact={(emoji) => handleReact(selectedPost.id, emoji)}
             onReply={() => { setReplyingTo(selectedPost); textareaRef.current?.focus() }}
             onCopy={() => void handleCopy(selectedPost)}
             onTogglePin={() => handleTogglePin(selectedPost.id)}

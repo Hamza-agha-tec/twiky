@@ -671,7 +671,26 @@ export class MessagingService {
             throw new ForbiddenException('Access denied.');
         }
 
-        return this.toggleReactionInternal('direct_messages', userId, messageId, emoji);
+        return this.toggleReactionInternal(
+            'direct_messages',
+            userId,
+            messageId,
+            emoji,
+            '*, sender:users!direct_messages_sender_id_fkey(id, username, fullname, avatar_url, is_verified, sub_plan)',
+        );
+    }
+
+    async getDirectConversationParticipantIds(conversationId: string) {
+        const { data: conversation, error } = await this.supabaseService
+            .getClient()
+            .from('direct_conversations')
+            .select('user_one_id, user_two_id')
+            .eq('id', conversationId)
+            .single();
+
+        if (error || !conversation) throw new NotFoundException('Conversation not found');
+
+        return [conversation.user_one_id, conversation.user_two_id].filter(Boolean);
     }
 
     async toggleGroupMessageReaction(userId: string, messageId: string, emoji: string) {
@@ -694,7 +713,13 @@ export class MessagingService {
 
         if (!member) throw new ForbiddenException('You are not a member of this group.');
 
-        return this.toggleReactionInternal('group_messages', userId, messageId, emoji);
+        return this.toggleReactionInternal(
+            'group_messages',
+            userId,
+            messageId,
+            emoji,
+            '*, sender:users!group_messages_sender_id_fkey(id, username, fullname, avatar_url, is_verified, sub_plan)',
+        );
     }
 
     async toggleGroupMessagePin(userId: string, messageId: string) {
@@ -723,7 +748,13 @@ export class MessagingService {
         return this.applyMessageSenderAvatarPrivacy(updated, userId);
     }
 
-    private async toggleReactionInternal(table: string, userId: string, messageId: string, emoji: string) {
+    private async toggleReactionInternal(
+        table: string,
+        userId: string,
+        messageId: string,
+        emoji: string,
+        selectQuery: string,
+    ): Promise<any> {
         const { data: message, error: fetchError } = await this.supabaseService
             .getClient()
             .from(table)
@@ -760,11 +791,11 @@ export class MessagingService {
             .from(table)
             .update({ reactions })
             .eq('id', messageId)
-            .select('*, sender:users(id, username, fullname, avatar_url, is_verified, sub_plan)')
+            .select(selectQuery)
             .single();
 
         if (updateError) throw new Error(`Failed to update reactions: ${updateError.message}`);
-        return this.applyMessageSenderAvatarPrivacy(updated, userId);
+        return this.applyMessageSenderAvatarPrivacy(updated as any, userId);
     }
 
     async sendSystemMessage(groupId: string, content: string) {

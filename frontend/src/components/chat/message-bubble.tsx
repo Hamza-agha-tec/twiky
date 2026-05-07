@@ -5,6 +5,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Check, CheckCheck, Forward, FileText, Download, X, Pin } from 'lucide-react';
 import { VoiceMessagePlayer } from './voice-message-player'
 import { VideoPlayer } from './video-player';
+import { AppleText, EmojiImg } from './apple-text';
 import { Message } from '@/lib/mock-data';
 import { format } from 'date-fns';
 import { useState, useEffect, useRef } from 'react';
@@ -150,7 +151,7 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
         <div ref={messageRef} className="max-w-xl">
           {message.type === 'text' && (
             <p className="text-sm text-foreground/90 wrap-break-word whitespace-pre-wrap leading-relaxed">
-              {searchHighlight ? <HighlightedText text={message.content} query={searchHighlight} /> : message.content}
+              {searchHighlight ? <HighlightedText text={message.content} query={searchHighlight} /> : <AppleText text={message.content} />}
               {message.isEdited && <span className="text-[10px] text-muted-foreground ml-1.5">(edited)</span>}
             </p>
           )}
@@ -219,22 +220,29 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
         {/* Reactions */}
         {messageReactions.length > 0 && (
           <div className="flex gap-1 mt-1 flex-wrap">
-            {messageReactions.map(({ emoji, count, reactedByMe }, idx) => (
+            {messageReactions.map(({ emoji, count, reactedByMe }) => (
               <motion.button
-                key={`${message.id}-r-${idx}`}
+                key={`${message.id}-r-${emoji}`}
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
-                whileHover={{ scale: 1.15 }}
+                whileHover={{ scale: 1.08 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => handleAddReaction(emoji)}
-                className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs border transition-colors ${
+                title={reactedByMe ? 'Remove reaction' : 'React'}
+                className={`group inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-all duration-150 select-none ${
                   reactedByMe
-                    ? 'bg-primary/15 border-primary/40 text-primary font-medium'
-                    : 'bg-muted border-border text-foreground hover:bg-accent'
+                    ? 'bg-primary/15 text-primary ring-1 ring-primary/40 hover:bg-primary/20'
+                    : 'bg-muted/60 text-muted-foreground ring-1 ring-border hover:bg-muted hover:text-foreground hover:ring-border/80'
                 }`}
               >
-                <span>{emoji}</span>
-                <span className={reactedByMe ? 'text-primary' : 'text-muted-foreground'}>{count}</span>
+                <EmojiImg
+                  value={emoji}
+                  unified={[...emoji].map(c => c.codePointAt(0)!.toString(16).toLowerCase()).join('-')}
+                  size={15}
+                />
+                <span className={reactedByMe ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'}>
+                  {count}
+                </span>
               </motion.button>
             ))}
           </div>
