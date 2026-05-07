@@ -15,8 +15,10 @@ import {
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   ArrowLeft,
+  BarChart3,
   Bookmark,
   Crown,
+  FileUp,
   Heart,
   Mic,
   Square,
@@ -70,6 +72,74 @@ interface FeedMedia {
 
 export type FeedSubPlan = 'FREE' | 'PRO' | 'GEEK'
 export type StoryRingState = 'none' | 'seen' | 'unseen'
+
+const FEED_POLL_PREFIX = '__twiky_poll__:'
+
+export interface FeedPollOption {
+  id: string
+  text: string
+  voters?: string[]
+  votes: number
+  votedByMe?: boolean
+}
+
+export interface FeedPoll {
+  allowMultiple?: boolean
+  options: FeedPollOption[]
+  question: string
+}
+
+function createPollPayload(question: string, optionTexts: string[], allowMultiple = false): FeedPoll {
+  return {
+    allowMultiple,
+    question: question.trim(),
+    options: optionTexts
+      .map((text, index) => ({
+        id: `option-${index + 1}`,
+        text: text.trim(),
+            voters: [],
+            votes: 0,
+            votedByMe: false,
+      }))
+      .filter((option) => option.text),
+  }
+}
+
+export function encodeFeedPollPayload(poll: FeedPoll) {
+  return `${FEED_POLL_PREFIX}${JSON.stringify(poll)}`
+}
+
+export function parseFeedPollPayload(value: string | null | undefined, currentUserId?: string | null): FeedPoll | null {
+  if (!value?.startsWith(FEED_POLL_PREFIX)) return null
+
+  try {
+    const parsed = JSON.parse(value.slice(FEED_POLL_PREFIX.length)) as Partial<FeedPoll>
+    const question = typeof parsed.question === 'string' ? parsed.question.trim() : ''
+    const options = Array.isArray(parsed.options)
+      ? parsed.options
+          .map((option, index) => ({
+            id: typeof option?.id === 'string' ? option.id : `option-${index + 1}`,
+            text: typeof option?.text === 'string' ? option.text.trim() : '',
+            voters: Array.isArray(option?.voters)
+              ? option.voters.filter((id: unknown): id is string => typeof id === 'string')
+              : [],
+            votes: typeof option?.votes === 'number' && Number.isFinite(option.votes) ? Math.max(0, option.votes) : 0,
+            votedByMe: Boolean(option?.votedByMe),
+          }))
+          .map((option) => ({
+            ...option,
+            votes: option.voters.length > 0 ? option.voters.length : option.votes,
+            votedByMe: currentUserId ? option.voters.includes(currentUserId) : option.votedByMe,
+          }))
+          .filter((option) => option.text)
+      : []
+
+    if (!question || options.length < 2) return null
+    return { allowMultiple: Boolean(parsed.allowMultiple), options, question }
+  } catch {
+    return null
+  }
+}
 
 function isProbablyImageUrl(url: string): boolean {
   try {
@@ -144,6 +214,7 @@ export interface FeedPost {
   body: string
   isOwn?: boolean
   media?: FeedMedia[]
+  poll?: FeedPoll
   imageUrl?: string
   attachmentType?: 'voice' | 'image' | 'file'
   attachmentMime?: string | null
@@ -635,6 +706,72 @@ function ReactionsBar({
   )
 }
 
+function FeedPollCard({
+  poll,
+  onVote,
+}: {
+  poll: FeedPoll
+  onVote: (optionId: string) => void
+}) {
+  const totalVotes = poll.options.reduce((total, option) => total + option.votes, 0)
+
+  return (
+    <div className="mt-2 w-full max-w-md rounded-xl border border-border bg-background/70 p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <BarChart3 className="h-3.5 w-3.5" />
+        </span>
+        <p className="min-w-0 flex-1 text-[13px] font-semibold leading-snug text-foreground">
+          {poll.question}
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        {poll.options.map((option) => {
+          const percent = totalVotes > 0 ? Math.round((option.votes / totalVotes) * 100) : 0
+
+          return (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => onVote(option.id)}
+              className={cn(
+                'relative w-full overflow-hidden rounded-lg border px-3 py-2 text-left transition-colors',
+                option.votedByMe
+                  ? 'border-primary/50 bg-primary/10'
+                  : 'border-border bg-muted/30 hover:bg-muted/55',
+              )}
+            >
+              <span
+                className="absolute inset-y-0 left-0 bg-primary/15 transition-[width]"
+                style={{ width: `${percent}%` }}
+              />
+              <span className="relative flex items-center gap-2">
+                <span
+                  className={cn(
+                    'h-3.5 w-3.5 shrink-0 rounded-full border',
+                    option.votedByMe ? 'border-primary bg-primary shadow-inner' : 'border-muted-foreground/40',
+                  )}
+                />
+                <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground">
+                  {option.text}
+                </span>
+                <span className="shrink-0 text-[11px] font-semibold tabular-nums text-muted-foreground">
+                  {percent}%
+                </span>
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      <p className="mt-2 text-[10px] text-muted-foreground">
+        {totalVotes} {totalVotes === 1 ? 'vote' : 'votes'}{poll.allowMultiple ? ' · multiple choices' : ''}
+      </p>
+    </div>
+  )
+}
+
 
 function MessageRow({
   authorAvatarUrl,
@@ -646,6 +783,7 @@ function MessageRow({
   isGrouped,
   myAvatarUrl,
   onReact,
+  onPollVote,
   onReply,
   onPin,
   onDelete,
@@ -660,6 +798,7 @@ function MessageRow({
   isGrouped: boolean
   myAvatarUrl?: string | null
   onReact: (emoji: string) => void
+  onPollVote: (optionId: string) => void
   onReply: () => void
   onPin: () => void
   onDelete: () => void
@@ -762,6 +901,10 @@ function MessageRow({
 
             {post.body ? (
               <AppleText text={post.body} className="text-[13.5px] leading-[1.55] text-foreground" />
+            ) : null}
+
+            {post.poll ? (
+              <FeedPollCard poll={post.poll} onVote={onPollVote} />
             ) : null}
 
             {(post.media?.length || post.imageUrl) ? (
@@ -1695,6 +1838,7 @@ function FeedProfileRow({
   myAvatarUrl,
   isMentioned,
   onReact,
+  onPollVote,
   onReply,
   onPin,
   onDelete,
@@ -1709,6 +1853,7 @@ function FeedProfileRow({
   myAvatarUrl?: string | null
   isMentioned?: boolean
   onReact: (emoji: string) => void
+  onPollVote: (optionId: string) => void
   onReply: () => void
   onPin: () => void
   onDelete: () => void
@@ -1767,6 +1912,10 @@ function FeedProfileRow({
 
         {post.body ? (
           <AppleText text={post.body} className="text-[13.5px] leading-[1.55] text-foreground" />
+        ) : null}
+
+        {post.poll ? (
+          <FeedPollCard poll={post.poll} onVote={onPollVote} />
         ) : null}
 
         {(post.media?.length || post.imageUrl) ? (
@@ -1875,6 +2024,7 @@ export function ChannelFeed({
   onProfileCloseRequestChange,
   onCloseFeedRequest,
   onToggleReaction,
+  onPollVote,
   onTogglePin,
   onDeletePost,
 }: {
@@ -1902,6 +2052,7 @@ export function ChannelFeed({
   onProfileCloseRequestChange?: (closeFn: (() => void) | null) => void
   onCloseFeedRequest?: () => void
   onToggleReaction?: (postId: string, emoji: string) => Promise<void> | void
+  onPollVote?: (postId: string, optionId: string) => Promise<void> | void
   onTogglePin?: (postId: string) => Promise<void> | void
   onDeletePost?: (postId: string) => Promise<void> | void
 }) {
@@ -1966,6 +2117,11 @@ export function ChannelFeed({
   const [voiceRecording, setVoiceRecording] = useState(false)
   const [voiceUploading, setVoiceUploading] = useState(false)
   const [voiceSeconds, setVoiceSeconds] = useState(0)
+  const [actionMenuOpen, setActionMenuOpen] = useState(false)
+  const [pollModalOpen, setPollModalOpen] = useState(false)
+  const [pollQuestion, setPollQuestion] = useState('')
+  const [pollOptions, setPollOptions] = useState(['', ''])
+  const [pollAllowMultiple, setPollAllowMultiple] = useState(false)
   const voiceStopRef = useRef<(() => Promise<void>) | null>(null)
 
   const posts = postsByGroup[group.id] ?? postsOverride ?? buildFallbackPosts(channel, group)
@@ -2307,6 +2463,71 @@ export function ChannelFeed({
     setPendingGenericFile(null)
   }
 
+  function resetPollModal() {
+    setPollQuestion('')
+    setPollOptions(['', ''])
+    setPollAllowMultiple(false)
+  }
+
+  function openPollModal() {
+    setActionMenuOpen(false)
+    setPollModalOpen(true)
+  }
+
+  async function createPoll() {
+    const question = pollQuestion.trim()
+    const options = pollOptions.map((option) => option.trim()).filter(Boolean)
+
+    if (!question) {
+      toast.error('Add a poll question')
+      return
+    }
+
+    if (options.length < 2) {
+      toast.error('Add at least two poll options')
+      return
+    }
+
+    const poll = createPollPayload(question, options.slice(0, 6), pollAllowMultiple)
+
+    if (onSendPost) {
+      setPostUploading(true)
+      try {
+        await onSendPost({
+          content: encodeFeedPollPayload(poll),
+          entityMentions: [],
+          replyToId: replyingTo?.id,
+        })
+        setReplyingTo(null)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to create poll')
+        return
+      } finally {
+        setPostUploading(false)
+      }
+    } else {
+      const post: FeedPost = {
+        id: `${group.id}-poll-${Date.now()}`,
+        author: 'You',
+        role: channel.role ? channel.role.charAt(0).toUpperCase() + channel.role.slice(1).toLowerCase() : 'Member',
+        time: formatUserPostTime(new Date().toISOString()),
+        body: '',
+        isOwn: true,
+        poll,
+        reactions: [],
+        replyCount: 0,
+        replyTo: replyingTo
+          ? { author: replyingTo.author, body: replyingTo.body.slice(0, 60) + (replyingTo.body.length > 60 ? '...' : '') }
+          : undefined,
+      }
+      updatePosts((current) => [...current, post])
+      setReplyingTo(null)
+    }
+
+    resetPollModal()
+    setPollModalOpen(false)
+  }
+
   async function sendDraft() {
     const body = draft.trim()
     const hasQueuedFile = !!(pendingImageFile || pendingGenericFile)
@@ -2591,6 +2812,65 @@ export function ChannelFeed({
     if (onToggleReaction) void onToggleReaction(postId, emoji)
   }
 
+  function handlePollVote(postId: string, optionId: string) {
+    updatePosts((current) =>
+      current.map((post) => {
+        if (post.id !== postId || !post.poll) return post
+
+        const selected = post.poll.options.find((option) => option.id === optionId)
+        if (!selected) return post
+        const removingVote = Boolean(selected.votedByMe)
+
+        return {
+          ...post,
+          poll: {
+            ...post.poll,
+            options: post.poll.options.map((option) => {
+              if (post.poll?.allowMultiple) {
+                if (option.id !== optionId) return option
+                const voters = option.votedByMe
+                  ? option.voters?.filter((id) => id !== (profile?.id ?? 'me')) ?? []
+                  : [...(option.voters ?? []), profile?.id ?? 'me']
+                return {
+                  ...option,
+                  voters,
+                  votedByMe: !option.votedByMe,
+                  votes: voters.length,
+                }
+              }
+
+              if (option.id === optionId) {
+                const currentUserId = profile?.id ?? 'me'
+                const voters = removingVote
+                  ? option.voters?.filter((id) => id !== currentUserId) ?? []
+                  : Array.from(new Set([...(option.voters ?? []), currentUserId]))
+                return {
+                  ...option,
+                  voters,
+                  votedByMe: !removingVote,
+                  votes: voters.length,
+                }
+              }
+
+              if (option.votedByMe && !removingVote) {
+                const voters = option.voters?.filter((id) => id !== (profile?.id ?? 'me')) ?? []
+                return {
+                  ...option,
+                  voters,
+                  votedByMe: false,
+                  votes: voters.length,
+                }
+              }
+
+              return option
+            }),
+          },
+        }
+      }),
+    )
+    if (onPollVote) void onPollVote(postId, optionId)
+  }
+
   function handleTogglePin(postId: string) {
     updatePosts((current) =>
       current.map((p) => (p.id === postId ? { ...p, pinned: !p.pinned } : p)),
@@ -2810,6 +3090,7 @@ export function ChannelFeed({
                 myAvatarUrl={myAvatarUrl}
                 isMentioned={isMentioned}
                 onReact={(emoji) => handleReact(post.id, emoji)}
+                onPollVote={(optionId) => handlePollVote(post.id, optionId)}
                 onReply={() => {
                   setReplyingTo(post)
                   textareaRef.current?.focus()
@@ -2933,26 +3214,49 @@ export function ChannelFeed({
                 >
                   {voiceRecording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                 </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    'h-8 w-8 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground',
-                    (useBackendUpload ? pendingGenericFile : draftAttachment) && 'bg-primary/10 text-primary',
-                  )}
-                  onClick={() => {
-                    if (useBackendUpload) {
-                      if (pendingGenericFile) clearQueuedGeneric()
-                      else genericFileInputRef.current?.click()
-                    } else {
-                      draftAttachment ? setAttachment(undefined) : setAttachment(getSuggestedAttachment(channel, group))
-                    }
-                  }}
-                  title={useBackendUpload ? 'Attach file' : 'Attach mock media'}
-                >
-                  <Paperclip className="h-4 w-4" />
-                </Button>
+                <Popover open={actionMenuOpen} onOpenChange={setActionMenuOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      disabled={postUploading || sendingPost || voiceUploading}
+                      className={cn(
+                        'h-8 w-8 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground',
+                        (useBackendUpload ? pendingGenericFile : draftAttachment) && 'bg-primary/10 text-primary',
+                      )}
+                      title="Add"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent side="top" align="start" className="w-48 p-1.5 bg-sidebar border-border">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActionMenuOpen(false)
+                        if (useBackendUpload) {
+                          if (pendingGenericFile) clearQueuedGeneric()
+                          else genericFileInputRef.current?.click()
+                        } else {
+                          draftAttachment ? setAttachment(undefined) : setAttachment(getSuggestedAttachment(channel, group))
+                        }
+                      }}
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12px] font-medium text-foreground hover:bg-accent"
+                    >
+                      <FileUp className="h-4 w-4 text-muted-foreground" />
+                      Attach file
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openPollModal}
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12px] font-medium text-foreground hover:bg-accent"
+                    >
+                      <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                      Create poll
+                    </button>
+                  </PopoverContent>
+                </Popover>
               </div>
 
               {/* Text input */}
@@ -3067,6 +3371,124 @@ export function ChannelFeed({
           </p>
         </div>
       </div>
+
+      <AnimatePresence>
+        {pollModalOpen ? (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-40 bg-black/45 backdrop-blur-sm"
+              onClick={() => setPollModalOpen(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 12 }}
+              transition={{ duration: 0.14 }}
+              className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,420px)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl border border-border bg-sidebar shadow-2xl"
+            >
+              <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <BarChart3 className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold text-foreground">Create poll</p>
+                    <p className="text-[11px] text-muted-foreground">Ask the group to vote</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPollModalOpen(false)}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3 px-4 py-4">
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold text-muted-foreground">Question</span>
+                  <input
+                    value={pollQuestion}
+                    onChange={(event) => setPollQuestion(event.target.value)}
+                    placeholder="What should we decide?"
+                    className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-primary/50"
+                  />
+                </label>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-muted-foreground">Options</span>
+                    <button
+                      type="button"
+                      disabled={pollOptions.length >= 6}
+                      onClick={() => setPollOptions((current) => [...current, ''])}
+                      className="text-[11px] font-semibold text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Add option
+                    </button>
+                  </div>
+
+                  {pollOptions.map((option, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <input
+                        value={option}
+                        onChange={(event) =>
+                          setPollOptions((current) =>
+                            current.map((item, itemIndex) => itemIndex === index ? event.target.value : item),
+                          )
+                        }
+                        placeholder={`Option ${index + 1}`}
+                        className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-primary/50"
+                      />
+                      <button
+                        type="button"
+                        disabled={pollOptions.length <= 2}
+                        onClick={() => setPollOptions((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <label className="flex items-center justify-between rounded-lg border border-border bg-background/60 px-3 py-2">
+                  <span className="text-[12px] font-medium text-foreground">Allow multiple choices</span>
+                  <input
+                    type="checkbox"
+                    checked={pollAllowMultiple}
+                    onChange={(event) => setPollAllowMultiple(event.target.checked)}
+                    className="h-4 w-4 accent-primary"
+                  />
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 border-t border-border px-4 py-3">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-8 rounded-lg px-3 text-[12px]"
+                  onClick={() => setPollModalOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  className="h-8 rounded-lg px-3 text-[12px]"
+                  disabled={postUploading || sendingPost}
+                  onClick={() => void createPoll()}
+                >
+                  Create poll
+                </Button>
+              </div>
+            </motion.div>
+          </>
+        ) : null}
+      </AnimatePresence>
 
         {/* Context menu */}
         {contextMenu && selectedPost ? (

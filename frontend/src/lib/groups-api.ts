@@ -147,6 +147,12 @@ export const groupsApi = {
       body: JSON.stringify({ emoji }),
     }),
 
+  voteGroupPoll: (messageId: string, optionId: string) =>
+    authedFetch<GroupMessage>(`/groups/messages/${messageId}/poll-votes`, {
+      method: 'POST',
+      body: JSON.stringify({ optionId }),
+    }),
+
   toggleGroupMessagePin: (messageId: string) =>
     authedFetch<GroupMessage>(`/groups/messages/${messageId}/pin`, {
       method: 'PATCH',

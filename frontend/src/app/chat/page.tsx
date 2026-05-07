@@ -7,6 +7,7 @@ import {
   ChannelFeed,
   buildStandaloneFeedMemberProfile,
   FeedMemberProfileView,
+  parseFeedPollPayload,
   type FeedDirectConversationTarget,
   type StoryRingState,
 } from '@/components/chat/channel-feed'
@@ -532,6 +533,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   }, new Map<string, number>())
   return (rawMessages ?? []).map((msg: GroupMessage) => {
     const isSystem = !msg.sender_id
+    const poll = parseFeedPollPayload(msg.content, profile?.id)
     const replySource = msg.reply_to_id ? groupMessageById.get(msg.reply_to_id) : null
     const replyBody = replySource?.content?.trim()
       || (replySource?.file_url ? 'Attachment' : '')
@@ -566,13 +568,14 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       isSystem,
       role: isSystem ? 'Automation' : getEffectiveRole(channelMemberRoleByUserId.get(msg.sender_id), groupMemberRoleByUserId.get(msg.sender_id)),
       time: (() => { const d = new Date(msg.created_at); return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`; })(),
-      body: msg.content,
+      body: poll ? '' : msg.content,
       isOwn: msg.sender_id === profile?.id,
       imageUrl: msg.file_url ?? undefined,
       attachmentType: (msg as any).type ?? undefined,
       attachmentMime: (msg as any).mime ?? undefined,
       attachmentDuration: (msg as any).duration ?? undefined,
       pinned: Boolean(msg.is_pinned),
+      poll: poll ?? undefined,
       reactions: normalizedReactions,
       replyCount: groupReplyCounts.get(msg.id) ?? 0,
       replyTo: replySource
@@ -1940,6 +1943,10 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             onToggleReaction={(postId, emoji) => {
               if (!isRealGroupId) return
               toggleGroupReaction.mutate({ messageId: postId, emoji })
+            }}
+            onPollVote={async (postId, optionId) => {
+              if (!isRealGroupId) return
+              await groupsApi.voteGroupPoll(postId, optionId)
             }}
             onTogglePin={async (postId) => {
               if (!isRealGroupId) return
