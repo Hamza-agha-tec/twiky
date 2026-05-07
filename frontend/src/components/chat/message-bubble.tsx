@@ -3,7 +3,8 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Check, CheckCheck, Forward, FileText, Download, X, Pin } from 'lucide-react';
-import { VoiceMessagePlayer } from './voice-message-player';
+import { VoiceMessagePlayer } from './voice-message-player'
+import { VideoPlayer } from './video-player';
 import { Message } from '@/lib/mock-data';
 import { format } from 'date-fns';
 import { useState, useEffect, useRef } from 'react';
@@ -181,16 +182,11 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
           )}
 
           {message.type === 'video' && (
-            <div className="max-w-xs overflow-hidden rounded-lg mt-1">
+            <div className="max-w-xs mt-1">
               {message.content && !message.content.startsWith('http') && (
                 <p className="text-sm text-foreground/90 leading-relaxed mb-1">{message.content}</p>
               )}
-              <video
-                src={message.fileUrl || message.content}
-                controls
-                className="max-h-64 w-full block"
-                preload="metadata"
-              />
+              <VideoPlayer src={message.fileUrl || message.content || ''} className="w-full" />
             </div>
           )}
 

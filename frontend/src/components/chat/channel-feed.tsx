@@ -44,6 +44,7 @@ import {
 import { FeedPostContextMenu } from '@/components/chat/feed-post-context-menu'
 import { UserAvatar } from '@/components/chat/user-avatar'
 import { VoiceMessagePlayer } from '@/components/chat/voice-message-player'
+import { VideoPlayer } from '@/components/chat/video-player'
 import { VerifiedBadge, getVerifiedBadgeVariant, hasPremiumPlan, isVerifiedAccountIdentity } from '@/components/chat/verified-badge'
 import type { MockChannelGroup, WorkspaceChannel } from '@/components/chat/channels-panel'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -87,6 +88,16 @@ function isProbablyAudioUrl(url: string): boolean {
     return /\.(wav|mp3|m4a|aac|ogg|webm)$/i.test(pathname)
   } catch {
     return /\.(wav|mp3|m4a|aac|ogg|webm)(\?|$)/i.test(url)
+  }
+}
+
+function isProbablyVideoUrl(url: string): boolean {
+  try {
+    const pathname = new URL(url, typeof window !== 'undefined' ? window.location.origin : 'http://localhost')
+      .pathname.toLowerCase()
+    return /\.(mp4|webm|mov|avi|mkv|m4v)$/i.test(pathname)
+  } catch {
+    return /\.(mp4|webm|mov|avi|mkv|m4v)(\?|$)/i.test(url)
   }
 }
 
@@ -806,6 +817,8 @@ function MessageRow({
                       className="max-h-56 max-w-[300px] cursor-pointer rounded-lg object-cover transition-opacity hover:opacity-90"
                       onClick={() => setLightboxSrc(post.imageUrl!)}
                     />
+                  ) : post.attachmentMime?.startsWith('video/') || isProbablyVideoUrl(post.imageUrl) ? (
+                    <VideoPlayer src={post.imageUrl} className="w-full max-w-[300px]" />
                   ) : (
                     <a
                       href={post.imageUrl}
@@ -1809,6 +1822,8 @@ function FeedProfileRow({
                   className="max-h-56 max-w-[300px] cursor-pointer rounded-lg object-cover transition-opacity hover:opacity-90"
                   onClick={() => setLightboxSrc(post.imageUrl!)}
                 />
+              ) : post.attachmentMime?.startsWith('video/') || isProbablyVideoUrl(post.imageUrl) ? (
+                <VideoPlayer src={post.imageUrl} className="w-full max-w-[300px]" />
               ) : (
                 <a
                   href={post.imageUrl}
@@ -2356,6 +2371,7 @@ export function ChannelFeed({
           entityMentions,
           fileUrl,
           replyToId: replyingTo?.id,
+          mime: pendingGenericFile?.type || pendingImageFile?.type || undefined,
         })
         setDraft('')
         setMentionCursor(0)
@@ -2883,6 +2899,24 @@ export function ChannelFeed({
                   </div>
                 ) : null}
                 {pendingGenericFile && !draftImage ? (
+                  pendingGenericFile.type.startsWith('video/') ? (
+                    <div className="relative h-14 w-20 shrink-0 overflow-hidden rounded-lg border border-border bg-black">
+                      <video
+                        src={URL.createObjectURL(pendingGenericFile)}
+                        className="h-full w-full object-cover"
+                        muted
+                        preload="metadata"
+                        onLoadedMetadata={e => { e.currentTarget.currentTime = 0.1 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => clearQueuedGeneric()}
+                        className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/70 text-white"
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </div>
+                  ) : (
                   <div className="flex h-14 min-w-0 flex-1 items-center gap-2 rounded-lg border border-border bg-background/80 px-3">
                     <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <div className="min-w-0 flex-1">
@@ -2897,6 +2931,7 @@ export function ChannelFeed({
                       <X className="h-3 w-3" />
                     </button>
                   </div>
+                  )
                 ) : null}
                 {!useBackendUpload && draftAttachment ? (
                   <div className="relative h-14 w-20 shrink-0 overflow-hidden rounded-lg border border-border">
@@ -2910,10 +2945,10 @@ export function ChannelFeed({
                     </button>
                   </div>
                 ) : null}
-                {draftImage || (!useBackendUpload && draftAttachment) ? (
+                {(draftImage || (!useBackendUpload && draftAttachment) || pendingGenericFile?.type.startsWith('video/')) ? (
                   <div className="min-w-0 flex-1">
                     <p className="text-[11px] font-medium text-foreground">
-                      {draftImage ? 'Image attached' : draftAttachment?.label}
+                      {draftImage ? 'Image attached' : pendingGenericFile?.type.startsWith('video/') ? 'Video attached' : draftAttachment?.label}
                     </p>
                     <p className="text-[10px] text-muted-foreground">Ready to send</p>
                   </div>
