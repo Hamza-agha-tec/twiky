@@ -268,7 +268,7 @@ export function StoryUploadDialog({ open, onOpenChange, onSubmit }: StoryUploadD
                   ) : (
                     <div style={{ position:'absolute',inset:0 }}>
                       {isVideo
-                        ? <video src={preview} style={{ width:'100%',height:'100%',objectFit:'cover' }} autoPlay muted playsInline loop />
+                        ? <video src={preview} style={{ width:'100%',height:'100%',objectFit:'cover' }} autoPlay playsInline loop />
                         : <img src={preview} alt="preview" style={{ width:'100%',height:'100%',objectFit:'cover' }} />}
                       <div style={{ position:'absolute',left:0,right:0,top:0,height:'25%',background:'linear-gradient(to bottom,rgba(0,128,200,0.1),transparent)',animation:'su-scan 0.7s ease-out forwards',pointerEvents:'none' }} />
                       <div style={{ position:'absolute',top:0,left:0,right:0,height:50,background:'linear-gradient(to bottom,rgba(0,0,0,0.5),transparent)',pointerEvents:'none' }} />

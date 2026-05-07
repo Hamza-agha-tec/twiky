@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Post,
   Param,
@@ -120,5 +121,13 @@ export class FilesController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     return this.filesService.uploadStoryMedia(req.user.userId, file);
+  }
+
+  @Post('stories/signed-url')
+  async getStorySignedUploadUrl(
+    @Request() req: { user: { userId: string } },
+    @Body() body: { filename: string; mimeType: string },
+  ) {
+    return this.filesService.getStorySignedUploadUrl(req.user.userId, body.filename, body.mimeType);
   }
 }

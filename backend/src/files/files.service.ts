@@ -277,6 +277,25 @@ export class FilesService {
     return this.uploadObject(STORAGE_BUCKETS.groups, objectPath, file);
   }
 
+  async getStorySignedUploadUrl(userId: string, filename: string, mimeType: string) {
+    const isVideo = mimeType.startsWith('video/') || /\.(mp4|mov|webm|mkv)$/i.test(filename);
+    const ext = filename.match(/\.[a-z0-9]+$/i)?.[0] ?? (isVideo ? '.mp4' : '.jpg');
+    const objectPath = `stories/${userId}/${Date.now()}${ext}`;
+
+    const client = this.supabaseService.getClient();
+    const { data, error } = await client.storage.from(STORAGE_BUCKETS.messages).createSignedUploadUrl(objectPath);
+    if (error) throw new BadRequestException(`Failed to create signed URL: ${error.message}`);
+
+    const { data: urlData } = client.storage.from(STORAGE_BUCKETS.messages).getPublicUrl(objectPath);
+    return {
+      signedUrl: data.signedUrl,
+      token: data.token,
+      path: objectPath,
+      publicUrl: urlData.publicUrl,
+      type: isVideo ? 'video' : 'image',
+    };
+  }
+
   async uploadStoryMedia(userId: string, file: Express.Multer.File) {
     if (!file?.buffer?.length) throw new BadRequestException('Missing file');
     if (file.size > MAX_BANNER_BYTES) throw new BadRequestException('File too large (max 20 MiB)');

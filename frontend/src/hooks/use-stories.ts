@@ -100,8 +100,18 @@ export function useStoryViewEvents() {
           }));
         });
       });
+      s.on('newStory', () => {
+        qc.invalidateQueries({ queryKey: STORY_KEYS.feed });
+      });
+      s.on('storyDeleted', () => {
+        qc.invalidateQueries({ queryKey: STORY_KEYS.feed });
+      });
     });
-    return () => { socket?.off('storyViewed'); };
+    return () => {
+      socket?.off('storyViewed');
+      socket?.off('newStory');
+      socket?.off('storyDeleted');
+    };
   }, [qc]);
 }
 

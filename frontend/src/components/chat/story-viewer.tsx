@@ -118,7 +118,7 @@ export function StoryViewer({ slides, startId, onClose, onView, onDelete }: Stor
 
   useEffect(() => {
     if (!active || paused) return;
-    if (!active.isOwn) onView?.(active.id);
+    onView?.(active.id);
     startTimeRef.current = performance.now() - elapsedRef.current;
 
     function tick() {
@@ -317,7 +317,7 @@ export function StoryViewer({ slides, startId, onClose, onView, onDelete }: Stor
         <div className="absolute inset-0">
           {active.type === 'video' ? (
             <video key={active.id} src={active.media_url}
-              className="h-full w-full object-cover" autoPlay muted playsInline loop={false} onEnded={goNext} />
+              className="h-full w-full object-cover" autoPlay playsInline loop={false} onEnded={goNext} />
           ) : (
             <img key={active.id} src={active.media_url} alt={active.caption ?? ''}
               className="h-full w-full object-cover" draggable={false} />
@@ -614,7 +614,11 @@ export function StoryViewer({ slides, startId, onClose, onView, onDelete }: Stor
             onClick={() => { setIdx(i); elapsedRef.current = 0; }}
             className={cn('h-14 w-10 overflow-hidden rounded-lg border-2 transition-all',
               i === idx ? 'border-white scale-105' : 'border-transparent opacity-50 hover:opacity-80')}>
-            <img src={s.media_url} alt="" className="h-full w-full object-cover" />
+            {s.type === 'video' ? (
+              <video src={s.media_url} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+            ) : (
+              <img src={s.media_url} alt="" className="h-full w-full object-cover" />
+            )}
           </button>
         ))}
       </div>

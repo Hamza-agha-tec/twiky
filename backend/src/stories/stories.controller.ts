@@ -15,7 +15,13 @@ export class StoriesController {
 
   @Post()
   async createStory(@Request() req: any, @Body() dto: CreateStoryDto) {
-    return this.storiesService.createStory(req.user.userId, dto);
+    const story = await this.storiesService.createStory(req.user.userId, dto);
+    const mutualIds = await this.storiesService.getMutualFollowerIds(req.user.userId);
+    const notifyIds = [req.user.userId, ...mutualIds];
+    for (const id of notifyIds) {
+      this.chatGateway.server?.to(`user_${id}`).emit('newStory', { userId: req.user.userId });
+    }
+    return story;
   }
 
   @Get('feed')
@@ -65,6 +71,12 @@ export class StoriesController {
 
   @Delete(':id')
   async deleteStory(@Request() req: any, @Param('id') storyId: string) {
-    return this.storiesService.deleteStory(req.user.userId, storyId);
+    const result = await this.storiesService.deleteStory(req.user.userId, storyId);
+    const mutualIds = await this.storiesService.getMutualFollowerIds(req.user.userId);
+    const notifyIds = [req.user.userId, ...mutualIds];
+    for (const id of notifyIds) {
+      this.chatGateway.server?.to(`user_${id}`).emit('storyDeleted', { storyId, userId: req.user.userId });
+    }
+    return result;
   }
 }

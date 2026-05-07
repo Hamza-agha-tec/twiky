@@ -12,6 +12,16 @@ export class StoriesService {
     return viewerFollows;
   }
 
+  async getMutualFollowerIds(userId: string): Promise<string[]> {
+    const client = this.supabaseService.getClient();
+    const [{ data: following }, { data: followers }] = await Promise.all([
+      client.from('follows').select('following_id').eq('follower_id', userId),
+      client.from('follows').select('follower_id').eq('following_id', userId),
+    ]);
+    const followingSet = new Set((following ?? []).map((f: any) => f.following_id));
+    return (followers ?? []).map((f: any) => f.follower_id).filter((id: string) => followingSet.has(id));
+  }
+
   async createStory(userId: string, dto: CreateStoryDto) {
     const { data, error } = await this.supabaseService
       .getClient()

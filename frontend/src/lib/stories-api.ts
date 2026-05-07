@@ -73,18 +73,26 @@ export interface FeedGroup {
 export const storiesApi = {
   async uploadMedia(file: File): Promise<{ publicUrl: string; type: 'image' | 'video' }> {
     const token = await getToken();
-    const form = new FormData();
-    form.append('file', file);
-    const res = await fetch(`${API_URL}/files/stories/upload`, {
+    // Step 1: get signed upload URL from backend (fast — no file transfer)
+    const res = await fetch(`${API_URL}/files/stories/signed-url`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      body: form,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ filename: file.name, mimeType: file.type }),
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(body.message ?? `Upload failed (${res.status})`);
+      throw new Error(body.message ?? 'Failed to get upload URL');
     }
-    return res.json();
+    const { signedUrl, token: uploadToken, path, publicUrl, type } = await res.json();
+
+    // Step 2: upload directly to Supabase (single hop, no backend buffering)
+    const supabase = createClient();
+    const { error } = await supabase.storage.from('messages').uploadToSignedUrl(path, uploadToken, file, {
+      contentType: file.type,
+    });
+    if (error) throw new Error(`Upload failed: ${error.message}`);
+
+    return { publicUrl, type };
   },
 
   getFeed(): Promise<FeedGroup[]> {

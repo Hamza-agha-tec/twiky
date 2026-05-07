@@ -63,7 +63,7 @@ import { DIRECT_KEYS, useCreateDirectConversation, useDirectConversations, useDi
 import { useVoiceInvitationListener } from '@/hooks/use-voice-invitation-listener'
 import { invitationsApi, type Invitation } from '@/lib/invitations-api'
 import { getSocket } from '@/lib/socket'
-import { useStoriesFeed, useCreateStory, useDeleteStory, useRecordView, useStoryViewEvents, getSeenStoryIds } from '@/hooks/use-stories'
+import { useStoriesFeed, useCreateStory, useDeleteStory, useRecordView, useStoryViewEvents, getSeenStoryIds, markStorySeen } from '@/hooks/use-stories'
 import { StoriesStrip, type StoryBubble } from '@/components/chat/stories-strip'
 import { StoryViewer, type StorySlide } from '@/components/chat/story-viewer'
 import { StoryUploadDialog } from '@/components/chat/story-upload-dialog'
@@ -376,6 +376,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   useStoryViewEvents()
 
   const storyBubbles: StoryBubble[] = (() => {
+    const seen = getSeenStoryIds()
     const ownGroup = storiesFeed.find((g) => g.user.id === profile?.id)
     const others = storiesFeed.filter((g) => g.user.id !== profile?.id)
     const own: StoryBubble = {
@@ -383,10 +384,9 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       username: profile?.username ?? 'You',
       avatar_url: profile?.avatar_url ?? null,
       hasStory: (ownGroup?.stories.length ?? 0) > 0,
-      hasUnseen: false,
+      hasUnseen: ownGroup?.stories.some((s) => !seen.has(s.id)) ?? false,
       isOwn: true,
     }
-    const seen = getSeenStoryIds()
     const rest: StoryBubble[] = others.map((g) => ({
       userId: g.user.id,
       username: g.user.username,
@@ -2117,18 +2117,26 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         <RemoteAudio key={userId} stream={stream} deafened={deafened} />
       ))}
 
-      {storyViewUserId && storySlides.length > 0 && storyStartId && (
+      {storyViewUserId && storyStartId && (() => {
+        const userSlides = storySlides.filter((s) => s.user.id === storyViewUserId)
+        if (!userSlides.length) return null
+        return (
         <StoryViewer
-          slides={storySlides}
+          slides={userSlides}
           startId={storyStartId}
           onClose={() => setStoryViewUserId(null)}
-          onView={(id) => recordView.mutate(id)}
+          onView={(id) => {
+            const slide = storySlides.find((s) => s.id === id)
+            if (slide?.isOwn) { markStorySeen(id); queryClient.invalidateQueries({ queryKey: ['stories', 'feed'] }) }
+            else recordView.mutate(id)
+          }}
           onDelete={(id) => {
             deleteStory.mutate(id)
             setStoryViewUserId(null)
           }}
         />
-      )}
+        )
+      })()}
 
       <StoryUploadDialog
         open={storyUploadOpen}
