@@ -137,5 +137,7 @@ export const directConversationsApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }).then(toChatMessage),
+  deleteConversation: (conversationId: string) =>
+    authedFetch<{ success: boolean }>(`/direct-conversations/${conversationId}`, { method: 'DELETE' }),
 }
 

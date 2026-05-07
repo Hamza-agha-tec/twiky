@@ -91,8 +91,10 @@ export class ContactsService {
   }
 
   async updateContact(userId: string, contactId: string, updateContactDto: UpdateContactDto) {
-    const { data, error } = await this.supabaseService
-      .getClient()
+    const client = this.supabaseService.getClient();
+
+    // Try UPDATE first
+    const { data: updated, error: updateError } = await client
       .from('contacts')
       .update(updateContactDto)
       .eq('user_id', userId)
@@ -100,22 +102,41 @@ export class ContactsService {
       .select('*, contact:users!contact_id(id, username, avatar_url, phone_number)')
       .maybeSingle();
 
-    if (error) {
-      throw new Error(`Failed to update contact: ${error.message}`);
+    if (updateError) {
+      throw new BadRequestException(`Failed to update contact: ${updateError.message}`);
     }
 
-    if (!data) {
-      throw new NotFoundException(`Contact with ID ${contactId} not found in your list`);
+    if (updated) {
+      return {
+        nickname: updated.nickname ?? null,
+        is_blocked: updated.is_blocked ?? false,
+        is_archived: updated.is_archived ?? false,
+        is_favorite: updated.is_favorite ?? false,
+        is_pinned: updated.is_pinned ?? false,
+        is_muted: updated.is_muted ?? false,
+        ...(updated.contact ?? {}),
+      };
+    }
+
+    // No existing row — insert one
+    const { data: inserted, error: insertError } = await client
+      .from('contacts')
+      .insert({ user_id: userId, contact_id: contactId, ...updateContactDto })
+      .select('*, contact:users!contact_id(id, username, avatar_url, phone_number)')
+      .maybeSingle();
+
+    if (insertError) {
+      throw new BadRequestException(`Failed to create contact: ${insertError.message}`);
     }
 
     return {
-      nickname: data.nickname,
-      is_blocked: data.is_blocked,
-      is_archived: data.is_archived,
-      is_favorite: data.is_favorite,
-      is_pinned: data.is_pinned,
-      is_muted: data.is_muted,
-      ...data.contact,
+      nickname: inserted?.nickname ?? null,
+      is_blocked: inserted?.is_blocked ?? false,
+      is_archived: inserted?.is_archived ?? false,
+      is_favorite: inserted?.is_favorite ?? false,
+      is_pinned: inserted?.is_pinned ?? false,
+      is_muted: inserted?.is_muted ?? false,
+      ...(inserted?.contact ?? {}),
     };
   }
 

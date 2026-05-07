@@ -13,6 +13,7 @@ export interface Chat {
   isVerified?: boolean;
   bannerUrl?: string | null;
   pinnedMessage?: string;
+  otherUserId?: string;
 }
 
 export interface Message {

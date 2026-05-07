@@ -1074,6 +1074,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           subPlan: other?.sub_plan ?? null,
           isVerified: other?.is_verified ?? false,
           bannerUrl: other?.banner ?? null,
+          otherUserId: other?.id,
         }
       })
     },
@@ -1397,9 +1398,14 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           const other = c.user_one_id === myId ? c.user_two : c.user_one
           return { id: c.id, name: other?.username ?? 'DM', avatarUrl: other?.avatar_url ?? null }
         })}
-        onForwardMessage={activeIsRealDirect ? async (_msgId, content, toConversationId) => {
+        onForwardMessage={activeIsRealDirect ? async (_msgId, content, toConversationId, fileUrl, type) => {
           const { directConversationsApi } = await import('@/lib/direct-conversations-api')
-          await directConversationsApi.sendMessage(toConversationId, { content, isForwarded: true })
+          await directConversationsApi.sendMessage(toConversationId, {
+            content: fileUrl ? undefined : content,
+            fileUrl: fileUrl ?? undefined,
+            type: type ?? 'text',
+            isForwarded: true,
+          })
         } : undefined}
         onReact={(messageId, emoji) => {
           if (activeIsRealDirect) toggleDirectReaction.mutate({ messageId, emoji })
@@ -1430,9 +1436,23 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           await dmContactAction(activeDirectOther.id, 'mute', { is_muted: true })
           toast.success(`${activeDirectOther.username ?? 'User'} muted`)
         } : undefined}
+        onPinConversation={activeIsRealDirect && activeDirectOther ? async () => {
+          await dmContactAction(activeDirectOther.id, 'pin', { is_pinned: true })
+          toast.success('Chat pinned')
+        } : undefined}
+        onFavorite={activeIsRealDirect && activeDirectOther ? async () => {
+          await dmContactAction(activeDirectOther.id, 'favorite', { is_favorite: true })
+          toast.success('Added to favorites')
+        } : undefined}
         onArchive={activeIsRealDirect && activeDirectOther ? async () => {
           await dmContactAction(activeDirectOther.id, 'archive', { is_archived: true })
           toast.success('Conversation archived')
+        } : undefined}
+        onDeleteChat={activeIsRealDirect && activeDirectChat ? async () => {
+          const { directConversationsApi } = await import('@/lib/direct-conversations-api')
+          await directConversationsApi.deleteConversation(activeDirectChat)
+          setActiveDirectChat(null)
+          toast.success('Chat deleted')
         } : undefined}
         onBlock={activeIsRealDirect && activeDirectOther ? async () => {
           await dmContactAction(activeDirectOther.id, 'block', { is_blocked: true })
@@ -1991,6 +2011,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
               syntheticDirectChats={directSidebarChats}
               onNewDirectMessage={() => setStartDmOpen(true)}
               onToggleCollapse={() => setWorkspaceCollapsed((prev) => !prev)}
+              onContactAction={dmContactAction}
               searchQuery={searchQuery}
               unreadCounts={unreadCounts}
               typingConversations={typingConversations}

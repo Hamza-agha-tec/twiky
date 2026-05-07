@@ -629,6 +629,27 @@ export class MessagingService {
         return { success: true, groupId: message.group_id, messageId };
     }
 
+    async deleteDirectConversation(userId: string, conversationId: string) {
+        const client = this.supabaseService.getClient();
+        const { data: conv } = await client
+            .from('direct_conversations')
+            .select('user_one_id, user_two_id')
+            .eq('id', conversationId)
+            .single();
+
+        if (!conv || (conv.user_one_id !== userId && conv.user_two_id !== userId)) {
+            throw new ForbiddenException('Access denied.');
+        }
+
+        const { error } = await client
+            .from('direct_conversations')
+            .delete()
+            .eq('id', conversationId);
+
+        if (error) throw new Error(`Failed to delete conversation: ${error.message}`);
+        return { success: true };
+    }
+
     async toggleDirectMessageReaction(userId: string, messageId: string, emoji: string) {
         const { data: message, error } = await this.supabaseService
             .getClient()

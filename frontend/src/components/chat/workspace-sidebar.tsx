@@ -39,6 +39,7 @@ interface WorkspaceSidebarProps {
   onSelectChannel?: (channelId: string) => void
   onSelectChat: (id: string) => void
   onToggleCollapse?: () => void
+  onContactAction?: (targetUserId: string, action: string, body: Record<string, unknown>) => Promise<void>
   searchQuery: string
   syntheticDirectChats?: Chat[]
   unreadCounts?: Record<string, number>
@@ -118,6 +119,7 @@ export function WorkspaceSidebar({
   onSelectChannel,
   onSelectChat,
   onToggleCollapse,
+  onContactAction,
   searchQuery,
   syntheticDirectChats = [],
   unreadCounts = {},
@@ -546,28 +548,38 @@ export function WorkspaceSidebar({
             x={contextMenu.x}
             y={contextMenu.y}
             chatId={contextMenu.chat.id}
-            isPinned={chatMeta[contextMenu.chat.id]?.isPinned}
-            isMuted={chatMeta[contextMenu.chat.id]?.isMuted}
+            isPinned={chatMeta[contextMenu.chat.id]?.isPinned ?? contextMenu.chat.isPinned}
+            isMuted={chatMeta[contextMenu.chat.id]?.isMuted ?? contextMenu.chat.isMuted}
             isFavorite={chatMeta[contextMenu.chat.id]?.isFavorite}
             isGroup={false}
             onClose={() => setContextMenu(null)}
-            onFavorite={() =>
-              updateMeta(contextMenu.chat.id, {
-                isFavorite: !chatMeta[contextMenu.chat.id]?.isFavorite,
-              })
-            }
-            onArchive={() => {}}
-            onMute={() =>
-              updateMeta(contextMenu.chat.id, {
-                isMuted: !chatMeta[contextMenu.chat.id]?.isMuted,
-              })
-            }
-            onPin={() =>
-              updateMeta(contextMenu.chat.id, {
-                isPinned: !chatMeta[contextMenu.chat.id]?.isPinned,
-              })
-            }
-            onBlock={() => setDeleted((prev) => new Set([...prev, contextMenu.chat.id]))}
+            onFavorite={async () => {
+              const next = !chatMeta[contextMenu.chat.id]?.isFavorite
+              updateMeta(contextMenu.chat.id, { isFavorite: next })
+              const uid = (contextMenu.chat as any).otherUserId
+              if (uid && onContactAction) await onContactAction(uid, 'favorite', { is_favorite: next })
+            }}
+            onArchive={async () => {
+              const uid = (contextMenu.chat as any).otherUserId
+              if (uid && onContactAction) await onContactAction(uid, 'archive', { is_archived: true })
+            }}
+            onMute={async () => {
+              const next = !chatMeta[contextMenu.chat.id]?.isMuted
+              updateMeta(contextMenu.chat.id, { isMuted: next })
+              const uid = (contextMenu.chat as any).otherUserId
+              if (uid && onContactAction) await onContactAction(uid, 'mute', { is_muted: next })
+            }}
+            onPin={async () => {
+              const next = !chatMeta[contextMenu.chat.id]?.isPinned
+              updateMeta(contextMenu.chat.id, { isPinned: next })
+              const uid = (contextMenu.chat as any).otherUserId
+              if (uid && onContactAction) await onContactAction(uid, 'pin', { is_pinned: next })
+            }}
+            onBlock={async () => {
+              const uid = (contextMenu.chat as any).otherUserId
+              if (uid && onContactAction) await onContactAction(uid, 'block', { is_blocked: true })
+              setDeleted((prev) => new Set([...prev, contextMenu.chat.id]))
+            }}
             onDelete={() => setDeleted((prev) => new Set([...prev, contextMenu.chat.id]))}
           />
         ) : null}

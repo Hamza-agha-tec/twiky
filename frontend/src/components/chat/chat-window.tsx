@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { UserAvatar } from '@/components/chat/user-avatar';
 import { Button } from '@/components/ui/button';
-import { Search, Phone, Video, MoreVertical, X, ChevronUp, ChevronDown, User, BellOff, Archive, ShieldOff, Pin } from 'lucide-react';
+import { Search, Phone, Video, MoreVertical, X, ChevronUp, ChevronDown, User, BellOff, Archive, ShieldOff, Pin, Star, Trash2 } from 'lucide-react';
 import type { Message } from '@/lib/mock-data';
 import { MessageBubble } from './message-bubble';
 import { CallLogBubble } from './call-log-bubble';
@@ -48,11 +48,14 @@ interface ChatWindowProps {
   onVoiceCall?: () => void;
   onVideoCall?: () => void;
   onMute?: () => void;
+  onPinConversation?: () => void;
+  onFavorite?: () => void;
   onArchive?: () => void;
+  onDeleteChat?: () => void;
   onBlock?: () => void;
   onPin?: (messageId: string) => void;
   conversations?: { id: string; name: string; avatarUrl?: string | null }[];
-  onForwardMessage?: (messageId: string, content: string, toConversationId: string) => void;
+  onForwardMessage?: (messageId: string, content: string, toConversationId: string, fileUrl?: string, type?: string) => void;
 }
 
 interface ReplyTo {
@@ -151,7 +154,7 @@ function toUiMessage(
   };
 }
 
-export function ChatWindow({ activeChat, chatOverride, messages: providedMessages = [], onSendMessage, onTyping, otherIsTyping = false, onReact, onDelete, onPin, onProfileClick, onMessageAvatarClick, onVoiceCall, onVideoCall, onMute, onArchive, onBlock, conversations = [], onForwardMessage }: ChatWindowProps) {
+export function ChatWindow({ activeChat, chatOverride, messages: providedMessages = [], onSendMessage, onTyping, otherIsTyping = false, onReact, onDelete, onPin, onProfileClick, onMessageAvatarClick, onVoiceCall, onVideoCall, onMute, onPinConversation, onFavorite, onArchive, onDeleteChat, onBlock, conversations = [], onForwardMessage }: ChatWindowProps) {
   const { user } = useAuth();
   const { data: profile } = useProfile();
   const { resolved: chatTheme } = useChatThemeContext();
@@ -432,20 +435,36 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
                     Mute
                   </DropdownMenuItem>
                 )}
+                {onPinConversation && (
+                  <DropdownMenuItem onClick={onPinConversation} className="gap-2">
+                    <Pin className="h-4 w-4" />
+                    Pin chat
+                  </DropdownMenuItem>
+                )}
+                {onFavorite && (
+                  <DropdownMenuItem onClick={onFavorite} className="gap-2">
+                    <Star className="h-4 w-4" />
+                    Add to favorites
+                  </DropdownMenuItem>
+                )}
                 {onArchive && (
                   <DropdownMenuItem onClick={onArchive} className="gap-2">
                     <Archive className="h-4 w-4" />
                     Archive
                   </DropdownMenuItem>
                 )}
+                {(onDeleteChat || onBlock) && <DropdownMenuSeparator />}
+                {onDeleteChat && (
+                  <DropdownMenuItem onClick={onDeleteChat} className="gap-2 text-destructive focus:text-destructive">
+                    <Trash2 className="h-4 w-4" />
+                    Delete chat
+                  </DropdownMenuItem>
+                )}
                 {onBlock && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={onBlock} className="gap-2 text-destructive focus:text-destructive">
-                      <ShieldOff className="h-4 w-4" />
-                      Block
-                    </DropdownMenuItem>
-                  </>
+                  <DropdownMenuItem onClick={onBlock} className="gap-2 text-destructive focus:text-destructive">
+                    <ShieldOff className="h-4 w-4" />
+                    Block
+                  </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
@@ -641,7 +660,7 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
                     <button
                       key={conv.id}
                       onClick={() => {
-                        onForwardMessage?.(forwardingMessage.id, forwardingMessage.content, conv.id);
+                        onForwardMessage?.(forwardingMessage.id, forwardingMessage.content, conv.id, forwardingMessage.fileUrl, forwardingMessage.type);
                         setForwardingMessage(null);
                         setForwardSearch('');
                       }}

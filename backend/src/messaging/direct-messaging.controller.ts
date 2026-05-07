@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Body, UseGuards, Request } from '@nestjs/common';
 import { MessagingService } from './messaging.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { StartDirectConversationDto, SendDirectMessageDto } from './dto/direct-messaging.dto';
@@ -37,6 +37,11 @@ export class DirectMessagingController {
             await this.chatGateway.emitDirectMessageNotification(conversation.user_one_id, conversation.user_two_id, message);
         }
         return message;
+    }
+
+    @Delete(':id')
+    async deleteDirectConversation(@Request() req: any, @Param('id') conversationId: string) {
+        return this.messagingService.deleteDirectConversation(req.user.userId, conversationId);
     }
 
     @Post('messages/:messageId/reactions')
