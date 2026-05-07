@@ -19,7 +19,6 @@ export function useVoiceInvitationListener(
     queryKey: ['invitations', 'pending'],
     queryFn: invitationsApi.getPending,
     enabled: Boolean(myId),
-    refetchInterval: 15000,
   })
 
   // Socket for instant delivery — invalidates query immediately on new invitation

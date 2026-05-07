@@ -1,9 +1,11 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { type BackendChannel, channelApi } from '@/lib/channel-api';
 import { type Channel, type ChannelMember, type ChannelJoinRequest, channelsApi } from '@/lib/channels-api';
+import { getSocket } from '@/lib/socket';
 
 export const CHANNEL_KEYS = {
   all: ['channels'] as const,
@@ -130,11 +132,34 @@ export function useKickChannelMember(channelId: string) {
 }
 
 export function useChannelJoinRequests(channelId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!channelId) return;
+    let mounted = true;
+    let cleanup: (() => void) | null = null;
+
+    getSocket().then((socket) => {
+      if (!mounted) return;
+      const handler = (data: { channelId: string }) => {
+        if (data.channelId === channelId) {
+          queryClient.invalidateQueries({ queryKey: CHANNEL_MEMBER_KEYS.joinRequests(channelId) });
+        }
+      };
+      socket.on('channelJoinRequest', handler);
+      cleanup = () => socket.off('channelJoinRequest', handler);
+    });
+
+    return () => {
+      mounted = false;
+      cleanup?.();
+    };
+  }, [channelId, queryClient]);
+
   return useQuery<ChannelJoinRequest[]>({
     queryKey: CHANNEL_MEMBER_KEYS.joinRequests(channelId ?? ''),
     queryFn: () => channelsApi.getJoinRequests(channelId!),
     enabled: !!channelId,
-    refetchInterval: 30000,
   });
 }
 
