@@ -1832,7 +1832,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                 })}
                 messagePending={false}
                 onBack={() => setVoiceProfileTarget(null)}
-                onMessage={() => {}}
+                onMessage={() => voiceProfileTarget && openDirectChat(voiceProfileTarget.id)}
                 onOpenStory={openUserStories}
                 posts={[]}
                 showMessageAction={false}

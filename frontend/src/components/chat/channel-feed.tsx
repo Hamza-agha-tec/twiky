@@ -1279,7 +1279,7 @@ export function FeedMemberProfileView({
         memberProfile={viewingUser}
         messagePending={false}
         onBack={() => setViewingUser(null)}
-        onMessage={() => {}}
+        onMessage={onMessage}
         posts={[]}
         showMessageAction={showMessageAction}
       />
