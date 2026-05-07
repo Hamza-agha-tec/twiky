@@ -181,7 +181,7 @@ export class GroupsService {
         return { success: true };
     }
 
-    async updateGroup(groupId: string, userId: string, data: { name?: string; description?: string; group_type?: 'text' | 'voice'; access_type?: 'PUBLIC' | 'PRIVATE' }) {
+    async updateGroup(groupId: string, userId: string, data: { name?: string; description?: string; group_type?: 'text' | 'voice' | 'watch'; access_type?: 'PUBLIC' | 'PRIVATE' }) {
         const { data: group, error: groupError } = await this.supabaseService
             .getClient()
             .from('groups')

@@ -22,6 +22,7 @@ import {
 } from '@/components/chat/channels-panel'
 import { ChatWindow } from '@/components/chat/chat-window'
 import { VoiceGroupView } from '@/components/chat/voice-group-view'
+import { WatchRoomView } from '@/components/watch/watch-room-view'
 import { useVoicePresence, type VoicePresenceUser } from '@/hooks/use-voice-presence'
 import { useLiveKitVoice } from '@/hooks/use-livekit-voice'
 import { DirectProfileSidebar } from '@/components/chat/direct-profile-sidebar'
@@ -1761,7 +1762,17 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
 
   const channelContent =
     activeChannel && activeGroup ? (
-      activeGroup.kind === 'voice' ? (
+      activeGroup.kind === 'watch' ? (
+        <div className="flex min-w-0 flex-1 overflow-hidden">
+          <WatchRoomView
+            key={activeGroup.id}
+            roomId={activeGroup.id}
+            userId={profile?.id ?? ''}
+            username={profile?.username ?? ''}
+            isHost={activeChannel.role === 'OWNER' || activeChannel.role === 'ADMIN'}
+          />
+        </div>
+      ) : activeGroup.kind === 'voice' ? (
         <div className="flex min-w-0 flex-1 overflow-hidden">
           <VoiceGroupView
             key={activeGroup.id}

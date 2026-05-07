@@ -20,6 +20,7 @@ import {
   Plus,
   Search,
   Trash2,
+  Tv,
   Upload,
   User,
   UserMinus,
@@ -85,7 +86,7 @@ export interface MockChannelGroup {
   id: string
   label: string
   description: string
-  kind: 'text' | 'voice'
+  kind: 'text' | 'voice' | 'watch'
   access_type?: 'PUBLIC' | 'PRIVATE'
   is_general?: boolean
   is_member?: boolean
@@ -1139,7 +1140,7 @@ function GroupSettingsSheet({
 }) {
   const [name, setName] = useState(group.label)
   const [description, setDescription] = useState(group.description)
-  const [kind, setKind] = useState<'text' | 'voice'>(group.kind)
+  const [kind, setKind] = useState<'text' | 'voice' | 'watch'>(group.kind)
   const [accessType, setAccessType] = useState<'PUBLIC' | 'PRIVATE'>(group.access_type ?? 'PUBLIC')
   const [notifications, setNotifications] = useState(true)
   const [mentionsOnly, setMentionsOnly] = useState(false)
@@ -1197,10 +1198,11 @@ function GroupSettingsSheet({
             <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
               Type
             </p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {([
                 { value: 'text', icon: Hash, label: 'Text', desc: 'Messages and threads' },
                 { value: 'voice', icon: Volume2, label: 'Voice', desc: 'Audio conversations' },
+                { value: 'watch', icon: Tv, label: 'Watch', desc: 'Watch together room' },
               ] as const).map(({ value, icon: Icon, label, desc }) => (
                 <button
                   key={value}
@@ -1578,22 +1580,31 @@ export function ChannelsPanel({
 
           <div className="space-y-0.5">
             {(() => {
-              const textGroups = channel.groups.filter((g) => g.kind !== 'voice')
+              const textGroups = channel.groups.filter((g) => g.kind === 'text')
+              const watchGroups = channel.groups.filter((g) => g.kind === 'watch')
               const voiceGroups = channel.groups.filter((g) => g.kind === 'voice')
-              const sorted = [...textGroups, ...voiceGroups]
-              const voiceStart = textGroups.length
+              const sorted = [...textGroups, ...watchGroups, ...voiceGroups]
+              const watchStart = textGroups.length
+              const voiceStart = textGroups.length + watchGroups.length
               return sorted.map((group, idx) => {
               const isActive = activeGroup === group.id
               const isDefault = group.label.toLowerCase() === 'general'
-              const GroupIcon = group.kind === 'voice' ? Volume2 : Hash
+              const GroupIcon = group.kind === 'voice' ? Volume2 : group.kind === 'watch' ? Tv : Hash
               const isPrivate = group.access_type === 'PRIVATE'
               const hasRequested = requestedGroups.has(group.id)
               const memberCanRequest = !canManage && isPrivate && !group.is_member
               const participants = group.kind === 'voice' ? (voiceParticipants[group.id] ?? []) : []
 
+              const isFirstWatch = idx === watchStart && watchGroups.length > 0
               const isFirstVoice = idx === voiceStart && voiceStart > 0 && voiceGroups.length > 0
               return (
                 <div key={group.id}>
+                {isFirstWatch && (
+                  <div className="flex items-center gap-2 px-1 pb-1 pt-2">
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50">Watch</span>
+                    <div className="flex-1 border-t border-border/50" />
+                  </div>
+                )}
                 {isFirstVoice && (
                   <div className="flex items-center gap-2 px-1 pb-1 pt-2">
                     <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50">Voice</span>

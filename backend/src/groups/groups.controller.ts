@@ -32,7 +32,7 @@ export class GroupsController {
     async updateGroup(
         @Request() req: any,
         @Param('groupId') groupId: string,
-        @Body() body: { name?: string; description?: string; group_type?: 'text' | 'voice'; access_type?: 'PUBLIC' | 'PRIVATE' }
+        @Body() body: { name?: string; description?: string; group_type?: 'text' | 'voice' | 'watch'; access_type?: 'PUBLIC' | 'PRIVATE' }
     ) {
         return this.groupsService.updateGroup(groupId, req.user.userId, body);
     }

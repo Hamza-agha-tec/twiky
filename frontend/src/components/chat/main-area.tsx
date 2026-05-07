@@ -6,6 +6,7 @@ import {
   ListTodo,
   NotebookPen,
   Target,
+  Tv,
   Volume2,
 } from 'lucide-react'
 
@@ -44,8 +45,8 @@ export function MainArea({
   const [closeFeedProfile, setCloseFeedProfile] = useState<(() => void) | null>(null)
   const [feedProfileSidebarContent, setFeedProfileSidebarContent] = useState<React.ReactNode | null>(null)
 
-  const GroupIcon = activeGroup.kind === 'voice' ? Volume2 : Hash
-  const groupScopeLabel = activeGroup.kind === 'voice' ? activeGroup.label : `#${activeGroup.label}`
+  const GroupIcon = activeGroup.kind === 'voice' ? Volume2 : activeGroup.kind === 'watch' ? Tv : Hash
+  const groupScopeLabel = activeGroup.kind === 'voice' ? activeGroup.label : activeGroup.kind === 'watch' ? `📺 ${activeGroup.label}` : `#${activeGroup.label}`
   const feedChild = isValidElement(children)
     ? cloneElement(children as any, {
       onProfilePanelWidthChange: setFeedProfilePanelWidth,
