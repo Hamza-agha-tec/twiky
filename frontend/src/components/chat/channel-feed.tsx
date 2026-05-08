@@ -42,6 +42,7 @@ import {
 } from 'lucide-react'
 
 import { FeedPostContextMenu } from '@/components/chat/feed-post-context-menu'
+import { HoverProfileCard } from '@/components/chat/hover-profile-card'
 import { UserAvatar } from '@/components/chat/user-avatar'
 import { VoiceMessagePlayer } from '@/components/chat/voice-message-player'
 import { VideoPlayer } from '@/components/chat/video-player'
@@ -1849,7 +1850,6 @@ function FeedProfileRow({
   authorAvatarUrl,
   memberProfile,
   mentionRef,
-  onOpenProfile,
   post,
   isGrouped,
   myAvatarUrl,
@@ -1860,11 +1860,12 @@ function FeedProfileRow({
   onPin,
   onDelete,
   onContextMenu,
+  onMessage,
+  onViewProfile,
 }: {
   authorAvatarUrl?: string | null
   memberProfile: FeedMemberProfile
   mentionRef?: (el: HTMLDivElement | null) => void
-  onOpenProfile: () => void
   post: FeedPost
   isGrouped: boolean
   myAvatarUrl?: string | null
@@ -1875,8 +1876,11 @@ function FeedProfileRow({
   onPin: () => void
   onDelete: () => void
   onContextMenu: (e: MouseEvent) => void
+  onMessage?: () => void
+  onViewProfile?: () => void
 }) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+  const avatarRef = useRef<HTMLDivElement>(null)
   const roleColor = ROLE_COLORS[post.role] ?? 'text-primary'
   const displayAvatar = post.isOwn
     ? (authorAvatarUrl ?? myAvatarUrl ?? memberProfile.avatarUrl ?? null)
@@ -1895,26 +1899,27 @@ function FeedProfileRow({
       onContextMenu={onContextMenu}
     >
       <div className="mt-0.5 w-9 flex-shrink-0">
-        <button
-          type="button"
-          onClick={onOpenProfile}
-          className="flex h-9 w-9 cursor-pointer overflow-hidden rounded-full ring-2 ring-background focus:outline-none"
-          aria-label={`Open ${post.author} profile`}
+        <HoverProfileCard
+          userId={memberProfile.id ?? ''}
+          onMessage={post.isOwn ? undefined : (onMessage ? () => onMessage() : undefined)}
+          onViewProfile={onViewProfile ? () => onViewProfile() : undefined}
+          hideMessage={post.isOwn}
+          side="right"
         >
-          <UserAvatar src={displayAvatar} alt={post.author} className="h-full w-full object-cover" />
-        </button>
+          <div ref={avatarRef} className="flex h-9 w-9 overflow-hidden rounded-full ring-2 ring-background">
+            <UserAvatar src={displayAvatar} alt={post.author} className="h-full w-full object-cover" />
+          </div>
+        </HoverProfileCard>
       </div>
 
       <div className="min-w-0 flex-1">
         <div className="mb-0.5 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onOpenProfile}
-            className={cn('inline-flex items-center gap-1 text-[14px] font-semibold leading-none hover:underline', roleColor)}
-          >
-            {post.author}
-            {memberProfile.isVerified ? <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(memberProfile.subPlan)} /> : null}
-          </button>
+          <HoverProfileCard userId={memberProfile.id ?? ''} onMessage={post.isOwn ? undefined : (onMessage ? () => onMessage() : undefined)} onViewProfile={onViewProfile ? () => onViewProfile() : undefined} hideMessage={post.isOwn} side="right" anchorRef={avatarRef}>
+            <span className={cn('inline-flex cursor-default items-center gap-1 text-[14px] font-semibold leading-none', roleColor)}>
+              {post.author}
+              {memberProfile.isVerified ? <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(memberProfile.subPlan)} /> : null}
+            </span>
+          </HoverProfileCard>
           <span className="text-[11px] text-muted-foreground">{post.time}</span>
           {post.pinned ? <Pin className="h-3 w-3 text-primary" /> : null}
         </div>
@@ -3113,14 +3118,6 @@ export function ChannelFeed({
                 key={post.id}
                 memberProfile={authorContext.profile}
                 mentionRef={isMentioned ? (el) => { if (el) mentionRefs.current.set(post.id, el); else mentionRefs.current.delete(post.id) } : undefined}
-                onOpenProfile={() => {
-                  setContextMenu(null)
-                  setSelectedProfile({
-                    canMessage: authorContext.canMessage,
-                    post,
-                    profile: authorContext.profile,
-                  })
-                }}
                 post={post}
                 isGrouped={isGrouped}
                 myAvatarUrl={myAvatarUrl}
@@ -3134,6 +3131,11 @@ export function ChannelFeed({
                 onPin={() => handleTogglePin(post.id)}
                 onDelete={() => handleDelete(post.id)}
                 onContextMenu={(e) => openContextMenu(e, post.id)}
+                onMessage={() => handleMessageAuthor(post, authorContext.profile)}
+                onViewProfile={() => {
+                  setContextMenu(null)
+                  setSelectedProfile({ canMessage: authorContext.canMessage, post, profile: authorContext.profile })
+                }}
               />
             )
           })}

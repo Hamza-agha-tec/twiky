@@ -11,6 +11,7 @@ import { format } from 'date-fns';
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { MessageContextMenu } from './message-context-menu';
+import { HoverProfileCard } from '@/components/chat/hover-profile-card';
 
 interface MessageBubbleProps {
   message: Message;
@@ -22,6 +23,9 @@ interface MessageBubbleProps {
   onDelete?: () => void;
   onReact?: (emoji: string) => void;
   onAvatarClick?: (senderId: string) => void;
+  onMessage?: (userId: string) => void;
+  onViewProfile?: (userId: string) => void;
+  hideMessage?: boolean;
 }
 
 function HighlightedText({ text, query }: { text: string; query: string }) {
@@ -38,11 +42,12 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
   );
 }
 
-export function MessageBubble({ message, showAvatar = true, searchHighlight, onReply, onPin, onForward, onDelete, onReact, onAvatarClick }: MessageBubbleProps) {
+export function MessageBubble({ message, showAvatar = true, searchHighlight, onReply, onPin, onForward, onDelete, onReact, onAvatarClick, onMessage, onViewProfile, hideMessage }: MessageBubbleProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [lightbox, setLightbox] = useState(false);
   const messageRef = useRef<HTMLDivElement>(null);
+  const avatarRef = useRef<HTMLDivElement>(null);
 
   const messageReactions = message.reactions ?? [];
 
@@ -77,18 +82,22 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
       {/* Avatar column — always left */}
       <div className="shrink-0 w-9 pt-0.5">
         {showAvatar ? (
-          <button
-            type="button"
-            onClick={() => onAvatarClick?.(message.senderId)}
-            className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 hover:opacity-80 transition-opacity cursor-pointer"
+          <HoverProfileCard
+            userId={message.senderId}
+            onMessage={message.isOwn ? undefined : onMessage}
+            onViewProfile={onViewProfile}
+            hideMessage={message.isOwn}
+            side="right"
           >
-            <Avatar className="h-9 w-9">
-              <AvatarImage src={message.avatar} alt={message.senderName} />
-              <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
-          </button>
+            <div ref={avatarRef} className="rounded-full">
+              <Avatar className="h-9 w-9">
+                <AvatarImage src={message.avatar} alt={message.senderName} />
+                <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+            </div>
+          </HoverProfileCard>
         ) : (
           <div className="h-9 w-9" />
         )}
@@ -99,9 +108,18 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
         {/* Header: name + timestamp — only when avatar shown */}
         {showAvatar && (
           <div className="flex items-baseline gap-2 mb-0.5">
-            <span className={`text-sm font-semibold leading-tight ${message.isOwn ? 'text-blue-400' : 'text-foreground'}`}>
-              {message.senderName}
-            </span>
+            <HoverProfileCard
+              userId={message.senderId}
+              onMessage={message.isOwn ? undefined : onMessage}
+              onViewProfile={onViewProfile}
+              hideMessage={message.isOwn}
+              side="right"
+              anchorRef={avatarRef}
+            >
+              <span className={`text-sm font-semibold leading-tight ${message.isOwn ? 'text-blue-400' : 'text-foreground'}`}>
+                {message.senderName}
+              </span>
+            </HoverProfileCard>
             {isMounted && (
               <span className="text-[11px] text-muted-foreground/60 tabular-nums">
                 {format(new Date(message.timestamp), 'MMM d, h:mm a')}

@@ -1938,6 +1938,9 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           activeChannel={activeChannel}
           activeGroup={activeGroup}
           activeTab={channelTab}
+          members={activeGroupMembers}
+          onlineUsers={onlineUsers}
+          onMemberMessage={(userId) => openDirectChat(userId)}
           onTabChange={(tab) => {
             setChannelTab(tab)
             if (tab === 'feed') setChannelFeedClosed(false)

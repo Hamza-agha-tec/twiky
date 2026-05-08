@@ -573,13 +573,8 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
                         onForward={() => setForwardingMessage(message)}
                         onDelete={() => onDelete?.(message.id)}
                         onReact={(emoji) => onReact?.(message.id, emoji)}
-                        onAvatarClick={(senderId) => {
-                          if (onMessageAvatarClick) {
-                            onMessageAvatarClick(senderId);
-                            return;
-                          }
-                          if (senderId !== profile?.id) onProfileClick?.();
-                        }}
+                        hideMessage={true}
+                        onViewProfile={onProfileClick ? (userId) => onProfileClick() : undefined}
                       />
                     )}
                   </div>
