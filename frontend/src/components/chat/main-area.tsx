@@ -5,6 +5,7 @@ import {
   Hash,
   ListTodo,
   NotebookPen,
+  Search,
   Target,
   Tv,
   Volume2,
@@ -45,8 +46,9 @@ export function MainArea({
   const [closeFeedProfile, setCloseFeedProfile] = useState<(() => void) | null>(null)
   const [feedProfileSidebarContent, setFeedProfileSidebarContent] = useState<React.ReactNode | null>(null)
 
+  const [searchQuery, setSearchQuery] = useState('')
   const GroupIcon = activeGroup.kind === 'voice' ? Volume2 : activeGroup.kind === 'watch' ? Tv : Hash
-  const groupScopeLabel = activeGroup.kind === 'voice' ? activeGroup.label : activeGroup.kind === 'watch' ? `📺 ${activeGroup.label}` : `#${activeGroup.label}`
+  const groupScopeLabel = activeGroup.kind === 'watch' ? `📺 ${activeGroup.label}` : activeGroup.label
   const feedChild = isValidElement(children)
     ? cloneElement(children as any, {
       onProfilePanelWidthChange: setFeedProfilePanelWidth,
@@ -57,21 +59,41 @@ export function MainArea({
     })
     : children
 
+  const channelMonogram = activeChannel.label.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || 'CH'
+
   const header = (
-    <div className="flex h-[52px] flex-shrink-0 items-center gap-3 border-b border-border bg-sidebar px-4">
-      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-        <GroupIcon className="h-4 w-4" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="text-[13px] font-semibold text-foreground">{groupScopeLabel}</p>
-          <span className="hidden text-[12px] text-muted-foreground sm:block">
-            — {activeGroup.membersLabel}
-          </span>
+    <div className="flex h-[52px] flex-shrink-0 items-center border-b border-border bg-sidebar px-4">
+      {/* Left: group icon + name */}
+      <div className="flex items-center gap-2">
+        <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <GroupIcon className="h-3.5 w-3.5" />
         </div>
-        <p className="hidden truncate text-[11px] text-muted-foreground sm:block">
-          {activeChannel.label} · {activeChannel.groups.length} groups
-        </p>
+        <p className="text-[13px] font-semibold text-foreground">{groupScopeLabel}</p>
+      </div>
+
+      {/* Center: channel avatar + name */}
+      <div className="flex flex-1 items-center justify-center gap-1.5">
+        <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-primary/10 text-[8px] font-bold text-primary">
+          {activeChannel.avatarUrl
+            ? <img src={activeChannel.avatarUrl} alt={activeChannel.label} className="h-full w-full object-cover" />
+            : channelMonogram
+          }
+        </div>
+        <p className="text-[11px] font-semibold text-foreground">{activeChannel.label}</p>
+      </div>
+
+      {/* Right: search bar */}
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+        <input
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search…"
+          className={cn(
+            'h-7 w-40 rounded-lg border border-border bg-accent/50 pl-7 pr-3 text-[12px] text-foreground placeholder:text-muted-foreground',
+            'focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary',
+          )}
+        />
       </div>
     </div>
   )
