@@ -2206,11 +2206,13 @@ export function ChannelFeed({
     }
 
     const frameId = requestAnimationFrame(() => scrollToLatest(groupChanged ? 'auto' : 'smooth'))
-    const timeoutId = window.setTimeout(() => scrollToLatest('auto'), 120)
+    const t1 = window.setTimeout(() => scrollToLatest('auto'), 120)
+    const t2 = window.setTimeout(() => scrollToLatest('auto'), 400)
 
     return () => {
       cancelAnimationFrame(frameId)
-      window.clearTimeout(timeoutId)
+      window.clearTimeout(t1)
+      window.clearTimeout(t2)
     }
   }, [group.id, latestPostId, posts.length])
 

@@ -3,25 +3,21 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { useDynamicIsland } from '@/context/DynamicIslandContext'
-import type { IslandNotification } from '@/context/DynamicIslandContext'
+import { useDynamicIsland, type IslandNotification } from '@/context/DynamicIslandContext'
+import { AppleText } from '@/components/chat/apple-text'
 
-const DARK_BLUE = '#4da6e8'
-const DARK_BLUE_BG = 'rgba(0,89,168,0.20)'
-const DARK_BLUE_BORDER = 'rgba(0,89,168,0.50)'
-
-const TYPE_EMOJI: Record<string, string> = {
-  dm: '💬',
+const TYPE_EMOJI: Record<IslandNotification['type'], string> = {
+  dm:      '💬',
   general: '🔔',
   mention: '💙',
-  invite: '👥',
+  invite:  '👥',
 }
 
 const TYPE_LABEL: Record<IslandNotification['type'], string> = {
-  dm: 'Direct Message',
+  dm:      'Direct Message',
   general: 'Notification',
   mention: 'Mention',
-  invite: 'Invitation',
+  invite:  'Invitation',
 }
 
 export function DynamicIsland() {
@@ -30,26 +26,30 @@ export function DynamicIsland() {
 
   const handleClick = () => {
     if (!current) return
+
     if (current.conversationId) {
+      // Dispatch event so chat page reacts in real-time (already mounted)
+      window.dispatchEvent(new CustomEvent('openDM', { detail: { conversationId: current.conversationId } }))
+      // Also persist to localStorage for cold navigation
       try {
         const raw = localStorage.getItem('twiky-chat-view-state')
         const prev = raw ? JSON.parse(raw) : {}
-        localStorage.setItem(
-          'twiky-chat-view-state',
-          JSON.stringify({
-            ...prev,
-            activeDirectChat: current.conversationId,
-            activeSurface: 'direct',
-            workspaceMode: 'direct',
-          }),
-        )
+        localStorage.setItem('twiky-chat-view-state', JSON.stringify({
+          ...prev,
+          activeDirectChat: current.conversationId,
+          activeSurface: 'direct',
+          workspaceMode: 'direct',
+        }))
       } catch {}
       router.push('/chat')
     } else if (current.href) {
       router.push(current.href)
     }
+
     dismiss()
   }
+
+  const typeEmoji = current ? TYPE_EMOJI[current.type] : null
 
   return (
     <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none">
@@ -60,21 +60,17 @@ export function DynamicIsland() {
             initial={{ width: 100, height: 28, opacity: 0, y: -14, scale: 0.86 }}
             animate={{ width: 360, height: 80, opacity: 1, y: 0, scale: 1 }}
             exit={{ width: 100, height: 28, opacity: 0, y: -14, scale: 0.86 }}
-            transition={{
-              type: 'spring',
-              damping: 24,
-              stiffness: 260,
-              opacity: { duration: 0.14 },
-            }}
+            transition={{ type: 'spring', damping: 24, stiffness: 260, opacity: { duration: 0.14 } }}
             onClick={handleClick}
             className="relative overflow-hidden cursor-pointer pointer-events-auto"
             style={{
               borderRadius: 20,
-              background: `linear-gradient(135deg, rgba(0,89,168,0.28) 0%, rgba(0,70,140,0.18) 100%)`,
+              /* sidebar color: oklch(0.14 0.02 260) ≈ #1c1e2d */
+              background: 'rgba(22, 24, 42, 0.82)',
               backdropFilter: 'blur(28px) saturate(160%)',
               WebkitBackdropFilter: 'blur(28px) saturate(160%)',
-              border: `1px solid ${DARK_BLUE_BORDER}`,
-              boxShadow: '0 4px 20px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.08)',
+              border: '1px solid rgba(255,255,255,0.09)',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.07)',
             }}
           >
             <motion.div
@@ -90,7 +86,7 @@ export function DynamicIsland() {
                   <>
                     <div
                       className="w-11 h-11 rounded-[14px] overflow-hidden"
-                      style={{ boxShadow: `0 0 0 2px ${DARK_BLUE_BORDER}` }}
+                      style={{ boxShadow: '0 0 0 1.5px rgba(255,255,255,0.12)' }}
                     >
                       <Image
                         src={current.avatar}
@@ -101,27 +97,23 @@ export function DynamicIsland() {
                         unoptimized
                       />
                     </div>
-                    {/* Type badge */}
+                    {/* Apple emoji badge */}
                     <div
-                      className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[11px]"
-                      style={{
-                        background: DARK_BLUE_BG,
-                        border: `1px solid ${DARK_BLUE_BORDER}`,
-                        backdropFilter: 'blur(8px)',
-                      }}
+                      className="absolute -bottom-1 -right-1 w-[18px] h-[18px] rounded-full flex items-center justify-center"
+                      style={{ background: 'rgba(22,24,42,0.9)', border: '1px solid rgba(255,255,255,0.1)' }}
                     >
-                      {TYPE_EMOJI[current.type]}
+                      {typeEmoji && <AppleText text={typeEmoji} emojiSize={12} />}
                     </div>
                   </>
                 ) : (
                   <div
-                    className="w-11 h-11 rounded-[14px] flex items-center justify-center text-2xl"
+                    className="w-11 h-11 rounded-[14px] flex items-center justify-center"
                     style={{
-                      background: DARK_BLUE_BG,
-                      border: `1px solid ${DARK_BLUE_BORDER}`,
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.1)',
                     }}
                   >
-                    {TYPE_EMOJI[current.type]}
+                    {typeEmoji && <AppleText text={typeEmoji} emojiSize={26} />}
                   </div>
                 )}
               </div>
@@ -129,21 +121,22 @@ export function DynamicIsland() {
               {/* Text */}
               <div className="flex-1 min-w-0 flex flex-col justify-center gap-[3px]">
                 <div className="flex items-center gap-1.5">
-                  <span
-                    className="text-[10px] font-black uppercase tracking-[0.12em] leading-none"
-                    style={{ color: DARK_BLUE }}
-                  >
+                  <span className="text-[10px] font-black uppercase tracking-[0.12em] leading-none text-white/40">
                     {TYPE_LABEL[current.type]}
                   </span>
-                  <span className="w-[3px] h-[3px] rounded-full" style={{ background: DARK_BLUE, opacity: 0.5 }} />
-                  <span className="text-[10px] text-white/35 leading-none">now</span>
+                  <span className="w-[3px] h-[3px] rounded-full bg-white/20" />
+                  <span className="text-[10px] text-white/25 leading-none">now</span>
                 </div>
-                <p className="text-white text-[13.5px] font-bold leading-tight truncate">
-                  {current.title}
-                </p>
-                <p className="text-white/50 text-[11.5px] leading-tight truncate">
-                  {current.body}
-                </p>
+                <AppleText
+                  text={current.title}
+                  className="text-white text-[13.5px] font-bold leading-tight truncate block"
+                  emojiSize={14}
+                />
+                <AppleText
+                  text={current.body}
+                  className="text-white/50 text-[11.5px] leading-tight truncate block"
+                  emojiSize={12}
+                />
               </div>
             </motion.div>
           </motion.div>

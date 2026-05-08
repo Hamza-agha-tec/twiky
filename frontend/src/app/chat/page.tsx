@@ -619,6 +619,20 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     window.dispatchEvent(new Event('activeDmChanged'))
   }, [visibleDirectConversationId])
 
+  // Real-time navigation from Dynamic Island notification click
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { conversationId } = (e as CustomEvent<{ conversationId: string }>).detail
+      if (!conversationId) return
+      setActiveDirectChat(conversationId)
+      setActiveSurface('direct')
+      setWorkspaceMode('direct')
+      setActiveView('chat')
+    }
+    window.addEventListener('openDM', handler)
+    return () => window.removeEventListener('openDM', handler)
+  }, [setActiveView])
+
   useEffect(() => {
     const readTypingPreference = () => {
       try {

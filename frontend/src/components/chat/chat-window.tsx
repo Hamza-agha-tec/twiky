@@ -257,14 +257,24 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
     const el = scrollContainerRef.current;
     if (!el) return;
 
+    const scrollToBottom = () => { if (el) el.scrollTop = el.scrollHeight; };
+
     if (!initialScrollDone.current) {
       initialScrollDone.current = true;
-      el.scrollTop = el.scrollHeight;
-      requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+      scrollToBottom();
+      const r = requestAnimationFrame(scrollToBottom);
+      const t1 = setTimeout(scrollToBottom, 100);
+      const t2 = setTimeout(scrollToBottom, 400);
+      return () => {
+        cancelAnimationFrame(r);
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
     } else {
       const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
       if (nearBottom) {
-        requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+        requestAnimationFrame(scrollToBottom);
+        setTimeout(scrollToBottom, 100);
       }
     }
   }, [messages.length, activeChat]);
