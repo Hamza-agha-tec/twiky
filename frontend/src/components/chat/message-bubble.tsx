@@ -170,6 +170,31 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
             </div>
           )}
 
+          {message.type === 'gif' && (
+            <div className="mt-1">
+              <div className="relative inline-block">
+                <img
+                  src={message.fileUrl || message.content}
+                  alt="GIF"
+                  className="max-w-[260px] max-h-52 rounded-lg object-contain"
+                />
+                <span className="absolute bottom-1.5 left-1.5 rounded bg-black/60 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+                  GIF
+                </span>
+              </div>
+            </div>
+          )}
+
+          {message.type === 'sticker' && (
+            <div className="mt-1">
+              <img
+                src={message.fileUrl || message.content}
+                alt="Sticker"
+                className="h-28 w-28 object-contain"
+              />
+            </div>
+          )}
+
           {message.type === 'voice' && (
             <div className="mt-0.5">
               <VoiceMessagePlayer

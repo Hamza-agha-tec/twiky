@@ -400,14 +400,14 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
             {!isRecording && !hasPending && (
               <GifButton
                 disabled={busy}
-                onGifSelect={(url) => onSendMessage?.({ type: 'image', fileUrl: url, mime: 'image/gif', replyToId: replyTo?.id ?? null })}
+                onGifSelect={(url) => onSendMessage?.({ type: 'gif', fileUrl: url, mime: 'image/gif', replyToId: replyTo?.id ?? null })}
               />
             )}
 
             {!isRecording && !hasPending && (
               <StickerButton
                 disabled={busy}
-                onStickerSelect={(url) => onSendMessage?.({ type: 'image', fileUrl: url, mime: 'image/gif', replyToId: replyTo?.id ?? null })}
+                onStickerSelect={(url) => onSendMessage?.({ type: 'sticker', fileUrl: url, mime: 'image/gif', replyToId: replyTo?.id ?? null })}
               />
             )}
 

@@ -216,7 +216,7 @@ export interface FeedPost {
   media?: FeedMedia[]
   poll?: FeedPoll
   imageUrl?: string
-  attachmentType?: 'voice' | 'image' | 'file'
+  attachmentType?: 'voice' | 'image' | 'gif' | 'sticker' | 'file'
   attachmentMime?: string | null
   attachmentDuration?: number | null
   pinned?: boolean
@@ -912,6 +912,23 @@ function MessageRow({
                 {post.imageUrl ? (
                   post.attachmentType === 'voice' || isProbablyAudioUrl(post.imageUrl) ? (
                     <VoiceMessagePlayer src={post.imageUrl} durationSeconds={post.attachmentDuration ?? undefined} />
+                  ) : post.attachmentType === 'gif' || (isProbablyImageUrl(post.imageUrl) && post.attachmentMime === 'image/gif' && post.attachmentType !== 'image') ? (
+                    <div className="relative inline-block">
+                      <img
+                        src={post.imageUrl}
+                        alt="GIF"
+                        className="max-h-52 max-w-[260px] rounded-lg object-contain"
+                      />
+                      <span className="absolute bottom-1.5 left-1.5 rounded bg-black/60 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+                        GIF
+                      </span>
+                    </div>
+                  ) : post.attachmentType === 'sticker' ? (
+                    <img
+                      src={post.imageUrl}
+                      alt="Sticker"
+                      className="h-28 w-28 object-contain"
+                    />
                   ) : isProbablyImageUrl(post.imageUrl) ? (
                     <img
                       src={post.imageUrl}
@@ -1923,6 +1940,23 @@ function FeedProfileRow({
             {post.imageUrl ? (
               post.attachmentType === 'voice' || isProbablyAudioUrl(post.imageUrl) ? (
                 <VoiceMessagePlayer src={post.imageUrl} durationSeconds={post.attachmentDuration ?? undefined} />
+              ) : post.attachmentType === 'gif' || (isProbablyImageUrl(post.imageUrl) && post.attachmentMime === 'image/gif' && post.attachmentType !== 'image') ? (
+                <div className="relative inline-block">
+                  <img
+                    src={post.imageUrl}
+                    alt="GIF"
+                    className="max-h-52 max-w-[260px] rounded-lg object-contain"
+                  />
+                  <span className="absolute bottom-1.5 left-1.5 rounded bg-black/60 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+                    GIF
+                  </span>
+                </div>
+              ) : post.attachmentType === 'sticker' ? (
+                <img
+                  src={post.imageUrl}
+                  alt="Sticker"
+                  className="h-28 w-28 object-contain"
+                />
               ) : isProbablyImageUrl(post.imageUrl) ? (
                 <img
                   src={post.imageUrl}
@@ -2038,7 +2072,7 @@ export function ChannelFeed({
     fileUrl?: string
     replyToId?: string
     entityMentions?: GroupMessageMention[]
-    type?: 'voice' | 'image' | 'file'
+    type?: 'voice' | 'image' | 'gif' | 'sticker' | 'file'
     mime?: string
     duration?: number
     size?: number
@@ -3341,10 +3375,10 @@ export function ChannelFeed({
               {/* Right actions */}
               <div className="flex items-center gap-0.5">
                 <GifButton
-                  onGifSelect={(url) => onSendPost?.({ content: '', fileUrl: url, mime: 'image/gif', entityMentions: [] })}
+                  onGifSelect={(url) => onSendPost?.({ content: '', fileUrl: url, type: 'gif', mime: 'image/gif', entityMentions: [] })}
                 />
                 <StickerButton
-                  onStickerSelect={(url) => onSendPost?.({ content: '', fileUrl: url, mime: 'image/gif', entityMentions: [] })}
+                  onStickerSelect={(url) => onSendPost?.({ content: '', fileUrl: url, type: 'sticker', mime: 'image/gif', entityMentions: [] })}
                 />
                 <GiftButton />
                 <EmojiButton onEmojiSelect={(unified) => textareaRef.current?.insertEmoji(unified)} />

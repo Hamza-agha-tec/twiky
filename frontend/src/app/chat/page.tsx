@@ -1044,7 +1044,11 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             avatar: chat.avatarUrl ?? '',
             lastMessage:
               latestMessage?.content ??
-              (latestMessage?.type === 'image'
+              (latestMessage?.type === 'gif'
+                ? '🎬 GIF'
+                : latestMessage?.type === 'sticker'
+                  ? '🪄 Sticker'
+                  : latestMessage?.type === 'image'
                 ? 'Photo'
                 : latestMessage?.type === 'file'
                   ? 'File'
@@ -1078,6 +1082,8 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         const last = Array.isArray(conv.last_message) ? conv.last_message[0] : null
         const lastType = last?.type ?? 'text'
         const mediaLabel =
+          lastType === 'gif' ? '🎬 GIF' :
+          lastType === 'sticker' ? '🪄 Sticker' :
           lastType === 'image' ? '📷 Photo' :
           lastType === 'video' ? '🎥 Video' :
           lastType === 'voice' ? '🎤 Voice note' :
@@ -1168,7 +1174,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         : null
       const senderId = profile?.id ?? 'local-user'
       const normalizedType =
-        type === 'image' || type === 'file' || type === 'voice' ? type : 'text'
+        type === 'image' || type === 'gif' || type === 'sticker' || type === 'file' || type === 'voice' ? type : 'text'
       const nextMessage: ChatMessage = {
         id: `${conversationId}-local-${Date.now()}`,
         conversation_id: conversationId,

@@ -102,6 +102,9 @@ function toUiMessage(
   const resolvedType: Message['type'] =
     rawType === 'voice' ? 'voice' :
     rawType === 'call' ? 'call' :
+    rawType === 'gif' ? 'gif' :
+    rawType === 'sticker' ? 'sticker' :
+    rawType === 'image' && mime === 'image/gif' ? 'gif' :
     rawType === 'image' ? 'image' :
     rawType === 'video' ? 'video' :
     (rawType === 'file' || rawType === 'image') && mime.startsWith('video/') ? 'video' :
