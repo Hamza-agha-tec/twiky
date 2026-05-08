@@ -613,6 +613,12 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     readReceiptsEnabled,
   })
 
+  // Broadcast active DM to GlobalNotificationBridge so it can suppress duplicate toasts
+  useEffect(() => {
+    ;(window as any).__activeDmConversationId = visibleDirectConversationId ?? null
+    window.dispatchEvent(new Event('activeDmChanged'))
+  }, [visibleDirectConversationId])
+
   useEffect(() => {
     const readTypingPreference = () => {
       try {
