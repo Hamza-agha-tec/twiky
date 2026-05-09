@@ -3404,9 +3404,7 @@ export function ChannelFeed({
             onChange={handleGenericFile}
           />
 
-          <p className="mt-1 px-1 text-[10px] text-muted-foreground">
-            Enter to send · Shift+Enter for new line · Right-click for more
-          </p>
+
         </div>
       </div>
 

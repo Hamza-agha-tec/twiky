@@ -141,6 +141,30 @@ export interface VoiceParticipant {
   isVerified?: boolean | null
   isMuted?: boolean
   isSpeaking?: boolean
+  joinedAt?: number
+}
+
+function VoiceGroupTimer({ participants }: { participants: VoiceParticipant[] }) {
+  const joinTimes = participants.map(p => p.joinedAt).filter((t): t is number => typeof t === 'number' && t > 0)
+  const startMs = joinTimes.length > 0 ? Math.min(...joinTimes) : 0
+  const [elapsed, setElapsed] = useState(0)
+
+  useEffect(() => {
+    if (!startMs) return
+    const tick = () => setElapsed(Math.floor((Date.now() - startMs) / 1000))
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [startMs])
+
+  if (!startMs) return null
+  const m = Math.floor(elapsed / 60).toString().padStart(2, '0')
+  const s = (elapsed % 60).toString().padStart(2, '0')
+  return (
+    <span className="ml-auto text-[9px] font-semibold tabular-nums" style={{ color: '#55FF55' }}>
+      {m}:{s}
+    </span>
+  )
 }
 
 interface ChannelsPanelProps {
@@ -1612,7 +1636,7 @@ export function ChannelsPanel({
                   </div>
                 )}
                 <motion.div
-                  className="group"
+                  className=""
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: idx * 0.05, duration: 0.2, ease: 'easeOut' }}
@@ -1635,7 +1659,7 @@ export function ChannelsPanel({
                   {/* Row — relative container so 3-dot stays within the button height */}
                   <div
                     className={cn(
-                      'relative rounded-xl',
+                      'group/row relative rounded-xl',
                       canManage &&
                         group.kind === 'voice' &&
                         dragOverVoiceGroupId === group.id &&
@@ -1663,7 +1687,7 @@ export function ChannelsPanel({
                       onSelectGroup?.(group.id)
                     }}
                     className={cn(
-                      'relative flex w-full items-center gap-2 rounded-xl px-2.5 py-2 pr-9 text-left transition-all',
+                      cn('relative flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-all', canManage ? 'pr-9' : 'pr-8'),
                       isActive
                         ? 'bg-primary/10 text-foreground'
                         : memberCanRequest
@@ -1671,15 +1695,13 @@ export function ChannelsPanel({
                           : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground',
                     )}
                   >
-                    {isActive ? (
-                      <span className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-primary" />
-                    ) : null}
-
                     <GroupIcon
-                      className={cn(
-                        'h-3.5 w-3.5 flex-shrink-0',
-                        isActive ? 'text-primary' : 'text-muted-foreground',
-                      )}
+                      className="h-3.5 w-3.5 flex-shrink-0"
+                      style={{
+                        color: group.kind === 'voice' && group.id === activeVoiceGroupId
+                          ? '#55FF55'
+                          : isActive ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))',
+                      }}
                     />
                     <div className="flex min-w-0 flex-1 items-center gap-1.5">
                       <span className="truncate text-[12px] font-medium">{group.label}</span>
@@ -1705,9 +1727,6 @@ export function ChannelsPanel({
                             <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary" />
                           ) : null}
                         </>
-                      )}
-                      {group.kind === 'voice' && participants.length > 0 && (
-                        <span className="ml-auto text-[9px] font-semibold text-primary">{participants.length}</span>
                       )}
                     </div>
                   </button>
@@ -1738,6 +1757,26 @@ export function ChannelsPanel({
                     </div>
                   )}
 
+                  {/* Voice call timer — non-joined users */}
+                  {group.kind === 'voice' && group.id !== activeVoiceGroupId && participants.length > 0 && (
+                    <span className={cn('absolute right-1.5 top-1/2 z-10 -translate-y-1/2 pointer-events-none transition-opacity duration-150', canManage && 'group-hover/row:opacity-0')}>
+                      <VoiceGroupTimer participants={participants} />
+                    </span>
+                  )}
+
+                  {/* Voice call timer — joined user */}
+                  {group.kind === 'voice' && group.id === activeVoiceGroupId && voiceTimer && (
+                    <span
+                      className={cn(
+                        'absolute right-1.5 top-1/2 z-10 -translate-y-1/2 text-[10px] font-semibold tabular-nums pointer-events-none transition-opacity duration-150',
+                        canManage && 'group-hover/row:opacity-0',
+                      )}
+                      style={{ color: '#55FF55' }}
+                    >
+                      {voiceTimer}
+                    </span>
+                  )}
+
                   {/* Group 3-dot menu — admins/owners only */}
                   {canManage ? (
                   <DropdownMenu>
@@ -1745,7 +1784,7 @@ export function ChannelsPanel({
                       <button
                         className={cn(
                           'absolute right-1.5 top-1/2 z-10 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-accent hover:text-foreground',
-                          isActive ? 'opacity-75' : 'opacity-0 group-hover:opacity-100',
+                          'opacity-0 group-hover/row:opacity-100',
                         )}
                         onClick={(e) => e.stopPropagation()}
                       >
@@ -1890,56 +1929,6 @@ export function ChannelsPanel({
           </div>
         </div>
 
-        {/* Persistent voice status bar — shown when user is connected to voice */}
-        <AnimatePresence initial={false}>
-        {activeVoiceGroupId && (
-          <motion.div
-            className="flex-shrink-0 overflow-hidden border-t border-border bg-sidebar"
-            initial={{ height: 0, opacity: 0, y: 8 }}
-            animate={{ height: 'auto', opacity: 1, y: 0 }}
-            exit={{ height: 0, opacity: 0, y: 8 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-          >
-            <div className="flex items-center gap-2 px-3 py-2">
-              <span className="flex h-2 w-2 flex-shrink-0 rounded-full bg-green-500" />
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-semibold text-green-500">Voice Connected</p>
-                {voiceTimer && (
-                  <p className="text-[9px] font-mono text-muted-foreground">{voiceTimer}</p>
-                )}
-              </div>
-              <button
-                title={voiceIsMuted ? 'Unmute' : 'Mute'}
-                onClick={onVoiceToggleMute}
-                className={cn(
-                  'flex h-6 w-6 items-center justify-center rounded-lg transition-colors',
-                  voiceIsMuted
-                    ? 'bg-destructive/10 text-destructive hover:bg-destructive/20'
-                    : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                )}
-              >
-                {voiceIsMuted ? <MicOff className="h-3 w-3" /> : <Mic className="h-3 w-3" />}
-              </button>
-              {activeGroup !== activeVoiceGroupId && (
-                <button
-                  title="Return to voice"
-                  onClick={() => onVoiceReturn?.(activeVoiceGroupId)}
-                  className="flex h-6 w-6 items-center justify-center rounded-lg text-primary transition-colors hover:bg-primary/10"
-                >
-                  <Volume2 className="h-3 w-3" />
-                </button>
-              )}
-              <button
-                title="Leave voice"
-                onClick={onVoiceLeave}
-                className="flex h-6 w-6 items-center justify-center rounded-lg text-destructive transition-colors hover:bg-destructive/10"
-              >
-                <PhoneOff className="h-3 w-3" />
-              </button>
-            </div>
-          </motion.div>
-        )}
-        </AnimatePresence>
       </motion.div>
 
       <CreateEntityDialog

@@ -10,7 +10,7 @@ import {
   HeadphoneOff,
   MonitorUp,
   MonitorOff,
-  Maximize2,
+  Scan,
   PhoneOff,
   Volume2,
   UserMinus,
@@ -147,6 +147,14 @@ export function VoiceGroupView({
   const [outputVolume, setOutputVolume] = useState(100)
   const [exitReason, setExitReason] = useState<'left' | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
+  const [controlsVisible, setControlsVisible] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  useEffect(() => {
+    if (!isFullscreen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsFullscreen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isFullscreen])
   const [chatInput, setChatInput] = useState('')
   const [chatMessages, setChatMessages] = useState<VoiceChatMessage[]>([])
   const [chatUnread, setChatUnread] = useState(false)
@@ -439,6 +447,7 @@ export function VoiceGroupView({
     ? Math.min(...participants.map(p => p.joinedAt))
     : (me?.joinedAt ?? joinedAt)
   const timer = useElapsedTime(callStartedAt, isJoined)
+  const uiVisible = controlsVisible || inviteOpen
 
   const prevJoinedRef = useRef(isJoined)
   useEffect(() => {
@@ -466,11 +475,11 @@ export function VoiceGroupView({
   }, [])
 
   const cols =
-    participants.length <= 1 ? 'grid-cols-1'
-    : participants.length <= 2 ? 'grid-cols-2'
-    : participants.length <= 4 ? 'grid-cols-2'
-    : participants.length <= 6 ? 'grid-cols-3'
-    : 'grid-cols-4'
+    participants.length <= 1 ? 'grid-cols-1 max-w-lg mx-auto w-full place-content-center'
+    : participants.length <= 2 ? 'grid-cols-2 place-content-center'
+    : participants.length <= 4 ? 'grid-cols-2 place-content-center'
+    : participants.length <= 6 ? 'grid-cols-3 place-content-center'
+    : 'grid-cols-4 place-content-center'
 
   const remoteScreenPeerIds = new Set<string>()
   if (isJoined) {
@@ -483,26 +492,40 @@ export function VoiceGroupView({
 
   return (
     <motion.div
-      className="flex min-w-0 flex-1 overflow-hidden bg-background"
+      className={cn(
+        'flex overflow-hidden bg-background',
+        isFullscreen
+          ? 'fixed inset-0 z-[100]'
+          : 'min-w-0 flex-1',
+      )}
       initial={{ opacity: 0, y: 8, scale: 0.995 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.18, ease: 'easeOut' }}
     >
     {/* Main voice area */}
-    <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-      {/* Header */}
-      <div className="flex h-12 flex-shrink-0 items-center gap-2.5 border-b border-border bg-sidebar px-4">
-        <Volume2 className="h-4 w-4 flex-shrink-0 text-primary" />
-        <span className="text-[13px] font-semibold text-foreground">{group.label}</span>
-        {timer && (
-          <span className="ml-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-mono font-semibold text-primary">
-            {timer}
-          </span>
+    <div
+      className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
+      onMouseEnter={() => setControlsVisible(true)}
+      onMouseLeave={() => setControlsVisible(false)}
+    >
+      {/* Header — floats over content, shows on hover */}
+      <AnimatePresence>
+        {uiVisible && (
+          <motion.div
+            className="absolute top-0 left-0 right-0 z-20 flex h-12 items-center gap-2.5 bg-sidebar/90 px-4 backdrop-blur-xl border-b border-border/50 shadow-sm"
+            initial={{ opacity: 0, y: -40 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -40 }}
+            transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.7 }}
+          >
+            <Volume2 className="h-4 w-4 flex-shrink-0 text-primary" />
+            <span className="text-[13px] font-semibold text-foreground">{group.label}</span>
+            <span className="ml-auto text-[11px] text-muted-foreground">
+              {participants.length} {participants.length === 1 ? 'participant' : 'participants'}
+            </span>
+          </motion.div>
         )}
-        <span className="ml-auto text-[11px] text-muted-foreground">
-          {participants.length} {participants.length === 1 ? 'participant' : 'participants'}
-        </span>
-      </div>
+      </AnimatePresence>
 
       {/* Local screen share preview — always mounted so ref is valid; hidden when not sharing */}
       <div
@@ -529,7 +552,7 @@ export function VoiceGroupView({
               className="flex items-center gap-1 rounded-lg bg-black/70 px-2 py-1 text-[11px] font-semibold text-white backdrop-blur-sm hover:bg-black/90"
               title="Fullscreen"
             >
-              <Maximize2 className="h-3 w-3" />
+              <Scan className="h-3 w-3" />
               Fullscreen
             </button>
           </div>
@@ -560,7 +583,7 @@ export function VoiceGroupView({
                   className="flex items-center gap-1 rounded-lg bg-black/70 px-2 py-1 text-[11px] font-semibold text-white backdrop-blur-sm hover:bg-black/90"
                   title="Fullscreen"
                 >
-                  <Maximize2 className="h-3 w-3" />
+                  <Scan className="h-3 w-3" />
                   Fullscreen
                 </button>
               </div>
@@ -634,7 +657,7 @@ export function VoiceGroupView({
                           exit={{ opacity: 0, scale: 0.95 }}
                           transition={{ duration: 0.15 }}
                           className={cn(
-                            'group/tile relative flex flex-col items-center justify-center overflow-hidden rounded-xl border border-white/5 bg-muted/30 cursor-default select-none transition-all duration-200 min-h-[120px]',
+                            'group/tile relative flex flex-col items-center justify-center overflow-hidden rounded-xl border border-white/5 bg-muted/30 cursor-default select-none transition-all duration-200 aspect-video',
                             member.isSpeaking && !member.isMuted && 'ring-2 ring-green-500/80',
                           )}
                           style={soundboardUserId === member.id ? {
@@ -724,40 +747,46 @@ export function VoiceGroupView({
             </div>
 
             {/* Invite friends */}
-            <button
-              onClick={() => { setInviteSearch(''); setSentInvites(new Set()); setInviteOpen(true) }}
-              className="mx-auto flex items-center gap-2 rounded-xl border border-dashed border-border/50 px-5 py-2 text-[12px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+            <motion.div
+              className="flex justify-center"
+              animate={{ y: uiVisible ? -80 : 0 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.7 }}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>
-              </svg>
-              Invite Friends
-            </button>
+              <button
+                onClick={() => { setInviteSearch(''); setSentInvites(new Set()); setInviteOpen(true) }}
+                className="flex items-center gap-2 rounded-xl border border-dashed border-border/50 px-5 py-2 text-[12px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>
+                </svg>
+                Invite Friends
+              </button>
+            </motion.div>
           </motion.div>
         )}
         </AnimatePresence>
       </div>
 
-      {/* Controls */}
-      {exitReason === null && <motion.div
-        className="flex flex-shrink-0 items-center justify-between border-t border-border bg-sidebar px-6 py-3"
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.18, ease: 'easeOut' }}
+      {/* Controls — floating card, hidden by default, slides up on hover */}
+      <AnimatePresence>
+      {exitReason === null && uiVisible && <motion.div
+        className="absolute bottom-5 left-1/2 z-20 -translate-x-1/2"
+        initial={{ opacity: 0, y: 20, scale: 0.96 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 20, scale: 0.96 }}
+        transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.7 }}
       >
-        {/* Left: voice info */}
-        <div className="flex w-32 shrink-0 items-center gap-2">
-          <span className="flex h-2 w-2 shrink-0 rounded-full bg-green-500" />
-          <span className="truncate text-[11px] font-medium text-muted-foreground">
-            {group.label}
-          </span>
-          {timer && (
-            <span className="shrink-0 font-mono text-[11px] tabular-nums text-primary">{timer}</span>
-          )}
-        </div>
+        <div className="flex items-center gap-3 rounded-2xl border border-border/50 bg-sidebar/90 px-4 py-2.5 shadow-[0_8px_40px_rgba(0,0,0,0.35)] backdrop-blur-xl">
 
-        {/* Center: controls */}
-        <div className="flex items-center gap-2">
+          {/* Voice info */}
+          <div className="flex shrink-0 items-center gap-1.5 pr-3 border-r border-border/40">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: '#55FF55' }} />
+            <span className="max-w-[72px] truncate text-[11px] font-medium text-muted-foreground">{group.label}</span>
+            {timer && <span className="shrink-0 font-mono text-[10px] tabular-nums" style={{ color: '#55FF55' }}>{timer}</span>}
+          </div>
+
+          {/* All controls in one row */}
+        <div className="flex items-center gap-1.5">
           <div className="flex items-center">
             <VoiceCtrlBtn
               active={!isMuted}
@@ -965,45 +994,52 @@ export function VoiceGroupView({
               </div>
             </DropdownMenuContent>
           </DropdownMenu>
+          {/* Leave */}
+          <motion.button
+            onClick={() => {
+              const videoTrack = videoStreamRef.current?.getVideoTracks()[0]
+              if (videoTrack) removeVideoTrack?.(videoTrack)
+              if (localVideoRef.current) localVideoRef.current.srcObject = null
+              videoStreamRef.current?.getTracks().forEach((t) => t.stop())
+              videoStreamRef.current = null
+              setVideoOn(false)
+              const screenTrack = screenStreamRef.current?.getVideoTracks()[0]
+              if (screenTrack) removeVideoTrack?.(screenTrack)
+              if (screenVideoRef.current) screenVideoRef.current.srcObject = null
+              screenStreamRef.current?.getTracks().forEach((t) => t.stop())
+              screenStreamRef.current = null
+              if (sharing) onScreenShareToggle?.(false)
+              setSharing(false)
+              if (isJoined) setExit('left')
+              onLeave()
+            }}
+            title="Leave"
+            whileHover={{ scale: 1.06 }}
+            whileTap={{ scale: 0.9 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+            className="flex h-9 w-9 items-center justify-center rounded-xl bg-destructive/10 text-destructive transition-colors hover:bg-destructive/20"
+          >
+            <PhoneOff className="h-4 w-4" />
+          </motion.button>
         </div>
 
-        {/* Right: leave */}
-        <div className="flex w-32 shrink-0 justify-end">
-        <motion.button
-          onClick={() => {
-            const videoTrack = videoStreamRef.current?.getVideoTracks()[0]
-            if (videoTrack) removeVideoTrack?.(videoTrack)
-            if (localVideoRef.current) localVideoRef.current.srcObject = null
-            videoStreamRef.current?.getTracks().forEach((t) => t.stop())
-            videoStreamRef.current = null
-            setVideoOn(false)
-            const screenTrack = screenStreamRef.current?.getVideoTracks()[0]
-            if (screenTrack) removeVideoTrack?.(screenTrack)
-            if (screenVideoRef.current) screenVideoRef.current.srcObject = null
-            screenStreamRef.current?.getTracks().forEach((t) => t.stop())
-            screenStreamRef.current = null
-            if (sharing) onScreenShareToggle?.(false)
-            setSharing(false)
-            if (isJoined) setExit('left')
-            onLeave()
-          }}
-          title="Leave"
-          whileHover={{ scale: 1.06 }}
-          whileTap={{ scale: 0.9 }}
-          transition={{ type: 'spring', stiffness: 400, damping: 17 }}
-          className="flex items-center gap-1.5 rounded-2xl bg-destructive/10 px-3 py-2 text-destructive transition-colors hover:bg-destructive/20"
-        >
-          <motion.span
-            animate={{ x: 0 }}
-            whileHover={{ x: -2, rotate: -12 }}
-            transition={{ type: 'spring', stiffness: 500, damping: 20 }}
-          >
-            <PhoneOff className="h-3.5 w-3.5" />
-          </motion.span>
-          <span className="text-[11px] font-semibold">Leave</span>
-        </motion.button>
+          {/* Fullscreen */}
+          <div className="flex shrink-0 items-center pl-3 border-l border-border/40">
+            <motion.button
+              title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.88 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+              onClick={() => setIsFullscreen((v) => !v)}
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-muted/40 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <Scan className="h-4 w-4" />
+            </motion.button>
+          </div>
+
         </div>
       </motion.div>}
+      </AnimatePresence>
     </div>
 
     {/* Chat sidebar */}

@@ -27,7 +27,7 @@ const ROLE_COLORS: Record<string, string> = {
   ADMIN: 'text-blue-400',
 }
 
-const CARD_WIDTH = 240
+const CARD_WIDTH = 200
 const GAP = 6
 
 function Card({
@@ -72,14 +72,14 @@ function Card({
   } else {
     // top: center horizontally, appear above
     left = rect.left + rect.width / 2 - CARD_WIDTH / 2
-    top = rect.top - GAP - 260
+    top = rect.top - GAP - 200
   }
 
   // clamp to viewport
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800
   left = Math.max(8, Math.min(left, vw - CARD_WIDTH - 8))
-  top  = Math.max(8, Math.min(top, vh - 300))
+  top  = Math.max(8, Math.min(top, vh - 220))
 
   return (
     <motion.div
@@ -90,94 +90,71 @@ function Card({
       exit={{ opacity: 0, scale: 0.9, y: -6 }}
       transition={{ type: 'spring', stiffness: 460, damping: 30, mass: 0.65 }}
     >
-      {/* Banner */}
-      <div className="relative h-[68px] w-full overflow-hidden">
-        {banner ? (
-          <img src={banner} alt="" className="h-full w-full object-cover" />
-        ) : (
-          <div className="h-full w-full bg-gradient-to-br from-primary/20 via-primary/10 to-transparent" />
-        )}
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-sidebar/30 to-sidebar/85" />
-      </div>
-
-      {/* Avatar */}
-      <div className="relative -mt-7 px-4">
-        <div className="relative inline-block">
+      {/* Avatar row */}
+      <div className="flex items-center gap-2.5 px-3 pt-3 pb-2">
+        <div className="relative shrink-0">
           {isLoading ? (
-            <div className="h-[52px] w-[52px] animate-pulse rounded-full bg-muted" />
+            <div className="h-8 w-8 animate-pulse rounded-full bg-muted" />
           ) : (
             <>
-              <UserAvatar
-                src={avatar}
-                alt={name}
-                className="h-[52px] w-[52px] rounded-full object-cover ring-[3px] ring-sidebar"
-              />
-              <span
-                className={cn(
-                  'absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-[2.5px] border-sidebar',
-                  isOnline ? 'bg-green-500' : 'bg-muted-foreground/40',
-                )}
-              />
+              <UserAvatar src={avatar} alt={name} className="h-8 w-8 rounded-full object-cover" />
+              <span className={cn('absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-sidebar', isOnline ? 'bg-green-500' : 'bg-muted-foreground/40')} />
+            </>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          {isLoading ? (
+            <div className="space-y-1">
+              <div className="h-2.5 w-20 animate-pulse rounded bg-muted" />
+              <div className="h-2 w-14 animate-pulse rounded bg-muted" />
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-1">
+                <p className="truncate text-[12px] font-semibold text-foreground leading-tight">{name}</p>
+                {showVerified && <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(subPlan)} />}
+              </div>
+              {username && <p className="truncate text-[10px] text-muted-foreground">@{username}</p>}
+              {role && role !== 'MEMBER' && roleColor && (
+                <p className={cn('text-[9px] font-semibold uppercase tracking-wide', roleColor)}>
+                  {role.charAt(0) + role.slice(1).toLowerCase()}
+                </p>
+              )}
             </>
           )}
         </div>
       </div>
 
-      {/* Info */}
-      <div className="px-4 pt-2 pb-4">
-        {isLoading ? (
-          <div className="space-y-2">
-            <div className="h-3.5 w-28 animate-pulse rounded-md bg-muted" />
-            <div className="h-2.5 w-20 animate-pulse rounded-md bg-muted" />
-          </div>
-        ) : (
-          <>
-            <div className="flex items-center gap-1.5">
-              <p className="truncate text-[14px] font-bold text-foreground leading-tight">{name}</p>
-              {showVerified && (
-                <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(subPlan)} />
-              )}
-            </div>
-
-            {username && (
-              <p className="mt-0.5 truncate text-[11px] text-muted-foreground">@{username}</p>
-            )}
-
-            {role && role !== 'MEMBER' && roleColor && (
-              <p className={cn('mt-0.5 text-[10px] font-semibold uppercase tracking-wide', roleColor)}>
-                {role.charAt(0) + role.slice(1).toLowerCase()}
-              </p>
-            )}
-
-            {bio && (
-              <p className="mt-2.5 line-clamp-2 text-[11px] leading-[1.5] text-muted-foreground border-t border-border/50 pt-2.5">
-                {bio}
-              </p>
-            )}
-          </>
-        )}
-
-        {/* Action buttons */}
-        <div className="mt-3 flex gap-2">
-          {!hideMessage && onMessage && (
-            <button
-              onClick={() => onMessage(userId)}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border/60 bg-accent/60 py-1.5 text-[12px] font-semibold text-foreground transition-colors hover:bg-accent"
-            >
-              <MessageCircle className="h-3.5 w-3.5" />
-              Message
-            </button>
-          )}
-          {onViewProfile && (
-            <button
-              onClick={() => onViewProfile(userId)}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border/60 bg-accent/60 py-1.5 text-[12px] font-semibold text-foreground transition-colors hover:bg-accent"
-            >
-              <User className="h-3.5 w-3.5" />
-              Profile
-            </button>
-          )}
+      {/* Status bubble */}
+      {statusMsg && !isLoading && (
+        <div className="mx-3 mb-2 flex items-center gap-1">
+          <span className="h-1 w-1 rounded-full bg-muted/80 shrink-0" />
+          <span className="h-1.5 w-1.5 rounded-full bg-muted/80 shrink-0" />
+          <div className="rounded-xl bg-muted px-2 py-0.5 text-[10px] text-foreground/70 truncate">{statusMsg}</div>
         </div>
+      )}
+
+      {/* Bio */}
+      {bio && !isLoading && (
+        <p className="mx-3 mb-2 line-clamp-2 text-[10px] leading-[1.4] text-muted-foreground border-t border-border/40 pt-1.5">
+          {bio}
+        </p>
+      )}
+
+      {/* Action buttons */}
+      <div className="flex gap-1.5 px-3 pb-3">
+        {!hideMessage && onMessage && (
+          <button onClick={() => onMessage(userId)} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-border/60 bg-accent/60 py-1 text-[10px] font-semibold text-foreground transition-colors hover:bg-accent">
+            <MessageCircle className="h-3 w-3" />
+            Message
+          </button>
+        )}
+        {onViewProfile && (
+          <button onClick={() => onViewProfile(userId)} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-border/60 bg-accent/60 py-1 text-[10px] font-semibold text-foreground transition-colors hover:bg-accent">
+            <User className="h-3 w-3" />
+            Profile
+          </button>
+        )}
       </div>
     </motion.div>
   )
