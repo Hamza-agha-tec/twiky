@@ -3,13 +3,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MessageCircle, User, UserPlus } from 'lucide-react'
+import { MessageCircle, User, UserPlus, QrCode } from 'lucide-react'
 import { useProfile, useUserById, useUserFollowers, useUserFollowing } from '@/hooks/use-user'
 import { useOnlineUsers } from '@/hooks/use-socket'
 import { VerifiedBadge, getVerifiedBadgeVariant } from '@/components/chat/verified-badge'
 import { UserAvatar } from '@/components/chat/user-avatar'
 import { UserName } from '@/components/chat/user-name'
 import { StatusDot, resolveStatus } from '@/components/chat/status-dot'
+import { QRCodeModal } from '@/components/chat/qr-code-modal'
 import { cn } from '@/lib/utils'
 
 interface HoverProfileCardProps {
@@ -40,6 +41,7 @@ function Card({
   hideMessage,
   rect,
   side,
+  onOpenQR,
 }: {
   userId: string
   role?: string
@@ -48,6 +50,7 @@ function Card({
   hideMessage?: boolean
   rect: DOMRect
   side: 'left' | 'right' | 'top'
+  onOpenQR?: (info: { username: string; name: string; avatarUrl: string | null }) => void
 }) {
   const { data: profile, isLoading } = useUserById(userId)
   const { data: currentUser } = useProfile()
@@ -193,6 +196,11 @@ function Card({
             Profile
           </button>
         )}
+        {username && (
+          <button onClick={() => onOpenQR?.({ username, name, avatarUrl: avatar })} className="flex items-center justify-center rounded-lg border border-border/60 bg-accent/60 px-2 py-1.5 text-foreground transition-colors hover:bg-accent" title="QR Code">
+            <QrCode className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
     </motion.div>
   )
@@ -213,6 +221,7 @@ export function HoverProfileCard({
   const triggerRef = useRef<HTMLDivElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [mounted, setMounted] = useState(false)
+  const [qrInfo, setQrInfo] = useState<{ username: string; name: string; avatarUrl: string | null } | null>(null)
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -266,11 +275,21 @@ export function HoverProfileCard({
                 hideMessage={hideMessage}
                 rect={rect}
                 side={side}
+                onOpenQR={info => { setOpen(false); setQrInfo(info) }}
               />
             </div>
           )}
         </AnimatePresence>,
         document.body,
+      )}
+      {qrInfo && (
+        <QRCodeModal
+          open
+          onClose={() => setQrInfo(null)}
+          username={qrInfo.username}
+          name={qrInfo.name}
+          avatarUrl={qrInfo.avatarUrl}
+        />
       )}
     </div>
   )

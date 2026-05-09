@@ -28,6 +28,40 @@ interface MessageBubbleProps {
   hideMessage?: boolean;
 }
 
+interface ProfilePayload { __twiky_type: 'profile'; username: string; name: string; avatarUrl: string | null; url: string }
+
+function tryParseProfile(content: string): ProfilePayload | null {
+  try {
+    const p = JSON.parse(content)
+    if (p?.__twiky_type === 'profile') return p as ProfilePayload
+  } catch { /* not JSON */ }
+  return null
+}
+
+function ProfileCard({ data }: { data: ProfilePayload }) {
+  return (
+    <a
+      href={data.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mt-1 flex items-center gap-3 rounded-xl border border-border/60 bg-muted/40 px-3 py-2.5 transition-colors hover:bg-muted/70 max-w-[260px] no-underline"
+    >
+      {data.avatarUrl ? (
+        <img src={data.avatarUrl} alt={data.name} className="h-10 w-10 rounded-xl object-cover shrink-0" />
+      ) : (
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-[15px] font-bold text-primary">
+          {data.name[0]?.toUpperCase()}
+        </div>
+      )}
+      <div className="min-w-0">
+        <p className="truncate text-[13px] font-semibold text-foreground leading-tight">{data.name}</p>
+        <p className="truncate text-[11px] text-muted-foreground">@{data.username}</p>
+        <p className="mt-0.5 text-[10px] text-primary">View Profile →</p>
+      </div>
+    </a>
+  )
+}
+
 function HighlightedText({ text, query }: { text: string; query: string }) {
   if (!query) return <>{text}</>;
   const parts = text.split(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'));
@@ -167,12 +201,16 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
 
         {/* Message content — no bubble */}
         <div ref={messageRef} className="max-w-xl">
-          {message.type === 'text' && (
-            <p className="text-sm text-foreground/90 wrap-break-word whitespace-pre-wrap leading-relaxed">
-              {searchHighlight ? <HighlightedText text={message.content} query={searchHighlight} /> : <AppleText text={message.content} />}
-              {message.isEdited && <span className="text-[10px] text-muted-foreground ml-1.5">(edited)</span>}
-            </p>
-          )}
+          {message.type === 'text' && (() => {
+            const profileData = tryParseProfile(message.content)
+            if (profileData) return <ProfileCard data={profileData} />
+            return (
+              <p className="text-sm text-foreground/90 wrap-break-word whitespace-pre-wrap leading-relaxed">
+                {searchHighlight ? <HighlightedText text={message.content} query={searchHighlight} /> : <AppleText text={message.content} />}
+                {message.isEdited && <span className="text-[10px] text-muted-foreground ml-1.5">(edited)</span>}
+              </p>
+            )
+          })()}
 
           {message.type === 'image' && (
             <div className="mt-1">
