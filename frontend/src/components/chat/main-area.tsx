@@ -333,132 +333,134 @@ export function MainArea({
     <div className="flex min-w-0 flex-1 overflow-hidden bg-background">
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {header}
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {activeTab === 'feed' ? feedChild : null}
-          {activeTab === 'notes' ? (
-            <NotesPanel scopeKey={activeGroup.id} scopeLabel={groupScopeLabel} scopeType="group" />
-          ) : null}
-          {activeTab === 'tasks' ? (
-            <TasksPanel scopeKey={activeGroup.id} scopeLabel={groupScopeLabel} scopeType="group" />
-          ) : null}
-          {activeTab === 'goals' ? (
-            <GoalsPanel scopeKey={activeGroup.id} scopeLabel={groupScopeLabel} scopeType="group" />
-          ) : null}
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {activeTab === 'feed' ? feedChild : null}
+            {activeTab === 'notes' ? (
+              <NotesPanel scopeKey={activeGroup.id} scopeLabel={groupScopeLabel} scopeType="group" />
+            ) : null}
+            {activeTab === 'tasks' ? (
+              <TasksPanel scopeKey={activeGroup.id} scopeLabel={groupScopeLabel} scopeType="group" />
+            ) : null}
+            {activeTab === 'goals' ? (
+              <GoalsPanel scopeKey={activeGroup.id} scopeLabel={groupScopeLabel} scopeType="group" />
+            ) : null}
+          </div>
+
+          {/* Members panel — lives below the top nav, not alongside it */}
+          <AnimatePresence initial={false}>
+            {membersOpen && (
+              <motion.div
+                key="members-panel"
+                className="flex w-[256px] flex-shrink-0 flex-col border-l border-border bg-sidebar overflow-hidden"
+                initial={{ width: 0, opacity: 0 }}
+                animate={{ width: 256, opacity: 1 }}
+                exit={{ width: 0, opacity: 0 }}
+                transition={{ type: 'spring', stiffness: 380, damping: 36, mass: 0.8 }}
+              >
+                <div className="flex h-[52px] flex-shrink-0 items-center justify-between border-b border-border px-3">
+                  <p className="text-[12px] font-semibold text-foreground">Members</p>
+                  <span className="rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                    {members.length}
+                  </span>
+                </div>
+
+                <div className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
+                  {/* Online */}
+                  {onlineMembers.length > 0 && (
+                    <div>
+                      <p className="mb-1.5 px-1 text-[9.5px] font-bold uppercase tracking-[0.1em] text-muted-foreground/60">
+                        Online — {onlineMembers.length}
+                      </p>
+                      <div className="space-y-0.5">
+                        {onlineMembers.map((m) => (
+                          <MemberBannerRow key={m.user.id} member={m} isOnline>
+                            <HoverProfileCard
+                              userId={m.user.id}
+                              isOnline
+                              role={m.role}
+                              side="left"
+                              hideMessage={m.user.id === currentUser?.id}
+                              onMessage={m.user.id !== currentUser?.id ? onMemberMessage : undefined}
+                              onViewProfile={() => setMemberProfileTarget(m)}
+                            >
+                              <div className="relative flex-shrink-0 cursor-pointer">
+                                <UserAvatar
+                                  src={m.user.avatar_url}
+                                  alt={m.user.username}
+                                  className="h-8 w-8 rounded-full object-cover"
+                                />
+                                <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-sidebar bg-green-500" />
+                              </div>
+                            </HoverProfileCard>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[12px] font-medium text-foreground">
+                                {m.user.full_name || m.user.username}
+                              </p>
+                              {m.role && m.role !== 'MEMBER' && (
+                                <p className="truncate text-[10px] capitalize text-muted-foreground">
+                                  {m.role.toLowerCase()}
+                                </p>
+                              )}
+                            </div>
+                          </MemberBannerRow>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Offline */}
+                  {offlineMembers.length > 0 && (
+                    <div>
+                      <p className="mb-1.5 px-1 text-[9.5px] font-bold uppercase tracking-[0.1em] text-muted-foreground/60">
+                        Offline — {offlineMembers.length}
+                      </p>
+                      <div className="space-y-0.5">
+                        {offlineMembers.map((m) => (
+                          <MemberBannerRow key={m.user.id} member={m} isOnline={false}>
+                            <HoverProfileCard
+                              userId={m.user.id}
+                              isOnline={false}
+                              role={m.role}
+                              side="left"
+                              hideMessage={m.user.id === currentUser?.id}
+                              onMessage={m.user.id !== currentUser?.id ? onMemberMessage : undefined}
+                              onViewProfile={() => setMemberProfileTarget(m)}
+                            >
+                              <div className="relative flex-shrink-0 cursor-pointer">
+                                <UserAvatar
+                                  src={m.user.avatar_url}
+                                  alt={m.user.username}
+                                  className="h-8 w-8 rounded-full object-cover grayscale"
+                                />
+                                <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-sidebar bg-muted-foreground/40" />
+                              </div>
+                            </HoverProfileCard>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[12px] font-medium text-foreground">
+                                {m.user.full_name || m.user.username}
+                              </p>
+                              {m.role && m.role !== 'MEMBER' && (
+                                <p className="truncate text-[10px] capitalize text-muted-foreground">
+                                  {m.role.toLowerCase()}
+                                </p>
+                              )}
+                            </div>
+                          </MemberBannerRow>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {members.length === 0 && (
+                    <p className="px-2 py-6 text-center text-[12px] text-muted-foreground">No members</p>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
-
-      {/* Members panel */}
-      <AnimatePresence initial={false}>
-        {membersOpen && (
-          <motion.div
-            key="members-panel"
-            className="flex h-full w-[256px] flex-shrink-0 flex-col border-l border-border bg-sidebar overflow-hidden"
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 256, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 380, damping: 36, mass: 0.8 }}
-          >
-            <div className="flex h-[52px] flex-shrink-0 items-center justify-between border-b border-border px-3">
-              <p className="text-[12px] font-semibold text-foreground">Members</p>
-              <span className="rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                {members.length}
-              </span>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
-              {/* Online */}
-              {onlineMembers.length > 0 && (
-                <div>
-                  <p className="mb-1.5 px-1 text-[9.5px] font-bold uppercase tracking-[0.1em] text-muted-foreground/60">
-                    Online — {onlineMembers.length}
-                  </p>
-                  <div className="space-y-0.5">
-                    {onlineMembers.map((m) => (
-                      <MemberBannerRow key={m.user.id} member={m} isOnline>
-                        <HoverProfileCard
-                          userId={m.user.id}
-                          isOnline
-                          role={m.role}
-                          side="left"
-                          hideMessage={m.user.id === currentUser?.id}
-                          onMessage={m.user.id !== currentUser?.id ? onMemberMessage : undefined}
-                          onViewProfile={() => setMemberProfileTarget(m)}
-                        >
-                          <div className="relative flex-shrink-0 cursor-pointer">
-                            <UserAvatar
-                              src={m.user.avatar_url}
-                              alt={m.user.username}
-                              className="h-8 w-8 rounded-full object-cover"
-                            />
-                            <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-sidebar bg-green-500" />
-                          </div>
-                        </HoverProfileCard>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[12px] font-medium text-foreground">
-                            {m.user.full_name || m.user.username}
-                          </p>
-                          {m.role && m.role !== 'MEMBER' && (
-                            <p className="truncate text-[10px] capitalize text-muted-foreground">
-                              {m.role.toLowerCase()}
-                            </p>
-                          )}
-                        </div>
-                      </MemberBannerRow>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Offline */}
-              {offlineMembers.length > 0 && (
-                <div>
-                  <p className="mb-1.5 px-1 text-[9.5px] font-bold uppercase tracking-[0.1em] text-muted-foreground/60">
-                    Offline — {offlineMembers.length}
-                  </p>
-                  <div className="space-y-0.5">
-                    {offlineMembers.map((m) => (
-                      <MemberBannerRow key={m.user.id} member={m} isOnline={false}>
-                        <HoverProfileCard
-                          userId={m.user.id}
-                          isOnline={false}
-                          role={m.role}
-                          side="left"
-                          hideMessage={m.user.id === currentUser?.id}
-                          onMessage={m.user.id !== currentUser?.id ? onMemberMessage : undefined}
-                          onViewProfile={() => setMemberProfileTarget(m)}
-                        >
-                          <div className="relative flex-shrink-0 cursor-pointer">
-                            <UserAvatar
-                              src={m.user.avatar_url}
-                              alt={m.user.username}
-                              className="h-8 w-8 rounded-full object-cover grayscale"
-                            />
-                            <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-sidebar bg-muted-foreground/40" />
-                          </div>
-                        </HoverProfileCard>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[12px] font-medium text-foreground">
-                            {m.user.full_name || m.user.username}
-                          </p>
-                          {m.role && m.role !== 'MEMBER' && (
-                            <p className="truncate text-[10px] capitalize text-muted-foreground">
-                              {m.role.toLowerCase()}
-                            </p>
-                          )}
-                        </div>
-                      </MemberBannerRow>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {members.length === 0 && (
-                <p className="px-2 py-6 text-center text-[12px] text-muted-foreground">No members</p>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {activeTab === 'feed' ? (
         <FeedProfileSidebarDock
