@@ -2,6 +2,9 @@ import { createClient } from '@/utils/supabase/client';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3500';
 
+export type NameEffect = 'gradient' | 'shimmer' | 'glow' | null;
+export type UserStatus = 'online' | 'idle' | 'dnd' | 'invisible' | null;
+
 export interface UserProfile {
   id: string;
   email?: string | null;
@@ -20,6 +23,8 @@ export interface UserProfile {
   is_verified?: boolean | null;
   sub_plan?: 'FREE' | 'PRO' | 'GEEK' | null;
   enter_sound_url?: string | null;
+  name_effect?: NameEffect;
+  user_status?: UserStatus;
 }
 
 export interface UserSummary {
@@ -32,6 +37,8 @@ export interface UserSummary {
   avatar_url: string | null;
   is_verified?: boolean | null;
   sub_plan?: 'FREE' | 'PRO' | 'GEEK' | null;
+  name_effect?: NameEffect;
+  user_status?: UserStatus;
 }
 
 export interface FollowerRecord {
@@ -54,7 +61,7 @@ export interface UserPost {
 }
 
 export type UpdateProfileInput = Partial<
-  Pick<UserProfile, 'username' | 'fullname' | 'avatar_url' | 'banner' | 'phone_number' | 'bio' | 'status' | 'website_url' | 'x_url' | 'enter_sound_url'>
+  Pick<UserProfile, 'username' | 'fullname' | 'avatar_url' | 'banner' | 'phone_number' | 'bio' | 'status' | 'website_url' | 'x_url' | 'enter_sound_url' | 'name_effect' | 'user_status'>
 >;
 
 async function getToken(): Promise<string> {

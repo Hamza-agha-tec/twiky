@@ -8,6 +8,8 @@ import { useProfile, useUserById, useUserFollowers, useUserFollowing } from '@/h
 import { useOnlineUsers } from '@/hooks/use-socket'
 import { VerifiedBadge, getVerifiedBadgeVariant } from '@/components/chat/verified-badge'
 import { UserAvatar } from '@/components/chat/user-avatar'
+import { UserName } from '@/components/chat/user-name'
+import { StatusDot, resolveStatus } from '@/components/chat/status-dot'
 import { cn } from '@/lib/utils'
 
 interface HoverProfileCardProps {
@@ -70,6 +72,8 @@ function Card({
   const showVerified = isVerified || subPlan === 'PRO' || subPlan === 'GEEK'
   const roleColor = role ? (ROLE_COLORS[role] ?? null) : null
   const statusMsg = profile?.status ?? profile?.status_message ?? null
+  const nameEffect = profile?.name_effect ?? null
+  const effectiveStatus = resolveStatus(profile?.user_status, isOnline)
 
   let left = 0
   let top = rect.top  // top-right of card aligns with avatar top
@@ -128,7 +132,7 @@ function Card({
           ) : (
             <>
               <UserAvatar src={avatar} alt={name} className="h-12 w-12 rounded-full object-cover ring-[3px] ring-sidebar" />
-              <span className={cn('absolute bottom-0.5 right-0.5 h-2.5 w-2.5 rounded-full border-[2.5px] border-sidebar', isOnline ? 'bg-green-500' : 'bg-muted-foreground/40')} />
+              <StatusDot status={effectiveStatus} className="bottom-0.5 right-0.5 h-2.5 w-2.5" />
             </>
           )}
         </div>
@@ -155,7 +159,7 @@ function Card({
         ) : (
           <>
             <div className="flex items-center gap-1">
-              <p className="truncate text-[13px] font-bold text-foreground leading-tight">{name}</p>
+              <UserName name={name} effect={nameEffect} subPlan={subPlan} className="truncate text-[13px] font-bold leading-tight" />
               {showVerified && <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(subPlan)} />}
             </div>
             {username && <p className="truncate text-[10px] text-muted-foreground">@{username}</p>}

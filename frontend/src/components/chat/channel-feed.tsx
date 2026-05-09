@@ -50,6 +50,8 @@ import { EmojiButton, GifButton, StickerButton, GiftButton } from '@/components/
 import { AppleText, EmojiImg } from '@/components/chat/apple-text'
 import { EmojiInput, type EmojiInputHandle } from '@/components/chat/emoji-input'
 import { VerifiedBadge, getVerifiedBadgeVariant, hasPremiumPlan, isVerifiedAccountIdentity } from '@/components/chat/verified-badge'
+import { UserName } from '@/components/chat/user-name'
+import type { NameEffect } from '@/lib/user-api'
 import type { MockChannelGroup, WorkspaceChannel } from '@/components/chat/channels-panel'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -255,6 +257,7 @@ export interface FeedMemberProfile {
   subPlan?: FeedSubPlan | null
   location: string
   name: string
+  nameEffect?: string | null
   posts: number
   role: string
   status: string
@@ -839,6 +842,7 @@ function MessageRow({
       sub_plan: realUser?.sub_plan ?? memberProfile.subPlan ?? null,
     }),
     subPlan: realUser?.sub_plan ?? memberProfile.subPlan ?? null,
+    nameEffect: realUser?.name_effect ?? memberProfile.nameEffect ?? null,
   }
 
   const roleColor = ROLE_COLORS[post.role] ?? 'text-primary'
@@ -1034,7 +1038,7 @@ function MessageRow({
             </div>
 
             {/* Identity */}
-            <p className="text-[19px] font-black leading-none text-foreground">{resolvedProfile.name}</p>
+            <UserName name={resolvedProfile.name} effect={resolvedProfile.nameEffect as NameEffect} subPlan={resolvedProfile.subPlan} className="text-[19px] font-black leading-none" />
             <p className="mt-1 text-[12px] text-muted-foreground">@{resolvedProfile.handle}</p>
 
             {/* Inner content card */}
@@ -1336,6 +1340,7 @@ export function FeedMemberProfileView({
       },
     ),
     subPlan: realUser?.sub_plan ?? memberProfile.subPlan ?? null,
+    nameEffect: realUser?.name_effect ?? memberProfile.nameEffect ?? null,
   }
 
   const onlineUsers = useOnlineUsers()
@@ -1555,7 +1560,7 @@ export function FeedMemberProfileView({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-[19px] font-black leading-none tracking-tight text-foreground">{resolvedProfile.name}</h1>
+          <UserName name={resolvedProfile.name} effect={resolvedProfile.nameEffect as NameEffect} subPlan={resolvedProfile.subPlan} className="text-[19px] font-black leading-none tracking-tight" />
           {resolvedProfile.isVerified ? <VerifiedBadge size="sm" variant={profileBadgeVariant} /> : null}
           {!hideRole && <RoleBadge role={resolvedProfile.role} variant="profile" />}
         </div>
@@ -1709,7 +1714,7 @@ export function FeedMemberProfileView({
                         </Avatar>
                         <div className="min-w-0">
                           <p className="text-[11px] font-semibold leading-none text-foreground">
-                            {resolvedProfile.name}{' '}
+                            <UserName name={resolvedProfile.name} effect={resolvedProfile.nameEffect as NameEffect} subPlan={resolvedProfile.subPlan} />{' '}
                             <span className="font-normal text-muted-foreground">posted</span>
                           </p>
                           <p className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
