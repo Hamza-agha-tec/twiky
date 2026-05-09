@@ -33,8 +33,146 @@ interface GroupMember {
     username: string
     avatar_url?: string | null
     full_name?: string | null
+    banner?: string | null
+    sub_plan?: string | null
   }
   role?: string
+}
+
+// Samples the average RGB from the left edge of a loaded image.
+// Returns null if CORS blocks access.
+function sampleLeftEdgeColor(img: HTMLImageElement): string | null {
+  try {
+    const off = document.createElement('canvas')
+    off.width = 24
+    off.height = Math.max(1, img.naturalHeight || 40)
+    const ctx = off.getContext('2d')
+    if (!ctx) return null
+    ctx.drawImage(img, 0, 0, 24, off.height)
+    const px = ctx.getImageData(0, 0, 24, off.height).data
+    let r = 0, g = 0, b = 0, n = 0
+    for (let i = 0; i < px.length; i += 4) {
+      if (px[i + 3] < 10) continue
+      r += px[i]; g += px[i + 1]; b += px[i + 2]; n++
+    }
+    if (!n) return null
+    return `${Math.round(r / n)},${Math.round(g / n)},${Math.round(b / n)}`
+  } catch {
+    return null
+  }
+}
+
+// Renders the banner background for a member row.
+// GIF behaviour: always animating behind a canvas.
+// On hover the canvas fades out → live GIF shows.
+// On mouseout we capture the current frame into the canvas → paused-in-place.
+// Glow colour is sampled from the banner's left-edge pixels on load.
+function MemberBannerRow({
+  member,
+  isOnline,
+  children,
+}: {
+  member: GroupMember
+  isOnline: boolean
+  children: React.ReactNode
+}) {
+  const { user } = member
+  const isPremium = user.sub_plan === 'PRO' || user.sub_plan === 'GEEK'
+  const hasBanner = !!user.banner && isPremium
+  const isGif = hasBanner && user.banner!.toLowerCase().includes('.gif')
+
+  const imgRef = useRef<HTMLImageElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const staticImgRef = useRef<HTMLImageElement>(null)
+
+  const captureFrame = () => {
+    const img = imgRef.current
+    const canvas = canvasRef.current
+    if (!img || !canvas || !img.complete || !img.naturalWidth) return
+    canvas.width = img.naturalWidth
+    canvas.height = img.naturalHeight
+    const ctx = canvas.getContext('2d')
+    ctx?.drawImage(img, 0, 0)
+  }
+
+  if (!hasBanner) {
+    return (
+      <div
+        className={cn(
+          'flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-accent/60 transition-colors',
+          !isOnline && 'opacity-60',
+        )}
+      >
+        {children}
+      </div>
+    )
+  }
+
+  // Layout math: px-2(8) + w-9(36) + gap-2.5(10) = 54px avatar zone
+  const AVATAR_WIDTH = 54
+
+  return (
+    <div
+      className="group relative cursor-pointer rounded-lg"
+      style={{
+        overflow: 'hidden',
+        borderRadius: '0.5rem',
+        WebkitMaskImage: '-webkit-radial-gradient(white, white)',
+        transform: 'translateZ(0)',
+      }}
+      onMouseLeave={captureFrame}
+    >
+      {/* Banner image — full width, behind everything */}
+      <div className="absolute inset-0 z-0 rounded-lg overflow-hidden">
+        {isGif ? (
+          <>
+            <img
+              ref={imgRef}
+              src={user.banner!}
+              alt=""
+              crossOrigin="anonymous"
+              className="absolute inset-0 h-full w-full object-cover object-left"
+              onLoad={captureFrame}
+            />
+            <canvas
+              ref={canvasRef}
+              className="absolute inset-0 h-full w-full object-cover transition-opacity duration-200 group-hover:opacity-0"
+            />
+          </>
+        ) : (
+          <img
+            ref={staticImgRef}
+            src={user.banner!}
+            alt=""
+            crossOrigin="anonymous"
+            className="absolute inset-0 h-full w-full object-cover object-left"
+            onLoad={() => {}}
+          />
+        )}
+        {/* Top/bottom vignette */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent pointer-events-none" />
+      </div>
+
+      {/* Black shadow — solid on left, fades at 40% */}
+      <div
+        className="absolute top-0 bottom-0 left-0 z-[1] pointer-events-none"
+        style={{
+          width: '40%',
+          background: 'linear-gradient(to right, rgba(0,0,0,0.97) 0%, rgba(0,0,0,0.9) 30%, rgba(0,0,0,0.5) 65%, transparent 100%)',
+        }}
+      />
+
+      {/* Content — above glow and banner */}
+      <div
+        className={cn(
+          'relative z-10 flex items-center gap-2.5 px-2 py-[2px] hover:bg-white/5 transition-colors',
+          !isOnline && 'opacity-75',
+        )}
+      >
+        {children}
+      </div>
+    </div>
+  )
 }
 
 interface MainAreaProps {
@@ -214,9 +352,9 @@ export function MainArea({
         {membersOpen && (
           <motion.div
             key="members-panel"
-            className="flex h-full w-[220px] flex-shrink-0 flex-col border-l border-border bg-sidebar overflow-hidden"
+            className="flex h-full w-[256px] flex-shrink-0 flex-col border-l border-border bg-sidebar overflow-hidden"
             initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 220, opacity: 1 }}
+            animate={{ width: 256, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 380, damping: 36, mass: 0.8 }}
           >
@@ -236,7 +374,7 @@ export function MainArea({
                   </p>
                   <div className="space-y-0.5">
                     {onlineMembers.map((m) => (
-                      <div key={m.user.id} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-accent/60 transition-colors">
+                      <MemberBannerRow key={m.user.id} member={m} isOnline>
                         <HoverProfileCard
                           userId={m.user.id}
                           isOnline
@@ -250,7 +388,7 @@ export function MainArea({
                             <UserAvatar
                               src={m.user.avatar_url}
                               alt={m.user.username}
-                              className="h-7 w-7 rounded-full object-cover"
+                              className="h-8 w-8 rounded-full object-cover"
                             />
                             <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-sidebar bg-green-500" />
                           </div>
@@ -265,7 +403,7 @@ export function MainArea({
                             </p>
                           )}
                         </div>
-                      </div>
+                      </MemberBannerRow>
                     ))}
                   </div>
                 </div>
@@ -279,7 +417,7 @@ export function MainArea({
                   </p>
                   <div className="space-y-0.5">
                     {offlineMembers.map((m) => (
-                      <div key={m.user.id} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-accent/60 transition-colors opacity-60">
+                      <MemberBannerRow key={m.user.id} member={m} isOnline={false}>
                         <HoverProfileCard
                           userId={m.user.id}
                           isOnline={false}
@@ -293,7 +431,7 @@ export function MainArea({
                             <UserAvatar
                               src={m.user.avatar_url}
                               alt={m.user.username}
-                              className="h-7 w-7 rounded-full object-cover grayscale"
+                              className="h-8 w-8 rounded-full object-cover grayscale"
                             />
                             <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-sidebar bg-muted-foreground/40" />
                           </div>
@@ -308,7 +446,7 @@ export function MainArea({
                             </p>
                           )}
                         </div>
-                      </div>
+                      </MemberBannerRow>
                     ))}
                   </div>
                 </div>
