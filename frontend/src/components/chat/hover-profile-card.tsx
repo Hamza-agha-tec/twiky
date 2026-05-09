@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MessageCircle, User } from 'lucide-react'
-import { useProfile, useUserById } from '@/hooks/use-user'
+import { MessageCircle, User, UserPlus } from 'lucide-react'
+import { useProfile, useUserById, useUserFollowers, useUserFollowing } from '@/hooks/use-user'
 import { useOnlineUsers } from '@/hooks/use-socket'
 import { VerifiedBadge, getVerifiedBadgeVariant } from '@/components/chat/verified-badge'
 import { UserAvatar } from '@/components/chat/user-avatar'
@@ -27,7 +27,7 @@ const ROLE_COLORS: Record<string, string> = {
   ADMIN: 'text-blue-400',
 }
 
-const CARD_WIDTH = 200
+const CARD_WIDTH = 240
 const GAP = 6
 
 function Card({
@@ -51,6 +51,14 @@ function Card({
   const { data: currentUser } = useProfile()
   const onlineUsers = useOnlineUsers()
   const isOnline = userId ? (userId === currentUser?.id || onlineUsers.has(userId)) : false
+  const isSelf = currentUser?.id === userId
+
+  const { data: myFollowing } = useUserFollowing(currentUser?.id)
+  const { data: myFollowers } = useUserFollowers(currentUser?.id)
+
+  const iFollow = myFollowing?.some(r => r.following_id === userId) ?? false
+  const followsMe = myFollowers?.some(r => r.follower_id === userId) ?? false
+  const isFriend = iFollow && followsMe
 
   const name = profile?.fullname ?? profile?.full_name ?? profile?.username ?? '—'
   const username = profile?.username
@@ -61,6 +69,7 @@ function Card({
   const isVerified = profile?.is_verified ?? false
   const showVerified = isVerified || subPlan === 'PRO' || subPlan === 'GEEK'
   const roleColor = role ? (ROLE_COLORS[role] ?? null) : null
+  const statusMsg = profile?.status ?? profile?.status_message ?? null
 
   let left = 0
   let top = rect.top  // top-right of card aligns with avatar top
@@ -83,56 +92,81 @@ function Card({
 
   return (
     <motion.div
-      className="pointer-events-auto fixed z-[9999] overflow-hidden rounded-2xl border border-border/60 bg-sidebar/85 shadow-[0_16px_48px_rgba(0,0,0,0.35),0_0_0_1px_rgba(255,255,255,0.04)] backdrop-blur-2xl"
+      className="pointer-events-auto fixed z-[9999] overflow-hidden rounded-2xl border border-border/60 bg-sidebar shadow-[0_20px_60px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.04)] backdrop-blur-2xl"
       style={{ left, top, width: CARD_WIDTH }}
       initial={{ opacity: 0, scale: 0.9, y: -6 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.9, y: -6 }}
       transition={{ type: 'spring', stiffness: 460, damping: 30, mass: 0.65 }}
     >
-      {/* Avatar row */}
-      <div className="flex items-center gap-2.5 px-3 pt-3 pb-2">
-        <div className="relative shrink-0">
-          {isLoading ? (
-            <div className="h-8 w-8 animate-pulse rounded-full bg-muted" />
-          ) : (
-            <>
-              <UserAvatar src={avatar} alt={name} className="h-8 w-8 rounded-full object-cover" />
-              <span className={cn('absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-sidebar', isOnline ? 'bg-green-500' : 'bg-muted-foreground/40')} />
-            </>
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          {isLoading ? (
-            <div className="space-y-1">
-              <div className="h-2.5 w-20 animate-pulse rounded bg-muted" />
-              <div className="h-2 w-14 animate-pulse rounded bg-muted" />
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center gap-1">
-                <p className="truncate text-[12px] font-semibold text-foreground leading-tight">{name}</p>
-                {showVerified && <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(subPlan)} />}
-              </div>
-              {username && <p className="truncate text-[10px] text-muted-foreground">@{username}</p>}
-              {role && role !== 'MEMBER' && roleColor && (
-                <p className={cn('text-[9px] font-semibold uppercase tracking-wide', roleColor)}>
-                  {role.charAt(0) + role.slice(1).toLowerCase()}
-                </p>
-              )}
-            </>
-          )}
-        </div>
+      {/* Banner */}
+      <div className="relative h-[68px] w-full overflow-hidden">
+        {isLoading ? (
+          <div className="h-full w-full animate-pulse bg-muted" />
+        ) : banner ? (
+          <img src={banner} alt="" className="h-full w-full object-cover" draggable={false} />
+        ) : (
+          <div className="h-full w-full bg-gradient-to-br from-indigo-500/40 via-purple-500/30 to-pink-500/20" />
+        )}
+
+        {/* Add friend — top right of banner, only if not self and not already friends */}
+        {!isSelf && !isFriend && !isLoading && (
+          <button
+            title="Add Friend"
+            className="absolute right-2 top-2 flex items-center justify-center rounded-full bg-black/40 p-1.5 text-white/80 backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white"
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
-      {/* Status bubble */}
-      {statusMsg && !isLoading && (
-        <div className="mx-3 mb-2 flex items-center gap-1">
-          <span className="h-1 w-1 rounded-full bg-muted/80 shrink-0" />
-          <span className="h-1.5 w-1.5 rounded-full bg-muted/80 shrink-0" />
-          <div className="rounded-xl bg-muted px-2 py-0.5 text-[10px] text-foreground/70 truncate">{statusMsg}</div>
+      {/* Avatar + status row — overlaps banner */}
+      <div className="relative -mt-6 flex items-end gap-1.5 px-3">
+        <div className="relative shrink-0">
+          {isLoading ? (
+            <div className="h-12 w-12 animate-pulse rounded-full bg-muted ring-[3px] ring-sidebar" />
+          ) : (
+            <>
+              <UserAvatar src={avatar} alt={name} className="h-12 w-12 rounded-full object-cover ring-[3px] ring-sidebar" />
+              <span className={cn('absolute bottom-0.5 right-0.5 h-2.5 w-2.5 rounded-full border-[2.5px] border-sidebar', isOnline ? 'bg-green-500' : 'bg-muted-foreground/40')} />
+            </>
+          )}
         </div>
-      )}
+
+        {/* Status bubble beside avatar */}
+        {statusMsg && !isLoading && (
+          <div className="mb-3 flex items-end gap-[3px]">
+            <span className="mb-0.5 h-[4px] w-[4px] shrink-0 rounded-full bg-black/30 ring-1 ring-white/20 backdrop-blur-sm" />
+            <span className="mb-1 h-[6px] w-[6px] shrink-0 rounded-full bg-black/30 ring-1 ring-white/20 backdrop-blur-sm" />
+            <div className="max-w-[130px] rounded-2xl bg-black/30 px-2.5 py-1 text-[10px] leading-snug text-white/85 shadow-sm ring-1 ring-white/15 backdrop-blur-md whitespace-pre-line break-words">
+              {statusMsg}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Name / username / role */}
+      <div className="px-3 pt-1.5 pb-2">
+        {isLoading ? (
+          <div className="space-y-1.5">
+            <div className="h-3 w-24 animate-pulse rounded bg-muted" />
+            <div className="h-2 w-16 animate-pulse rounded bg-muted" />
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center gap-1">
+              <p className="truncate text-[13px] font-bold text-foreground leading-tight">{name}</p>
+              {showVerified && <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(subPlan)} />}
+            </div>
+            {username && <p className="truncate text-[10px] text-muted-foreground">@{username}</p>}
+            {role && role !== 'MEMBER' && roleColor && (
+              <p className={cn('text-[9px] font-semibold uppercase tracking-wide', roleColor)}>
+                {role.charAt(0) + role.slice(1).toLowerCase()}
+              </p>
+            )}
+          </>
+        )}
+      </div>
 
       {/* Bio */}
       {bio && !isLoading && (
@@ -144,13 +178,13 @@ function Card({
       {/* Action buttons */}
       <div className="flex gap-1.5 px-3 pb-3">
         {!hideMessage && onMessage && (
-          <button onClick={() => onMessage(userId)} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-border/60 bg-accent/60 py-1 text-[10px] font-semibold text-foreground transition-colors hover:bg-accent">
+          <button onClick={() => onMessage(userId)} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-border/60 bg-accent/60 py-1.5 text-[10px] font-semibold text-foreground transition-colors hover:bg-accent">
             <MessageCircle className="h-3 w-3" />
             Message
           </button>
         )}
         {onViewProfile && (
-          <button onClick={() => onViewProfile(userId)} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-border/60 bg-accent/60 py-1 text-[10px] font-semibold text-foreground transition-colors hover:bg-accent">
+          <button onClick={() => onViewProfile(userId)} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-border/60 bg-accent/60 py-1.5 text-[10px] font-semibold text-foreground transition-colors hover:bg-accent">
             <User className="h-3 w-3" />
             Profile
           </button>
