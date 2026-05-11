@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getSocket } from '@/lib/socket'
-import type { Socket } from 'socket.io-client'
 
 export type DmCallType = 'audio' | 'video'
 
@@ -23,7 +22,7 @@ interface UseDmCallOptions {
 
 export function useDmCall({ myId, isInGroupVoiceCall, onCallStarted, onCallEnded, onCallRejected }: UseDmCallOptions) {
   const [status, setStatus] = useState<DmCallStatus>({ state: 'idle' })
-  const socketRef = useRef<Socket | null>(null)
+  const socketRef = useRef<Awaited<ReturnType<typeof getSocket>> | null>(null)
   const myIdRef = useRef(myId)
   const statusRef = useRef(status)
   const onCallStartedRef = useRef(onCallStarted)

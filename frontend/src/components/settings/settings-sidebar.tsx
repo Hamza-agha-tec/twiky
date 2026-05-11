@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { VerifiedBadge, getVerifiedBadgeVariant } from '@/components/chat/verified-badge'
+import { UserName } from '@/components/chat/user-name'
 import { cn } from '@/lib/utils'
 import { getInitial } from './shared'
 import type { UserProfile } from '@/lib/user-api'
@@ -106,9 +107,12 @@ export function SettingsSidebar({ profile, isVerified, avatarUrl }: {
           </Avatar>
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-1.5">
-              <p className="truncate text-[12px] font-semibold text-foreground">
-                {profile?.fullname || profile?.username || 'Loading profile'}
-              </p>
+              <UserName
+                name={profile?.fullname || profile?.username || 'Loading profile'}
+                effect={profile?.name_effect}
+                subPlan={profile?.sub_plan}
+                className="truncate text-[12px] font-semibold"
+              />
               {isVerified ? <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(profile?.sub_plan)} /> : null}
             </div>
             <p className="truncate text-[10.5px] text-muted-foreground">

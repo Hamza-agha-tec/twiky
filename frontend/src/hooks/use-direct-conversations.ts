@@ -50,13 +50,57 @@ export function useSendDirectMessage(conversationId: string) {
   })
 }
 
-export function useToggleDirectMessageReaction(conversationId: string) {
+function applyOwnReaction(
+  reactions: ChatMessage['reactions'] = [],
+  userId: string,
+  emoji: string,
+): ChatMessage['reactions'] {
+  const alreadyReacted = reactions.some((reaction) => reaction.userId === userId && reaction.emoji === emoji)
+  const withoutMine = reactions.filter((reaction) => reaction.userId !== userId)
+  return alreadyReacted ? withoutMine : [...withoutMine, { userId, emoji }]
+}
+
+export function useToggleDirectMessageReaction(currentUserId?: string | null) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ messageId, emoji }: { messageId: string; emoji: string }) =>
       directMessagesApi.toggleDirectMessageReaction(messageId, emoji),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: DIRECT_KEYS.messages(conversationId) })
+    onMutate: async ({ messageId, emoji }) => {
+      if (!currentUserId) return { previous: [] as Array<readonly [readonly unknown[], ChatMessage[] | undefined]> }
+
+      await queryClient.cancelQueries({ queryKey: ['direct', 'messages'] })
+      const previous = queryClient.getQueriesData<ChatMessage[]>({ queryKey: ['direct', 'messages'] })
+
+      previous.forEach(([queryKey, messages]) => {
+        if (!messages?.some((message) => message.id === messageId)) return
+        queryClient.setQueryData<ChatMessage[]>(queryKey, (old = []) =>
+          old.map((message) =>
+            message.id === messageId
+              ? { ...message, reactions: applyOwnReaction(message.reactions, currentUserId, emoji) }
+              : message,
+          ),
+        )
+      })
+
+      return { previous }
+    },
+    onError: (_error, _variables, context) => {
+      context?.previous?.forEach(([queryKey, messages]) => {
+        queryClient.setQueryData(queryKey, messages)
+      })
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData<ChatMessage[]>(DIRECT_KEYS.messages(updated.conversation_id), (old = []) =>
+        upsertDirectMessage(old, updated),
+      )
+    },
+    onSettled: (updated, _error, variables) => {
+      const conversationId = updated?.conversation_id
+      if (conversationId) {
+        queryClient.invalidateQueries({ queryKey: DIRECT_KEYS.messages(conversationId) })
+      } else if (variables?.messageId) {
+        queryClient.invalidateQueries({ queryKey: ['direct', 'messages'] })
+      }
     },
   })
 }

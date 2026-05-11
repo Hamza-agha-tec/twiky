@@ -125,6 +125,11 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
 
   async emitDirectMessageUpdated(conversationId: string, message: any) {
     await this.emitMessageWithAvatarPrivacy(`dm_${conversationId}`, 'directMessageUpdated', message);
+    const participantIds = await this.messagingService.getDirectConversationParticipantIds(conversationId);
+    await Promise.all(participantIds.map(async (viewerId) => {
+      const payload = await this.messagingService.applyMessageSenderAvatarPrivacy(message, viewerId);
+      this.server?.to(`user_${viewerId}`).emit('directMessageUpdated', payload);
+    }));
   }
 
   emitDirectMessageDeleted(conversationId: string, messageId: string) {

@@ -1,15 +1,12 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { EmojiInput, type EmojiInputHandle } from './emoji-input';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { SmilePlus, Paperclip, SendHorizontal, Mic, Square, X, Reply, Loader2, Gift, Sticker, FileText, Film, ImageIcon } from 'lucide-react';
+import { Paperclip, SendHorizontal, Mic, Square, X, Reply, Loader2, FileText, Film, ImageIcon } from 'lucide-react';
+import { EmojiButton, GifButton, StickerButton, GiftButton } from './media-picker';
 import { cn } from '@/lib/utils';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
 import { useUploadFile } from '@/hooks/use-messaging';
 import { toast } from 'sonner';
 
@@ -35,12 +32,6 @@ interface ComposerProps {
   onCancelReply?: () => void;
 }
 
-const EMOJIS = [
-  '😀','😂','😍','🤔','👍','🎉','🔥','😢','😡','🙏','👏','🎈',
-  '❤️','😎','🥳','😅','🤣','😊','😇','🥰','😋','🤩','😴','🤯',
-  '👀','💪','🌟','⚡','🎯','🚀','💡','✨',
-];
-
 function formatDuration(seconds: number) {
   const m = Math.floor(seconds / 60).toString().padStart(2, '0');
   const s = (seconds % 60).toString().padStart(2, '0');
@@ -63,7 +54,7 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingPreviewUrl, setPendingPreviewUrl] = useState<string | null>(null);
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = useRef<EmojiInputHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordChunksRef = useRef<Blob[]>([]);
@@ -73,13 +64,6 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
   useEffect(() => { onTypingRef.current = onTyping; }, [onTyping]);
   const uploadFile = useUploadFile();
 
-  useEffect(() => {
-    const ta = textareaRef.current;
-    if (ta) {
-      ta.style.height = 'auto';
-      ta.style.height = `${Math.max(34, Math.min(ta.scrollHeight, 120))}px`;
-    }
-  }, [message]);
 
   useEffect(() => {
     if (message) {
@@ -150,10 +134,9 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
     if (message.trim()) {
       onSendMessage?.({ content: message, type: 'text', replyToId: replyTo?.id ?? null });
       setMessage('');
+      textareaRef.current?.clear();
       onCancelReply?.();
       onTyping?.(false);
-      if (textareaRef.current) textareaRef.current.style.height = '34px';
-      textareaRef.current?.focus();
     }
   };
 
@@ -165,8 +148,7 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
   };
 
   const handleEmojiSelect = (emoji: string) => {
-    setMessage((prev) => prev + emoji);
-    textareaRef.current?.focus();
+    textareaRef.current?.insertEmoji(emoji);
   };
 
   const handleRecordClick = () => {
@@ -400,92 +382,44 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
             onChange={handleFileChange}
           />
 
-          {/* Textarea */}
+          {/* Input */}
           <div className="flex-1 min-w-0">
-            <textarea
+            <EmojiInput
               ref={textareaRef}
               value={message}
-              onChange={(e) => setMessage(e.target.value)}
+              onChange={setMessage}
               onKeyDown={handleKeyDown}
               placeholder={hasPending ? 'Add a caption…' : (placeholder ?? 'Message')}
-              rows={1}
               disabled={isRecording}
-              className="block h-[34px] max-h-[120px] min-h-[34px] w-full resize-none overflow-y-hidden border-0 bg-transparent px-1 py-[7px] text-[13px] leading-5 shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 focus:outline-none disabled:opacity-0"
+              className="block min-h-[34px] max-h-[120px] overflow-y-auto w-full border-0 bg-transparent px-1 py-[7px] text-[13px] leading-5 disabled:opacity-0"
             />
           </div>
 
           {/* Right actions */}
           <div className="flex items-center gap-0.5 shrink-0">
             {!isRecording && !hasPending && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground"
-                title="GIF"
+              <GifButton
                 disabled={busy}
-                onClick={() => {}}
-              >
-                <span className="text-[10px] font-bold leading-none">GIF</span>
-              </Button>
+                onGifSelect={(url) => onSendMessage?.({ type: 'gif', fileUrl: url, mime: 'image/gif', replyToId: replyTo?.id ?? null })}
+              />
             )}
 
             {!isRecording && !hasPending && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground"
-                title="Sticker"
+              <StickerButton
                 disabled={busy}
-                onClick={() => {}}
-              >
-                <Sticker className="h-[15px] w-[15px]" />
-              </Button>
+                onStickerSelect={(url) => onSendMessage?.({ type: 'sticker', fileUrl: url, mime: 'image/gif', replyToId: replyTo?.id ?? null })}
+              />
             )}
 
             {!isRecording && !hasPending && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground"
-                title="Gift"
-                disabled={busy}
-                onClick={() => {}}
-              >
-                <Gift className="h-[15px] w-[15px]" />
-              </Button>
+              <GiftButton disabled={busy} />
             )}
 
             {!isRecording && !hasPending && (
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground"
-                    title="Emoji"
-                    disabled={busy}
-                  >
-                    <SmilePlus className="h-[15px] w-[15px]" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-72 p-3" side="top" align="end">
-                  <div className="grid grid-cols-8 gap-1">
-                    {EMOJIS.map((emoji) => (
-                      <button
-                        key={emoji}
-                        onClick={() => handleEmojiSelect(emoji)}
-                        className="h-8 flex items-center justify-center text-lg hover:bg-accent rounded-md transition-colors"
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                </PopoverContent>
-              </Popover>
+              <EmojiButton
+                disabled={busy}
+                onEmojiSelect={handleEmojiSelect}
+              />
             )}
 
             {/* Mic / Stop / Send */}

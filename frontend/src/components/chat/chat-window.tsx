@@ -17,6 +17,7 @@ import { useProfile } from '@/hooks/use-user';
 import { useChatThemeContext } from '@/context/ChatThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { VerifiedBadge, getVerifiedBadgeVariant, isVerifiedAccountIdentity } from '@/components/chat/verified-badge';
+import { ShareModal } from '@/components/chat/share-modal';
 
 interface ChatWindowProps {
   activeChat: string;
@@ -102,6 +103,9 @@ function toUiMessage(
   const resolvedType: Message['type'] =
     rawType === 'voice' ? 'voice' :
     rawType === 'call' ? 'call' :
+    rawType === 'gif' ? 'gif' :
+    rawType === 'sticker' ? 'sticker' :
+    rawType === 'image' && mime === 'image/gif' ? 'gif' :
     rawType === 'image' ? 'image' :
     rawType === 'video' ? 'video' :
     (rawType === 'file' || rawType === 'image') && mime.startsWith('video/') ? 'video' :
@@ -215,7 +219,6 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
   }, [searchMatches.length]);
 
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
-  const [forwardSearch, setForwardSearch] = useState('');
   const [pinnedIndex, setPinnedIndex] = useState(0);
   const pinnedMessages = messages.filter(m => m.isPinned).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   const pinnedMessage = pinnedMessages[pinnedIndex % Math.max(1, pinnedMessages.length)] ?? null;
@@ -257,14 +260,24 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
     const el = scrollContainerRef.current;
     if (!el) return;
 
+    const scrollToBottom = () => { if (el) el.scrollTop = el.scrollHeight; };
+
     if (!initialScrollDone.current) {
       initialScrollDone.current = true;
-      el.scrollTop = el.scrollHeight;
-      requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+      scrollToBottom();
+      const r = requestAnimationFrame(scrollToBottom);
+      const t1 = setTimeout(scrollToBottom, 100);
+      const t2 = setTimeout(scrollToBottom, 400);
+      return () => {
+        cancelAnimationFrame(r);
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
     } else {
       const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
       if (nearBottom) {
-        requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+        requestAnimationFrame(scrollToBottom);
+        setTimeout(scrollToBottom, 100);
       }
     }
   }, [messages.length, activeChat]);
@@ -560,13 +573,8 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
                         onForward={() => setForwardingMessage(message)}
                         onDelete={() => onDelete?.(message.id)}
                         onReact={(emoji) => onReact?.(message.id, emoji)}
-                        onAvatarClick={(senderId) => {
-                          if (onMessageAvatarClick) {
-                            onMessageAvatarClick(senderId);
-                            return;
-                          }
-                          if (senderId !== profile?.id) onProfileClick?.();
-                        }}
+                        hideMessage={true}
+                        onViewProfile={onProfileClick ? (userId) => onProfileClick() : undefined}
                       />
                     )}
                   </div>
@@ -621,69 +629,14 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
       />
 
       {/* Forward dialog */}
-      <AnimatePresence>
-        {forwardingMessage && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => { setForwardingMessage(null); setForwardSearch(''); }}
-              className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: 12 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.94, y: 12 }}
-              transition={{ duration: 0.15 }}
-              className="fixed left-1/2 top-1/2 z-50 w-80 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-sidebar border border-border shadow-2xl overflow-hidden"
-            >
-              <div className="px-4 pt-4 pb-3 border-b border-border">
-                <h3 className="text-sm font-semibold text-foreground mb-2">Forward message</h3>
-                <div className="text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2 line-clamp-2 italic">
-                  {forwardingMessage.content}
-                </div>
-              </div>
-              <div className="px-3 pt-2">
-                <input
-                  autoFocus
-                  value={forwardSearch}
-                  onChange={e => setForwardSearch(e.target.value)}
-                  placeholder="Search conversations…"
-                  className="w-full bg-muted/40 rounded-lg px-3 py-1.5 text-sm outline-none placeholder:text-muted-foreground/60 mb-1"
-                />
-              </div>
-              <div className="max-h-56 overflow-y-auto py-1">
-                {conversations
-                  .filter(c => c.name.toLowerCase().includes(forwardSearch.toLowerCase()))
-                  .map(conv => (
-                    <button
-                      key={conv.id}
-                      onClick={() => {
-                        onForwardMessage?.(forwardingMessage.id, forwardingMessage.content, conv.id, forwardingMessage.fileUrl, forwardingMessage.type);
-                        setForwardingMessage(null);
-                        setForwardSearch('');
-                      }}
-                      className="flex w-full items-center gap-3 px-4 py-2.5 hover:bg-muted/50 transition-colors"
-                    >
-                      <UserAvatar src={conv.avatarUrl} alt={conv.name} className="h-8 w-8 rounded-full object-cover shrink-0" />
-                      <span className="text-sm text-foreground truncate">{conv.name}</span>
-                    </button>
-                  ))}
-                {conversations.filter(c => c.name.toLowerCase().includes(forwardSearch.toLowerCase())).length === 0 && (
-                  <p className="px-4 py-3 text-xs text-muted-foreground">No conversations found</p>
-                )}
-              </div>
-              <div className="px-4 py-3 border-t border-border">
-                <button
-                  onClick={() => { setForwardingMessage(null); setForwardSearch(''); }}
-                  className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >Cancel</button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      {forwardingMessage && (
+        <ShareModal
+          open={Boolean(forwardingMessage)}
+          onClose={() => setForwardingMessage(null)}
+          title="Forward message"
+          payload={{ content: forwardingMessage.content, isForwarded: true }}
+        />
+      )}
     </div>
   );
 }

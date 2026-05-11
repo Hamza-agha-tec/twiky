@@ -3,12 +3,15 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Check, CheckCheck, Forward, FileText, Download, X, Pin } from 'lucide-react';
-import { VoiceMessagePlayer } from './voice-message-player';
+import { VoiceMessagePlayer } from './voice-message-player'
+import { VideoPlayer } from './video-player';
+import { AppleText, EmojiImg } from './apple-text';
 import { Message } from '@/lib/mock-data';
 import { format } from 'date-fns';
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { MessageContextMenu } from './message-context-menu';
+import { HoverProfileCard } from '@/components/chat/hover-profile-card';
 
 interface MessageBubbleProps {
   message: Message;
@@ -20,6 +23,43 @@ interface MessageBubbleProps {
   onDelete?: () => void;
   onReact?: (emoji: string) => void;
   onAvatarClick?: (senderId: string) => void;
+  onMessage?: (userId: string) => void;
+  onViewProfile?: (userId: string) => void;
+  hideMessage?: boolean;
+}
+
+interface ProfilePayload { __twiky_type: 'profile'; username: string; name: string; avatarUrl: string | null; url: string }
+
+function tryParseProfile(content: string): ProfilePayload | null {
+  try {
+    const p = JSON.parse(content)
+    if (p?.__twiky_type === 'profile') return p as ProfilePayload
+  } catch { /* not JSON */ }
+  return null
+}
+
+function ProfileCard({ data }: { data: ProfilePayload }) {
+  return (
+    <a
+      href={data.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mt-1 flex items-center gap-3 rounded-xl border border-border/60 bg-muted/40 px-3 py-2.5 transition-colors hover:bg-muted/70 max-w-[260px] no-underline"
+    >
+      {data.avatarUrl ? (
+        <img src={data.avatarUrl} alt={data.name} className="h-10 w-10 rounded-xl object-cover shrink-0" />
+      ) : (
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-[15px] font-bold text-primary">
+          {data.name[0]?.toUpperCase()}
+        </div>
+      )}
+      <div className="min-w-0">
+        <p className="truncate text-[13px] font-semibold text-foreground leading-tight">{data.name}</p>
+        <p className="truncate text-[11px] text-muted-foreground">@{data.username}</p>
+        <p className="mt-0.5 text-[10px] text-primary">View Profile →</p>
+      </div>
+    </a>
+  )
 }
 
 function HighlightedText({ text, query }: { text: string; query: string }) {
@@ -36,11 +76,12 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
   );
 }
 
-export function MessageBubble({ message, showAvatar = true, searchHighlight, onReply, onPin, onForward, onDelete, onReact, onAvatarClick }: MessageBubbleProps) {
+export function MessageBubble({ message, showAvatar = true, searchHighlight, onReply, onPin, onForward, onDelete, onReact, onAvatarClick, onMessage, onViewProfile, hideMessage }: MessageBubbleProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [lightbox, setLightbox] = useState(false);
   const messageRef = useRef<HTMLDivElement>(null);
+  const avatarRef = useRef<HTMLDivElement>(null);
 
   const messageReactions = message.reactions ?? [];
 
@@ -75,18 +116,22 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
       {/* Avatar column — always left */}
       <div className="shrink-0 w-9 pt-0.5">
         {showAvatar ? (
-          <button
-            type="button"
-            onClick={() => onAvatarClick?.(message.senderId)}
-            className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 hover:opacity-80 transition-opacity cursor-pointer"
+          <HoverProfileCard
+            userId={message.senderId}
+            onMessage={message.isOwn ? undefined : onMessage}
+            onViewProfile={onViewProfile}
+            hideMessage={message.isOwn}
+            side="right"
           >
-            <Avatar className="h-9 w-9">
-              <AvatarImage src={message.avatar} alt={message.senderName} />
-              <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
-          </button>
+            <div ref={avatarRef} className="rounded-full">
+              <Avatar className="h-9 w-9">
+                <AvatarImage src={message.avatar} alt={message.senderName} />
+                <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+            </div>
+          </HoverProfileCard>
         ) : (
           <div className="h-9 w-9" />
         )}
@@ -97,9 +142,18 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
         {/* Header: name + timestamp — only when avatar shown */}
         {showAvatar && (
           <div className="flex items-baseline gap-2 mb-0.5">
-            <span className={`text-sm font-semibold leading-tight ${message.isOwn ? 'text-blue-400' : 'text-foreground'}`}>
-              {message.senderName}
-            </span>
+            <HoverProfileCard
+              userId={message.senderId}
+              onMessage={message.isOwn ? undefined : onMessage}
+              onViewProfile={onViewProfile}
+              hideMessage={message.isOwn}
+              side="right"
+              anchorRef={avatarRef}
+            >
+              <span className={`text-sm font-semibold leading-tight ${message.isOwn ? 'text-blue-400' : 'text-foreground'}`}>
+                {message.senderName}
+              </span>
+            </HoverProfileCard>
             {isMounted && (
               <span className="text-[11px] text-muted-foreground/60 tabular-nums">
                 {format(new Date(message.timestamp), 'MMM d, h:mm a')}
@@ -147,12 +201,16 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
 
         {/* Message content — no bubble */}
         <div ref={messageRef} className="max-w-xl">
-          {message.type === 'text' && (
-            <p className="text-sm text-foreground/90 wrap-break-word whitespace-pre-wrap leading-relaxed">
-              {searchHighlight ? <HighlightedText text={message.content} query={searchHighlight} /> : message.content}
-              {message.isEdited && <span className="text-[10px] text-muted-foreground ml-1.5">(edited)</span>}
-            </p>
-          )}
+          {message.type === 'text' && (() => {
+            const profileData = tryParseProfile(message.content)
+            if (profileData) return <ProfileCard data={profileData} />
+            return (
+              <p className="text-sm text-foreground/90 wrap-break-word whitespace-pre-wrap leading-relaxed">
+                {searchHighlight ? <HighlightedText text={message.content} query={searchHighlight} /> : <AppleText text={message.content} />}
+                {message.isEdited && <span className="text-[10px] text-muted-foreground ml-1.5">(edited)</span>}
+              </p>
+            )
+          })()}
 
           {message.type === 'image' && (
             <div className="mt-1">
@@ -164,6 +222,31 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
                 alt="Shared image"
                 className="max-w-[300px] max-h-56 object-cover rounded-lg cursor-zoom-in"
                 onClick={() => setLightbox(true)}
+              />
+            </div>
+          )}
+
+          {message.type === 'gif' && (
+            <div className="mt-1">
+              <div className="relative inline-block">
+                <img
+                  src={message.fileUrl || message.content}
+                  alt="GIF"
+                  className="max-w-[260px] max-h-52 rounded-lg object-contain"
+                />
+                <span className="absolute bottom-1.5 left-1.5 rounded bg-black/60 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+                  GIF
+                </span>
+              </div>
+            </div>
+          )}
+
+          {message.type === 'sticker' && (
+            <div className="mt-1">
+              <img
+                src={message.fileUrl || message.content}
+                alt="Sticker"
+                className="h-28 w-28 object-contain"
               />
             </div>
           )}
@@ -181,16 +264,11 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
           )}
 
           {message.type === 'video' && (
-            <div className="max-w-xs overflow-hidden rounded-lg mt-1">
+            <div className="max-w-xs mt-1">
               {message.content && !message.content.startsWith('http') && (
                 <p className="text-sm text-foreground/90 leading-relaxed mb-1">{message.content}</p>
               )}
-              <video
-                src={message.fileUrl || message.content}
-                controls
-                className="max-h-64 w-full block"
-                preload="metadata"
-              />
+              <VideoPlayer src={message.fileUrl || message.content || ''} className="w-full" />
             </div>
           )}
 
@@ -223,22 +301,29 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
         {/* Reactions */}
         {messageReactions.length > 0 && (
           <div className="flex gap-1 mt-1 flex-wrap">
-            {messageReactions.map(({ emoji, count, reactedByMe }, idx) => (
+            {messageReactions.map(({ emoji, count, reactedByMe }) => (
               <motion.button
-                key={`${message.id}-r-${idx}`}
+                key={`${message.id}-r-${emoji}`}
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
-                whileHover={{ scale: 1.15 }}
+                whileHover={{ scale: 1.08 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => handleAddReaction(emoji)}
-                className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs border transition-colors ${
+                title={reactedByMe ? 'Remove reaction' : 'React'}
+                className={`group inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-all duration-150 select-none ${
                   reactedByMe
-                    ? 'bg-primary/15 border-primary/40 text-primary font-medium'
-                    : 'bg-muted border-border text-foreground hover:bg-accent'
+                    ? 'bg-primary/15 text-primary ring-1 ring-primary/40 hover:bg-primary/20'
+                    : 'bg-muted/60 text-muted-foreground ring-1 ring-border hover:bg-muted hover:text-foreground hover:ring-border/80'
                 }`}
               >
-                <span>{emoji}</span>
-                <span className={reactedByMe ? 'text-primary' : 'text-muted-foreground'}>{count}</span>
+                <EmojiImg
+                  value={emoji}
+                  unified={[...emoji].map(c => c.codePointAt(0)!.toString(16).toLowerCase()).join('-')}
+                  size={15}
+                />
+                <span className={reactedByMe ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'}>
+                  {count}
+                </span>
               </motion.button>
             ))}
           </div>

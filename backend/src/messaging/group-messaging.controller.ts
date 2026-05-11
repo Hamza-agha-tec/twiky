@@ -31,6 +31,13 @@ export class GroupMessagingController {
         return message;
     }
 
+    @Post('messages/:messageId/poll-votes')
+    async votePoll(@Request() req: any, @Param('messageId') messageId: string, @Body() dto: { optionId: string }) {
+        const message = await this.messagingService.voteGroupPoll(req.user.userId, messageId, dto.optionId);
+        await this.chatGateway.emitGroupMessageUpdated(message.group_id, message);
+        return message;
+    }
+
     @Patch('messages/:messageId/pin')
     async togglePin(@Request() req: any, @Param('messageId') messageId: string) {
         const message = await this.messagingService.toggleGroupMessagePin(req.user.userId, messageId);

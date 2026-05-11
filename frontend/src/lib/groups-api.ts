@@ -31,7 +31,7 @@ export interface BackendGroup {
   name: string;
   description: string | null;
   is_general: boolean;
-  group_type: 'text' | 'voice';
+  group_type: 'text' | 'voice' | 'watch';
   access_type: 'PUBLIC' | 'PRIVATE';
   created_at: string;
   is_member?: boolean;
@@ -87,7 +87,7 @@ export const groupsApi = {
   getChannelGroups: (channelId: string) =>
     authedFetch<BackendGroup[]>(`/channels/${channelId}/groups`),
 
-  createGroup: (channelId: string, data: { name: string; description?: string; is_general?: boolean; group_type?: 'text' | 'voice'; access_type?: 'PUBLIC' | 'PRIVATE' }) =>
+  createGroup: (channelId: string, data: { name: string; description?: string; is_general?: boolean; group_type?: 'text' | 'voice' | 'watch'; access_type?: 'PUBLIC' | 'PRIVATE' }) =>
     authedFetch<BackendGroup>(`/channels/${channelId}/groups`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -147,6 +147,12 @@ export const groupsApi = {
       body: JSON.stringify({ emoji }),
     }),
 
+  voteGroupPoll: (messageId: string, optionId: string) =>
+    authedFetch<GroupMessage>(`/groups/messages/${messageId}/poll-votes`, {
+      method: 'POST',
+      body: JSON.stringify({ optionId }),
+    }),
+
   toggleGroupMessagePin: (messageId: string) =>
     authedFetch<GroupMessage>(`/groups/messages/${messageId}/pin`, {
       method: 'PATCH',
@@ -157,7 +163,7 @@ export const groupsApi = {
       method: 'DELETE',
     }),
 
-  updateGroup: (groupId: string, data: { name?: string; description?: string; group_type?: 'text' | 'voice'; access_type?: 'PUBLIC' | 'PRIVATE' }) =>
+  updateGroup: (groupId: string, data: { name?: string; description?: string; group_type?: 'text' | 'voice' | 'watch'; access_type?: 'PUBLIC' | 'PRIVATE' }) =>
     authedFetch<BackendGroup>(`/groups/${groupId}`, {
       method: 'PATCH',
       body: JSON.stringify(data),

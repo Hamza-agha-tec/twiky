@@ -6,9 +6,11 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { SectionHeader, SectionBlock, SettingRow, versionedImageUrl } from '../shared'
 import { VerifiedBadge, getVerifiedBadgeVariant, isVerifiedAccountIdentity } from '@/components/chat/verified-badge'
+import { UserName } from '@/components/chat/user-name'
+import { StatusDot, resolveStatus } from '@/components/chat/status-dot'
 import { useAuth } from '@/context/AuthContext'
 import { useUpdateProfile } from '@/hooks/use-user'
-import type { UserPost, UserProfile } from '@/lib/user-api'
+import type { UserPost, UserProfile, NameEffect, UserStatus } from '@/lib/user-api'
 import { BANNER_ACCEPT, filesApi } from '@/lib/files-api'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -50,6 +52,8 @@ export function ProfileSection({
   const [statusEmoji, setStatusEmoji] = useState('🟢')
   const [xUrl, setXUrl] = useState(profile?.x_url ?? '')
   const [websiteUrl, setWebsiteUrl] = useState(profile?.website_url ?? '')
+  const [nameEffect, setNameEffect] = useState<NameEffect>(profile?.name_effect ?? null)
+  const [userStatus, setUserStatus] = useState<UserStatus>(profile?.user_status ?? null)
   const [enterSoundUrl, setEnterSoundUrl] = useState(profile?.enter_sound_url ?? null)
   const [enterSoundBusy, setEnterSoundBusy] = useState(false)
   const [enterSoundPlaying, setEnterSoundPlaying] = useState(false)
@@ -63,7 +67,7 @@ export function ProfileSection({
       bio: bio.trim() || null,
       fullname: fullname.trim() || null,
       status: status.trim() || null,
-      username: username.trim() || undefined
+      username: username.trim() || undefined,
     })
     setSaveMessage('Saved')
   }
@@ -348,7 +352,7 @@ export function ProfileSection({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <p className="text-[17px] font-bold text-foreground">{fullname || 'Your Name'}</p>
+                <UserName name={fullname || 'Your Name'} effect={nameEffect} subPlan={profile?.sub_plan} className="text-[17px] font-bold" />
                 {isVerified ? <VerifiedBadge size="sm" variant={getVerifiedBadgeVariant(profile?.sub_plan)} /> : null}
                 {status ? <span className="text-[13px]">{statusEmoji}</span> : null}
               </div>
@@ -434,27 +438,61 @@ export function ProfileSection({
         </div>
       </SectionBlock>
 
-      <SectionBlock title="Status">
-        <SettingRow title="Status emoji" description="Emoji shown next to your name.">
+      <SectionBlock title="Presence">
+        <SettingRow title="Status" description="Shown as a colored dot everywhere you appear.">
           <div className="flex items-center gap-2">
-            {['🟢','🌙','🎯','💻','📵','🔴'].map((e) => (
+            {([
+              { value: 'online',    label: 'Online',    dotStatus: 'online' },
+              { value: 'idle',      label: 'Idle',      dotStatus: 'idle' },
+              { value: 'dnd',       label: 'Do Not Disturb', dotStatus: 'dnd' },
+              { value: 'invisible', label: 'Invisible', dotStatus: 'offline' },
+            ] as const).map(({ value, label, dotStatus }) => (
               <button
-                key={e}
-                onClick={() => setStatusEmoji(e)}
+                key={value}
+                onClick={() => setUserStatus(value)}
                 className={cn(
-                  'flex h-8 w-8 items-center justify-center rounded-lg text-[16px] transition-colors hover:bg-accent',
-                  statusEmoji === e && 'bg-primary/10 ring-1 ring-primary',
+                  'flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-accent',
+                  userStatus === value && 'bg-primary/10 ring-1 ring-primary border-primary/30',
                 )}
               >
-                {e}
+                <StatusDot status={dotStatus} inline className="h-2.5 w-2.5" borderClass="border-background" />
+                {label}
               </button>
             ))}
           </div>
         </SettingRow>
-        <SettingRow title="Status message" description="Short note about what you're doing.">
+        <SettingRow title="Status message" description="Short note shown in your profile bubble.">
           <input value={status} onChange={(e) => setStatus(e.target.value)} placeholder="Working on something..." className="h-9 w-52 rounded-xl border border-border bg-background px-3 text-[12px] focus:outline-none focus:ring-1 focus:ring-primary" />
         </SettingRow>
       </SectionBlock>
+
+      {(profile?.sub_plan === 'PRO' || profile?.sub_plan === 'GEEK') && (
+        <SectionBlock title="Name Style">
+          <SettingRow title="Effect" description="Animated effect on your name — visible to everyone.">
+            <div className="flex items-center gap-2 flex-wrap">
+              {([
+                { value: null,       label: 'None' },
+                { value: 'gradient', label: 'Gradient' },
+                { value: 'shimmer',  label: 'Shimmer' },
+                { value: 'glow',     label: 'Glow' },
+              ] as { value: NameEffect; label: string }[]).map(({ value, label }) => (
+                <button
+                  key={value ?? 'none'}
+                  onClick={() => setNameEffect(value)}
+                  className={cn(
+                    'rounded-lg border border-border px-3 py-1.5 text-[11px] font-medium transition-colors hover:bg-accent',
+                    nameEffect === value && 'bg-primary/10 ring-1 ring-primary border-primary/30',
+                  )}
+                >
+                  {value ? (
+                    <UserName name={label} effect={value} subPlan={profile?.sub_plan} />
+                  ) : label}
+                </button>
+              ))}
+            </div>
+          </SettingRow>
+        </SectionBlock>
+      )}
 
       <SectionBlock title="Social Links">
         <SettingRow title="X" description="Link to your X profile.">
