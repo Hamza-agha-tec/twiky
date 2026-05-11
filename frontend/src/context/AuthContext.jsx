@@ -21,6 +21,7 @@ export function AuthProvider({ children }) {
 
   const syncSocketWithSession = async (session) => {
     if (session?.access_token) {
+      console.log('JWT Token (syncSocketWithSession):', session.access_token)
       await getSocket(session.access_token)
       return
     }
@@ -30,6 +31,9 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.access_token) {
+        console.log('JWT Token (initial session):', session.access_token)
+      }
       void syncSocketWithSession(session)
       setSession(session)
       setUser(session?.user ?? null)
@@ -42,6 +46,9 @@ export function AuthProvider({ children }) {
         disconnectSocket()
       }
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        if (session?.access_token) {
+          console.log('JWT Token (auth state change -', event, '):', session.access_token)
+        }
         void syncSocketWithSession(session)
       }
       setSession(session)
