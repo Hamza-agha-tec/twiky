@@ -1,6 +1,6 @@
 import { createClient } from '../utils/supabase/client';
 
-const API_URL = (typeof window !== 'undefined' && (window as any).__NEXT_PUBLIC_API_URL) || 'http://localhost:3500';
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
 
 async function getToken(): Promise<string> {
   const supabase = createClient();
