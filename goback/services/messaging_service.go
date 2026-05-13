@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Hamza-agha-tec/goback/models"
+	"github.com/lib/pq"
 )
 
 type MessagingService struct {
@@ -20,30 +21,82 @@ func NewMessagingService(db *sql.DB) *MessagingService {
 // --- DIRECT CONVERSATIONS ---
 
 func (s *MessagingService) GetDirectConversations(userID string) ([]*models.DirectConversation, error) {
-	query := `
-		SELECT id, user_one_id, user_two_id, created_at, updated_at
+
+	rows, err := s.db.Query(`
+		SELECT id, user_one_id, user_two_id, created_at
 		FROM direct_conversations
 		WHERE user_one_id = $1 OR user_two_id = $1
-		ORDER BY updated_at DESC
-	`
-
-	rows, err := s.db.Query(query, userID)
+		ORDER BY created_at DESC
+	`, userID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get direct conversations: %w", err)
+		return nil, err
 	}
 	defer rows.Close()
 
-	var conversations []*models.DirectConversation
+	var convs []*models.DirectConversation
+
 	for rows.Next() {
-		conv := &models.DirectConversation{}
-		err := rows.Scan(&conv.ID, &conv.UserOneID, &conv.UserTwoID, &conv.CreatedAt, &conv.UpdatedAt)
+		c := &models.DirectConversation{}
+
+		err := rows.Scan(
+			&c.ID,
+			&c.UserOneID,
+			&c.UserTwoID,
+			&c.CreatedAt,
+		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan conversation: %w", err)
+			return nil, err
 		}
-		conversations = append(conversations, conv)
+
+		convs = append(convs, c)
 	}
 
-	return conversations, nil
+	// STEP 2 users
+	userIDsMap := map[string]struct{}{}
+	for _, c := range convs {
+		userIDsMap[c.UserOneID] = struct{}{}
+		userIDsMap[c.UserTwoID] = struct{}{}
+	}
+
+	var userIDs []string
+	for id := range userIDsMap {
+		userIDs = append(userIDs, id)
+	}
+
+	users := map[string]models.UserPublic{}
+
+	if len(userIDs) > 0 {
+		urows, err := s.db.Query(`
+			SELECT id, username, avatar_url, banner, sub_plan, is_verified, last_seen_at
+			FROM users
+			WHERE id = ANY($1)
+		`, pq.Array(userIDs))
+		if err != nil {
+			return nil, err
+		}
+		defer urows.Close()
+
+		for urows.Next() {
+			var u models.UserPublic
+			_ = urows.Scan(
+				&u.ID,
+				&u.Username,
+				&u.AvatarURL,
+				&u.Banner,
+				&u.SubPlan,
+				&u.IsVerified,
+				&u.LastSeenAt,
+			)
+			users[u.ID] = u
+		}
+	}
+
+	for _, c := range convs {
+		_ = users[c.UserOneID]
+		_ = users[c.UserTwoID]
+	}
+
+	return convs, nil
 }
 
 func (s *MessagingService) CreateDirectConversation(userID string, dto models.StartDirectConversationDto) (*models.DirectConversation, error) {
@@ -53,7 +106,7 @@ func (s *MessagingService) CreateDirectConversation(userID string, dto models.St
 		SELECT id, user_one_id, user_two_id, created_at, updated_at
 		FROM direct_conversations
 		WHERE (user_one_id = $1 AND user_two_id = $2) OR (user_one_id = $2 AND user_two_id = $1)
-	`, userID, dto.UserID).Scan(&existingConv.ID, &existingConv.UserOneID, &existingConv.UserTwoID, &existingConv.CreatedAt, &existingConv.UpdatedAt)
+	`, userID, dto.UserID).Scan(&existingConv.ID, &existingConv.UserOneID, &existingConv.UserTwoID, &existingConv.CreatedAt)
 
 	if err == nil {
 		return &existingConv, nil
@@ -72,7 +125,7 @@ func (s *MessagingService) CreateDirectConversation(userID string, dto models.St
 
 	conv := &models.DirectConversation{}
 	err = s.db.QueryRow(query, userID, dto.UserID).Scan(
-		&conv.ID, &conv.UserOneID, &conv.UserTwoID, &conv.CreatedAt, &conv.UpdatedAt,
+		&conv.ID, &conv.UserOneID, &conv.UserTwoID, &conv.CreatedAt,
 	)
 
 	if err != nil {

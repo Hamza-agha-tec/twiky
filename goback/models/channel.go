@@ -10,11 +10,12 @@ type Channel struct {
 	Description string    `json:"description" db:"description"`
 	AvatarURL   string    `json:"avatar_url" db:"avatar_url"`
 	OwnerID     string    `json:"owner_id" db:"owner_id"`
-	AccessType  string    `json:"access_type" db:"access_type"` // PUBLIC, PRIVATE
-	IsArchived  bool      `json:"is_archived" db:"is_archived"`
-	MemberCount int       `json:"member_count" db:"member_count"`
 	CreatedAt   time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+	BannerURL   string    `json:"banner_url" db:"banner_url"`
+	AccessType  string    `json:"access_type" db:"access_type"` // PUBLIC, PRIVATE
+	Type        string    `json:"type" db:"type"`
+	InviteCode  string    `json:"invite_code" db:"invite_code"`
+	Role        string    `json:"role" db:"role"`
 }
 
 type ChannelMember struct {
@@ -40,7 +41,7 @@ type Group struct {
 	ChannelID   string    `json:"channel_id" db:"channel_id"`
 	Name        string    `json:"name" db:"name"`
 	Description string    `json:"description" db:"description"`
-	GroupType   string    `json:"group_type" db:"group_type"` // TEXT, VOICE
+	GroupType   string    `json:"group_type" db:"group_type"`   // TEXT, VOICE
 	AccessType  string    `json:"access_type" db:"access_type"` // PUBLIC, PRIVATE
 	OwnerID     string    `json:"owner_id" db:"owner_id"`
 	CreatedAt   time.Time `json:"created_at" db:"created_at"`
@@ -48,11 +49,11 @@ type Group struct {
 }
 
 type GroupMember struct {
-	ID        string    `json:"id" db:"id"`
-	GroupID   string    `json:"group_id" db:"group_id"`
-	UserID    string    `json:"user_id" db:"user_id"`
-	Role      string    `json:"role" db:"role"` // ADMIN, MODERATOR, MEMBER
-	JoinedAt  time.Time `json:"joined_at" db:"joined_at"`
+	ID       string    `json:"id" db:"id"`
+	GroupID  string    `json:"group_id" db:"group_id"`
+	UserID   string    `json:"user_id" db:"user_id"`
+	Role     string    `json:"role" db:"role"` // ADMIN, MODERATOR, MEMBER
+	JoinedAt time.Time `json:"joined_at" db:"joined_at"`
 }
 
 type GroupJoinRequest struct {

@@ -3,6 +3,7 @@ package services
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/Hamza-agha-tec/goback/models"
@@ -166,37 +167,25 @@ func (s *UserService) UpdateProfile(userID string, updateData models.UpdateUserI
 }
 
 func (s *UserService) GetSettings(userID string) (*models.UserSettings, error) {
-	query := `
-		SELECT id, user_id, theme, language, notifications, email_notifications, 
-		       push_notifications, privacy_level, created_at, updated_at
-		FROM user_settings 
-		WHERE user_id = $1
-	`
+	var settings []models.UserSettings
 
-	settings := &models.UserSettings{}
-	err := s.db.QueryRow(query, userID).Scan(
-		&settings.ID, &settings.UserID, &settings.Theme, &settings.Language,
-		&settings.Notifications, &settings.EmailNotifications, &settings.PushNotifications,
-		&settings.PrivacyLevel, &settings.CreatedAt, &settings.UpdatedAt,
-	)
+	res := s.supabase.GetClient().DB.
+		From("user_settings").
+		Select("*").
+		Eq("user_id", userID).
+		Execute(&settings)
 
-	if err != nil {
-		if err == sql.ErrNoRows {
-			// Return default settings if none found
-			return &models.UserSettings{
-				UserID:             userID,
-				Theme:              "light",
-				Language:           "en",
-				Notifications:      true,
-				EmailNotifications: true,
-				PushNotifications:  true,
-				PrivacyLevel:       "public",
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to query user settings: %w", err)
+	if res != nil {
+		return nil, res
 	}
 
-	return settings, nil
+	log.Printf("RAW SETTINGS: %+v", settings)
+
+	if len(settings) == 0 {
+		return nil, fmt.Errorf("settings not found")
+	}
+
+	return &settings[0], nil
 }
 
 func (s *UserService) SearchByUsername(username string, requestingUserID string) ([]*models.User, error) {

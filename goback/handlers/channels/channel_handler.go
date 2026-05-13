@@ -40,7 +40,7 @@ func (h *ChannelHandler) GetUserChannels(c echo.Context) error {
 	
 	channels, err := h.channelService.GetUserChannels(user.UserID)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get user channels"})
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get user channels ..."})
 	}
 
 	return c.JSON(http.StatusOK, channels)

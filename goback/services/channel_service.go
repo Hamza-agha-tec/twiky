@@ -29,9 +29,8 @@ func (s *ChannelService) CreateChannel(userID string, createData models.CreateCh
 		createData.Name, createData.Description, createData.AvatarURL,
 		userID, createData.AccessType,
 	).Scan(
-		&channel.ID, &channel.Name, &channel.Description, &channel.AvatarURL,
-		&channel.OwnerID, &channel.AccessType, &channel.IsArchived,
-		&channel.MemberCount, &channel.CreatedAt, &channel.UpdatedAt,
+		&channel.ID, &channel.Name, &channel.Description, &channel.AvatarURL, &channel.OwnerID,
+		&channel.CreatedAt, &channel.BannerURL, &channel.AccessType, &channel.Type, &channel.InviteCode,
 	)
 
 	if err != nil {
@@ -53,8 +52,18 @@ func (s *ChannelService) CreateChannel(userID string, createData models.CreateCh
 
 func (s *ChannelService) GetUserChannels(userID string) ([]*models.Channel, error) {
 	query := `
-		SELECT c.id, c.name, c.description, c.avatar_url, c.owner_id, c.access_type, 
-		       c.is_archived, c.member_count, c.created_at, c.updated_at
+		SELECT 
+			c.id,
+			c.name,
+			c.description,
+			c.avatar_url,
+			c.banner_url,
+			c.owner_id,
+			c.access_type,
+			c.type,
+			c.invite_code,
+			c.created_at,
+			cm.role
 		FROM channels c
 		INNER JOIN channel_members cm ON c.id = cm.channel_id
 		WHERE cm.user_id = $1
@@ -63,22 +72,36 @@ func (s *ChannelService) GetUserChannels(userID string) ([]*models.Channel, erro
 
 	rows, err := s.db.Query(query, userID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query user channels: %w", err)
+		return nil, fmt.Errorf("query failed: %w", err)
 	}
 	defer rows.Close()
 
 	var channels []*models.Channel
+
 	for rows.Next() {
-		channel := &models.Channel{}
+		ch := &models.Channel{}
+		var role string
+		
 		err := rows.Scan(
-			&channel.ID, &channel.Name, &channel.Description, &channel.AvatarURL,
-			&channel.OwnerID, &channel.AccessType, &channel.IsArchived,
-			&channel.MemberCount, &channel.CreatedAt, &channel.UpdatedAt,
+			&ch.ID,
+			&ch.Name,
+			&ch.Description,
+			&ch.AvatarURL,
+			&ch.BannerURL,
+			&ch.OwnerID,
+			&ch.AccessType,
+			&ch.Type,
+			&ch.InviteCode,
+			&ch.CreatedAt,
+			&role,
 		)
+	
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan channel row: %w", err)
+			return nil, fmt.Errorf("scan failed: %w", err)
 		}
-		channels = append(channels, channel)
+	
+		ch.Role = role
+		channels = append(channels, ch)
 	}
 
 	return channels, nil
@@ -108,9 +131,8 @@ func (s *ChannelService) DiscoverChannels(userID string) ([]*models.Channel, err
 	for rows.Next() {
 		channel := &models.Channel{}
 		err := rows.Scan(
-			&channel.ID, &channel.Name, &channel.Description, &channel.AvatarURL,
-			&channel.OwnerID, &channel.AccessType, &channel.IsArchived,
-			&channel.MemberCount, &channel.CreatedAt, &channel.UpdatedAt,
+			&channel.ID, &channel.Name, &channel.Description, &channel.AvatarURL, &channel.OwnerID,
+			&channel.CreatedAt, &channel.BannerURL, &channel.AccessType, &channel.Type, &channel.InviteCode,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan channel row: %w", err)
@@ -131,9 +153,8 @@ func (s *ChannelService) GetChannelDetails(channelID string) (*models.Channel, e
 
 	channel := &models.Channel{}
 	err := s.db.QueryRow(query, channelID).Scan(
-		&channel.ID, &channel.Name, &channel.Description, &channel.AvatarURL,
-		&channel.OwnerID, &channel.AccessType, &channel.IsArchived,
-		&channel.MemberCount, &channel.CreatedAt, &channel.UpdatedAt,
+		&channel.ID, &channel.Name, &channel.Description, &channel.AvatarURL, &channel.OwnerID,
+		&channel.CreatedAt, &channel.BannerURL, &channel.AccessType, &channel.Type, &channel.InviteCode,
 	)
 
 	if err != nil {

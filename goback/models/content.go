@@ -103,11 +103,26 @@ type PostLike struct {
 // --- MESSAGING MODELS ---
 
 type DirectConversation struct {
-	ID        string    `json:"id"`
-	UserOneID string    `json:"user_one_id"`
-	UserTwoID string    `json:"user_two_id"`
+	ID        string `json:"id"`
+	UserOneID string `json:"user_one_id"`
+	UserTwoID string `json:"user_two_id"`
 	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+
+	UserOne UserPublic `json:"user_one"`
+	UserTwo UserPublic `json:"user_two"`
+
+	LastMessage []DirectMessage `json:"last_message"`
+	UnreadCount int `json:"unread_count"`
+}
+
+type UserPublic struct {
+	ID           string     `json:"id"`
+	Username     string     `json:"username"`
+	AvatarURL    string     `json:"avatar_url"`
+	Banner       string     `json:"banner"`
+	SubPlan      string     `json:"sub_plan"`
+	IsVerified   bool       `json:"is_verified"`
+	LastSeenAt   *time.Time `json:"last_seen_at"`
 }
 
 type DirectMessage struct {

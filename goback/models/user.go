@@ -5,16 +5,21 @@ import (
 )
 
 type UserSettings struct {
-	ID                 string    `json:"id" db:"id"`
-	UserID             string    `json:"user_id" db:"user_id"`
-	Theme              string    `json:"theme" db:"theme"`
-	Language           string    `json:"language" db:"language"`
-	Notifications      bool      `json:"notifications" db:"notifications"`
-	EmailNotifications bool      `json:"email_notifications" db:"email_notifications"`
-	PushNotifications  bool      `json:"push_notifications" db:"push_notifications"`
-	PrivacyLevel       string    `json:"privacy_level" db:"privacy_level"`
-	CreatedAt          time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at" db:"updated_at"`
+	ID                      string    `json:"id"`
+	UserID                  string    `json:"user_id"`
+	Theme                   string    `json:"theme"`
+	NotificationsEnabled    bool      `json:"notifications_enabled"`
+	CreatedAt               time.Time `json:"created_at"`
+	Language                string    `json:"language"`
+	AccentColor             string    `json:"accent_color"`
+	DoNotDisturb            bool      `json:"do_not_disturb"`
+	WhoCanSeeMeOnline       string    `json:"who_can_see_me_online"`
+	WhoCanSeeMyLastSeen     string    `json:"who_can_see_my_last_seen"`
+	ReadConfirmation        bool      `json:"read_confirmation"`
+	Email                   string    `json:"email"`
+	DodoCustomerID          string    `json:"dodo_customer_id"`
+	WhoCanSeeMyProfilePhoto string    `json:"who_can_see_my_profile_photo"`
+	WhoCanDiscoverMe        string    `json:"who_can_discover_me"`
 }
 
 type UserProfile struct {

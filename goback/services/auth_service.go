@@ -25,26 +25,26 @@ func (s *AuthService) GetUserByID(userID string) (*models.User, error) {
 		FROM users 
 		WHERE id = $1
 	`
-	
+
 	user := &models.User{}
-	var fullName, username, avatarURL, bio, status, phoneNumber, lastSeenAt, 
-			banner, logo, xURL, websiteURL, enterSoundURL sql.NullString
+	var fullName, username, avatarURL, bio, status, phoneNumber, lastSeenAt,
+		banner, logo, xURL, websiteURL, enterSoundURL sql.NullString
 	var isVerified sql.NullBool
-	
+
 	err := s.db.QueryRow(query, userID).Scan(
-		&user.ID, &user.Email, &fullName, &username, &avatarURL, &bio, &status, 
-		&phoneNumber, &lastSeenAt, &banner, &logo, &xURL, &websiteURL, 
-		&enterSoundURL, &isVerified, &user.IsOnline, &user.SubPlan, 
+		&user.ID, &user.Email, &fullName, &username, &avatarURL, &bio, &status,
+		&phoneNumber, &lastSeenAt, &banner, &logo, &xURL, &websiteURL,
+		&enterSoundURL, &isVerified, &user.IsOnline, &user.SubPlan,
 		&user.LastActiveAt, &user.CreatedAt, &user.UpdatedAt,
 	)
-	
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("user not found")
 		}
 		return nil, fmt.Errorf("failed to query user: %w", err)
 	}
-	
+
 	// Convert sql.NullString to pointers
 	if fullName.Valid {
 		user.FullName = &fullName.String
@@ -85,40 +85,27 @@ func (s *AuthService) GetUserByID(userID string) (*models.User, error) {
 	if isVerified.Valid {
 		user.IsVerified = &isVerified.Bool
 	}
-	
+
 	return user, nil
 }
 
 func (s *AuthService) GetUserSettings(userID string) (*models.UserSettings, error) {
 	query := `
-		SELECT id, user_id, theme, language, notifications, email_notifications, 
-		       push_notifications, privacy_level, created_at, updated_at
-		FROM user_settings 
+		SELECT * FROM user_settings 
 		WHERE user_id = $1
 	`
-	
+
 	settings := &models.UserSettings{}
 	err := s.db.QueryRow(query, userID).Scan(
-		&settings.ID, &settings.UserID, &settings.Theme, &settings.Language,
-		&settings.Notifications, &settings.EmailNotifications, &settings.PushNotifications,
-		&settings.PrivacyLevel, &settings.CreatedAt, &settings.UpdatedAt,
+		&settings.ID, &settings.UserID, &settings.Theme, &settings.NotificationsEnabled, &settings.CreatedAt,
+		&settings.Language, &settings.AccentColor, &settings.DoNotDisturb, &settings.WhoCanSeeMeOnline, &settings.WhoCanSeeMyLastSeen,
+		&settings.ReadConfirmation, &settings.Email, &settings.DodoCustomerID, &settings.WhoCanSeeMyProfilePhoto,
+		&settings.WhoCanDiscoverMe,
 	)
-	
+
 	if err != nil {
-		if err == sql.ErrNoRows {
-			// Return default settings if none found
-			return &models.UserSettings{
-				UserID:            userID,
-				Theme:             "light",
-				Language:          "en",
-				Notifications:     true,
-				EmailNotifications: true,
-				PushNotifications: true,
-				PrivacyLevel:      "public",
-			}, nil
-		}
 		return nil, fmt.Errorf("failed to query user settings: %w", err)
 	}
-	
+
 	return settings, nil
 }
