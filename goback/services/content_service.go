@@ -231,7 +231,6 @@ func (s *ContentService) GetFeed(userID string) ([]*models.Story, error) {
 		stories = append(stories, story)
 	}
 
-	fmt.Printf("GetFeed query returned %d stories for user %s\n", len(stories), userID)
 	return stories, nil
 }
 
