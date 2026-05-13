@@ -371,7 +371,8 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     })
   }, [])
 
-  const { data: storiesFeed = [] } = useStoriesFeed()
+  const { data: storiesFeedData } = useStoriesFeed()
+  const storiesFeed = storiesFeedData ?? []
   const createStory = useCreateStory()
   const deleteStory = useDeleteStory()
   const recordView = useRecordView()

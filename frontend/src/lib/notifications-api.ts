@@ -44,8 +44,14 @@ async function authedFetch<T = unknown>(path: string, init: RequestInit = {}): P
   return res.json();
 }
 
+interface NotificationsResponse {
+  notifications: Notification[]
+  limit: number
+  offset: number
+}
+
 export const notificationsApi = {
-  getAll: () => authedFetch<Notification[]>('/notifications'),
+  getAll: () => authedFetch<NotificationsResponse>('/notifications').then((r) => r.notifications),
   markAsRead: (id: string) => authedFetch(`/notifications/${id}/read`, { method: 'PATCH' }),
   markAllAsRead: () => authedFetch('/notifications/read-all', { method: 'PATCH' }),
 };
