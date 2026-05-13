@@ -150,12 +150,53 @@ type DirectConversationResponse struct {
 }
 
 type DirectMessage struct {
-	ID             string    `json:"id"`
-	ConversationID string    `json:"conversation_id"`
-	SenderID       string    `json:"sender_id"`
-	Content        string    `json:"content"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID             string                   `json:"id"`
+	ConversationID string                   `json:"conversation_id"`
+	SenderID       string                   `json:"sender_id"`
+	Content        *string                  `json:"content"`
+	Type           *string                  `json:"type"`
+	FileURL        *string                  `json:"file_url"`
+	Mime           *string                  `json:"mime"`
+	Duration       *int                     `json:"duration"`
+	Size           *int                     `json:"size"`
+	FileURLs       []string                 `json:"file_urls"`
+	ReplyToID      *string                  `json:"reply_to_id"`
+	IsForwarded    bool                     `json:"is_forwarded"`
+	IsPinned       bool                     `json:"is_pinned"`
+	Status         string                   `json:"status"`
+	Reactions      []map[string]interface{} `json:"reactions"`
+	CreatedAt      time.Time                `json:"created_at"`
+	UpdatedAt      time.Time                `json:"updated_at"`
+}
+
+type DirectMessageSender struct {
+	ID         string  `json:"id"`
+	Username   *string `json:"username"`
+	Fullname   *string `json:"fullname"`
+	FullName   *string `json:"full_name"`
+	AvatarURL  *string `json:"avatar_url"`
+	IsVerified *bool   `json:"is_verified"`
+	SubPlan    string  `json:"sub_plan"`
+}
+
+type DirectMessageResponse struct {
+	ID             string                   `json:"id"`
+	ConversationID string                   `json:"conversation_id"`
+	SenderID       string                   `json:"sender_id"`
+	Content        *string                  `json:"content"`
+	Type           *string                  `json:"type"`
+	FileURL        *string                  `json:"file_url"`
+	Mime           *string                  `json:"mime"`
+	Duration       *int                     `json:"duration"`
+	Size           *int                     `json:"size"`
+	FileURLs       []string                 `json:"file_urls"`
+	ReplyToID      *string                  `json:"reply_to_id"`
+	IsForwarded    bool                     `json:"is_forwarded"`
+	IsPinned       bool                     `json:"is_pinned"`
+	Status         string                   `json:"status"`
+	Reactions      []map[string]interface{} `json:"reactions"`
+	CreatedAt      time.Time                `json:"created_at"`
+	Sender         *DirectMessageSender     `json:"sender"`
 }
 
 type GroupMessage struct {
@@ -207,11 +248,27 @@ type MessageReaction struct {
 }
 
 type SendDirectMessageDto struct {
-	Content string `json:"content"`
+	Content     string   `json:"content"`
+	Type        string   `json:"type"`
+	FileUrl     string   `json:"fileUrl"`
+	ReplyToId   string   `json:"replyToId"`
+	FileUrls    []string `json:"fileUrls"`
+	Mime        string   `json:"mime"`
+	Duration    int      `json:"duration"`
+	Size        int      `json:"size"`
+	IsForwarded bool     `json:"isForwarded"`
 }
 
 type SendGroupMessageDto struct {
-	Content string `json:"content"`
+	Content     string   `json:"content"`
+	Type        string   `json:"type"`
+	FileUrl     string   `json:"fileUrl"`
+	ReplyToId   string   `json:"replyToId"`
+	FileUrls    []string `json:"fileUrls"`
+	Mime        string   `json:"mime"`
+	Duration    int      `json:"duration"`
+	Size        int      `json:"size"`
+	IsForwarded bool     `json:"isForwarded"`
 }
 
 type ToggleReactionDto struct {

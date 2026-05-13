@@ -44,7 +44,7 @@ func SetupRoutes(e *echo.Echo) {
 	productPaymentsService := services.NewProductPaymentsService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_ANON_KEY"))
 	voiceService := services.NewVoiceService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_ANON_KEY"))
 	groupService := services.NewGroupService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_ANON_KEY"))
-	socketIOService := services.NewSocketIOService()
+	socketIOService := services.NewSocketIOService(db.DB)
 	notificationService := services.NewNotificationService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_ANON_KEY"))
 
 	collaborationService := services.NewCollaborationService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_ANON_KEY"))

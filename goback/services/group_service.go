@@ -19,6 +19,29 @@ func NewGroupService(db *sql.DB, supabaseURL, supabaseKey string) *GroupService 
 	}
 }
 
+// getChannelRoleForGroup returns the user's role in the channel that owns this group.
+// Returns "" if the user is not a channel member or the group doesn't exist.
+func (s *GroupService) getChannelRoleForGroup(groupID, userID string) (string, error) {
+	var groups []models.Group
+	err := s.supabase.GetClient().DB.From("groups").
+		Select("channel_id").
+		Eq("id", groupID).
+		Execute(&groups)
+	if err != nil || len(groups) == 0 {
+		return "", nil
+	}
+	var channelMembers []models.ChannelMember
+	err = s.supabase.GetClient().DB.From("channel_members").
+		Select("role").
+		Eq("channel_id", groups[0].ChannelID).
+		Eq("user_id", userID).
+		Execute(&channelMembers)
+	if err != nil || len(channelMembers) == 0 {
+		return "", nil
+	}
+	return channelMembers[0].Role, nil
+}
+
 func (s *GroupService) CreateGroup(channelID, userID string, createData models.CreateGroupDto) (*models.Group, error) {
 	var groups []models.Group
 	err := s.supabase.GetClient().DB.From("groups").
@@ -28,7 +51,6 @@ func (s *GroupService) CreateGroup(channelID, userID string, createData models.C
 			"description": createData.Description,
 			"group_type":  createData.GroupType,
 			"access_type": createData.AccessType,
-			"owner_id":    userID,
 		}).
 		Execute(&groups)
 
@@ -40,13 +62,13 @@ func (s *GroupService) CreateGroup(channelID, userID string, createData models.C
 		return nil, fmt.Errorf("failed to create group: no data returned")
 	}
 
-	// Add owner as admin member
+	// Add creator as owner
 	var members []interface{}
 	err = s.supabase.GetClient().DB.From("group_members").
 		Insert(map[string]interface{}{
 			"group_id": groups[0].ID,
 			"user_id":  userID,
-			"role":     "ADMIN",
+			"role":     "OWNER",
 		}).
 		Execute(&members)
 
@@ -93,13 +115,12 @@ func (s *GroupService) GetGroupsInChannel(channelID, requestingUserID string) ([
 	return result, nil
 }
 
-func (s *GroupService) GetGroupMembers(groupID, requestingUserID string) ([]*models.GroupMember, error) {
-	// Check if user is a member of the group
+func (s *GroupService) GetGroupMembers(groupID, requestingUserID string) ([]*models.GroupMemberResponse, error) {
 	var members []models.GroupMember
 	err := s.supabase.GetClient().DB.From("group_members").
-		Select("id").
-		Filter("group_id", "eq", groupID).
-		Filter("user_id", "eq", requestingUserID).
+		Select("*").
+		Eq("group_id", groupID).
+		Eq("user_id", requestingUserID).
 		Execute(&members)
 
 	if err != nil {
@@ -107,23 +128,71 @@ func (s *GroupService) GetGroupMembers(groupID, requestingUserID string) ([]*mod
 	}
 
 	if len(members) == 0 {
-		return nil, fmt.Errorf("access denied")
+		channelRole, _ := s.getChannelRoleForGroup(groupID, requestingUserID)
+		if channelRole != "OWNER" && channelRole != "ADMIN" {
+			return nil, fmt.Errorf("access denied")
+		}
 	}
 
 	var allMembers []models.GroupMember
 	err = s.supabase.GetClient().DB.From("group_members").
-		Select("id, group_id, user_id, role, joined_at").
-		Filter("group_id", "eq", groupID).
+		Select("*").
+		Eq("group_id", groupID).
 		Execute(&allMembers)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to query group members: %w", err)
 	}
 
-	// Convert to slice of pointers
-	var result []*models.GroupMember
-	for i := range allMembers {
-		result = append(result, &allMembers[i])
+	// If no member has OWNER role (legacy groups), treat the earliest member as owner
+	hasOwner := false
+	for _, m := range allMembers {
+		if m.Role == "OWNER" {
+			hasOwner = true
+			break
+		}
+	}
+	var ownerID string
+	if !hasOwner && len(allMembers) > 0 {
+		earliest := allMembers[0]
+		for _, m := range allMembers[1:] {
+			if m.JoinedAt.Before(earliest.JoinedAt) {
+				earliest = m
+			}
+		}
+		ownerID = earliest.UserID
+	}
+
+	var result []*models.GroupMemberResponse
+	for _, member := range allMembers {
+		var userSlice []models.User
+		err := s.supabase.GetClient().DB.From("users").
+			Select("*").
+			Eq("id", member.UserID).
+			Execute(&userSlice)
+		if err != nil || len(userSlice) == 0 {
+			continue
+		}
+		u := userSlice[0]
+		role := member.Role
+		if !hasOwner && member.UserID == ownerID {
+			role = "OWNER"
+		}
+		result = append(result, &models.GroupMemberResponse{
+			Role:     role,
+			JoinedAt: member.JoinedAt,
+			User: models.GroupMemberUser{
+				ID:         u.ID,
+				Email:      u.Email,
+				Fullname:   u.Fullname,
+				Username:   u.Username,
+				AvatarURL:  u.AvatarURL,
+				Banner:     u.Banner,
+				Bio:        u.Bio,
+				IsVerified: u.IsVerified,
+				SubPlan:    u.SubPlan,
+			},
+		})
 	}
 
 	return result, nil
@@ -142,13 +211,19 @@ func (s *GroupService) UpdateGroup(groupID, userID string, updateData models.Upd
 		return fmt.Errorf("failed to check user role: %w", err)
 	}
 
-	if len(members) == 0 {
-		return fmt.Errorf("access denied")
+	role := ""
+	if len(members) > 0 {
+		role = members[0].Role
 	}
-
-	role := members[0].Role
-	if role != "ADMIN" && role != "MODERATOR" {
-		return fmt.Errorf("insufficient permissions")
+	if role != "OWNER" && role != "ADMIN" && role != "MODERATOR" {
+		channelRole, _ := s.getChannelRoleForGroup(groupID, userID)
+		if channelRole == "OWNER" || channelRole == "ADMIN" {
+			role = channelRole
+		} else if role == "" {
+			return fmt.Errorf("access denied")
+		} else {
+			return fmt.Errorf("insufficient permissions")
+		}
 	}
 
 	// Build update map with only non-empty fields
@@ -181,23 +256,30 @@ func (s *GroupService) UpdateGroup(groupID, userID string, updateData models.Upd
 }
 
 func (s *GroupService) DeleteGroup(groupID, userID string) error {
-	// Check if user is owner
-	var groups []models.Group
-	err := s.supabase.GetClient().DB.From("groups").
-		Select("owner_id").
-		Filter("id", "eq", groupID).
-		Execute(&groups)
+	// Only ADMIN members can delete the group
+	var membership []models.GroupMember
+	err := s.supabase.GetClient().DB.From("group_members").
+		Select("role").
+		Eq("group_id", groupID).
+		Eq("user_id", userID).
+		Execute(&membership)
 
 	if err != nil {
 		return fmt.Errorf("failed to check group ownership: %w", err)
 	}
 
-	if len(groups) == 0 {
-		return fmt.Errorf("group not found")
+	memberRole := ""
+	if len(membership) > 0 {
+		memberRole = membership[0].Role
 	}
-
-	if groups[0].OwnerID != userID {
-		return fmt.Errorf("only group owner can delete group")
+	if memberRole != "OWNER" && memberRole != "ADMIN" {
+		channelRole, _ := s.getChannelRoleForGroup(groupID, userID)
+		if channelRole != "OWNER" && channelRole != "ADMIN" {
+			if len(membership) == 0 {
+				return fmt.Errorf("group not found")
+			}
+			return fmt.Errorf("only group owner can delete group")
+		}
 	}
 
 	// Delete group (cascade should handle members)
@@ -226,13 +308,19 @@ func (s *GroupService) AddMemberToGroup(groupID, userID string, addData models.A
 		return fmt.Errorf("failed to check user role: %w", err)
 	}
 
-	if len(members) == 0 {
-		return fmt.Errorf("access denied")
+	role := ""
+	if len(members) > 0 {
+		role = members[0].Role
 	}
-
-	role := members[0].Role
-	if role != "ADMIN" && role != "MODERATOR" {
-		return fmt.Errorf("insufficient permissions")
+	if role != "OWNER" && role != "ADMIN" && role != "MODERATOR" {
+		channelRole, _ := s.getChannelRoleForGroup(groupID, userID)
+		if channelRole == "OWNER" || channelRole == "ADMIN" {
+			role = channelRole
+		} else if role == "" {
+			return fmt.Errorf("access denied")
+		} else {
+			return fmt.Errorf("insufficient permissions")
+		}
 	}
 
 	// Check if user is already a member
@@ -282,13 +370,19 @@ func (s *GroupService) UpdateGroupMemberRole(groupID, userID string, updateData 
 		return fmt.Errorf("failed to check user role: %w", err)
 	}
 
-	if len(members) == 0 {
-		return fmt.Errorf("access denied")
+	role := ""
+	if len(members) > 0 {
+		role = members[0].Role
 	}
-
-	role := members[0].Role
-	if role != "ADMIN" {
-		return fmt.Errorf("only admins can update member roles")
+	if role != "OWNER" && role != "ADMIN" {
+		channelRole, _ := s.getChannelRoleForGroup(groupID, userID)
+		if channelRole == "OWNER" || channelRole == "ADMIN" {
+			role = channelRole
+		} else if role == "" {
+			return fmt.Errorf("access denied")
+		} else {
+			return fmt.Errorf("only admins can update member roles")
+		}
 	}
 
 	// Update member role
@@ -319,13 +413,19 @@ func (s *GroupService) DeleteGroupMember(groupID, userID, memberID string) error
 		return fmt.Errorf("failed to check user role: %w", err)
 	}
 
-	if len(members) == 0 {
-		return fmt.Errorf("access denied")
+	role := ""
+	if len(members) > 0 {
+		role = members[0].Role
 	}
-
-	role := members[0].Role
-	if role != "ADMIN" && role != "MODERATOR" {
-		return fmt.Errorf("insufficient permissions")
+	if role != "OWNER" && role != "ADMIN" && role != "MODERATOR" {
+		channelRole, _ := s.getChannelRoleForGroup(groupID, userID)
+		if channelRole == "OWNER" || channelRole == "ADMIN" {
+			role = channelRole
+		} else if role == "" {
+			return fmt.Errorf("access denied")
+		} else {
+			return fmt.Errorf("insufficient permissions")
+		}
 	}
 
 	// Remove member
@@ -428,13 +528,19 @@ func (s *GroupService) GetJoinRequests(groupID, userID string) ([]*models.GroupJ
 		return nil, fmt.Errorf("failed to check user role: %w", err)
 	}
 
-	if len(members) == 0 {
-		return nil, fmt.Errorf("access denied")
+	role := ""
+	if len(members) > 0 {
+		role = members[0].Role
 	}
-
-	role := members[0].Role
-	if role != "ADMIN" && role != "MODERATOR" {
-		return nil, fmt.Errorf("insufficient permissions")
+	if role != "OWNER" && role != "ADMIN" && role != "MODERATOR" {
+		channelRole, _ := s.getChannelRoleForGroup(groupID, userID)
+		if channelRole == "OWNER" || channelRole == "ADMIN" {
+			role = channelRole
+		} else if role == "" {
+			return nil, fmt.Errorf("access denied")
+		} else {
+			return nil, fmt.Errorf("insufficient permissions")
+		}
 	}
 
 	var requests []models.GroupJoinRequest
@@ -470,13 +576,19 @@ func (s *GroupService) RespondToJoinRequest(groupID, requestID, status, userID s
 		return fmt.Errorf("failed to check user role: %w", err)
 	}
 
-	if len(members) == 0 {
-		return fmt.Errorf("access denied")
+	role := ""
+	if len(members) > 0 {
+		role = members[0].Role
 	}
-
-	role := members[0].Role
-	if role != "ADMIN" && role != "MODERATOR" {
-		return fmt.Errorf("insufficient permissions")
+	if role != "OWNER" && role != "ADMIN" && role != "MODERATOR" {
+		channelRole, _ := s.getChannelRoleForGroup(groupID, userID)
+		if channelRole == "OWNER" || channelRole == "ADMIN" {
+			role = channelRole
+		} else if role == "" {
+			return fmt.Errorf("access denied")
+		} else {
+			return fmt.Errorf("insufficient permissions")
+		}
 	}
 
 	// Get request details

@@ -1465,6 +1465,9 @@ export function ChannelsPanel({
   const displayAvatar = channelAvatarUrl ?? channel.avatarUrl ?? null
   const displayBanner = channelBannerUrl ?? channel.bannerUrl ?? null
   const canManage = channel.role === 'OWNER' || channel.role === 'ADMIN'
+  console.log('channel')
+  console.log(channel)
+  console.log(channel.role)
 
   function parseVoiceDrag(event: DragEvent<HTMLElement>) {
     const raw =

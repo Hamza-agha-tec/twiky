@@ -29,11 +29,15 @@ type FollowingResponse struct {
 type User struct {
 	ID            string    `json:"id" db:"id"`
 	Email         string    `json:"email" db:"email"`
-	FullName      *string   `json:"full_name" db:"full_name"`
+	FullName      *string   `json:"full_name" db:"fullname"`
+	Fullname      *string   `json:"fullname" db:"fullname"`
 	Username      *string   `json:"username" db:"username"`
 	AvatarURL     *string   `json:"avatar_url" db:"avatar_url"`
 	Bio           *string   `json:"bio" db:"bio"`
 	Status        *string   `json:"status" db:"status"`
+	StatusMessage *string   `json:"status_message" db:"status_message"`
+	UserStatus    *string   `json:"user_status" db:"user_status"`
+	NameEffect    *string   `json:"name_effect" db:"name_effect"`
 	PhoneNumber   *string   `json:"phone_number" db:"phone_number"`
 	LastSeenAt    *string   `json:"last_seen_at" db:"last_seen_at"`
 	Banner        *string   `json:"banner" db:"banner"`
@@ -56,6 +60,9 @@ type UpdateUserInput struct {
 	PhoneNumber   *string `json:"phone_number"`
 	Bio           *string `json:"bio"`
 	Status        *string `json:"status"`
+	StatusMessage *string `json:"status_message"`
+	UserStatus    *string `json:"user_status"`
+	NameEffect    *string `json:"name_effect"`
 	Banner        *string `json:"banner"`
 	Logo          *string `json:"logo"`
 	Fullname      *string `json:"fullname"`

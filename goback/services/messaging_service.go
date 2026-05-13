@@ -3,6 +3,7 @@ package services
 import (
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/Hamza-agha-tec/goback/models"
 )
@@ -187,90 +188,194 @@ func (s *MessagingService) CreateDirectConversation(userID string, dto models.St
 	return &conversations[0], nil
 }
 
-func (s *MessagingService) GetDirectMessages(userID string, conversationID string) ([]*models.DirectMessage, error) {
-	// Verify user is part of conversation
-	var conv []models.DirectConversation
-	err := s.supabase.GetClient().DB.From("direct_conversations").
-		Select("id").
-		Filter("id", "eq", conversationID).
-		Filter("user_one_id", "eq", userID).
-		Execute(&conv)
-
-	if err != nil || len(conv) == 0 {
-		// Check if user is user_two_id
-		err = s.supabase.GetClient().DB.From("direct_conversations").
-			Select("id").
-			Filter("id", "eq", conversationID).
-			Filter("user_two_id", "eq", userID).
-			Execute(&conv)
-
-		if err != nil || len(conv) == 0 {
-			return nil, fmt.Errorf("conversation not found or access denied")
-		}
+func (s *MessagingService) GetDirectMessages(userID string, conversationID string) ([]*models.DirectMessageResponse, error) {
+	// Verify access via raw SQL
+	var convID string
+	err := s.db.QueryRow(`
+		SELECT id FROM direct_conversations
+		WHERE id = $1 AND (user_one_id = $2 OR user_two_id = $2)
+		LIMIT 1
+	`, conversationID, userID).Scan(&convID)
+	if err != nil {
+		return nil, fmt.Errorf("conversation not found or access denied")
 	}
 
-	var messages []models.DirectMessage
-	err = s.supabase.GetClient().DB.From("direct_messages").
-		Select("id, conversation_id, sender_id, content, created_at, updated_at").
-		Filter("conversation_id", "eq", conversationID).
-		Execute(&messages)
-
+	rows, err := s.db.Query(`
+		SELECT
+			dm.id, dm.conversation_id, dm.sender_id,
+			dm.content, dm.file_url, dm.reply_to_id,
+			dm.status, dm.type, dm.mime,
+			dm.is_pinned, dm.is_forwarded, dm.created_at,
+			u.id, u.username, u.fullname, u.avatar_url, u.is_verified, u.sub_plan
+		FROM direct_messages dm
+		LEFT JOIN users u ON u.id = dm.sender_id
+		WHERE dm.conversation_id = $1
+		ORDER BY dm.created_at ASC
+	`, conversationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get direct messages: %w", err)
 	}
+	defer rows.Close()
 
-	// Convert to slice of pointers
-	var result []*models.DirectMessage
-	for i := range messages {
-		result = append(result, &messages[i])
+	var result []*models.DirectMessageResponse
+	for rows.Next() {
+		var (
+			id, convID, senderID string
+			content, fileURL, replyToID, msgType, mime sql.NullString
+			status                                      string
+			isPinned, isForwarded                       sql.NullBool
+			createdAt                                   time.Time
+			sID                                         sql.NullString
+			sUsername, sFullName, sAvatarURL            sql.NullString
+			sIsVerified                                 sql.NullBool
+			sSubPlan                                    sql.NullString
+		)
+		if err := rows.Scan(
+			&id, &convID, &senderID,
+			&content, &fileURL, &replyToID,
+			&status, &msgType, &mime,
+			&isPinned, &isForwarded, &createdAt,
+			&sID, &sUsername, &sFullName, &sAvatarURL, &sIsVerified, &sSubPlan,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan message: %w", err)
+		}
+
+		var contentPtr *string
+		if content.Valid { contentPtr = &content.String }
+		var fileURLPtr *string
+		if fileURL.Valid { fileURLPtr = &fileURL.String }
+		var replyToIDPtr *string
+		if replyToID.Valid { replyToIDPtr = &replyToID.String }
+		var typePtr *string
+		if msgType.Valid { typePtr = &msgType.String }
+		var mimePtr *string
+		if mime.Valid { mimePtr = &mime.String }
+
+		var sender *models.DirectMessageSender
+		if sID.Valid {
+			var isVerifiedPtr *bool
+			if sIsVerified.Valid { isVerifiedPtr = &sIsVerified.Bool }
+			var usernamePtr, fullNamePtr, avatarPtr *string
+			if sUsername.Valid { usernamePtr = &sUsername.String }
+			if sFullName.Valid { fullNamePtr = &sFullName.String }
+			if sAvatarURL.Valid { avatarPtr = &sAvatarURL.String }
+			sender = &models.DirectMessageSender{
+				ID:         sID.String,
+				Username:   usernamePtr,
+				Fullname:   fullNamePtr,
+				FullName:   fullNamePtr,
+				AvatarURL:  avatarPtr,
+				IsVerified: isVerifiedPtr,
+				SubPlan:    sSubPlan.String,
+			}
+		}
+
+		result = append(result, &models.DirectMessageResponse{
+			ID:             id,
+			ConversationID: convID,
+			SenderID:       senderID,
+			Content:        contentPtr,
+			Type:           typePtr,
+			FileURL:        fileURLPtr,
+			Mime:           mimePtr,
+			ReplyToID:      replyToIDPtr,
+			IsPinned:       isPinned.Bool,
+			IsForwarded:    isForwarded.Bool,
+			Status:         status,
+			FileURLs:       []string{},
+			Reactions:      []map[string]interface{}{},
+			CreatedAt:      createdAt,
+			Sender:         sender,
+		})
 	}
 
+	if result == nil {
+		result = []*models.DirectMessageResponse{}
+	}
 	return result, nil
 }
 
-func (s *MessagingService) SendDirectMessage(userID string, conversationID string, dto models.SendDirectMessageDto) (*models.DirectMessage, error) {
-	// Verify user is part of conversation
-	var conv []models.DirectConversation
-	err := s.supabase.GetClient().DB.From("direct_conversations").
-		Select("id").
-		Filter("id", "eq", conversationID).
-		Filter("user_one_id", "eq", userID).
-		Execute(&conv)
-
-	if err != nil || len(conv) == 0 {
-		// Check if user is user_two_id
-		err = s.supabase.GetClient().DB.From("direct_conversations").
-			Select("id").
-			Filter("id", "eq", conversationID).
-			Filter("user_two_id", "eq", userID).
-			Execute(&conv)
-
-		if err != nil || len(conv) == 0 {
-			return nil, fmt.Errorf("conversation not found or access denied")
-		}
+func (s *MessagingService) SendDirectMessage(userID string, conversationID string, dto models.SendDirectMessageDto) (*models.DirectMessageResponse, error) {
+	// Verify access
+	var convID string
+	err := s.db.QueryRow(`
+		SELECT id FROM direct_conversations
+		WHERE id = $1 AND (user_one_id = $2 OR user_two_id = $2)
+		LIMIT 1
+	`, conversationID, userID).Scan(&convID)
+	if err != nil {
+		return nil, fmt.Errorf("conversation not found or access denied")
 	}
 
-	// Create message
-	var messages []models.DirectMessage
-	err = s.supabase.GetClient().DB.From("direct_messages").
-		Insert(map[string]interface{}{
-			"conversation_id": conversationID,
-			"sender_id":       userID,
-			"content":         dto.Content,
-			"created_at":      "now()",
-			"updated_at":      "now()",
-		}).
-		Execute(&messages)
+	msgType := dto.Type
+	if msgType == "" {
+		msgType = "text"
+	}
 
+	var replyToID, fileURL, mime *string
+	if dto.ReplyToId != "" { replyToID = &dto.ReplyToId }
+	if dto.FileUrl != "" { fileURL = &dto.FileUrl }
+	if dto.Mime != "" { mime = &dto.Mime }
+	var content *string
+	if dto.Content != "" { content = &dto.Content }
+
+	var msgID string
+	var createdAt time.Time
+	err = s.db.QueryRow(`
+		INSERT INTO direct_messages
+			(conversation_id, sender_id, content, type, file_url, reply_to_id, mime, is_forwarded, status)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'sent')
+		RETURNING id, created_at
+	`, conversationID, userID, content, msgType, fileURL, replyToID, mime, dto.IsForwarded).
+		Scan(&msgID, &createdAt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send direct message: %w", err)
 	}
 
-	if len(messages) == 0 {
-		return nil, fmt.Errorf("failed to send direct message: no data returned")
+	// Fetch sender info
+	var sUsername, sFullName, sAvatarURL sql.NullString
+	var sIsVerified sql.NullBool
+	var sSubPlan sql.NullString
+	_ = s.db.QueryRow(`
+		SELECT username, fullname, avatar_url, is_verified, sub_plan
+		FROM users WHERE id = $1
+	`, userID).Scan(&sUsername, &sFullName, &sAvatarURL, &sIsVerified, &sSubPlan)
+
+	var usernamePtr, fullNamePtr, avatarPtr *string
+	var isVerifiedPtr *bool
+	if sUsername.Valid { usernamePtr = &sUsername.String }
+	if sFullName.Valid { fullNamePtr = &sFullName.String }
+	if sAvatarURL.Valid { avatarPtr = &sAvatarURL.String }
+	if sIsVerified.Valid { isVerifiedPtr = &sIsVerified.Bool }
+
+	sender := &models.DirectMessageSender{
+		ID:         userID,
+		Username:   usernamePtr,
+		Fullname:   fullNamePtr,
+		FullName:   fullNamePtr,
+		AvatarURL:  avatarPtr,
+		IsVerified: isVerifiedPtr,
+		SubPlan:    sSubPlan.String,
 	}
 
-	return &messages[0], nil
+	t := msgType
+	return &models.DirectMessageResponse{
+		ID:             msgID,
+		ConversationID: conversationID,
+		SenderID:       userID,
+		Content:        content,
+		Type:           &t,
+		FileURL:        fileURL,
+		Mime:           mime,
+		ReplyToID:      replyToID,
+		IsForwarded:    dto.IsForwarded,
+		IsPinned:       false,
+		Status:         "sent",
+		FileURLs:       []string{},
+		Reactions:      []map[string]interface{}{},
+		CreatedAt:      createdAt,
+		Sender:         sender,
+	}, nil
 }
 
 func (s *MessagingService) ToggleDirectMessageReaction(userID string, messageID string, emoji string) (*models.DirectMessage, error) {

@@ -18,7 +18,7 @@ type UserSettings struct {
 }
 
 type UserProfile struct {
-	User        User         `json:"user"`
+	User
 	Settings    UserSettings `json:"settings,omitempty"`
 	Followers   int          `json:"followers_count"`
 	Following   int          `json:"following_count"`

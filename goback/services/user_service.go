@@ -150,6 +150,15 @@ func (s *UserService) UpdateProfile(userID string, updateData models.UpdateUserI
 	if updateData.EnterSoundURL != nil {
 		updateMap["enter_sound_url"] = *updateData.EnterSoundURL
 	}
+	if updateData.NameEffect != nil {
+		updateMap["name_effect"] = *updateData.NameEffect
+	}
+	if updateData.UserStatus != nil {
+		updateMap["user_status"] = *updateData.UserStatus
+	}
+	if updateData.StatusMessage != nil {
+		updateMap["status_message"] = *updateData.StatusMessage
+	}
 	updateMap["updated_at"] = time.Now()
 
 	var result []models.User

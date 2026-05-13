@@ -82,8 +82,8 @@ func (h *MessagingHandler) SendDirectMessage(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request format"})
 	}
 
-	if dto.Content == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "content is required"})
+	if dto.Content == "" && dto.FileUrl == "" && len(dto.FileUrls) == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "content or file is required"})
 	}
 
 	msg, err := h.messagingService.SendDirectMessage(userID, conversationID, dto)
@@ -92,7 +92,7 @@ func (h *MessagingHandler) SendDirectMessage(c echo.Context) error {
 	}
 
 	// Emit via WebSockets
-	h.socketIOService.BroadcastToRoom("conversation_"+conversationID, "newMessage", msg)
+	h.socketIOService.BroadcastToRoom("conversation_"+conversationID, "newDirectMessage", msg)
 
 	return c.JSON(http.StatusCreated, msg)
 }
@@ -153,8 +153,8 @@ func (h *MessagingHandler) SendGroupMessage(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request format"})
 	}
 
-	if dto.Content == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "content is required"})
+	if dto.Content == "" && dto.FileUrl == "" && len(dto.FileUrls) == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "content or file is required"})
 	}
 
 	msg, err := h.messagingService.SendGroupMessage(userID, groupID, dto)

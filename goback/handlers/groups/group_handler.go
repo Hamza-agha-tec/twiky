@@ -57,7 +57,7 @@ func (h *GroupHandler) GetGroupMembers(c echo.Context) error {
 		if err.Error() == "access denied" {
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "access denied"})
 		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get group members"})
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, members)

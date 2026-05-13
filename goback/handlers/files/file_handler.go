@@ -3,6 +3,8 @@ package files
 import (
 	"fmt"
 	"net/http"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Hamza-agha-tec/goback/services"
@@ -210,7 +212,23 @@ func (h *FileHandler) UploadMessageFile(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"url": url})
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	fileType := "file"
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".bmp":
+		fileType = "image"
+	case ".mp4", ".webm", ".mov", ".avi", ".mkv":
+		fileType = "video"
+	case ".mp3", ".wav", ".ogg", ".m4a":
+		fileType = "voice"
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"url":      url,
+		"fileUrl":  url,
+		"fileName": file.Filename,
+		"fileType": fileType,
+	})
 }
 
 func (h *FileHandler) UploadStoryMedia(c echo.Context) error {

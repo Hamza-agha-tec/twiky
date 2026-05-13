@@ -1,4 +1,4 @@
-package services
+﻿package services
 
 import (
 	"database/sql"
@@ -19,7 +19,7 @@ func NewAuthService(db *sql.DB) *AuthService {
 
 func (s *AuthService) GetUserByID(userID string) (*models.User, error) {
 	query := `
-		SELECT id, email, full_name, username, avatar_url, bio, status, phone_number, 
+		SELECT id, email, fullname, username, avatar_url, bio, status, phone_number, 
 		       last_seen_at, banner, logo, x_url, website_url, enter_sound_url, 
 		       is_verified, is_online, sub_plan, last_active_at, created_at, updated_at
 		FROM users 
