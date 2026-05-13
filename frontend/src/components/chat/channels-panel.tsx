@@ -108,6 +108,7 @@ export interface WorkspaceChannel {
   bannerUrl?: string
   access_type?: 'PUBLIC' | 'PRIVATE'
   role?: 'OWNER' | 'ADMIN' | 'MEMBER' | string
+  owner_id?: string
   type: 'NORMAL' | 'WORKSPACE'
 }
 
@@ -463,7 +464,8 @@ function ChannelSettingsSheet({
   const [kickingMemberId, setKickingMemberId] = useState<string | null>(null)
   const updateChannel = useUpdateChannel()
   const deleteChannel = useDeleteChannel()
-  const isAdmin = channel.role === 'OWNER' || channel.role === 'ADMIN'
+  const { data: currentProfile } = useProfile()
+  const isAdmin = channel.role === 'OWNER' || channel.role === 'ADMIN' || (!!currentProfile?.id && channel.owner_id === currentProfile.id)
   const { data: channelMembers = [] } = useChannelMembers(isAdmin ? channel.id : undefined)
   const { data: channelJoinRequests = [] } = useChannelJoinRequests(
     isAdmin && channel.access_type === 'PRIVATE' ? channel.id : undefined,
@@ -1453,7 +1455,7 @@ export function ChannelsPanel({
   const requestJoin = useRequestJoinGroup()
   const deleteGroup = useDeleteGroup(channel?.id ?? '')
   const { data: allMembers = [] } = useChannelMembers(channel?.id)
-  const isAdminForNotif = channel?.role === 'OWNER' || channel?.role === 'ADMIN'
+  const isAdminForNotif = channel?.role === 'OWNER' || channel?.role === 'ADMIN' || (!!myId && channel?.owner_id === myId)
   const { data: channelPendingRequests = [] } = useChannelJoinRequests(
     isAdminForNotif && channel?.access_type === 'PRIVATE' ? channel?.id : undefined,
   )
@@ -1464,10 +1466,7 @@ export function ChannelsPanel({
   const monogram = getChannelMonogram(channel.label)
   const displayAvatar = channelAvatarUrl ?? channel.avatarUrl ?? null
   const displayBanner = channelBannerUrl ?? channel.bannerUrl ?? null
-  const canManage = channel.role === 'OWNER' || channel.role === 'ADMIN'
-  console.log('channel')
-  console.log(channel)
-  console.log(channel.role)
+  const canManage = channel.role === 'OWNER' || channel.role === 'ADMIN' || (!!myId && channel.owner_id === myId)
 
   function parseVoiceDrag(event: DragEvent<HTMLElement>) {
     const raw =

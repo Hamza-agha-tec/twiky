@@ -26,7 +26,13 @@ export class ChannelsService {
 
         if (error) throw new Error(`Failed to create channel: ${error.message}`);
 
-        // Trigger auto-creates #general and adds the owner to channel_members implicitly
+        // Trigger auto-creates #general and adds the owner to channel_members implicitly (possibly without role).
+        // Ensure the owner has OWNER role in channel_members.
+        await this.supabaseService
+            .getClient()
+            .from('channel_members')
+            .upsert({ channel_id: data.id, user_id: ownerId, role: 'OWNER' }, { onConflict: 'channel_id,user_id' });
+
         // Now, we must ALSO add the user to the `#general` group's group_members:
         const { data: generalGroup } = await this.supabaseService
             .getClient()
@@ -57,7 +63,10 @@ export class ChannelsService {
             .order('joined_at', { ascending: false });
 
         if (error) throw new Error(`Failed to list channels: ${error.message}`);
-        return data.map(m => ({ ...m.channels, role: m.role }));
+        return data.map(m => ({
+            ...m.channels,
+            role: (m.channels as any).owner_id === userId ? 'OWNER' : m.role,
+        }));
     }
 
     async getChannelDetails(channelId: string) {
