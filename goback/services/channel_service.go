@@ -17,18 +17,20 @@ func NewChannelService(supabaseURL, supabaseKey string) *ChannelService {
 }
 
 func (s *ChannelService) CreateChannel(userID string, createData models.CreateChannelDto) (*models.Channel, error) {
-	var channels []models.Channel
-	err := s.supabase.GetClient().DB.From("channels").
-		Insert(map[string]interface{}{
-			"name":         createData.Name,
-			"description":  createData.Description,
-			"avatar_url":   createData.AvatarURL,
-			"owner_id":     userID,
-			"access_type":  createData.AccessType,
-			"is_archived":  false,
-			"member_count": 1,
-		}).
-		Execute(&channels)
+	query := `
+		INSERT INTO channels (id, name, description, avatar_url, owner_id, access_type, is_archived, member_count, created_at, updated_at)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, false, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		RETURNING id, name, description, avatar_url, owner_id, access_type, is_archived, member_count, created_at, updated_at
+	`
+
+	channel := &models.Channel{}
+	err := s.db.QueryRow(query,
+		createData.Name, createData.Description, createData.AvatarURL,
+		userID, createData.AccessType,
+	).Scan(
+		&channel.ID, &channel.Name, &channel.Description, &channel.AvatarURL, &channel.OwnerID,
+		&channel.CreatedAt, &channel.BannerURL, &channel.AccessType, &channel.Type, &channel.InviteCode,
+	)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create channel: %w", err)
@@ -56,42 +58,57 @@ func (s *ChannelService) CreateChannel(userID string, createData models.CreateCh
 }
 
 func (s *ChannelService) GetUserChannels(userID string) ([]*models.Channel, error) {
-	// Get channels where user is member
-	var members []models.ChannelMember
-	err := s.supabase.GetClient().DB.From("channel_members").
-		Select("channel_id").
-		Eq("user_id", userID).
-		Execute(&members)
+	query := `
+		SELECT 
+			c.id,
+			c.name,
+			c.description,
+			c.avatar_url,
+			c.banner_url,
+			c.owner_id,
+			c.access_type,
+			c.type,
+			c.invite_code,
+			c.created_at,
+			cm.role
+		FROM channels c
+		INNER JOIN channel_members cm ON c.id = cm.channel_id
+		WHERE cm.user_id = $1
+		ORDER BY c.created_at DESC
+	`
 
+	rows, err := s.db.Query(query, userID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user channel memberships: %w", err)
+		return nil, fmt.Errorf("query failed: %w", err)
 	}
+	defer rows.Close()
 
-	// Extract channel IDs
-	var channelIDs []string
-	for _, member := range members {
-		channelIDs = append(channelIDs, member.ChannelID)
-	}
+	var channels []*models.Channel
 
-	if len(channelIDs) == 0 {
-		return []*models.Channel{}, nil
-	}
-
-	// Get channels
-	var channels []models.Channel
-	err = s.supabase.GetClient().DB.From("channels").
-		Select("*").
-		In("id", channelIDs).
-		Execute(&channels)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to query user channels: %w", err)
-	}
-
-	// Convert to slice of pointers
-	var result []*models.Channel
-	for i := range channels {
-		result = append(result, &channels[i])
+	for rows.Next() {
+		ch := &models.Channel{}
+		var role string
+		
+		err := rows.Scan(
+			&ch.ID,
+			&ch.Name,
+			&ch.Description,
+			&ch.AvatarURL,
+			&ch.BannerURL,
+			&ch.OwnerID,
+			&ch.AccessType,
+			&ch.Type,
+			&ch.InviteCode,
+			&ch.CreatedAt,
+			&role,
+		)
+	
+		if err != nil {
+			return nil, fmt.Errorf("scan failed: %w", err)
+		}
+	
+		ch.Role = role
+		channels = append(channels, ch)
 	}
 
 	return result, nil
@@ -140,22 +157,37 @@ func (s *ChannelService) DiscoverChannels(userID string) ([]*models.Channel, err
 	if err != nil {
 		return nil, fmt.Errorf("failed to query discoverable channels: %w", err)
 	}
+	defer rows.Close()
 
-	// Convert to slice of pointers
-	var result []*models.Channel
-	for i := range filteredChannels {
-		result = append(result, &filteredChannels[i])
+	var channels []*models.Channel
+	for rows.Next() {
+		channel := &models.Channel{}
+		err := rows.Scan(
+			&channel.ID, &channel.Name, &channel.Description, &channel.AvatarURL, &channel.OwnerID,
+			&channel.CreatedAt, &channel.BannerURL, &channel.AccessType, &channel.Type, &channel.InviteCode,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan channel row: %w", err)
+		}
+		channels = append(channels, channel)
 	}
 
 	return result, nil
 }
 
 func (s *ChannelService) GetChannelDetails(channelID string) (*models.Channel, error) {
-	var channels []models.Channel
-	err := s.supabase.GetClient().DB.From("channels").
-		Select("*").
-		Eq("id", channelID).
-		Execute(&channels)
+	query := `
+		SELECT id, name, description, avatar_url, owner_id, access_type, 
+		       is_archived, member_count, created_at, updated_at
+		FROM channels 
+		WHERE id = $1
+	`
+
+	channel := &models.Channel{}
+	err := s.db.QueryRow(query, channelID).Scan(
+		&channel.ID, &channel.Name, &channel.Description, &channel.AvatarURL, &channel.OwnerID,
+		&channel.CreatedAt, &channel.BannerURL, &channel.AccessType, &channel.Type, &channel.InviteCode,
+	)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to query channel: %w", err)

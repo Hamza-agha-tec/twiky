@@ -11,13 +11,12 @@ type Channel struct {
 	AvatarURL   string    `json:"avatar_url" db:"avatar_url"`
 	BannerURL   *string   `json:"banner_url" db:"banner_url"`
 	OwnerID     string    `json:"owner_id" db:"owner_id"`
-	AccessType  string    `json:"access_type" db:"access_type"` // PUBLIC, PRIVATE
-	Type        *string   `json:"type" db:"type"`               // NORMAL, WORKSPACE
-	InviteCode  *string   `json:"invite_code" db:"invite_code"`
-	IsArchived  bool      `json:"is_archived" db:"is_archived"`
-	MemberCount int       `json:"member_count" db:"member_count"`
 	CreatedAt   time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+	BannerURL   string    `json:"banner_url" db:"banner_url"`
+	AccessType  string    `json:"access_type" db:"access_type"` // PUBLIC, PRIVATE
+	Type        string    `json:"type" db:"type"`
+	InviteCode  string    `json:"invite_code" db:"invite_code"`
+	Role        string    `json:"role" db:"role"`
 }
 
 type ChannelMember struct {
@@ -71,24 +70,6 @@ type GroupMember struct {
 	UserID   string    `json:"user_id" db:"user_id"`
 	Role     string    `json:"role" db:"role"` // ADMIN, MODERATOR, MEMBER
 	JoinedAt time.Time `json:"joined_at" db:"joined_at"`
-}
-
-type GroupMemberUser struct {
-	ID         string  `json:"id"`
-	Email      string  `json:"email"`
-	Fullname   *string `json:"fullname"`
-	Username   *string `json:"username"`
-	AvatarURL  *string `json:"avatar_url"`
-	Banner     *string `json:"banner"`
-	Bio        *string `json:"bio"`
-	IsVerified *bool   `json:"is_verified"`
-	SubPlan    string  `json:"sub_plan"`
-}
-
-type GroupMemberResponse struct {
-	Role     string          `json:"role"`
-	JoinedAt time.Time       `json:"joined_at"`
-	User     GroupMemberUser `json:"user"`
 }
 
 type GroupJoinRequest struct {

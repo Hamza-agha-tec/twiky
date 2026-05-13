@@ -115,38 +115,26 @@ type PostLike struct {
 // --- MESSAGING MODELS ---
 
 type DirectConversation struct {
-	ID          string    `json:"id"`
-	UserOneID   string    `json:"user_one_id"`
-	UserTwoID   string    `json:"user_two_id"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	LastMessage string    `json:"last_message"`
-	UserOne     *User     `json:"user_one"`
-	UserTwo     *User     `json:"user_two"`
-	UnreadCount string    `json:"unread_count"`
+	ID        string `json:"id"`
+	UserOneID string `json:"user_one_id"`
+	UserTwoID string `json:"user_two_id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	UserOne UserPublic `json:"user_one"`
+	UserTwo UserPublic `json:"user_two"`
+
+	LastMessage []DirectMessage `json:"last_message"`
+	UnreadCount int `json:"unread_count"`
 }
 
-type DirectConversationUser struct {
-	ID                  string  `json:"id"`
-	Banner              *string `json:"banner"`
-	SubPlan             string  `json:"sub_plan"`
-	Username            *string `json:"username"`
-	AvatarURL           *string `json:"avatar_url"`
-	IsVerified          *bool   `json:"is_verified"`
-	LastSeenAt          *string `json:"last_seen_at"`
-	WhoCanSeeMyLastSeen *string `json:"who_can_see_my_last_seen,omitempty"`
-	LastSeenHidden      *bool   `json:"last_seen_hidden,omitempty"`
-}
-
-type DirectConversationResponse struct {
-	ID          string                   `json:"id"`
-	UserOneID   string                   `json:"user_one_id"`
-	UserTwoID   string                   `json:"user_two_id"`
-	CreatedAt   time.Time                `json:"created_at"`
-	LastMessage []map[string]interface{} `json:"last_message"`
-	UserOne     DirectConversationUser   `json:"user_one"`
-	UserTwo     DirectConversationUser   `json:"user_two"`
-	UnreadCount int                      `json:"unread_count"`
+type UserPublic struct {
+	ID           string     `json:"id"`
+	Username     string     `json:"username"`
+	AvatarURL    string     `json:"avatar_url"`
+	Banner       string     `json:"banner"`
+	SubPlan      string     `json:"sub_plan"`
+	IsVerified   bool       `json:"is_verified"`
+	LastSeenAt   *time.Time `json:"last_seen_at"`
 }
 
 type DirectMessage struct {

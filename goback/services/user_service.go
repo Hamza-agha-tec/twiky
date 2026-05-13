@@ -3,6 +3,7 @@ package services
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/Hamza-agha-tec/goback/models"
@@ -186,84 +187,24 @@ func (s *UserService) UpdateProfile(userID string, updateData models.UpdateUserI
 
 func (s *UserService) GetSettings(userID string) (*models.UserSettings, error) {
 	var settings []models.UserSettings
-	err := s.supabase.GetClient().DB.From("user_settings").
+
+	res := s.supabase.GetClient().DB.
+		From("user_settings").
 		Select("*").
 		Eq("user_id", userID).
 		Execute(&settings)
 
-	if err != nil {
-		return nil, fmt.Errorf("failed to query user settings: %w", err)
+	if res != nil {
+		return nil, res
 	}
 
+	log.Printf("RAW SETTINGS: %+v", settings)
+
 	if len(settings) == 0 {
-		// Return default settings if none found
-		return &models.UserSettings{
-			UserID:             userID,
-			Theme:              "light",
-			Language:           "en",
-			Notifications:      true,
-			EmailNotifications: true,
-			PushNotifications:  true,
-			PrivacyLevel:       "public",
-		}, nil
+		return nil, fmt.Errorf("settings not found")
 	}
 
 	return &settings[0], nil
-}
-
-func (s *UserService) UpdateSettings(userID string, updateData models.UserSettings) (*models.UserSettings, error) {
-	// Build update map with only non-zero fields
-	updateMap := make(map[string]interface{})
-	if updateData.Theme != "" {
-		updateMap["theme"] = updateData.Theme
-	}
-	if updateData.Language != "" {
-		updateMap["language"] = updateData.Language
-	}
-	updateMap["notifications"] = updateData.Notifications
-	updateMap["email_notifications"] = updateData.EmailNotifications
-	updateMap["push_notifications"] = updateData.PushNotifications
-	if updateData.PrivacyLevel != "" {
-		updateMap["privacy_level"] = updateData.PrivacyLevel
-	}
-	updateMap["updated_at"] = time.Now()
-
-	var result []models.UserSettings
-	err := s.supabase.GetClient().DB.From("user_settings").
-		Update(updateMap).
-		Eq("user_id", userID).
-		Execute(&result)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to update user settings: %w", err)
-	}
-
-	if len(result) == 0 {
-		// If no settings exist, create new ones
-		updateMap["user_id"] = userID
-		updateMap["created_at"] = time.Now()
-
-		var createResult []models.UserSettings
-		err := s.supabase.GetClient().DB.From("user_settings").
-			Insert(updateMap).
-			Execute(&createResult)
-
-		if err != nil {
-			return nil, fmt.Errorf("failed to create user settings: %w", err)
-		}
-
-		if len(createResult) > 0 {
-			return &createResult[0], nil
-		}
-	}
-
-	// Get the updated settings
-	updatedSettings, err := s.GetSettings(userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get updated settings: %w", err)
-	}
-
-	return updatedSettings, nil
 }
 
 func (s *UserService) SearchByUsername(username string, requestingUserID string) ([]*models.User, error) {
