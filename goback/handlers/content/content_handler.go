@@ -1,7 +1,6 @@
 package content
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
 
@@ -117,14 +116,11 @@ func (h *ContentHandler) CreateStory(c echo.Context) error {
 
 func (h *ContentHandler) GetFeed(c echo.Context) error {
 	userID := c.Get("userID").(string)
-	fmt.Printf("GetFeed called for userID: %s\n", userID)
 	stories, err := h.contentService.GetFeed(userID)
 	if err != nil {
-		fmt.Printf("GetFeed error: %v\n", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	fmt.Printf("GetFeed returning %d stories\n", len(stories))
 	return c.JSON(http.StatusOK, stories)
 }
 
