@@ -1,4 +1,5 @@
 import { createClient } from '@/utils/supabase/client'
+import { toChatMessage, type BackendDirectMessage } from '@/lib/direct-conversations-api'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api'
 
@@ -27,9 +28,9 @@ async function authedFetch<T>(path: string, init: RequestInit = {}): Promise<T> 
 
 export const directMessagesApi = {
   toggleDirectMessageReaction: (messageId: string, emoji: string) =>
-    authedFetch(`/direct-conversations/messages/${messageId}/reactions`, {
+    authedFetch<BackendDirectMessage>(`/direct-conversations/messages/${messageId}/reactions`, {
       method: 'POST',
       body: JSON.stringify({ emoji }),
-    }),
+    }).then(toChatMessage),
 }
 

@@ -7,6 +7,7 @@ import {
   ChannelFeed,
   buildStandaloneFeedMemberProfile,
   FeedMemberProfileView,
+  parseFeedPollPayload,
   type FeedDirectConversationTarget,
   type StoryRingState,
 } from '@/components/chat/channel-feed'
@@ -22,8 +23,9 @@ import {
 } from '@/components/chat/channels-panel'
 import { ChatWindow } from '@/components/chat/chat-window'
 import { VoiceGroupView } from '@/components/chat/voice-group-view'
+import { WatchRoomView } from '@/components/watch/watch-room-view'
 import { useVoicePresence, type VoicePresenceUser } from '@/hooks/use-voice-presence'
-import { useWebRTC } from '@/hooks/use-webrtc'
+import { useLiveKitVoice } from '@/hooks/use-livekit-voice'
 import { DirectProfileSidebar } from '@/components/chat/direct-profile-sidebar'
 import { FeedProfileSidebarDock } from '@/components/chat/feed-profile-sidebar-dock'
 import { GoalsPanel } from '@/components/chat/goals-panel'
@@ -369,7 +371,8 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     })
   }, [])
 
-  const { data: storiesFeed = [] } = useStoriesFeed()
+  const { data: storiesFeedData } = useStoriesFeed()
+  const storiesFeed = storiesFeedData ?? []
   const createStory = useCreateStory()
   const deleteStory = useDeleteStory()
   const recordView = useRecordView()
@@ -531,6 +534,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   }, new Map<string, number>())
   return (rawMessages ?? []).map((msg: GroupMessage) => {
     const isSystem = !msg.sender_id
+    const poll = parseFeedPollPayload(msg.content, profile?.id)
     const replySource = msg.reply_to_id ? groupMessageById.get(msg.reply_to_id) : null
     const replyBody = replySource?.content?.trim()
       || (replySource?.file_url ? 'Attachment' : '')
@@ -565,13 +569,14 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       isSystem,
       role: isSystem ? 'Automation' : getEffectiveRole(channelMemberRoleByUserId.get(msg.sender_id), groupMemberRoleByUserId.get(msg.sender_id)),
       time: (() => { const d = new Date(msg.created_at); return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`; })(),
-      body: msg.content,
+      body: poll ? '' : msg.content,
       isOwn: msg.sender_id === profile?.id,
       imageUrl: msg.file_url ?? undefined,
       attachmentType: (msg as any).type ?? undefined,
       attachmentMime: (msg as any).mime ?? undefined,
       attachmentDuration: (msg as any).duration ?? undefined,
       pinned: Boolean(msg.is_pinned),
+      poll: poll ?? undefined,
       reactions: normalizedReactions,
       replyCount: groupReplyCounts.get(msg.id) ?? 0,
       replyTo: replySource
@@ -608,6 +613,26 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     onIncomingMessage: handleIncomingDirectMessage,
     readReceiptsEnabled,
   })
+
+  // Broadcast active DM to GlobalNotificationBridge so it can suppress duplicate toasts
+  useEffect(() => {
+    ;(window as any).__activeDmConversationId = visibleDirectConversationId ?? null
+    window.dispatchEvent(new Event('activeDmChanged'))
+  }, [visibleDirectConversationId])
+
+  // Real-time navigation from Dynamic Island notification click
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { conversationId } = (e as CustomEvent<{ conversationId: string }>).detail
+      if (!conversationId) return
+      setActiveDirectChat(conversationId)
+      setActiveSurface('direct')
+      setWorkspaceMode('direct')
+      setActiveView('chat')
+    }
+    window.addEventListener('openDM', handler)
+    return () => window.removeEventListener('openDM', handler)
+  }, [setActiveView])
 
   useEffect(() => {
     const readTypingPreference = () => {
@@ -650,7 +675,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   }, [profile?.id, visibleDirectConversationId])
 
   const sendDirectMessage = useSendDirectMessage(activeDirectChat ?? '')
-  const toggleDirectReaction = useToggleDirectMessageReaction(activeDirectChat ?? '')
+  const toggleDirectReaction = useToggleDirectMessageReaction(profile?.id)
 
   const mentionedGroupIds = useMemo(
     () => new Set(
@@ -732,7 +757,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     )
   })
 
-  const webrtc = useWebRTC(voice.joinedGroupId, profile?.id ?? null, voice.isMuted)
+  const webrtc = useLiveKitVoice(voice.joinedGroupId, profile?.id ?? null, voice.isMuted)
 
   const handleCameraToggle = useCallback(async (enabled: boolean) => {
     const groupId = voice.joinedGroupId
@@ -1020,7 +1045,11 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             avatar: chat.avatarUrl ?? '',
             lastMessage:
               latestMessage?.content ??
-              (latestMessage?.type === 'image'
+              (latestMessage?.type === 'gif'
+                ? '🎬 GIF'
+                : latestMessage?.type === 'sticker'
+                  ? '🪄 Sticker'
+                  : latestMessage?.type === 'image'
                 ? 'Photo'
                 : latestMessage?.type === 'file'
                   ? 'File'
@@ -1054,6 +1083,8 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         const last = Array.isArray(conv.last_message) ? conv.last_message[0] : null
         const lastType = last?.type ?? 'text'
         const mediaLabel =
+          lastType === 'gif' ? '🎬 GIF' :
+          lastType === 'sticker' ? '🪄 Sticker' :
           lastType === 'image' ? '📷 Photo' :
           lastType === 'video' ? '🎥 Video' :
           lastType === 'voice' ? '🎤 Voice note' :
@@ -1144,7 +1175,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         : null
       const senderId = profile?.id ?? 'local-user'
       const normalizedType =
-        type === 'image' || type === 'file' || type === 'voice' ? type : 'text'
+        type === 'image' || type === 'gif' || type === 'sticker' || type === 'file' || type === 'voice' ? type : 'text'
       const nextMessage: ChatMessage = {
         id: `${conversationId}-local-${Date.now()}`,
         conversation_id: conversationId,
@@ -1408,7 +1439,8 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           })
         } : undefined}
         onReact={(messageId, emoji) => {
-          if (activeIsRealDirect) toggleDirectReaction.mutate({ messageId, emoji })
+          if (!activeIsRealDirect || !profile?.id) return
+          toggleDirectReaction.mutate({ messageId, emoji })
         }}
         onTyping={async (isTyping) => {
           if (!activeDirectChat || !activeIsRealDirect || !typingIndicatorsEnabled) return
@@ -1761,7 +1793,17 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
 
   const channelContent =
     activeChannel && activeGroup ? (
-      activeGroup.kind === 'voice' ? (
+      activeGroup.kind === 'watch' ? (
+        <div className="flex min-w-0 flex-1 overflow-hidden">
+          <WatchRoomView
+            key={activeGroup.id}
+            roomId={activeGroup.id}
+            userId={profile?.id ?? ''}
+            username={profile?.username ?? ''}
+            isHost={activeChannel.role === 'OWNER' || activeChannel.role === 'ADMIN'}
+          />
+        </div>
+      ) : activeGroup.kind === 'voice' ? (
         <div className="flex min-w-0 flex-1 overflow-hidden">
           <VoiceGroupView
             key={activeGroup.id}
@@ -1821,7 +1863,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                 })}
                 messagePending={false}
                 onBack={() => setVoiceProfileTarget(null)}
-                onMessage={() => {}}
+                onMessage={() => voiceProfileTarget && openDirectChat(voiceProfileTarget.id)}
                 onOpenStory={openUserStories}
                 posts={[]}
                 showMessageAction={false}
@@ -1897,6 +1939,9 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           activeChannel={activeChannel}
           activeGroup={activeGroup}
           activeTab={channelTab}
+          members={activeGroupMembers}
+          onlineUsers={onlineUsers}
+          onMemberMessage={(userId) => openDirectChat(userId)}
           onTabChange={(tab) => {
             setChannelTab(tab)
             if (tab === 'feed') setChannelFeedClosed(false)
@@ -1928,6 +1973,10 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             onToggleReaction={(postId, emoji) => {
               if (!isRealGroupId) return
               toggleGroupReaction.mutate({ messageId: postId, emoji })
+            }}
+            onPollVote={async (postId, optionId) => {
+              if (!isRealGroupId) return
+              await groupsApi.voteGroupPoll(postId, optionId)
             }}
             onTogglePin={async (postId) => {
               if (!isRealGroupId) return

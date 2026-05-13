@@ -34,7 +34,8 @@ export function WorkspaceShellLayout({
   const pathname = usePathname()
   const router = useRouter()
   const { data: profile } = useProfile()
-  const { data: notifications = [] } = useNotifications()
+  const { data: notificationsData } = useNotifications()
+  const notifications = notificationsData ?? []
 
   const activeView = useMemo(() => getActiveView(pathname), [pathname])
   const unreadNotificationCount = notifications.filter((n) => !n.is_read && n.type !== 'MENTION').length

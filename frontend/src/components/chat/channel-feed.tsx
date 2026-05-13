@@ -15,10 +15,11 @@ import {
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   ArrowLeft,
+  BarChart3,
   Bookmark,
   Crown,
+  FileUp,
   Heart,
-  ImagePlus,
   Mic,
   Square,
   MessageSquare,
@@ -32,7 +33,6 @@ import {
   SendHorizontal,
   Share2,
   Shield,
-  SmilePlus,
   Trash2,
   UserCheck,
   UserMinus,
@@ -42,15 +42,21 @@ import {
 } from 'lucide-react'
 
 import { FeedPostContextMenu } from '@/components/chat/feed-post-context-menu'
+import { HoverProfileCard } from '@/components/chat/hover-profile-card'
 import { UserAvatar } from '@/components/chat/user-avatar'
 import { VoiceMessagePlayer } from '@/components/chat/voice-message-player'
+import { VideoPlayer } from '@/components/chat/video-player'
+import { EmojiButton, GifButton, StickerButton, GiftButton } from '@/components/chat/media-picker'
+import { AppleText, EmojiImg } from '@/components/chat/apple-text'
+import { EmojiInput, type EmojiInputHandle } from '@/components/chat/emoji-input'
 import { VerifiedBadge, getVerifiedBadgeVariant, hasPremiumPlan, isVerifiedAccountIdentity } from '@/components/chat/verified-badge'
+import { UserName } from '@/components/chat/user-name'
+import type { NameEffect } from '@/lib/user-api'
 import type { MockChannelGroup, WorkspaceChannel } from '@/components/chat/channels-panel'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Textarea } from '@/components/ui/textarea'
 import { type ChatMessage } from '@/hooks/use-messaging'
 import { useRemoveGroupMember, useUpdateGroupMemberRole } from '@/hooks/use-groups'
 import { useProfile, useSendFollowRequest, useUserById, useUserFollowers, useUserFollowing, useUserPosts } from '@/hooks/use-user'
@@ -70,6 +76,74 @@ interface FeedMedia {
 export type FeedSubPlan = 'FREE' | 'PRO' | 'GEEK'
 export type StoryRingState = 'none' | 'seen' | 'unseen'
 
+const FEED_POLL_PREFIX = '__twiky_poll__:'
+
+export interface FeedPollOption {
+  id: string
+  text: string
+  voters?: string[]
+  votes: number
+  votedByMe?: boolean
+}
+
+export interface FeedPoll {
+  allowMultiple?: boolean
+  options: FeedPollOption[]
+  question: string
+}
+
+function createPollPayload(question: string, optionTexts: string[], allowMultiple = false): FeedPoll {
+  return {
+    allowMultiple,
+    question: question.trim(),
+    options: optionTexts
+      .map((text, index) => ({
+        id: `option-${index + 1}`,
+        text: text.trim(),
+            voters: [],
+            votes: 0,
+            votedByMe: false,
+      }))
+      .filter((option) => option.text),
+  }
+}
+
+export function encodeFeedPollPayload(poll: FeedPoll) {
+  return `${FEED_POLL_PREFIX}${JSON.stringify(poll)}`
+}
+
+export function parseFeedPollPayload(value: string | null | undefined, currentUserId?: string | null): FeedPoll | null {
+  if (!value?.startsWith(FEED_POLL_PREFIX)) return null
+
+  try {
+    const parsed = JSON.parse(value.slice(FEED_POLL_PREFIX.length)) as Partial<FeedPoll>
+    const question = typeof parsed.question === 'string' ? parsed.question.trim() : ''
+    const options = Array.isArray(parsed.options)
+      ? parsed.options
+          .map((option, index) => ({
+            id: typeof option?.id === 'string' ? option.id : `option-${index + 1}`,
+            text: typeof option?.text === 'string' ? option.text.trim() : '',
+            voters: Array.isArray(option?.voters)
+              ? option.voters.filter((id: unknown): id is string => typeof id === 'string')
+              : [],
+            votes: typeof option?.votes === 'number' && Number.isFinite(option.votes) ? Math.max(0, option.votes) : 0,
+            votedByMe: Boolean(option?.votedByMe),
+          }))
+          .map((option) => ({
+            ...option,
+            votes: option.voters.length > 0 ? option.voters.length : option.votes,
+            votedByMe: currentUserId ? option.voters.includes(currentUserId) : option.votedByMe,
+          }))
+          .filter((option) => option.text)
+      : []
+
+    if (!question || options.length < 2) return null
+    return { allowMultiple: Boolean(parsed.allowMultiple), options, question }
+  } catch {
+    return null
+  }
+}
+
 function isProbablyImageUrl(url: string): boolean {
   try {
     const pathname = new URL(url, typeof window !== 'undefined' ? window.location.origin : 'http://localhost')
@@ -87,6 +161,16 @@ function isProbablyAudioUrl(url: string): boolean {
     return /\.(wav|mp3|m4a|aac|ogg|webm)$/i.test(pathname)
   } catch {
     return /\.(wav|mp3|m4a|aac|ogg|webm)(\?|$)/i.test(url)
+  }
+}
+
+function isProbablyVideoUrl(url: string): boolean {
+  try {
+    const pathname = new URL(url, typeof window !== 'undefined' ? window.location.origin : 'http://localhost')
+      .pathname.toLowerCase()
+    return /\.(mp4|webm|mov|avi|mkv|m4v)$/i.test(pathname)
+  } catch {
+    return /\.(mp4|webm|mov|avi|mkv|m4v)(\?|$)/i.test(url)
   }
 }
 
@@ -133,8 +217,9 @@ export interface FeedPost {
   body: string
   isOwn?: boolean
   media?: FeedMedia[]
+  poll?: FeedPoll
   imageUrl?: string
-  attachmentType?: 'voice' | 'image' | 'file'
+  attachmentType?: 'voice' | 'image' | 'gif' | 'sticker' | 'file'
   attachmentMime?: string | null
   attachmentDuration?: number | null
   pinned?: boolean
@@ -149,7 +234,7 @@ function SystemFeedRow({ post }: { post: FeedPost }) {
     <div className="flex justify-center px-4 py-2">
       <div className="max-w-[80%] rounded-full border border-border/70 bg-muted/45 px-3 py-1.5 text-center">
         <p className="text-[12px] leading-5 text-muted-foreground">
-          {post.body}
+          <AppleText text={post.body} />
           <span className="ml-2 text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground/70">
             {post.time}
           </span>
@@ -172,6 +257,7 @@ export interface FeedMemberProfile {
   subPlan?: FeedSubPlan | null
   location: string
   name: string
+  nameEffect?: string | null
   posts: number
   role: string
   status: string
@@ -272,13 +358,6 @@ const FEED_MEMBER_PROFILES: Record<string, Omit<FeedMemberProfile, 'avatarUrl' |
   },
 }
 
-const QUICK_EMOJIS = ['👍', '❤️', '😂', '🔥', '🎉', '😮']
-const ALL_EMOJIS = [
-  '👍','❤️','😂','😮','😢','😡','🔥','🎉',
-  '👀','✅','💯','🚀','⭐','💪','🙌','🤔',
-  '👏','🙏','😍','🤣','😎','💀','🫡','🤯',
-  '🥹','🫶','😤','🤝','👋','🎯','💡','🔔',
-]
 
 const ROLE_COLORS: Record<string, string> = {
   'Studio Lead':    'text-amber-500',
@@ -592,34 +671,10 @@ function getSuggestedAttachment(channel: WorkspaceChannel, group: MockChannelGro
   return FEED_MEDIA_LIBRARY.releaseBoard
 }
 
-function EmojiPickerPopover({
-  onSelect,
-  trigger,
-}: {
-  onSelect: (emoji: string) => void
-  trigger: React.ReactNode
-}) {
-  const [open, setOpen] = useState(false)
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent className="w-64 p-2" align="start">
-        <div className="grid grid-cols-8 gap-0.5">
-          {ALL_EMOJIS.map((emoji) => (
-            <button
-              key={emoji}
-              onClick={() => { onSelect(emoji); setOpen(false) }}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-lg transition-colors hover:bg-accent"
-            >
-              {emoji}
-            </button>
-          ))}
-        </div>
-      </PopoverContent>
-    </Popover>
-  )
-}
 
+function emojiToUnified(emoji: string): string {
+  return [...emoji].map(c => c.codePointAt(0)!.toString(16).toLowerCase()).join('-')
+}
 
 function ReactionsBar({
   reactions,
@@ -628,39 +683,95 @@ function ReactionsBar({
   reactions: FeedReaction[]
   onReact: (emoji: string) => void
 }) {
+  if (reactions.length === 0) return null
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-1 mt-1">
       {reactions.map((reaction) => (
-          <button
-            key={reaction.emoji}
-            type="button"
-            onClick={() => onReact(reaction.emoji)}
-            className={cn(
-              'inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[12px] font-medium transition-colors duration-100',
-              reaction.mine
-                ? 'border-primary/50 bg-primary/10 text-primary'
-                : 'border-border bg-background text-foreground hover:border-primary/40 hover:bg-primary/5',
-            )}
-            title={reaction.mine ? 'Click to remove your reaction' : 'Click to react'}
-          >
-            <span className="leading-none">{reaction.emoji}</span>
-            <span className="text-[10px] tabular-nums text-muted-foreground">{reaction.count}</span>
-          </button>
-        ))}
+        <button
+          key={reaction.emoji}
+          type="button"
+          onClick={() => onReact(reaction.emoji)}
+          title={reaction.mine ? 'Remove reaction' : 'React'}
+          className={cn(
+            'group inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-all duration-150 select-none',
+            reaction.mine
+              ? 'bg-primary/15 text-primary ring-1 ring-primary/40 hover:bg-primary/20'
+              : 'bg-muted/60 text-muted-foreground ring-1 ring-border hover:bg-muted hover:text-foreground hover:ring-border/80',
+          )}
+        >
+          <EmojiImg value={reaction.emoji} unified={emojiToUnified(reaction.emoji)} size={15} />
+          <span className={cn('tabular-nums leading-none', reaction.mine ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')}>
+            {reaction.count}
+          </span>
+        </button>
+      ))}
+    </div>
+  )
+}
 
-        <EmojiPickerPopover
-          onSelect={onReact}
-          trigger={
+function FeedPollCard({
+  poll,
+  onVote,
+}: {
+  poll: FeedPoll
+  onVote: (optionId: string) => void
+}) {
+  const totalVotes = poll.options.reduce((total, option) => total + option.votes, 0)
+
+  return (
+    <div className="mt-2 w-full max-w-md rounded-xl border border-border bg-background/70 p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <BarChart3 className="h-3.5 w-3.5" />
+        </span>
+        <p className="min-w-0 flex-1 text-[13px] font-semibold leading-snug text-foreground">
+          {poll.question}
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        {poll.options.map((option) => {
+          const percent = totalVotes > 0 ? Math.round((option.votes / totalVotes) * 100) : 0
+
+          return (
             <button
+              key={option.id}
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-border bg-background px-2.5 py-1 text-[12px] font-medium text-muted-foreground transition-colors duration-100 hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+              onClick={() => onVote(option.id)}
+              className={cn(
+                'relative w-full overflow-hidden rounded-lg border px-3 py-2 text-left transition-colors',
+                option.votedByMe
+                  ? 'border-primary/50 bg-primary/10'
+                  : 'border-border bg-muted/30 hover:bg-muted/55',
+              )}
             >
-              <SmilePlus className="h-3.5 w-3.5" />
-              {reactions.length > 0 ? 'Add' : 'React'}
+              <span
+                className="absolute inset-y-0 left-0 bg-primary/15 transition-[width]"
+                style={{ width: `${percent}%` }}
+              />
+              <span className="relative flex items-center gap-2">
+                <span
+                  className={cn(
+                    'h-3.5 w-3.5 shrink-0 rounded-full border',
+                    option.votedByMe ? 'border-primary bg-primary shadow-inner' : 'border-muted-foreground/40',
+                  )}
+                />
+                <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground">
+                  {option.text}
+                </span>
+                <span className="shrink-0 text-[11px] font-semibold tabular-nums text-muted-foreground">
+                  {percent}%
+                </span>
+              </span>
             </button>
-          }
-        />
+          )
+        })}
+      </div>
+
+      <p className="mt-2 text-[10px] text-muted-foreground">
+        {totalVotes} {totalVotes === 1 ? 'vote' : 'votes'}{poll.allowMultiple ? ' · multiple choices' : ''}
+      </p>
     </div>
   )
 }
@@ -676,6 +787,7 @@ function MessageRow({
   isGrouped,
   myAvatarUrl,
   onReact,
+  onPollVote,
   onReply,
   onPin,
   onDelete,
@@ -690,6 +802,7 @@ function MessageRow({
   isGrouped: boolean
   myAvatarUrl?: string | null
   onReact: (emoji: string) => void
+  onPollVote: (optionId: string) => void
   onReply: () => void
   onPin: () => void
   onDelete: () => void
@@ -729,6 +842,7 @@ function MessageRow({
       sub_plan: realUser?.sub_plan ?? memberProfile.subPlan ?? null,
     }),
     subPlan: realUser?.sub_plan ?? memberProfile.subPlan ?? null,
+    nameEffect: realUser?.name_effect ?? memberProfile.nameEffect ?? null,
   }
 
   const roleColor = ROLE_COLORS[post.role] ?? 'text-primary'
@@ -786,12 +900,16 @@ function MessageRow({
               <div className="mb-1 flex cursor-pointer items-center gap-2 opacity-70 transition-opacity hover:opacity-100">
                 <div className="ml-2 h-3 w-3 flex-shrink-0 rounded-tl border-l-2 border-t-2 border-muted-foreground" />
                 <span className="text-[11px] font-semibold text-muted-foreground">{post.replyTo.author}</span>
-                <span className="truncate text-[11px] text-muted-foreground">{post.replyTo.body}</span>
+                <AppleText text={post.replyTo.body ?? ''} className="truncate text-[11px] text-muted-foreground" />
               </div>
             ) : null}
 
             {post.body ? (
-              <p className="text-[13.5px] leading-[1.55] text-foreground">{post.body}</p>
+              <AppleText text={post.body} className="text-[13.5px] leading-[1.55] text-foreground" />
+            ) : null}
+
+            {post.poll ? (
+              <FeedPollCard poll={post.poll} onVote={onPollVote} />
             ) : null}
 
             {(post.media?.length || post.imageUrl) ? (
@@ -799,6 +917,23 @@ function MessageRow({
                 {post.imageUrl ? (
                   post.attachmentType === 'voice' || isProbablyAudioUrl(post.imageUrl) ? (
                     <VoiceMessagePlayer src={post.imageUrl} durationSeconds={post.attachmentDuration ?? undefined} />
+                  ) : post.attachmentType === 'gif' || (isProbablyImageUrl(post.imageUrl) && post.attachmentMime === 'image/gif' && post.attachmentType !== 'image') ? (
+                    <div className="relative inline-block">
+                      <img
+                        src={post.imageUrl}
+                        alt="GIF"
+                        className="max-h-52 max-w-[260px] rounded-lg object-contain"
+                      />
+                      <span className="absolute bottom-1.5 left-1.5 rounded bg-black/60 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+                        GIF
+                      </span>
+                    </div>
+                  ) : post.attachmentType === 'sticker' ? (
+                    <img
+                      src={post.imageUrl}
+                      alt="Sticker"
+                      className="h-28 w-28 object-contain"
+                    />
                   ) : isProbablyImageUrl(post.imageUrl) ? (
                     <img
                       src={post.imageUrl}
@@ -806,6 +941,8 @@ function MessageRow({
                       className="max-h-56 max-w-[300px] cursor-pointer rounded-lg object-cover transition-opacity hover:opacity-90"
                       onClick={() => setLightboxSrc(post.imageUrl!)}
                     />
+                  ) : post.attachmentMime?.startsWith('video/') || isProbablyVideoUrl(post.imageUrl) ? (
+                    <VideoPlayer src={post.imageUrl} className="w-full max-w-[300px]" />
                   ) : (
                     <a
                       href={post.imageUrl}
@@ -901,7 +1038,7 @@ function MessageRow({
             </div>
 
             {/* Identity */}
-            <p className="text-[19px] font-black leading-none text-foreground">{resolvedProfile.name}</p>
+            <UserName name={resolvedProfile.name} effect={resolvedProfile.nameEffect as NameEffect} subPlan={resolvedProfile.subPlan} className="text-[19px] font-black leading-none" />
             <p className="mt-1 text-[12px] text-muted-foreground">@{resolvedProfile.handle}</p>
 
             {/* Inner content card */}
@@ -1203,6 +1340,7 @@ export function FeedMemberProfileView({
       },
     ),
     subPlan: realUser?.sub_plan ?? memberProfile.subPlan ?? null,
+    nameEffect: realUser?.name_effect ?? memberProfile.nameEffect ?? null,
   }
 
   const onlineUsers = useOnlineUsers()
@@ -1279,7 +1417,7 @@ export function FeedMemberProfileView({
         memberProfile={viewingUser}
         messagePending={false}
         onBack={() => setViewingUser(null)}
-        onMessage={() => {}}
+        onMessage={onMessage}
         posts={[]}
         showMessageAction={showMessageAction}
       />
@@ -1422,7 +1560,7 @@ export function FeedMemberProfileView({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-[19px] font-black leading-none tracking-tight text-foreground">{resolvedProfile.name}</h1>
+          <UserName name={resolvedProfile.name} effect={resolvedProfile.nameEffect as NameEffect} subPlan={resolvedProfile.subPlan} className="text-[19px] font-black leading-none tracking-tight" />
           {resolvedProfile.isVerified ? <VerifiedBadge size="sm" variant={profileBadgeVariant} /> : null}
           {!hideRole && <RoleBadge role={resolvedProfile.role} variant="profile" />}
         </div>
@@ -1576,7 +1714,7 @@ export function FeedMemberProfileView({
                         </Avatar>
                         <div className="min-w-0">
                           <p className="text-[11px] font-semibold leading-none text-foreground">
-                            {resolvedProfile.name}{' '}
+                            <UserName name={resolvedProfile.name} effect={resolvedProfile.nameEffect as NameEffect} subPlan={resolvedProfile.subPlan} />{' '}
                             <span className="font-normal text-muted-foreground">posted</span>
                           </p>
                           <p className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
@@ -1588,7 +1726,7 @@ export function FeedMemberProfileView({
                         <MoreHorizontal className="h-3.5 w-3.5" />
                       </button>
                     </div>
-                    <p className="mt-1.5 text-[11px] leading-[1.6] text-foreground">{post.body}</p>
+                    <AppleText text={post.body} className="mt-1.5 text-[11px] leading-[1.6] text-foreground" />
                   </div>
 
                   {mediaSource ? (
@@ -1717,32 +1855,37 @@ function FeedProfileRow({
   authorAvatarUrl,
   memberProfile,
   mentionRef,
-  onOpenProfile,
   post,
   isGrouped,
   myAvatarUrl,
   isMentioned,
   onReact,
+  onPollVote,
   onReply,
   onPin,
   onDelete,
   onContextMenu,
+  onMessage,
+  onViewProfile,
 }: {
   authorAvatarUrl?: string | null
   memberProfile: FeedMemberProfile
   mentionRef?: (el: HTMLDivElement | null) => void
-  onOpenProfile: () => void
   post: FeedPost
   isGrouped: boolean
   myAvatarUrl?: string | null
   isMentioned?: boolean
   onReact: (emoji: string) => void
+  onPollVote: (optionId: string) => void
   onReply: () => void
   onPin: () => void
   onDelete: () => void
   onContextMenu: (e: MouseEvent) => void
+  onMessage?: () => void
+  onViewProfile?: () => void
 }) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+  const avatarRef = useRef<HTMLDivElement>(null)
   const roleColor = ROLE_COLORS[post.role] ?? 'text-primary'
   const displayAvatar = post.isOwn
     ? (authorAvatarUrl ?? myAvatarUrl ?? memberProfile.avatarUrl ?? null)
@@ -1761,26 +1904,27 @@ function FeedProfileRow({
       onContextMenu={onContextMenu}
     >
       <div className="mt-0.5 w-9 flex-shrink-0">
-        <button
-          type="button"
-          onClick={onOpenProfile}
-          className="flex h-9 w-9 cursor-pointer overflow-hidden rounded-full ring-2 ring-background focus:outline-none"
-          aria-label={`Open ${post.author} profile`}
+        <HoverProfileCard
+          userId={memberProfile.id ?? ''}
+          onMessage={post.isOwn ? undefined : (onMessage ? () => onMessage() : undefined)}
+          onViewProfile={onViewProfile ? () => onViewProfile() : undefined}
+          hideMessage={post.isOwn}
+          side="right"
         >
-          <UserAvatar src={displayAvatar} alt={post.author} className="h-full w-full object-cover" />
-        </button>
+          <div ref={avatarRef} className="flex h-9 w-9 overflow-hidden rounded-full ring-2 ring-background">
+            <UserAvatar src={displayAvatar} alt={post.author} className="h-full w-full object-cover" />
+          </div>
+        </HoverProfileCard>
       </div>
 
       <div className="min-w-0 flex-1">
         <div className="mb-0.5 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onOpenProfile}
-            className={cn('inline-flex items-center gap-1 text-[14px] font-semibold leading-none hover:underline', roleColor)}
-          >
-            {post.author}
-            {memberProfile.isVerified ? <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(memberProfile.subPlan)} /> : null}
-          </button>
+          <HoverProfileCard userId={memberProfile.id ?? ''} onMessage={post.isOwn ? undefined : (onMessage ? () => onMessage() : undefined)} onViewProfile={onViewProfile ? () => onViewProfile() : undefined} hideMessage={post.isOwn} side="right" anchorRef={avatarRef}>
+            <span className={cn('inline-flex cursor-default items-center gap-1 text-[14px] font-semibold leading-none', roleColor)}>
+              {post.author}
+              {memberProfile.isVerified ? <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(memberProfile.subPlan)} /> : null}
+            </span>
+          </HoverProfileCard>
           <span className="text-[11px] text-muted-foreground">{post.time}</span>
           {post.pinned ? <Pin className="h-3 w-3 text-primary" /> : null}
         </div>
@@ -1794,7 +1938,11 @@ function FeedProfileRow({
         ) : null}
 
         {post.body ? (
-          <p className="text-[13.5px] leading-[1.55] text-foreground">{post.body}</p>
+          <AppleText text={post.body} className="text-[13.5px] leading-[1.55] text-foreground" />
+        ) : null}
+
+        {post.poll ? (
+          <FeedPollCard poll={post.poll} onVote={onPollVote} />
         ) : null}
 
         {(post.media?.length || post.imageUrl) ? (
@@ -1802,6 +1950,23 @@ function FeedProfileRow({
             {post.imageUrl ? (
               post.attachmentType === 'voice' || isProbablyAudioUrl(post.imageUrl) ? (
                 <VoiceMessagePlayer src={post.imageUrl} durationSeconds={post.attachmentDuration ?? undefined} />
+              ) : post.attachmentType === 'gif' || (isProbablyImageUrl(post.imageUrl) && post.attachmentMime === 'image/gif' && post.attachmentType !== 'image') ? (
+                <div className="relative inline-block">
+                  <img
+                    src={post.imageUrl}
+                    alt="GIF"
+                    className="max-h-52 max-w-[260px] rounded-lg object-contain"
+                  />
+                  <span className="absolute bottom-1.5 left-1.5 rounded bg-black/60 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+                    GIF
+                  </span>
+                </div>
+              ) : post.attachmentType === 'sticker' ? (
+                <img
+                  src={post.imageUrl}
+                  alt="Sticker"
+                  className="h-28 w-28 object-contain"
+                />
               ) : isProbablyImageUrl(post.imageUrl) ? (
                 <img
                   src={post.imageUrl}
@@ -1809,6 +1974,8 @@ function FeedProfileRow({
                   className="max-h-56 max-w-[300px] cursor-pointer rounded-lg object-cover transition-opacity hover:opacity-90"
                   onClick={() => setLightboxSrc(post.imageUrl!)}
                 />
+              ) : post.attachmentMime?.startsWith('video/') || isProbablyVideoUrl(post.imageUrl) ? (
+                <VideoPlayer src={post.imageUrl} className="w-full max-w-[300px]" />
               ) : (
                 <a
                   href={post.imageUrl}
@@ -1901,6 +2068,7 @@ export function ChannelFeed({
   onProfileCloseRequestChange,
   onCloseFeedRequest,
   onToggleReaction,
+  onPollVote,
   onTogglePin,
   onDeletePost,
 }: {
@@ -1914,7 +2082,7 @@ export function ChannelFeed({
     fileUrl?: string
     replyToId?: string
     entityMentions?: GroupMessageMention[]
-    type?: 'voice' | 'image' | 'file'
+    type?: 'voice' | 'image' | 'gif' | 'sticker' | 'file'
     mime?: string
     duration?: number
     size?: number
@@ -1928,6 +2096,7 @@ export function ChannelFeed({
   onProfileCloseRequestChange?: (closeFn: (() => void) | null) => void
   onCloseFeedRequest?: () => void
   onToggleReaction?: (postId: string, emoji: string) => Promise<void> | void
+  onPollVote?: (postId: string, optionId: string) => Promise<void> | void
   onTogglePin?: (postId: string) => Promise<void> | void
   onDeletePost?: (postId: string) => Promise<void> | void
 }) {
@@ -1982,7 +2151,7 @@ export function ChannelFeed({
   const imageInputRef = useRef<HTMLInputElement>(null)
   const genericFileInputRef = useRef<HTMLInputElement>(null)
   const feedScrollRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const textareaRef = useRef<EmojiInputHandle>(null)
   const blobUrlsRef = useRef<string[]>([])
   const previousGroupIdRef = useRef<string | null>(null)
 
@@ -1992,6 +2161,11 @@ export function ChannelFeed({
   const [voiceRecording, setVoiceRecording] = useState(false)
   const [voiceUploading, setVoiceUploading] = useState(false)
   const [voiceSeconds, setVoiceSeconds] = useState(0)
+  const [actionMenuOpen, setActionMenuOpen] = useState(false)
+  const [pollModalOpen, setPollModalOpen] = useState(false)
+  const [pollQuestion, setPollQuestion] = useState('')
+  const [pollOptions, setPollOptions] = useState(['', ''])
+  const [pollAllowMultiple, setPollAllowMultiple] = useState(false)
   const voiceStopRef = useRef<(() => Promise<void>) | null>(null)
 
   const posts = postsByGroup[group.id] ?? postsOverride ?? buildFallbackPosts(channel, group)
@@ -2076,11 +2250,13 @@ export function ChannelFeed({
     }
 
     const frameId = requestAnimationFrame(() => scrollToLatest(groupChanged ? 'auto' : 'smooth'))
-    const timeoutId = window.setTimeout(() => scrollToLatest('auto'), 120)
+    const t1 = window.setTimeout(() => scrollToLatest('auto'), 120)
+    const t2 = window.setTimeout(() => scrollToLatest('auto'), 400)
 
     return () => {
       cancelAnimationFrame(frameId)
-      window.clearTimeout(timeoutId)
+      window.clearTimeout(t1)
+      window.clearTimeout(t2)
     }
   }, [group.id, latestPostId, posts.length])
 
@@ -2249,7 +2425,7 @@ export function ChannelFeed({
   }
 
   function syncMentionCursor() {
-    setMentionCursor(textareaRef.current?.selectionStart ?? draft.length)
+    setMentionCursor(textareaRef.current?.getCaretOffset() ?? draft.length)
   }
 
   function insertMention(option: MentionOption) {
@@ -2265,7 +2441,7 @@ export function ChannelFeed({
 
     requestAnimationFrame(() => {
       textareaRef.current?.focus()
-      textareaRef.current?.setSelectionRange(nextCursor, nextCursor)
+      textareaRef.current?.setCaretOffset(nextCursor)
     })
   }
 
@@ -2333,6 +2509,71 @@ export function ChannelFeed({
     setPendingGenericFile(null)
   }
 
+  function resetPollModal() {
+    setPollQuestion('')
+    setPollOptions(['', ''])
+    setPollAllowMultiple(false)
+  }
+
+  function openPollModal() {
+    setActionMenuOpen(false)
+    setPollModalOpen(true)
+  }
+
+  async function createPoll() {
+    const question = pollQuestion.trim()
+    const options = pollOptions.map((option) => option.trim()).filter(Boolean)
+
+    if (!question) {
+      toast.error('Add a poll question')
+      return
+    }
+
+    if (options.length < 2) {
+      toast.error('Add at least two poll options')
+      return
+    }
+
+    const poll = createPollPayload(question, options.slice(0, 6), pollAllowMultiple)
+
+    if (onSendPost) {
+      setPostUploading(true)
+      try {
+        await onSendPost({
+          content: encodeFeedPollPayload(poll),
+          entityMentions: [],
+          replyToId: replyingTo?.id,
+        })
+        setReplyingTo(null)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to create poll')
+        return
+      } finally {
+        setPostUploading(false)
+      }
+    } else {
+      const post: FeedPost = {
+        id: `${group.id}-poll-${Date.now()}`,
+        author: 'You',
+        role: channel.role ? channel.role.charAt(0).toUpperCase() + channel.role.slice(1).toLowerCase() : 'Member',
+        time: formatUserPostTime(new Date().toISOString()),
+        body: '',
+        isOwn: true,
+        poll,
+        reactions: [],
+        replyCount: 0,
+        replyTo: replyingTo
+          ? { author: replyingTo.author, body: replyingTo.body.slice(0, 60) + (replyingTo.body.length > 60 ? '...' : '') }
+          : undefined,
+      }
+      updatePosts((current) => [...current, post])
+      setReplyingTo(null)
+    }
+
+    resetPollModal()
+    setPollModalOpen(false)
+  }
+
   async function sendDraft() {
     const body = draft.trim()
     const hasQueuedFile = !!(pendingImageFile || pendingGenericFile)
@@ -2356,6 +2597,7 @@ export function ChannelFeed({
           entityMentions,
           fileUrl,
           replyToId: replyingTo?.id,
+          mime: pendingGenericFile?.type || pendingImageFile?.type || undefined,
         })
         setDraft('')
         setMentionCursor(0)
@@ -2547,7 +2789,7 @@ export function ChannelFeed({
     }
   }
 
-  function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+  function handleKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     if (showMentionMenu) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
@@ -2614,6 +2856,65 @@ export function ChannelFeed({
       }),
     )
     if (onToggleReaction) void onToggleReaction(postId, emoji)
+  }
+
+  function handlePollVote(postId: string, optionId: string) {
+    updatePosts((current) =>
+      current.map((post) => {
+        if (post.id !== postId || !post.poll) return post
+
+        const selected = post.poll.options.find((option) => option.id === optionId)
+        if (!selected) return post
+        const removingVote = Boolean(selected.votedByMe)
+
+        return {
+          ...post,
+          poll: {
+            ...post.poll,
+            options: post.poll.options.map((option) => {
+              if (post.poll?.allowMultiple) {
+                if (option.id !== optionId) return option
+                const voters = option.votedByMe
+                  ? option.voters?.filter((id) => id !== (profile?.id ?? 'me')) ?? []
+                  : [...(option.voters ?? []), profile?.id ?? 'me']
+                return {
+                  ...option,
+                  voters,
+                  votedByMe: !option.votedByMe,
+                  votes: voters.length,
+                }
+              }
+
+              if (option.id === optionId) {
+                const currentUserId = profile?.id ?? 'me'
+                const voters = removingVote
+                  ? option.voters?.filter((id) => id !== currentUserId) ?? []
+                  : Array.from(new Set([...(option.voters ?? []), currentUserId]))
+                return {
+                  ...option,
+                  voters,
+                  votedByMe: !removingVote,
+                  votes: voters.length,
+                }
+              }
+
+              if (option.votedByMe && !removingVote) {
+                const voters = option.voters?.filter((id) => id !== (profile?.id ?? 'me')) ?? []
+                return {
+                  ...option,
+                  voters,
+                  votedByMe: false,
+                  votes: voters.length,
+                }
+              }
+
+              return option
+            }),
+          },
+        }
+      }),
+    )
+    if (onPollVote) void onPollVote(postId, optionId)
   }
 
   function handleTogglePin(postId: string) {
@@ -2822,19 +3123,12 @@ export function ChannelFeed({
                 key={post.id}
                 memberProfile={authorContext.profile}
                 mentionRef={isMentioned ? (el) => { if (el) mentionRefs.current.set(post.id, el); else mentionRefs.current.delete(post.id) } : undefined}
-                onOpenProfile={() => {
-                  setContextMenu(null)
-                  setSelectedProfile({
-                    canMessage: authorContext.canMessage,
-                    post,
-                    profile: authorContext.profile,
-                  })
-                }}
                 post={post}
                 isGrouped={isGrouped}
                 myAvatarUrl={myAvatarUrl}
                 isMentioned={isMentioned}
                 onReact={(emoji) => handleReact(post.id, emoji)}
+                onPollVote={(optionId) => handlePollVote(post.id, optionId)}
                 onReply={() => {
                   setReplyingTo(post)
                   textareaRef.current?.focus()
@@ -2842,6 +3136,11 @@ export function ChannelFeed({
                 onPin={() => handleTogglePin(post.id)}
                 onDelete={() => handleDelete(post.id)}
                 onContextMenu={(e) => openContextMenu(e, post.id)}
+                onMessage={() => handleMessageAuthor(post, authorContext.profile)}
+                onViewProfile={() => {
+                  setContextMenu(null)
+                  setSelectedProfile({ canMessage: authorContext.canMessage, post, profile: authorContext.profile })
+                }}
               />
             )
           })}
@@ -2857,7 +3156,7 @@ export function ChannelFeed({
               <div className="flex items-center gap-2 border-b border-border/60 bg-background/40 px-3 py-1.5">
                 <Reply className="h-3.5 w-3.5 flex-shrink-0 text-primary" />
                 <span className="text-[11px] font-semibold text-primary">Replying to {replyingTo.author}</span>
-                <span className="flex-1 truncate text-[11px] text-muted-foreground">{replyingTo.body}</span>
+                <AppleText text={replyingTo.body ?? ''} className="flex-1 truncate text-[11px] text-muted-foreground" />
                 <button
                   onClick={() => setReplyingTo(null)}
                   className="flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -2883,6 +3182,24 @@ export function ChannelFeed({
                   </div>
                 ) : null}
                 {pendingGenericFile && !draftImage ? (
+                  pendingGenericFile.type.startsWith('video/') ? (
+                    <div className="relative h-14 w-20 shrink-0 overflow-hidden rounded-lg border border-border bg-black">
+                      <video
+                        src={URL.createObjectURL(pendingGenericFile)}
+                        className="h-full w-full object-cover"
+                        muted
+                        preload="metadata"
+                        onLoadedMetadata={e => { e.currentTarget.currentTime = 0.1 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => clearQueuedGeneric()}
+                        className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/70 text-white"
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </div>
+                  ) : (
                   <div className="flex h-14 min-w-0 flex-1 items-center gap-2 rounded-lg border border-border bg-background/80 px-3">
                     <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <div className="min-w-0 flex-1">
@@ -2897,6 +3214,7 @@ export function ChannelFeed({
                       <X className="h-3 w-3" />
                     </button>
                   </div>
+                  )
                 ) : null}
                 {!useBackendUpload && draftAttachment ? (
                   <div className="relative h-14 w-20 shrink-0 overflow-hidden rounded-lg border border-border">
@@ -2910,10 +3228,10 @@ export function ChannelFeed({
                     </button>
                   </div>
                 ) : null}
-                {draftImage || (!useBackendUpload && draftAttachment) ? (
+                {(draftImage || (!useBackendUpload && draftAttachment) || pendingGenericFile?.type.startsWith('video/')) ? (
                   <div className="min-w-0 flex-1">
                     <p className="text-[11px] font-medium text-foreground">
-                      {draftImage ? 'Image attached' : draftAttachment?.label}
+                      {draftImage ? 'Image attached' : pendingGenericFile?.type.startsWith('video/') ? 'Video attached' : draftAttachment?.label}
                     </p>
                     <p className="text-[10px] text-muted-foreground">Ready to send</p>
                   </div>
@@ -2929,16 +3247,6 @@ export function ChannelFeed({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
-                  onClick={() => imageInputRef.current?.click()}
-                  title="Upload image"
-                >
-                  <ImagePlus className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
                   disabled={postUploading || sendingPost || voiceUploading}
                   className={cn(
                     'h-8 w-8 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground',
@@ -2949,26 +3257,49 @@ export function ChannelFeed({
                 >
                   {voiceRecording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                 </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    'h-8 w-8 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground',
-                    (useBackendUpload ? pendingGenericFile : draftAttachment) && 'bg-primary/10 text-primary',
-                  )}
-                  onClick={() => {
-                    if (useBackendUpload) {
-                      if (pendingGenericFile) clearQueuedGeneric()
-                      else genericFileInputRef.current?.click()
-                    } else {
-                      draftAttachment ? setAttachment(undefined) : setAttachment(getSuggestedAttachment(channel, group))
-                    }
-                  }}
-                  title={useBackendUpload ? 'Attach file' : 'Attach mock media'}
-                >
-                  <Paperclip className="h-4 w-4" />
-                </Button>
+                <Popover open={actionMenuOpen} onOpenChange={setActionMenuOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      disabled={postUploading || sendingPost || voiceUploading}
+                      className={cn(
+                        'h-8 w-8 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground',
+                        (useBackendUpload ? pendingGenericFile : draftAttachment) && 'bg-primary/10 text-primary',
+                      )}
+                      title="Add"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent side="top" align="start" className="w-48 p-1.5 bg-sidebar border-border">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActionMenuOpen(false)
+                        if (useBackendUpload) {
+                          if (pendingGenericFile) clearQueuedGeneric()
+                          else genericFileInputRef.current?.click()
+                        } else {
+                          draftAttachment ? setAttachment(undefined) : setAttachment(getSuggestedAttachment(channel, group))
+                        }
+                      }}
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12px] font-medium text-foreground hover:bg-accent"
+                    >
+                      <FileUp className="h-4 w-4 text-muted-foreground" />
+                      Attach file
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openPollModal}
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12px] font-medium text-foreground hover:bg-accent"
+                    >
+                      <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                      Create poll
+                    </button>
+                  </PopoverContent>
+                </Popover>
               </div>
 
               {/* Text input */}
@@ -3027,12 +3358,12 @@ export function ChannelFeed({
                     })}
                   </div>
                 ) : null}
-                <Textarea
+                <EmojiInput
                   ref={textareaRef}
                   value={draft}
-                  onChange={(e) => {
-                    setDraft(e.target.value)
-                    setMentionCursor(e.target.selectionStart ?? e.target.value.length)
+                  onChange={(val) => {
+                    setDraft(val)
+                    syncMentionCursor()
                   }}
                   onBlur={() => {
                     window.setTimeout(() => setMentionCursor(0), 100)
@@ -3044,27 +3375,20 @@ export function ChannelFeed({
                   }}
                   onSelect={syncMentionCursor}
                   placeholder={`Message ${group.kind === 'voice' ? group.label : `#${group.label}`}`}
-                  rows={1}
-                  className="max-h-40 min-h-[36px] w-full resize-none border-0 bg-transparent px-2 py-2 text-[13px] leading-[1.5] shadow-none focus-visible:ring-0"
+                  className="max-h-40 min-h-[36px] w-full border-0 bg-transparent px-2 py-2 text-[13px] leading-[1.5] overflow-y-auto"
                 />
               </div>
 
               {/* Right actions */}
               <div className="flex items-center gap-0.5">
-                <EmojiPickerPopover
-                  onSelect={(emoji) => setDraft(draft + emoji)}
-                  trigger={
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
-                      title="Emoji"
-                    >
-                      <SmilePlus className="h-4 w-4" />
-                    </Button>
-                  }
+                <GifButton
+                  onGifSelect={(url) => onSendPost?.({ content: '', fileUrl: url, type: 'gif', mime: 'image/gif', entityMentions: [] })}
                 />
+                <StickerButton
+                  onStickerSelect={(url) => onSendPost?.({ content: '', fileUrl: url, type: 'sticker', mime: 'image/gif', entityMentions: [] })}
+                />
+                <GiftButton />
+                <EmojiButton onEmojiSelect={(unified) => textareaRef.current?.insertEmoji(unified)} />
                 <Button
                   type="button"
                   onClick={() => void sendDraft()}
@@ -3079,24 +3403,133 @@ export function ChannelFeed({
           </div>
 
           <input
-            ref={imageInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleImageFile}
-          />
-          <input
             ref={genericFileInputRef}
             type="file"
             className="hidden"
             onChange={handleGenericFile}
           />
 
-          <p className="mt-1 px-1 text-[10px] text-muted-foreground">
-            Enter to send · Shift+Enter for new line · Right-click for more
-          </p>
+
         </div>
       </div>
+
+      <AnimatePresence>
+        {pollModalOpen ? (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-40 bg-black/45 backdrop-blur-sm"
+              onClick={() => setPollModalOpen(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 12 }}
+              transition={{ duration: 0.14 }}
+              className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,420px)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl border border-border bg-sidebar shadow-2xl"
+            >
+              <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <BarChart3 className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold text-foreground">Create poll</p>
+                    <p className="text-[11px] text-muted-foreground">Ask the group to vote</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPollModalOpen(false)}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3 px-4 py-4">
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold text-muted-foreground">Question</span>
+                  <input
+                    value={pollQuestion}
+                    onChange={(event) => setPollQuestion(event.target.value)}
+                    placeholder="What should we decide?"
+                    className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-primary/50"
+                  />
+                </label>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-muted-foreground">Options</span>
+                    <button
+                      type="button"
+                      disabled={pollOptions.length >= 6}
+                      onClick={() => setPollOptions((current) => [...current, ''])}
+                      className="text-[11px] font-semibold text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Add option
+                    </button>
+                  </div>
+
+                  {pollOptions.map((option, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <input
+                        value={option}
+                        onChange={(event) =>
+                          setPollOptions((current) =>
+                            current.map((item, itemIndex) => itemIndex === index ? event.target.value : item),
+                          )
+                        }
+                        placeholder={`Option ${index + 1}`}
+                        className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-primary/50"
+                      />
+                      <button
+                        type="button"
+                        disabled={pollOptions.length <= 2}
+                        onClick={() => setPollOptions((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <label className="flex items-center justify-between rounded-lg border border-border bg-background/60 px-3 py-2">
+                  <span className="text-[12px] font-medium text-foreground">Allow multiple choices</span>
+                  <input
+                    type="checkbox"
+                    checked={pollAllowMultiple}
+                    onChange={(event) => setPollAllowMultiple(event.target.checked)}
+                    className="h-4 w-4 accent-primary"
+                  />
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 border-t border-border px-4 py-3">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-8 rounded-lg px-3 text-[12px]"
+                  onClick={() => setPollModalOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  className="h-8 rounded-lg px-3 text-[12px]"
+                  disabled={postUploading || sendingPost}
+                  onClick={() => void createPoll()}
+                >
+                  Create poll
+                </Button>
+              </div>
+            </motion.div>
+          </>
+        ) : null}
+      </AnimatePresence>
 
         {/* Context menu */}
         {contextMenu && selectedPost ? (
@@ -3109,6 +3542,7 @@ export function ChannelFeed({
             targetRole={selectedPost.role}
             viewerRole={channel.role}
             onClose={() => setContextMenu(null)}
+            onReact={(emoji) => handleReact(selectedPost.id, emoji)}
             onReply={() => { setReplyingTo(selectedPost); textareaRef.current?.focus() }}
             onCopy={() => void handleCopy(selectedPost)}
             onTogglePin={() => handleTogglePin(selectedPost.id)}

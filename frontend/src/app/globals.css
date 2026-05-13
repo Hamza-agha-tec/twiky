@@ -4,6 +4,50 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ── Name effects ─────────────────────────────────── */
+@keyframes name-gradient {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes name-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+@keyframes name-glow-pulse {
+  0%, 100% { filter: brightness(1) drop-shadow(0 0 6px var(--glow-color)); }
+  50%       { filter: brightness(1.2) drop-shadow(0 0 14px var(--glow-color)); }
+}
+
+.name-gradient {
+  background: linear-gradient(90deg, #f093fb, #f5576c, #4facfe, #00f2fe, #a18cd1, #f093fb);
+  background-size: 300% 300%;
+  animation: name-gradient 4s ease infinite;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+.name-shimmer {
+  background: linear-gradient(90deg, #888 0%, #e8e8e8 30%, #fff 50%, #e8e8e8 70%, #888 100%);
+  background-size: 200% auto;
+  animation: name-shimmer 2.5s linear infinite;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+.name-glow-pro {
+  color: #60a5fa;
+  --glow-color: #60a5fa80;
+  animation: name-glow-pulse 2.2s ease-in-out infinite;
+}
+.name-glow-geek {
+  color: #f97316;
+  --glow-color: #f9731680;
+  animation: name-glow-pulse 2.2s ease-in-out infinite;
+}
+
 /* Twiky brand palette */
 :root {
   --twiky-blue: #0080c8;
@@ -133,6 +177,22 @@
   --animate-spotlight: spotlight 2s ease 0.75s 1 forwards;
 }
 
+/* ── emoji-mart theme sync ───────────────────────────────────────── */
+:root {
+  --em-rgb-background: 255, 255, 255;
+  --em-rgb-input: 242, 242, 242;
+  --em-rgb-color: 20, 20, 20;
+  --em-rgb-border: 214, 214, 214;
+  --em-rgb-accent: 0, 128, 200;
+}
+.dark {
+  --em-rgb-background: 36, 36, 36;
+  --em-rgb-input: 50, 50, 50;
+  --em-rgb-color: 240, 240, 240;
+  --em-rgb-border: 55, 55, 55;
+  --em-rgb-accent: 0, 128, 200;
+}
+
 /* ── Theme bubble transition (View Transitions API) ─────────────── */
 ::view-transition {
   pointer-events: none;
@@ -150,6 +210,11 @@
   to   { clip-path: circle(200vmax at var(--theme-ripple-x, 50%) var(--theme-ripple-y, 50%)); }
 }
 
+@keyframes shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
 @keyframes spotlight {
   0% {
     opacity: 0;
@@ -159,6 +224,68 @@
     opacity: 1;
     transform: translate(-50%, -40%);
   }
+}
+
+/* ── Custom scrollbar ────────────────────────────────────────────── */
+:root {
+  --scrollbar-thumb: oklch(0.75 0 0 / 22%);
+  --scrollbar-thumb-hover: oklch(0.51 0.17 233 / 60%);
+}
+.dark {
+  --scrollbar-thumb: oklch(1 0 0 / 10%);
+  --scrollbar-thumb-hover: oklch(0.51 0.17 233 / 55%);
+}
+
+/* Webkit — 3px forces Chrome to skip rendering arrow buttons entirely */
+::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+/* ── Glassy theme ──────────────────────────────────────────────────── */
+html[data-style="glassy"] {
+  background-image:
+    radial-gradient(ellipse at 10% 20%, rgba(0, 128, 200, 0.30) 0%, transparent 45%),
+    radial-gradient(ellipse at 90% 75%, rgba(0, 90, 170, 0.22) 0%, transparent 45%),
+    radial-gradient(ellipse at 55% 50%, rgba(0, 60, 130, 0.18) 0%, transparent 55%),
+    radial-gradient(ellipse at 70% 10%, rgba(146, 220, 229, 0.08) 0%, transparent 35%),
+    linear-gradient(160deg, #010b16 0%, #020f1e 35%, #010c18 65%, #000a14 100%);
+  background-attachment: fixed;
+  background-size: cover;
+}
+html[data-style="glassy"] body {
+  background: transparent !important;
+}
+html[data-style="glassy"] .bg-sidebar {
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+}
+html[data-style="glassy"] .bg-card {
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+}
+html[data-style="glassy"] .bg-popover {
+  backdrop-filter: blur(22px) saturate(170%);
+  -webkit-backdrop-filter: blur(22px) saturate(170%);
 }
 
 @layer base {

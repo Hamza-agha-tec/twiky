@@ -57,9 +57,6 @@ export function IconRail({
                     : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                 )}
               >
-                {isActive ? (
-                  <span className="absolute left-0 top-1/2 h-7 w-1 -translate-y-1/2 rounded-r-full bg-primary" />
-                ) : null}
                 <Icon className="h-5 w-5" />
                 {id === 'notifications' && notificationCount > 0 ? (
                   <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-white">
@@ -94,9 +91,6 @@ export function IconRail({
                     : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                 )}
               >
-                {activeView === 'game' ? (
-                  <span className="absolute left-0 top-1/2 h-7 w-1 -translate-y-1/2 rounded-r-full bg-primary" />
-                ) : null}
                 <Gamepad2 className="h-5 w-5" />
               </Button>
             </TooltipTrigger>

@@ -1,107 +1,123 @@
-'use client';
+'use client'
 
-import { Product, ProductCategory } from '@/types/product';
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Star, CreditCard, Tag } from 'lucide-react';
+import { Product, ProductCategory } from '@/types/product'
+import { motion } from 'framer-motion'
+import { ShoppingCart, Eye, Flame, Star } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface ProductCardProps {
-  product: Product;
-  onPay?: (product: Product) => void;
-  onViewDetails?: (product: Product) => void;
+  product: Product
+  onPay?: (product: Product) => void
+  onViewDetails?: (product: Product) => void
+  index?: number
 }
 
-const categoryColors: Record<ProductCategory, string> = {
-  ROOM_ITEM: 'bg-blue-100 text-blue-800',
-  STICKER: 'bg-green-100 text-green-800',
-  THEME: 'bg-purple-100 text-purple-800',
-};
+const CATEGORY_META: Record<ProductCategory, { label: string; emoji: string; bg: string }> = {
+  THEME:     { label: 'Theme',     emoji: '🎨', bg: 'from-primary/20 via-primary/5 to-transparent' },
+  STICKER:   { label: 'Sticker',   emoji: '✨', bg: 'from-[var(--twiky-cyan)]/20 via-[var(--twiky-cyan)]/5 to-transparent' },
+  ROOM_ITEM: { label: 'Room Item', emoji: '🏠', bg: 'from-amber-500/20 via-amber-500/5 to-transparent' },
+}
 
-export function ProductCard({ product, onPay, onViewDetails }: ProductCardProps) {
-  const discountedPrice = product.discount && product.discount > 0
-    ? product.price * (1 - product.discount / 100)
-    : product.price;
-
-  const mainImage = Array.isArray(product.images) && product.images.length > 0 
-    ? product.images[0] 
-    : '/placeholder-product.jpg';
+export function ProductCard({ product, onPay, onViewDetails, index = 0 }: ProductCardProps) {
+  const meta = CATEGORY_META[product.category]
+  const hasImage = Array.isArray(product.images) && product.images.length > 0
+  const img = hasImage ? product.images[0] : null
+  const hasDiscount = Boolean(product.discount && product.discount > 0)
+  const discountedPrice = hasDiscount
+    ? product.price * (1 - product.discount! / 100)
+    : product.price
 
   return (
-    <Card className="overflow-hidden hover:shadow-lg transition-shadow duration-300">
-      <CardHeader className="p-0">
-        <div className="relative aspect-square overflow-hidden">
-          <img
-            src={mainImage}
-            alt={product.title}
-            className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
-          />
-          {product.discount && product.discount > 0 && (
-            <Badge className="absolute top-2 right-2 bg-red-500 text-white">
-              -{product.discount}%
-            </Badge>
-          )}
-          {product.sales > 0 && (
-            <Badge variant="secondary" className="absolute top-2 left-2">
-              <Star className="w-3 h-3 mr-1" />
-              Popular
-            </Badge>
-          )}
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, delay: Math.min(index * 0.035, 0.28), ease: 'easeOut' }}
+      className="group relative flex flex-col overflow-hidden rounded-[16px] border border-border bg-card transition-all duration-200 hover:border-primary/25 hover:shadow-md hover:-translate-y-0.5"
+    >
+      {/* Image */}
+      <div className={cn('relative h-32 w-full overflow-hidden bg-gradient-to-br', meta.bg)}>
+        {img
+          ? <img src={img} alt={product.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+          : <div className="flex h-full w-full items-center justify-center text-3xl">{meta.emoji}</div>
+        }
+
+        {/* Hover actions */}
+        <div className="absolute inset-0 flex items-center justify-center gap-1.5 bg-background/0 opacity-0 transition-all duration-200 group-hover:bg-background/50 group-hover:opacity-100">
+          <button
+            onClick={() => onViewDetails?.(product)}
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-card text-foreground shadow-sm transition-colors hover:bg-accent"
+          >
+            <Eye className="h-3 w-3" />
+          </button>
+          <button
+            onClick={() => onPay?.(product)}
+            disabled={!product.active}
+            className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm transition-opacity disabled:opacity-40 hover:opacity-90"
+          >
+            <ShoppingCart className="h-3 w-3" />
+          </button>
         </div>
-      </CardHeader>
-      
-      <CardContent className="p-4">
-        <div className="space-y-2">
-          <Badge className={categoryColors[product.category]}>
-            {product.category.replace('_', ' ')}
-          </Badge>
-          
-          <h3 className="font-semibold text-lg line-clamp-2">{product.title}</h3>
-          
-          <p className="text-sm text-muted-foreground line-clamp-2">
-            {product.description}
-          </p>
-          
-          <div className="flex items-center gap-2">
-            {product.discount && product.discount > 0 ? (
-              <>
-                <span className="text-lg font-bold text-primary">
-                  ${discountedPrice.toFixed(2)}
-                </span>
-                <span className="text-sm line-through text-muted-foreground">
-                  ${product.price.toFixed(2)}
-                </span>
-              </>
-            ) : (
-              <span className="text-lg font-bold text-primary">
+
+        {/* Badges */}
+        {hasDiscount && (
+          <span className="absolute left-2 top-2 flex items-center gap-0.5 rounded-md bg-primary px-1.5 py-0.5 text-[9px] font-bold text-primary-foreground">
+            <Flame className="h-2 w-2" />
+            -{product.discount}%
+          </span>
+        )}
+        {product.sales > 10 && !hasDiscount && (
+          <span className="absolute right-2 top-2 flex items-center gap-0.5 rounded-md border border-border bg-card/80 px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground backdrop-blur-sm">
+            <Star className="h-2 w-2 fill-current" />
+            Popular
+          </span>
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="flex flex-1 flex-col p-3">
+        {/* Category chip */}
+        <span className="mb-1.5 inline-flex w-fit items-center rounded-full border border-primary/20 bg-primary/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-primary">
+          {meta.label}
+        </span>
+
+        <h3 className="line-clamp-1 text-[12px] font-bold text-foreground leading-tight">
+          {product.title}
+        </h3>
+        <p className="mt-1 line-clamp-1 text-[10.5px] leading-snug text-muted-foreground">
+          {product.description}
+        </p>
+
+        {/* Price + Actions */}
+        <div className="mt-auto pt-3">
+          <div className="mb-2 flex items-baseline gap-1.5">
+            <span className="text-[15px] font-bold text-primary leading-none">
+              ${discountedPrice.toFixed(2)}
+            </span>
+            {hasDiscount && (
+              <span className="text-[10px] text-muted-foreground line-through">
                 ${product.price.toFixed(2)}
               </span>
             )}
           </div>
+
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => onViewDetails?.(product)}
+              className="flex h-7 flex-1 items-center justify-center rounded-lg border border-border bg-background text-[10px] font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              Details
+            </button>
+            <button
+              onClick={() => onPay?.(product)}
+              disabled={!product.active}
+              className="flex h-7 flex-1 items-center justify-center gap-1 rounded-lg bg-primary text-[10px] font-bold text-primary-foreground transition-opacity disabled:opacity-40 hover:opacity-90"
+            >
+              <ShoppingCart className="h-3 w-3" />
+              Buy
+            </button>
+          </div>
         </div>
-      </CardContent>
-      
-      <CardFooter className="p-4 pt-0">
-        <div className="flex gap-2 w-full">
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1"
-            onClick={() => onViewDetails?.(product)}
-          >
-            View Details
-          </Button>
-          <Button
-            size="sm"
-            className="flex-1"
-            onClick={() => onPay?.(product)}
-            disabled={!product.active}
-          >
-            <CreditCard className="w-4 h-4 mr-2" />
-            Pay Now
-          </Button>
-        </div>
-      </CardFooter>
-    </Card>
-  );
+      </div>
+    </motion.div>
+  )
 }

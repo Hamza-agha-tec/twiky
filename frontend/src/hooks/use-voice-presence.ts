@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Socket } from 'socket.io-client'
 import { getSocket } from '@/lib/socket'
 import { createClient } from '@/utils/supabase/client'
 
@@ -84,7 +83,7 @@ export function useVoicePresence(
   const [soundboardUserId, setSoundboardUserId] = useState<string | null>(null)
   const [soundboardIntensity, setSoundboardIntensity] = useState(0)
 
-  const socketRef = useRef<Socket | null>(null)
+  const socketRef = useRef<Awaited<ReturnType<typeof getSocket>> | null>(null)
   const currentGroupIdRef = useRef<string | null>(null)
   const myInfoRef = useRef<MyVoiceInfo | null>(myInfo)
   const isMutedRef = useRef(false)
@@ -165,7 +164,7 @@ export function useVoicePresence(
   // Socket.IO event wiring — single source of truth
   useEffect(() => {
     let mounted = true
-    let socket: Socket | null = null
+    let socket: Awaited<ReturnType<typeof getSocket>> | null = null
 
     const onRoomUsers = (payload: { roomId?: string; participants?: VoicePresenceUser[] }) => {
       if (!mounted || !payload?.roomId) return
@@ -403,7 +402,7 @@ export function useVoicePresence(
     const socket = socketRef.current
     let cancelled = false
 
-    const subscribe = (s: Socket) => {
+    const subscribe = (s: Awaited<ReturnType<typeof getSocket>>) => {
       if (cancelled) return
       s.emit('subscribe-voice-rooms', { roomIds })
     }

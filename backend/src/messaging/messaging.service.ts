@@ -7,6 +7,7 @@ import { SendGroupMessageDto } from './dto/group-messaging.dto';
 @Injectable()
 export class MessagingService {
     private readonly logger = new Logger(MessagingService.name);
+    private readonly feedPollPrefix = '__twiky_poll__:';
 
     constructor(private supabaseService: SupabaseService) {}
 
@@ -671,7 +672,26 @@ export class MessagingService {
             throw new ForbiddenException('Access denied.');
         }
 
-        return this.toggleReactionInternal('direct_messages', userId, messageId, emoji);
+        return this.toggleReactionInternal(
+            'direct_messages',
+            userId,
+            messageId,
+            emoji,
+            '*, sender:users!direct_messages_sender_id_fkey(id, username, fullname, avatar_url, is_verified, sub_plan)',
+        );
+    }
+
+    async getDirectConversationParticipantIds(conversationId: string) {
+        const { data: conversation, error } = await this.supabaseService
+            .getClient()
+            .from('direct_conversations')
+            .select('user_one_id, user_two_id')
+            .eq('id', conversationId)
+            .single();
+
+        if (error || !conversation) throw new NotFoundException('Conversation not found');
+
+        return [conversation.user_one_id, conversation.user_two_id].filter(Boolean);
     }
 
     async toggleGroupMessageReaction(userId: string, messageId: string, emoji: string) {
@@ -694,7 +714,111 @@ export class MessagingService {
 
         if (!member) throw new ForbiddenException('You are not a member of this group.');
 
-        return this.toggleReactionInternal('group_messages', userId, messageId, emoji);
+        return this.toggleReactionInternal(
+            'group_messages',
+            userId,
+            messageId,
+            emoji,
+            '*, sender:users!group_messages_sender_id_fkey(id, username, fullname, avatar_url, is_verified, sub_plan)',
+        );
+    }
+
+    async voteGroupPoll(userId: string, messageId: string, optionId: string) {
+        const { data: message, error } = await this.supabaseService
+            .getClient()
+            .from('group_messages')
+            .select('group_id, content')
+            .eq('id', messageId)
+            .single();
+
+        if (error || !message) throw new NotFoundException('Message not found');
+
+        const { data: member } = await this.supabaseService
+            .getClient()
+            .from('group_members')
+            .select('user_id')
+            .eq('group_id', message.group_id)
+            .eq('user_id', userId)
+            .single();
+
+        if (!member) throw new ForbiddenException('You are not a member of this group.');
+
+        const poll = this.parseFeedPollContent(message.content);
+        const target = poll.options.find((option) => option.id === optionId);
+        if (!target) throw new BadRequestException('Poll option not found');
+
+        if (poll.allowMultiple) {
+            target.voters = target.voters.includes(userId)
+                ? target.voters.filter((id) => id !== userId)
+                : [...target.voters, userId];
+        } else {
+            const alreadyVoted = target.voters.includes(userId);
+            poll.options = poll.options.map((option) => ({
+                ...option,
+                voters: option.voters.filter((id) => id !== userId),
+            }));
+            if (!alreadyVoted) {
+                poll.options = poll.options.map((option) =>
+                    option.id === optionId ? { ...option, voters: [...option.voters, userId] } : option,
+                );
+            }
+        }
+
+        const content = this.encodeFeedPollContent(poll);
+        const { data: updated, error: updateError } = await this.supabaseService
+            .getClient()
+            .from('group_messages')
+            .update({ content })
+            .eq('id', messageId)
+            .select('*, sender:users!group_messages_sender_id_fkey(id, username, fullname, avatar_url, is_verified, sub_plan)')
+            .single();
+
+        if (updateError) throw new Error(`Failed to vote on poll: ${updateError.message}`);
+        return this.applyMessageSenderAvatarPrivacy(updated, userId);
+    }
+
+    private parseFeedPollContent(content: string | null): {
+        allowMultiple: boolean;
+        question: string;
+        options: { id: string; text: string; voters: string[] }[];
+    } {
+        if (!content?.startsWith(this.feedPollPrefix)) {
+            throw new BadRequestException('Message is not a poll');
+        }
+
+        try {
+            const parsed = JSON.parse(content.slice(this.feedPollPrefix.length));
+            const question = typeof parsed.question === 'string' ? parsed.question.trim() : '';
+            const options = Array.isArray(parsed.options)
+                ? parsed.options
+                    .map((option: any, index: number) => ({
+                        id: typeof option?.id === 'string' ? option.id : `option-${index + 1}`,
+                        text: typeof option?.text === 'string' ? option.text.trim() : '',
+                        voters: Array.isArray(option?.voters)
+                            ? option.voters.filter((id: unknown): id is string => typeof id === 'string')
+                            : [],
+                    }))
+                    .filter((option: any) => option.text)
+                : [];
+
+            if (!question || options.length < 2) throw new Error('Invalid poll');
+            return { allowMultiple: Boolean(parsed.allowMultiple), options, question };
+        } catch {
+            throw new BadRequestException('Invalid poll payload');
+        }
+    }
+
+    private encodeFeedPollContent(poll: { allowMultiple?: boolean; question: string; options: { id: string; text: string; voters: string[] }[] }) {
+        return `${this.feedPollPrefix}${JSON.stringify({
+            allowMultiple: Boolean(poll.allowMultiple),
+            question: poll.question,
+            options: poll.options.map((option) => ({
+                id: option.id,
+                text: option.text,
+                voters: option.voters,
+                votes: option.voters.length,
+            })),
+        })}`;
     }
 
     async toggleGroupMessagePin(userId: string, messageId: string) {
@@ -723,7 +847,13 @@ export class MessagingService {
         return this.applyMessageSenderAvatarPrivacy(updated, userId);
     }
 
-    private async toggleReactionInternal(table: string, userId: string, messageId: string, emoji: string) {
+    private async toggleReactionInternal(
+        table: string,
+        userId: string,
+        messageId: string,
+        emoji: string,
+        selectQuery: string,
+    ): Promise<any> {
         const { data: message, error: fetchError } = await this.supabaseService
             .getClient()
             .from(table)
@@ -760,11 +890,11 @@ export class MessagingService {
             .from(table)
             .update({ reactions })
             .eq('id', messageId)
-            .select('*, sender:users(id, username, fullname, avatar_url, is_verified, sub_plan)')
+            .select(selectQuery)
             .single();
 
         if (updateError) throw new Error(`Failed to update reactions: ${updateError.message}`);
-        return this.applyMessageSenderAvatarPrivacy(updated, userId);
+        return this.applyMessageSenderAvatarPrivacy(updated as any, userId);
     }
 
     async sendSystemMessage(groupId: string, content: string) {

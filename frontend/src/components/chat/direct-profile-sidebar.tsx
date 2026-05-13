@@ -2,11 +2,14 @@
 
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { X, AtSign, AlignLeft, Globe, MessageCircle, Phone, Video, MoreHorizontal, Image, ChevronRight, Gamepad2, ShieldOff, BellOff, Archive, Trash2 } from 'lucide-react'
+import { X, AtSign, AlignLeft, Globe, MessageCircle, Phone, Video, MoreHorizontal, Image, ChevronRight, Gamepad2, ShieldOff, BellOff, Archive, Trash2, QrCode } from 'lucide-react'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useUserById } from '@/hooks/use-user'
 import { VerifiedBadge, getVerifiedBadgeVariant } from '@/components/chat/verified-badge'
+import { UserName } from '@/components/chat/user-name'
+import { StatusDot, resolveStatus } from '@/components/chat/status-dot'
+import { QRCodeModal } from '@/components/chat/qr-code-modal'
 import { createClient } from '@/utils/supabase/client'
 import { toast } from 'sonner'
 import type { StoryRingState } from '@/components/chat/channel-feed'
@@ -47,6 +50,7 @@ export function DirectProfileSidebar({
   storyRingState = 'none',
 }: DirectProfileSidebarProps) {
   const { data: profile, isLoading } = useUserById(userId)
+  const [qrOpen, setQrOpen] = useState(false)
 
   const name = profile?.fullname ?? profile?.username ?? chatOverride?.name ?? '—'
   const username = profile?.username ?? null
@@ -58,6 +62,8 @@ export function DirectProfileSidebar({
   const subPlan = profile?.sub_plan ?? chatOverride?.subPlan ?? null
   const isVerified = profile?.is_verified ?? chatOverride?.isVerified ?? false
   const showVerified = isVerified || subPlan === 'PRO' || subPlan === 'GEEK'
+  const nameEffect = profile?.name_effect ?? null
+  const effectiveStatus = resolveStatus(profile?.user_status, isOnline)
   const canOpenStory = storyRingState !== 'none' && Boolean(userId && onOpenStory)
 
   const initials = name
@@ -151,9 +157,7 @@ export function DirectProfileSidebar({
                 </AvatarFallback>
               </Avatar>
             </button>
-            {isOnline && (
-              <span className="absolute bottom-0.5 right-0.5 h-3 w-3 rounded-full border-2 border-sidebar bg-green-500" />
-            )}
+            <StatusDot status={effectiveStatus} className="bottom-0.5 right-0.5 h-3 w-3" />
           </motion.div>
         </div>
       </div>
@@ -171,7 +175,7 @@ export function DirectProfileSidebar({
             {/* Name */}
             <div className="px-4 pb-3">
               <div className="flex items-center gap-1">
-                <h2 className="text-sm font-bold leading-tight text-foreground">{name}</h2>
+                <UserName name={name} effect={nameEffect} subPlan={subPlan} className="text-sm font-bold leading-tight" />
                 {showVerified && (
                   <VerifiedBadge size="sm" variant={getVerifiedBadgeVariant(subPlan)} />
                 )}
@@ -185,6 +189,7 @@ export function DirectProfileSidebar({
                 { icon: Phone, label: 'Call', action: onVoiceCall },
                 { icon: Video, label: 'Video', action: onVideoCall },
                 { icon: Gamepad2, label: 'Pixel Room', action: onOpenPixelRoom },
+                { icon: QrCode, label: 'QR Code', action: username ? () => setQrOpen(true) : undefined },
               ].map(({ icon: Icon, label, action }) => (
                 <button
                   key={label}
@@ -263,6 +268,16 @@ export function DirectProfileSidebar({
           </>
         )}
       </div>
+
+      {qrOpen && username && (
+        <QRCodeModal
+          open={qrOpen}
+          onClose={() => setQrOpen(false)}
+          username={username}
+          name={name}
+          avatarUrl={avatar}
+        />
+      )}
     </div>
   )
 }

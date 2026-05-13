@@ -1,0 +1,10 @@
+[build]
+  cmd = "go build -o ./tmp/main.exe ."
+  entrypoint = "tmp\\main.exe"
+
+[runner]
+  shell = "pwsh"
+  shell_args = ["-Command"]
+
+[misc]
+  clean_on_exit = true

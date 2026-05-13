@@ -12,6 +12,7 @@ import (
 	"github.com/Hamza-agha-tec/goback/handlers/files"
 	"github.com/Hamza-agha-tec/goback/handlers/groups"
 	"github.com/Hamza-agha-tec/goback/handlers/invitations"
+	livekithandler "github.com/Hamza-agha-tec/goback/handlers/livekit"
 	"github.com/Hamza-agha-tec/goback/handlers/messaging"
 	"github.com/Hamza-agha-tec/goback/handlers/notifications"
 	"github.com/Hamza-agha-tec/goback/handlers/payments"
@@ -83,13 +84,13 @@ func SetupRoutes(e *echo.Echo) {
 	})
 
 	// Public routes — no middleware
-	public := e.Group("/api")
+	public := e.Group("")
 	public.GET("/users", userhandlers.GetAllUsers(userService))
 	public.GET("/users/:id", userhandlers.GetUserByID(userService))
 	public.POST("/auth", authHandler.Authenticate)
 
 	// Optional auth routes (work with or without auth)
-	optionalAuth := e.Group("/api")
+	optionalAuth := e.Group("")
 	optionalAuth.Use(middleware.AuthMiddleware)
 	optionalAuth.GET("/users/:id/followers", userHandler.GetFollowers)
 	optionalAuth.GET("/users/:id/following", userHandler.GetFollowing)
@@ -97,7 +98,7 @@ func SetupRoutes(e *echo.Echo) {
 	optionalAuth.GET("/users/:id", userHandler.GetUserByID)
 
 	// Protected routes — with middleware
-	protected := e.Group("/api")
+	protected := e.Group("")
 	protected.Use(middleware.AuthMiddleware)
 
 	// Auth routes
@@ -155,6 +156,9 @@ func SetupRoutes(e *echo.Echo) {
 	protected.GET("/voice/rooms/:roomId", voiceHandler.GetVoiceRoom)
 	protected.POST("/voice/rooms", voiceHandler.CreateVoiceRoom)
 	protected.POST("/voice/rooms/:roomId/validate-access", voiceHandler.ValidateRoomAccess)
+
+	// LiveKit token
+	protected.POST("/livekit/token", livekithandler.GenerateToken)
 
 	// Group routes
 	protected.POST("/channels/:channelId/groups", groupHandler.CreateGroup)

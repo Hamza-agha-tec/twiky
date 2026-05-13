@@ -6,7 +6,7 @@ import { motion } from 'framer-motion'
 import { Mic, MicOff, PhoneOff, Video, VideoOff, Monitor, MonitorOff, Minimize2, Maximize2 } from 'lucide-react'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { useWebRTC } from '@/hooks/use-webrtc'
+import { useLiveKitVoice } from '@/hooks/use-livekit-voice'
 import { cn } from '@/lib/utils'
 import type { DmCallType } from '@/hooks/use-dm-call'
 
@@ -57,7 +57,7 @@ export function DmCallWindow({
   const [portalTarget, setPortalTarget] = useState<Element | null>(null)
 
   const { remoteStreams, remoteScreenStreams, isSpeaking, remoteSpeakingUserIds, addVideoTrack, removeVideoTrack, signalScreenShare } =
-    useWebRTC(roomId, myId, isMuted)
+    useLiveKitVoice(roomId, myId, isMuted)
 
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
