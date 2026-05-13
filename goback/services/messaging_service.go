@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Hamza-agha-tec/goback/models"
+	"github.com/lib/pq"
 )
 
 type MessagingService struct {
@@ -22,100 +23,83 @@ func NewMessagingService(db *sql.DB, supabaseURL, supabaseKey string) *Messaging
 
 // --- DIRECT CONVERSATIONS ---
 
-func (s *MessagingService) GetDirectConversations(userID string) ([]*models.DirectConversationResponse, error) {
-	// Get conversations where user is participant
-	var conversations []models.DirectConversation
+func (s *MessagingService) GetDirectConversations(userID string) ([]*models.DirectConversation, error) {
 
-	// Add better error handling for the Supabase query
-	err := s.supabase.GetClient().DB.From("direct_conversations").
-		Select("*").
-		Execute(&conversations)
-
+	rows, err := s.db.Query(`
+		SELECT id, user_one_id, user_two_id, created_at
+		FROM direct_conversations
+		WHERE user_one_id = $1 OR user_two_id = $1
+		ORDER BY created_at DESC
+	`, userID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get direct conversations: %w", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var convs []*models.DirectConversation
+
+	for rows.Next() {
+		c := &models.DirectConversation{}
+
+		err := rows.Scan(
+			&c.ID,
+			&c.UserOneID,
+			&c.UserTwoID,
+			&c.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		convs = append(convs, c)
 	}
 
-	// Initialize empty slice if nil to prevent JSON parsing issues
-	if conversations == nil {
-		conversations = make([]models.DirectConversation, 0)
+	// STEP 2 users
+	userIDsMap := map[string]struct{}{}
+	for _, c := range convs {
+		userIDsMap[c.UserOneID] = struct{}{}
+		userIDsMap[c.UserTwoID] = struct{}{}
 	}
 
-	// Filter conversations where user is participant
-	var result []*models.DirectConversationResponse
-	for _, conv := range conversations {
-		if conv.UserOneID == userID || conv.UserTwoID == userID {
-			// Get user details for both participants
-			var userOneSlice, userTwoSlice []models.User
-			err1 := s.supabase.GetClient().DB.From("users").
-				Select("*").
-				Eq("id", conv.UserOneID).
-				Execute(&userOneSlice)
+	var userIDs []string
+	for id := range userIDsMap {
+		userIDs = append(userIDs, id)
+	}
 
-			if err1 != nil {
-				return nil, fmt.Errorf("failed to get user one details (ID=%s): %w", conv.UserOneID, err1)
-			}
+	users := map[string]models.UserPublic{}
 
-			err2 := s.supabase.GetClient().DB.From("users").
-				Select("*").
-				Eq("id", conv.UserTwoID).
-				Execute(&userTwoSlice)
+	if len(userIDs) > 0 {
+		urows, err := s.db.Query(`
+			SELECT id, username, avatar_url, banner, sub_plan, is_verified, last_seen_at
+			FROM users
+			WHERE id = ANY($1)
+		`, pq.Array(userIDs))
+		if err != nil {
+			return nil, err
+		}
+		defer urows.Close()
 
-			if err2 != nil {
-				return nil, fmt.Errorf("failed to get user two details (ID=%s): %w", conv.UserTwoID, err2)
-			}
-
-			if len(userOneSlice) == 0 {
-				return nil, fmt.Errorf("user one not found (ID=%s)", conv.UserOneID)
-			}
-
-			if len(userTwoSlice) == 0 {
-				return nil, fmt.Errorf("user two not found (ID=%s)", conv.UserTwoID)
-			}
-
-			// Map user one to simplified struct
-			userOne := models.DirectConversationUser{
-				ID:         userOneSlice[0].ID,
-				Banner:     userOneSlice[0].Banner,
-				SubPlan:    userOneSlice[0].SubPlan,
-				Username:   userOneSlice[0].Username,
-				AvatarURL:  userOneSlice[0].AvatarURL,
-				IsVerified: userOneSlice[0].IsVerified,
-				LastSeenAt: userOneSlice[0].LastSeenAt,
-			}
-
-			// Map user two to simplified struct
-			userTwo := models.DirectConversationUser{
-				ID:         userTwoSlice[0].ID,
-				Banner:     userTwoSlice[0].Banner,
-				SubPlan:    userTwoSlice[0].SubPlan,
-				Username:   userTwoSlice[0].Username,
-				AvatarURL:  userTwoSlice[0].AvatarURL,
-				IsVerified: userTwoSlice[0].IsVerified,
-				LastSeenAt: userTwoSlice[0].LastSeenAt,
-			}
-
-			// Parse unread_count as int
-			unreadCount := 0
-			if conv.UnreadCount != "" {
-				fmt.Sscanf(conv.UnreadCount, "%d", &unreadCount)
-			}
-
-			// Build conversation with simplified user details
-			convResponse := &models.DirectConversationResponse{
-				ID:          conv.ID,
-				UserOneID:   conv.UserOneID,
-				UserTwoID:   conv.UserTwoID,
-				CreatedAt:   conv.CreatedAt,
-				LastMessage: []map[string]interface{}{},
-				UserOne:     userOne,
-				UserTwo:     userTwo,
-				UnreadCount: unreadCount,
-			}
-			result = append(result, convResponse)
+		for urows.Next() {
+			var u models.UserPublic
+			_ = urows.Scan(
+				&u.ID,
+				&u.Username,
+				&u.AvatarURL,
+				&u.Banner,
+				&u.SubPlan,
+				&u.IsVerified,
+				&u.LastSeenAt,
+			)
+			users[u.ID] = u
 		}
 	}
 
-	return result, nil
+	for _, c := range convs {
+		_ = users[c.UserOneID]
+		_ = users[c.UserTwoID]
+	}
+
+	return convs, nil
 }
 
 func (s *MessagingService) CreateDirectConversation(userID string, dto models.StartDirectConversationDto) (*models.DirectConversation, error) {
@@ -151,14 +135,18 @@ func (s *MessagingService) CreateDirectConversation(userID string, dto models.St
 	}
 
 	// Check if conversation already exists
-	var existing []models.DirectConversation
-	err := s.supabase.GetClient().DB.From("direct_conversations").
-		Select("*").
-		Eq("user_one_id", userOneId).
-		Eq("user_two_id", userTwoId).
-		Execute(&existing)
+	var existingConv models.DirectConversation
+	err := s.db.QueryRow(`
+		SELECT id, user_one_id, user_two_id, created_at, updated_at
+		FROM direct_conversations
+		WHERE (user_one_id = $1 AND user_two_id = $2) OR (user_one_id = $2 AND user_two_id = $1)
+	`, userID, dto.UserID).Scan(&existingConv.ID, &existingConv.UserOneID, &existingConv.UserTwoID, &existingConv.CreatedAt)
 
-	if err != nil {
+	if err == nil {
+		return &existingConv, nil
+	}
+
+	if err != sql.ErrNoRows {
 		return nil, fmt.Errorf("failed to check existing conversation: %w", err)
 	}
 
@@ -167,15 +155,16 @@ func (s *MessagingService) CreateDirectConversation(userID string, dto models.St
 	}
 
 	// Create new conversation
-	var conversations []models.DirectConversation
-	err = s.supabase.GetClient().DB.From("direct_conversations").
-		Insert(map[string]interface{}{
-			"user_one_id": userOneId,
-			"user_two_id": userTwoId,
-			"created_at":  "now()",
-			"updated_at":  "now()",
-		}).
-		Execute(&conversations)
+	query := `
+		INSERT INTO direct_conversations (id, user_one_id, user_two_id, created_at, updated_at)
+		VALUES (gen_random_uuid(), $1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		RETURNING id, user_one_id, user_two_id, created_at, updated_at
+	`
+
+	conv := &models.DirectConversation{}
+	err = s.db.QueryRow(query, userID, dto.UserID).Scan(
+		&conv.ID, &conv.UserOneID, &conv.UserTwoID, &conv.CreatedAt,
+	)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create direct conversation: %w", err)

@@ -23,19 +23,18 @@ func NewMessagingHandler(messagingService *services.MessagingService, socketIOSe
 // --- DIRECT CONVERSATIONS ---
 
 func (h *MessagingHandler) GetDirectConversations(c echo.Context) error {
-	userIDInterface := c.Get("userID")
-	if userIDInterface == nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "user not authenticated"})
-	}
-
-	userID, ok := userIDInterface.(string)
-	if !ok {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "invalid user ID format"})
+	userID, ok := c.Get("userID").(string)
+	if !ok || userID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{
+			"error": "unauthorized",
+		})
 	}
 
 	conversations, err := h.messagingService.GetDirectConversations(userID)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
 	}
 
 	return c.JSON(http.StatusOK, conversations)

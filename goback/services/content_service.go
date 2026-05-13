@@ -246,13 +246,8 @@ func (s *ContentService) GetFeed(userID string) ([]*models.FeedGroup, error) {
 		userStoriesMap[story.UserID].Stories = append(userStoriesMap[story.UserID].Stories, *story)
 	}
 
-	// Convert map to slice - always return at least an empty array
-	feedGroups := make([]*models.FeedGroup, 0, len(userStoriesMap))
-	for _, group := range userStoriesMap {
-		feedGroups = append(feedGroups, group)
-	}
-
-	return feedGroups, nil
+	fmt.Printf("GetFeed query returned %d stories for user %s\n", len(stories), userID)
+	return stories, nil
 }
 
 func (s *ContentService) GetStoryById(userID string, storyID string) (*models.Story, error) {
