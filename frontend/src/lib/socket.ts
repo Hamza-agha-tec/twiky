@@ -21,7 +21,7 @@ export async function getSocket(tokenOverride?: string): Promise<Socket> {
 
   socketToken = token;
 
-  socket = io(process.env.NEXT_PUBLIC_API_URL!, {
+  socket = io(process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') ?? 'http://localhost:8080', {
     auth: { token },
     transports: ['websocket'],
     autoConnect: true,

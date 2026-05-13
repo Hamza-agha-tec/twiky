@@ -1,6 +1,6 @@
 package models
 
-type StartDirectConversationRequest struct {
+type StartDirectConversationDto struct {
 	TargetUserID string `json:"targetUserId" validate:"required"`
 }
 

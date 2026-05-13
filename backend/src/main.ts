@@ -3,7 +3,7 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
-  const frontendUrls = (process.env.FRONTEND_URLS ?? 'http://localhost:3000,http://localhost:3001')
+  const frontendUrls = (process.env.FRONTEND_URLS ?? 'http://localhost:8080/api')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);

@@ -9,10 +9,14 @@ import (
 	"os"
 )
 
-type FileService struct{}
+type FileService struct {
+	supabase *SupabaseClient
+}
 
-func NewFileService() *FileService {
-	return &FileService{}
+func NewFileService(supabaseURL, supabaseKey string) *FileService {
+	return &FileService{
+		supabase: NewSupabaseClient(supabaseURL, supabaseKey),
+	}
 }
 
 // Helper to upload a file directly to Supabase Storage via REST

@@ -114,7 +114,7 @@ func (s *UserService) GetMutualFollowers(userID string) ([]models.User, error) {
 	return users, nil
 }
 
-func (s *UserService) UpdateProfile(userID string, updateData models.UpdateUserInput) error {
+func (s *UserService) UpdateProfile(userID string, updateData models.UpdateUserInput) (*models.UserProfile, error) {
 	// Build update map with only non-nil fields
 	updateMap := make(map[string]interface{})
 	if updateData.Username != nil {
@@ -159,44 +159,102 @@ func (s *UserService) UpdateProfile(userID string, updateData models.UpdateUserI
 		Execute(&result)
 
 	if err != nil {
-		return fmt.Errorf("failed to update user profile: %w", err)
+		return nil, fmt.Errorf("failed to update user profile: %w", err)
 	}
 
-	return nil
+	if len(result) == 0 {
+		return nil, fmt.Errorf("user not found")
+	}
+
+	// Convert to UserProfile format
+	profile, err := s.GetUserByID(userID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get updated profile: %w", err)
+	}
+
+	return profile, nil
 }
 
 func (s *UserService) GetSettings(userID string) (*models.UserSettings, error) {
-	query := `
-		SELECT id, user_id, theme, language, notifications, email_notifications, 
-		       push_notifications, privacy_level, created_at, updated_at
-		FROM user_settings 
-		WHERE user_id = $1
-	`
-
-	settings := &models.UserSettings{}
-	err := s.db.QueryRow(query, userID).Scan(
-		&settings.ID, &settings.UserID, &settings.Theme, &settings.Language,
-		&settings.Notifications, &settings.EmailNotifications, &settings.PushNotifications,
-		&settings.PrivacyLevel, &settings.CreatedAt, &settings.UpdatedAt,
-	)
+	var settings []models.UserSettings
+	err := s.supabase.GetClient().DB.From("user_settings").
+		Select("*").
+		Eq("user_id", userID).
+		Execute(&settings)
 
 	if err != nil {
-		if err == sql.ErrNoRows {
-			// Return default settings if none found
-			return &models.UserSettings{
-				UserID:             userID,
-				Theme:              "light",
-				Language:           "en",
-				Notifications:      true,
-				EmailNotifications: true,
-				PushNotifications:  true,
-				PrivacyLevel:       "public",
-			}, nil
-		}
 		return nil, fmt.Errorf("failed to query user settings: %w", err)
 	}
 
-	return settings, nil
+	if len(settings) == 0 {
+		// Return default settings if none found
+		return &models.UserSettings{
+			UserID:             userID,
+			Theme:              "light",
+			Language:           "en",
+			Notifications:      true,
+			EmailNotifications: true,
+			PushNotifications:  true,
+			PrivacyLevel:       "public",
+		}, nil
+	}
+
+	return &settings[0], nil
+}
+
+func (s *UserService) UpdateSettings(userID string, updateData models.UserSettings) (*models.UserSettings, error) {
+	// Build update map with only non-zero fields
+	updateMap := make(map[string]interface{})
+	if updateData.Theme != "" {
+		updateMap["theme"] = updateData.Theme
+	}
+	if updateData.Language != "" {
+		updateMap["language"] = updateData.Language
+	}
+	updateMap["notifications"] = updateData.Notifications
+	updateMap["email_notifications"] = updateData.EmailNotifications
+	updateMap["push_notifications"] = updateData.PushNotifications
+	if updateData.PrivacyLevel != "" {
+		updateMap["privacy_level"] = updateData.PrivacyLevel
+	}
+	updateMap["updated_at"] = time.Now()
+
+	var result []models.UserSettings
+	err := s.supabase.GetClient().DB.From("user_settings").
+		Update(updateMap).
+		Eq("user_id", userID).
+		Execute(&result)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to update user settings: %w", err)
+	}
+
+	if len(result) == 0 {
+		// If no settings exist, create new ones
+		updateMap["user_id"] = userID
+		updateMap["created_at"] = time.Now()
+
+		var createResult []models.UserSettings
+		err := s.supabase.GetClient().DB.From("user_settings").
+			Insert(updateMap).
+			Execute(&createResult)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to create user settings: %w", err)
+		}
+
+		if len(createResult) > 0 {
+			return &createResult[0], nil
+		}
+	}
+
+	// Get the updated settings
+	updatedSettings, err := s.GetSettings(userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get updated settings: %w", err)
+	}
+
+	return updatedSettings, nil
 }
 
 func (s *UserService) SearchByUsername(username string, requestingUserID string) ([]*models.User, error) {

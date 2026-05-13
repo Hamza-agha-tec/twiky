@@ -4,9 +4,7 @@ import { createClient } from '@/utils/supabase/client'
 import type { ChatMessage } from '@/hooks/use-messaging'
 
 const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ??
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  'http://localhost:3500'
+  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api'
 
 async function getToken(): Promise<string> {
   const supabase = createClient()

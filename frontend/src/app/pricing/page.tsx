@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ??
   process.env.NEXT_PUBLIC_BACKEND_URL ??
-  'http://localhost:3500';
+  'http://localhost:8080/api';
 
 type PlanType = 'FREE' | 'PRO' | 'GEEK';
 

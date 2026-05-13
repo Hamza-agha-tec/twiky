@@ -51,11 +51,7 @@ func (h *NotificationHandler) GetNotifications(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get notifications"})
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"notifications": notifications,
-		"limit":         limit,
-		"offset":        offset,
-	})
+	return c.JSON(http.StatusOK, notifications)
 }
 
 func (h *NotificationHandler) GetUnreadCount(c echo.Context) error {

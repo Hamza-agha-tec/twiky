@@ -42,6 +42,18 @@ type StoryReaction struct {
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
 
+type FeedGroup struct {
+	User    StoryUser `json:"user"`
+	Stories []Story   `json:"stories"`
+}
+
+type StoryUser struct {
+	ID        string `json:"id"`
+	Username  string `json:"username"`
+	AvatarURL string `json:"avatar_url,omitempty"`
+	SubPlan   string `json:"sub_plan,omitempty"`
+}
+
 type ReactStoryRequest struct {
 	Reaction string `json:"reaction"`
 }
@@ -103,11 +115,38 @@ type PostLike struct {
 // --- MESSAGING MODELS ---
 
 type DirectConversation struct {
-	ID        string    `json:"id"`
-	UserOneID string    `json:"user_one_id"`
-	UserTwoID string    `json:"user_two_id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID          string    `json:"id"`
+	UserOneID   string    `json:"user_one_id"`
+	UserTwoID   string    `json:"user_two_id"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	LastMessage string    `json:"last_message"`
+	UserOne     *User     `json:"user_one"`
+	UserTwo     *User     `json:"user_two"`
+	UnreadCount string    `json:"unread_count"`
+}
+
+type DirectConversationUser struct {
+	ID                  string  `json:"id"`
+	Banner              *string `json:"banner"`
+	SubPlan             string  `json:"sub_plan"`
+	Username            *string `json:"username"`
+	AvatarURL           *string `json:"avatar_url"`
+	IsVerified          *bool   `json:"is_verified"`
+	LastSeenAt          *string `json:"last_seen_at"`
+	WhoCanSeeMyLastSeen *string `json:"who_can_see_my_last_seen,omitempty"`
+	LastSeenHidden      *bool   `json:"last_seen_hidden,omitempty"`
+}
+
+type DirectConversationResponse struct {
+	ID          string                   `json:"id"`
+	UserOneID   string                   `json:"user_one_id"`
+	UserTwoID   string                   `json:"user_two_id"`
+	CreatedAt   time.Time                `json:"created_at"`
+	LastMessage []map[string]interface{} `json:"last_message"`
+	UserOne     DirectConversationUser   `json:"user_one"`
+	UserTwo     DirectConversationUser   `json:"user_two"`
+	UnreadCount int                      `json:"unread_count"`
 }
 
 type DirectMessage struct {
@@ -129,16 +168,42 @@ type GroupMessage struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type GroupMessageSender struct {
+	ID         string  `json:"id"`
+	Fullname   *string `json:"fullname"`
+	SubPlan    string  `json:"sub_plan"`
+	Username   *string `json:"username"`
+	AvatarURL  *string `json:"avatar_url"`
+	IsVerified *bool   `json:"is_verified"`
+}
+
+type GroupMessageResponse struct {
+	ID             string                   `json:"id"`
+	GroupID        string                   `json:"group_id"`
+	SenderID       *string                  `json:"sender_id"`
+	Content        string                   `json:"content"`
+	FileURL        *string                  `json:"file_url"`
+	ReplyToID      *string                  `json:"reply_to_id"`
+	CreatedAt      time.Time                `json:"created_at"`
+	Status         string                   `json:"status"`
+	IsEdited       bool                     `json:"is_edited"`
+	EntityMentions []map[string]interface{} `json:"entity_mentions"`
+	Reactions      []map[string]interface{} `json:"reactions"`
+	IsPinned       bool                     `json:"is_pinned"`
+	FileURLs       []string                 `json:"file_urls"`
+	Type           *string                  `json:"type"`
+	Mime           *string                  `json:"mime"`
+	Duration       *int                     `json:"duration"`
+	Size           *int                     `json:"size"`
+	Sender         *GroupMessageSender      `json:"sender"`
+}
+
 type MessageReaction struct {
 	ID        string    `json:"id"`
 	MessageID string    `json:"message_id"`
 	UserID    string    `json:"user_id"`
 	Emoji     string    `json:"emoji"`
 	CreatedAt time.Time `json:"created_at"`
-}
-
-type StartDirectConversationDto struct {
-	UserID string `json:"userId"`
 }
 
 type SendDirectMessageDto struct {

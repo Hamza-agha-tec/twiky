@@ -22,7 +22,7 @@ func NewGroupHandler(groupService *services.GroupService) *GroupHandler {
 func (h *GroupHandler) CreateGroup(c echo.Context) error {
 	user := c.Get("user").(*middleware.AuthenticatedUser)
 	channelID := c.Param("channelId")
-	
+
 	var createData models.CreateGroupDto
 	if err := c.Bind(&createData); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -39,13 +39,10 @@ func (h *GroupHandler) CreateGroup(c echo.Context) error {
 func (h *GroupHandler) GetChannelGroups(c echo.Context) error {
 	user := c.Get("user").(*middleware.AuthenticatedUser)
 	channelID := c.Param("channelId")
-	
+
 	groups, err := h.groupService.GetGroupsInChannel(channelID, user.UserID)
 	if err != nil {
-		if err.Error() == "access denied" {
-			return c.JSON(http.StatusForbidden, map[string]string{"error": "access denied"})
-		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get channel groups"})
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, groups)
@@ -54,7 +51,7 @@ func (h *GroupHandler) GetChannelGroups(c echo.Context) error {
 func (h *GroupHandler) GetGroupMembers(c echo.Context) error {
 	user := c.Get("user").(*middleware.AuthenticatedUser)
 	groupID := c.Param("groupId")
-	
+
 	members, err := h.groupService.GetGroupMembers(groupID, user.UserID)
 	if err != nil {
 		if err.Error() == "access denied" {
@@ -69,7 +66,7 @@ func (h *GroupHandler) GetGroupMembers(c echo.Context) error {
 func (h *GroupHandler) UpdateGroup(c echo.Context) error {
 	user := c.Get("user").(*middleware.AuthenticatedUser)
 	groupID := c.Param("groupId")
-	
+
 	var updateData models.UpdateGroupDto
 	if err := c.Bind(&updateData); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -89,7 +86,7 @@ func (h *GroupHandler) UpdateGroup(c echo.Context) error {
 func (h *GroupHandler) DeleteGroup(c echo.Context) error {
 	user := c.Get("user").(*middleware.AuthenticatedUser)
 	groupID := c.Param("groupId")
-	
+
 	err := h.groupService.DeleteGroup(groupID, user.UserID)
 	if err != nil {
 		if err.Error() == "group not found" {
@@ -107,7 +104,7 @@ func (h *GroupHandler) DeleteGroup(c echo.Context) error {
 func (h *GroupHandler) AddGroupMember(c echo.Context) error {
 	user := c.Get("user").(*middleware.AuthenticatedUser)
 	groupID := c.Param("groupId")
-	
+
 	var addData models.AddGroupMemberDto
 	if err := c.Bind(&addData); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -130,7 +127,7 @@ func (h *GroupHandler) AddGroupMember(c echo.Context) error {
 func (h *GroupHandler) UpdateGroupMemberRole(c echo.Context) error {
 	user := c.Get("user").(*middleware.AuthenticatedUser)
 	groupID := c.Param("groupId")
-	
+
 	var updateData models.AddGroupMemberDto
 	if err := c.Bind(&updateData); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -151,7 +148,7 @@ func (h *GroupHandler) DeleteGroupMember(c echo.Context) error {
 	user := c.Get("user").(*middleware.AuthenticatedUser)
 	groupID := c.Param("groupId")
 	memberID := c.Param("memberId")
-	
+
 	err := h.groupService.DeleteGroupMember(groupID, user.UserID, memberID)
 	if err != nil {
 		if err.Error() == "access denied" || err.Error() == "insufficient permissions" {
@@ -166,15 +163,15 @@ func (h *GroupHandler) DeleteGroupMember(c echo.Context) error {
 func (h *GroupHandler) RequestJoin(c echo.Context) error {
 	user := c.Get("user").(*middleware.AuthenticatedUser)
 	groupID := c.Param("groupId")
-	
+
 	err := h.groupService.RequestJoinGroup(groupID, user.UserID)
 	if err != nil {
 		if err.Error() == "group not found" {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "group not found"})
 		}
-		if err.Error() == "can only request to join private groups" || 
-		   err.Error() == "already a member" || 
-		   err.Error() == "join request already pending" {
+		if err.Error() == "can only request to join private groups" ||
+			err.Error() == "already a member" ||
+			err.Error() == "join request already pending" {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to request join"})
@@ -186,7 +183,7 @@ func (h *GroupHandler) RequestJoin(c echo.Context) error {
 func (h *GroupHandler) GetJoinRequests(c echo.Context) error {
 	user := c.Get("user").(*middleware.AuthenticatedUser)
 	groupID := c.Param("groupId")
-	
+
 	requests, err := h.groupService.GetJoinRequests(groupID, user.UserID)
 	if err != nil {
 		if err.Error() == "access denied" || err.Error() == "insufficient permissions" {
@@ -202,11 +199,11 @@ func (h *GroupHandler) RespondToJoinRequest(c echo.Context) error {
 	user := c.Get("user").(*middleware.AuthenticatedUser)
 	groupID := c.Param("groupId")
 	requestID := c.Param("requestId")
-	
+
 	var body struct {
 		Status string `json:"status" validate:"required,oneof=ACCEPTED REJECTED"`
 	}
-	
+
 	if err := c.Bind(&body); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}

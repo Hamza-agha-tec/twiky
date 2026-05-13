@@ -191,26 +191,29 @@ func (s *ContentService) CreateStory(userID string, req models.CreateStoryReques
 	return story, nil
 }
 
-func (s *ContentService) GetFeed(userID string) ([]*models.Story, error) {
-	// Get stories from mutual followers and self
+func (s *ContentService) GetFeed(userID string) ([]*models.FeedGroup, error) {
+	// Get stories from mutual followers and self with user information
 	query := `
-		SELECT s.id, s.user_id, s.media_url, s.type, s.caption, s.music_preview_url, s.music_title, s.music_artist, s.music_cover_url, s.created_at, s.expires_at
+		SELECT 
+			s.id, s.user_id, s.media_url, s.type, s.caption, s.music_preview_url, s.music_title, s.music_artist, s.music_cover_url, s.created_at, s.expires_at,
+			u.username, u.avatar_url, u.sub_plan
 		FROM stories s
+		LEFT JOIN users u ON s.user_id = u.id
 		WHERE s.expires_at > CURRENT_TIMESTAMP
 		AND (
 			s.user_id = $1
 			OR s.user_id IN (
 				SELECT f.following_id
-				FROM follows f
-				WHERE f.follower_id = $1
-				AND f.following_id IN (
-					SELECT f2.follower_id
-					FROM follows f2
-					WHERE f2.following_id = $1
-				)
+					FROM follows f
+					WHERE f.follower_id = $1
+					AND f.following_id IN (
+						SELECT f2.follower_id
+						FROM follows f2
+						WHERE f2.following_id = $1
+					)
 			)
 		)
-		ORDER BY s.created_at DESC
+		ORDER BY s.user_id, s.created_at DESC
 	`
 
 	rows, err := s.db.Query(query, userID)
@@ -219,19 +222,37 @@ func (s *ContentService) GetFeed(userID string) ([]*models.Story, error) {
 	}
 	defer rows.Close()
 
-	var stories []*models.Story
+	// Group stories by user
+	userStoriesMap := make(map[string]*models.FeedGroup)
 	for rows.Next() {
 		story := &models.Story{}
+		user := &models.StoryUser{}
+
 		err := rows.Scan(
 			&story.ID, &story.UserID, &story.MediaURL, &story.Type, &story.Caption, &story.MusicPreviewURL, &story.MusicTitle, &story.MusicArtist, &story.MusicCoverURL, &story.CreatedAt, &story.ExpiresAt,
+			&user.ID, &user.Username, &user.AvatarURL, &user.SubPlan,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan story: %w", err)
+			return nil, fmt.Errorf("failed to scan story feed: %w", err)
 		}
-		stories = append(stories, story)
+
+		if _, exists := userStoriesMap[story.UserID]; !exists {
+			userStoriesMap[story.UserID] = &models.FeedGroup{
+				User:    *user,
+				Stories: []models.Story{},
+			}
+		}
+
+		userStoriesMap[story.UserID].Stories = append(userStoriesMap[story.UserID].Stories, *story)
 	}
 
-	return stories, nil
+	// Convert map to slice - always return at least an empty array
+	feedGroups := make([]*models.FeedGroup, 0, len(userStoriesMap))
+	for _, group := range userStoriesMap {
+		feedGroups = append(feedGroups, group)
+	}
+
+	return feedGroups, nil
 }
 
 func (s *ContentService) GetStoryById(userID string, storyID string) (*models.Story, error) {
@@ -261,12 +282,23 @@ func (s *ContentService) RecordView(userID string, storyID string) (*models.Stor
 		return nil, fmt.Errorf("failed to get story: %w", err)
 	}
 
-	// Record view if not already viewed
-	var count int
-	s.db.QueryRow("SELECT COUNT(*) FROM story_views WHERE story_id = $1 AND user_id = $2", storyID, userID).Scan(&count)
+	// Check if already viewed
+	var views []models.StoryView
+	err = s.supabase.GetClient().DB.From("story_views").
+		Select("id").
+		Filter("story_id", "eq", storyID).
+		Filter("user_id", "eq", userID).
+		Execute(&views)
 
-	if count == 0 {
-		_, err = s.db.Exec("INSERT INTO story_views (story_id, user_id) VALUES ($1, $2)", storyID, userID)
+	if len(views) == 0 {
+		// Record view
+		var newViews []models.StoryView
+		err = s.supabase.GetClient().DB.From("story_views").
+			Insert(map[string]interface{}{
+				"story_id": storyID,
+				"user_id":  userID,
+			}).
+			Execute(&newViews)
 		if err != nil {
 			return nil, fmt.Errorf("failed to record view: %w", err)
 		}
@@ -342,7 +374,11 @@ func (s *ContentService) ReactToStory(userID string, storyID string, reaction st
 }
 
 func (s *ContentService) RemoveReaction(userID string, storyID string) error {
-	_, err := s.db.Exec("DELETE FROM story_reactions WHERE story_id = $1 AND user_id = $2", storyID, userID)
+	err := s.supabase.GetClient().DB.From("story_reactions").
+		Delete().
+		Filter("story_id", "eq", storyID).
+		Filter("user_id", "eq", userID).
+		Execute(nil)
 	if err != nil {
 		return fmt.Errorf("failed to remove reaction: %w", err)
 	}
@@ -350,7 +386,11 @@ func (s *ContentService) RemoveReaction(userID string, storyID string) error {
 }
 
 func (s *ContentService) DeleteStory(userID string, storyID string) error {
-	_, err := s.db.Exec("DELETE FROM stories WHERE id = $1 AND user_id = $2", storyID, userID)
+	err := s.supabase.GetClient().DB.From("stories").
+		Delete().
+		Filter("id", "eq", storyID).
+		Filter("user_id", "eq", userID).
+		Execute(nil)
 	if err != nil {
 		return fmt.Errorf("failed to delete story: %w", err)
 	}
@@ -363,67 +403,54 @@ func (s *ContentService) CreateProduct(req models.CreateProductRequest) (*models
 	featuresJSON, _ := json.Marshal(req.Features)
 	imagesJSON, _ := json.Marshal(req.Images)
 
-	query := `
-		INSERT INTO products (id, title, description, price, category, features, slug, active, sales, dodo_product_id, discount, images, created_at, updated_at)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 0, $8, $9, $10, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-		RETURNING id, title, description, price, category, slug, active, sales, dodo_product_id, discount, created_at, updated_at
-	`
-
-	product := &models.Product{}
-	err := s.db.QueryRow(query,
-		req.Title, req.Description, req.Price, req.Category, featuresJSON, req.Slug, req.Active, req.DodoProductID, req.Discount, imagesJSON,
-	).Scan(
-		&product.ID, &product.Title, &product.Description, &product.Price, &product.Category, &product.Slug, &product.Active, &product.Sales, &product.DodoProductID, &product.Discount, &product.CreatedAt, &product.UpdatedAt,
-	)
+	var products []models.Product
+	err := s.supabase.GetClient().DB.From("products").
+		Insert(map[string]interface{}{
+			"title":           req.Title,
+			"description":     req.Description,
+			"price":           req.Price,
+			"category":        req.Category,
+			"features":        featuresJSON,
+			"slug":            req.Slug,
+			"active":          req.Active,
+			"dodo_product_id": req.DodoProductID,
+			"discount":        req.Discount,
+			"images":          imagesJSON,
+		}).
+		Execute(&products)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create product: %w", err)
 	}
 
-	product.Features = req.Features
-	product.Images = req.Images
+	if len(products) == 0 {
+		return nil, fmt.Errorf("failed to create product: no data returned")
+	}
 
-	return product, nil
+	products[0].Features = req.Features
+	products[0].Images = req.Images
+
+	return &products[0], nil
 }
 
 func (s *ContentService) GetProducts() ([]*models.Product, error) {
-	query := `
-		SELECT id, title, description, price, category, features, slug, active, sales, dodo_product_id, discount, images, created_at, updated_at
-		FROM products
-		WHERE active = true
-		ORDER BY created_at DESC
-	`
+	var products []models.Product
+	err := s.supabase.GetClient().DB.From("products").
+		Select("*").
+		Eq("active", "true").
+		Execute(&products)
 
-	rows, err := s.db.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query products: %w", err)
 	}
-	defer rows.Close()
 
-	var products []*models.Product
-	for rows.Next() {
-		prod := &models.Product{}
-		var features []byte
-		var images []byte
-
-		err := rows.Scan(
-			&prod.ID, &prod.Title, &prod.Description, &prod.Price, &prod.Category, &features, &prod.Slug, &prod.Active, &prod.Sales, &prod.DodoProductID, &prod.Discount, &images, &prod.CreatedAt, &prod.UpdatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan product: %w", err)
-		}
-
-		if features != nil {
-			json.Unmarshal(features, &prod.Features)
-		}
-		if images != nil {
-			json.Unmarshal(images, &prod.Images)
-		}
-
-		products = append(products, prod)
+	// Convert to pointer slice
+	var productPtrs []*models.Product
+	for i := range products {
+		productPtrs = append(productPtrs, &products[i])
 	}
 
-	return products, nil
+	return productPtrs, nil
 }
 
 func (s *ContentService) GetActiveProducts() ([]*models.Product, error) {
@@ -431,95 +458,59 @@ func (s *ContentService) GetActiveProducts() ([]*models.Product, error) {
 }
 
 func (s *ContentService) GetFeaturedProducts() ([]*models.Product, error) {
-	query := `
-		SELECT id, title, description, price, category, features, slug, active, sales, dodo_product_id, discount, images, created_at, updated_at
-		FROM products
-		WHERE active = true AND featured = true
-		ORDER BY created_at DESC
-		LIMIT 10
-	`
+	var products []models.Product
+	err := s.supabase.GetClient().DB.From("products").
+		Select("*").
+		Eq("active", "true").
+		Eq("featured", "true").
+		Execute(&products)
 
-	rows, err := s.db.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query featured products: %w", err)
 	}
-	defer rows.Close()
 
-	var products []*models.Product
-	for rows.Next() {
-		prod := &models.Product{}
-		var features []byte
-		var images []byte
-
-		err := rows.Scan(
-			&prod.ID, &prod.Title, &prod.Description, &prod.Price, &prod.Category, &features, &prod.Slug, &prod.Active, &prod.Sales, &prod.DodoProductID, &prod.Discount, &images, &prod.CreatedAt, &prod.UpdatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan product: %w", err)
-		}
-
-		if features != nil {
-			json.Unmarshal(features, &prod.Features)
-		}
-		if images != nil {
-			json.Unmarshal(images, &prod.Images)
-		}
-
-		products = append(products, prod)
+	// Convert to pointer slice
+	var productPtrs []*models.Product
+	for i := range products {
+		productPtrs = append(productPtrs, &products[i])
 	}
 
-	return products, nil
+	return productPtrs, nil
 }
 
 func (s *ContentService) GetProductsByCategory(category string) ([]*models.Product, error) {
-	query := `
-		SELECT id, title, description, price, category, features, slug, active, sales, dodo_product_id, discount, images, created_at, updated_at
-		FROM products
-		WHERE active = true AND category = $1
-		ORDER BY created_at DESC
-	`
+	var products []models.Product
+	err := s.supabase.GetClient().DB.From("products").
+		Select("*").
+		Eq("active", "true").
+		Eq("category", category).
+		Execute(&products)
 
-	rows, err := s.db.Query(query, category)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query products by category: %w", err)
 	}
-	defer rows.Close()
 
-	var products []*models.Product
-	for rows.Next() {
-		prod := &models.Product{}
-		var features []byte
-		var images []byte
-
-		err := rows.Scan(
-			&prod.ID, &prod.Title, &prod.Description, &prod.Price, &prod.Category, &features, &prod.Slug, &prod.Active, &prod.Sales, &prod.DodoProductID, &prod.Discount, &images, &prod.CreatedAt, &prod.UpdatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan product: %w", err)
-		}
-
-		if features != nil {
-			json.Unmarshal(features, &prod.Features)
-		}
-		if images != nil {
-			json.Unmarshal(images, &prod.Images)
-		}
-
-		products = append(products, prod)
+	// Convert to pointer slice
+	var productPtrs []*models.Product
+	for i := range products {
+		productPtrs = append(productPtrs, &products[i])
 	}
 
-	return products, nil
+	return productPtrs, nil
 }
 
 func (s *ContentService) SearchProducts(query string) ([]*models.Product, error) {
-	searchQuery := `
-		SELECT id, title, description, price, category, features, slug, active, sales, dodo_product_id, discount, images, created_at, updated_at
-		FROM products
-		WHERE active = true AND (title ILIKE $1 OR description ILIKE $1)
+	// Use raw SQL for OR condition since supabase-go doesn't support OR operations
+	sqlQuery := `
+		SELECT id, title, description, price, category, features, slug, active, 
+		       dodo_product_id, discount, images, created_at, updated_at
+		FROM products 
+		WHERE active = true 
+		AND (title ILIKE $1 OR description ILIKE $2)
 		ORDER BY created_at DESC
 	`
 
-	rows, err := s.db.Query(searchQuery, "%"+query+"%")
+	rows, err := s.db.Query(sqlQuery, "%"+query+"%", "%"+query+"%")
 	if err != nil {
 		return nil, fmt.Errorf("failed to search products: %w", err)
 	}
@@ -527,216 +518,167 @@ func (s *ContentService) SearchProducts(query string) ([]*models.Product, error)
 
 	var products []*models.Product
 	for rows.Next() {
-		prod := &models.Product{}
-		var features []byte
-		var images []byte
+		product := &models.Product{}
+		var featuresJSON, imagesJSON []byte
 
 		err := rows.Scan(
-			&prod.ID, &prod.Title, &prod.Description, &prod.Price, &prod.Category, &features, &prod.Slug, &prod.Active, &prod.Sales, &prod.DodoProductID, &prod.Discount, &images, &prod.CreatedAt, &prod.UpdatedAt,
+			&product.ID, &product.Title, &product.Description, &product.Price,
+			&product.Category, &featuresJSON, &product.Slug, &product.Active,
+			&product.DodoProductID, &product.Discount, &imagesJSON,
+			&product.CreatedAt, &product.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan product: %w", err)
 		}
 
-		if features != nil {
-			json.Unmarshal(features, &prod.Features)
+		// Unmarshal JSON fields
+		if featuresJSON != nil {
+			json.Unmarshal(featuresJSON, &product.Features)
 		}
-		if images != nil {
-			json.Unmarshal(images, &prod.Images)
+		if imagesJSON != nil {
+			json.Unmarshal(imagesJSON, &product.Images)
 		}
 
-		products = append(products, prod)
+		products = append(products, product)
 	}
 
 	return products, nil
 }
 
 func (s *ContentService) GetProductsByPriceRange(minPrice, maxPrice float64) ([]*models.Product, error) {
-	query := `
-		SELECT id, title, description, price, category, features, slug, active, sales, dodo_product_id, discount, images, created_at, updated_at
-		FROM products
-		WHERE active = true AND price >= $1 AND price <= $2
-		ORDER BY price ASC
-	`
+	var products []models.Product
+	err := s.supabase.GetClient().DB.From("products").
+		Select("*").
+		Eq("active", "true").
+		Gte("price", fmt.Sprintf("%.2f", minPrice)).
+		Lte("price", fmt.Sprintf("%.2f", maxPrice)).
+		Execute(&products)
 
-	rows, err := s.db.Query(query, minPrice, maxPrice)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query products by price range: %w", err)
 	}
-	defer rows.Close()
 
-	var products []*models.Product
-	for rows.Next() {
-		prod := &models.Product{}
-		var features []byte
-		var images []byte
-
-		err := rows.Scan(
-			&prod.ID, &prod.Title, &prod.Description, &prod.Price, &prod.Category, &features, &prod.Slug, &prod.Active, &prod.Sales, &prod.DodoProductID, &prod.Discount, &images, &prod.CreatedAt, &prod.UpdatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan product: %w", err)
-		}
-
-		if features != nil {
-			json.Unmarshal(features, &prod.Features)
-		}
-		if images != nil {
-			json.Unmarshal(images, &prod.Images)
-		}
-
-		products = append(products, prod)
+	// Convert to pointer slice
+	var productPtrs []*models.Product
+	for i := range products {
+		productPtrs = append(productPtrs, &products[i])
 	}
 
-	return products, nil
+	return productPtrs, nil
 }
 
 func (s *ContentService) GetOnSaleProducts() ([]*models.Product, error) {
-	query := `
-		SELECT id, title, description, price, category, features, slug, active, sales, dodo_product_id, discount, images, created_at, updated_at
-		FROM products
-		WHERE active = true AND discount > 0
-		ORDER BY discount DESC
-	`
+	var products []models.Product
+	err := s.supabase.GetClient().DB.From("products").
+		Select("*").
+		Eq("active", "true").
+		Gt("discount", "0").
+		Execute(&products)
 
-	rows, err := s.db.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query on sale products: %w", err)
 	}
-	defer rows.Close()
 
-	var products []*models.Product
-	for rows.Next() {
-		prod := &models.Product{}
-		var features []byte
-		var images []byte
-
-		err := rows.Scan(
-			&prod.ID, &prod.Title, &prod.Description, &prod.Price, &prod.Category, &features, &prod.Slug, &prod.Active, &prod.Sales, &prod.DodoProductID, &prod.Discount, &images, &prod.CreatedAt, &prod.UpdatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan product: %w", err)
-		}
-
-		if features != nil {
-			json.Unmarshal(features, &prod.Features)
-		}
-		if images != nil {
-			json.Unmarshal(images, &prod.Images)
-		}
-
-		products = append(products, prod)
+	// Convert to pointer slice
+	var productPtrs []*models.Product
+	for i := range products {
+		productPtrs = append(productPtrs, &products[i])
 	}
 
-	return products, nil
+	return productPtrs, nil
 }
 
 func (s *ContentService) GetProductById(id string) (*models.Product, error) {
-	query := `
-		SELECT id, title, description, price, category, features, slug, active, sales, dodo_product_id, discount, images, created_at, updated_at
-		FROM products
-		WHERE id = $1
-	`
-
-	prod := &models.Product{}
-	var features []byte
-	var images []byte
-
-	err := s.db.QueryRow(query, id).Scan(
-		&prod.ID, &prod.Title, &prod.Description, &prod.Price, &prod.Category, &features, &prod.Slug, &prod.Active, &prod.Sales, &prod.DodoProductID, &prod.Discount, &images, &prod.CreatedAt, &prod.UpdatedAt,
-	)
+	var products []models.Product
+	err := s.supabase.GetClient().DB.From("products").
+		Select("*").
+		Eq("id", id).
+		Execute(&products)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get product: %w", err)
 	}
 
-	if features != nil {
-		json.Unmarshal(features, &prod.Features)
-	}
-	if images != nil {
-		json.Unmarshal(images, &prod.Images)
+	if len(products) == 0 {
+		return nil, fmt.Errorf("product not found")
 	}
 
-	return prod, nil
+	// Convert to pointer slice
+	var productPtrs []*models.Product
+	for i := range products {
+		productPtrs = append(productPtrs, &products[i])
+	}
+
+	return productPtrs[0], nil
 }
 
 func (s *ContentService) GetProductBySlug(slug string) (*models.Product, error) {
-	query := `
-		SELECT id, title, description, price, category, features, slug, active, sales, dodo_product_id, discount, images, created_at, updated_at
-		FROM products
-		WHERE slug = $1
-	`
-
-	prod := &models.Product{}
-	var features []byte
-	var images []byte
-
-	err := s.db.QueryRow(query, slug).Scan(
-		&prod.ID, &prod.Title, &prod.Description, &prod.Price, &prod.Category, &features, &prod.Slug, &prod.Active, &prod.Sales, &prod.DodoProductID, &prod.Discount, &images, &prod.CreatedAt, &prod.UpdatedAt,
-	)
+	var products []models.Product
+	err := s.supabase.GetClient().DB.From("products").
+		Select("*").
+		Eq("slug", slug).
+		Execute(&products)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get product: %w", err)
 	}
 
-	if features != nil {
-		json.Unmarshal(features, &prod.Features)
-	}
-	if images != nil {
-		json.Unmarshal(images, &prod.Images)
+	if len(products) == 0 {
+		return nil, fmt.Errorf("product not found")
 	}
 
-	return prod, nil
+	return &products[0], nil
+}
+
+func (s *ContentService) DeleteProduct(id string) error {
+	err := s.supabase.GetClient().DB.From("products").
+		Delete().
+		Filter("id", "eq", id).
+		Execute(nil)
+	if err != nil {
+		return fmt.Errorf("failed to delete product: %w", err)
+	}
+	return nil
 }
 
 func (s *ContentService) UpdateProduct(id string, req models.UpdateProductRequest) (*models.Product, error) {
-	featuresJSON, _ := json.Marshal(req.Features)
-	imagesJSON, _ := json.Marshal(req.Images)
+	// Marshal JSON fields
+	featuresJSON, err := json.Marshal(req.Features)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal features: %w", err)
+	}
 
-	query := `
-		UPDATE products
-		SET title = COALESCE($1, title),
-			description = COALESCE($2, description),
-			price = COALESCE($3, price),
-			category = COALESCE($4, category),
-			features = COALESCE($5, features),
-			slug = COALESCE($6, slug),
-			active = COALESCE($7, active),
-			discount = COALESCE($8, discount),
-			images = COALESCE($9, images),
-			updated_at = CURRENT_TIMESTAMP
-		WHERE id = $10
-		RETURNING id, title, description, price, category, features, slug, active, sales, dodo_product_id, discount, images, created_at, updated_at
-	`
+	imagesJSON, err := json.Marshal(req.Images)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal images: %w", err)
+	}
 
-	prod := &models.Product{}
-	var features []byte
-	var images []byte
-
-	err := s.db.QueryRow(query,
-		req.Title, req.Description, req.Price, req.Category, featuresJSON, req.Slug, req.Active, req.Discount, imagesJSON, id,
-	).Scan(
-		&prod.ID, &prod.Title, &prod.Description, &prod.Price, &prod.Category, &features, &prod.Slug, &prod.Active, &prod.Sales, &prod.DodoProductID, &prod.Discount, &images, &prod.CreatedAt, &prod.UpdatedAt,
-	)
+	// Update product
+	var products []models.Product
+	err = s.supabase.GetClient().DB.From("products").
+		Update(map[string]interface{}{
+			"title":           req.Title,
+			"description":     req.Description,
+			"price":           req.Price,
+			"category":        req.Category,
+			"features":        featuresJSON,
+			"slug":            req.Slug,
+			"active":          req.Active,
+			"dodo_product_id": req.DodoProductID,
+			"discount":        req.Discount,
+			"images":          imagesJSON,
+			"updated_at":      "now()",
+		}).
+		Filter("id", "eq", id).
+		Execute(&products)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to update product: %w", err)
 	}
 
-	if features != nil {
-		json.Unmarshal(features, &prod.Features)
-	}
-	if images != nil {
-		json.Unmarshal(images, &prod.Images)
+	if len(products) == 0 {
+		return nil, fmt.Errorf("product not found")
 	}
 
-	return prod, nil
-}
-
-func (s *ContentService) DeleteProduct(id string) error {
-	_, err := s.db.Exec("DELETE FROM products WHERE id = $1", id)
-	if err != nil {
-		return fmt.Errorf("failed to delete product: %w", err)
-	}
-	return nil
+	return &products[0], nil
 }

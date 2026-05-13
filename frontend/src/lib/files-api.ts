@@ -1,6 +1,6 @@
 import { createClient } from '@/utils/supabase/client';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3500';
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api';
 
 export type UploadSlotResult = { path: string; publicUrl: string };
 export const BANNER_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml';

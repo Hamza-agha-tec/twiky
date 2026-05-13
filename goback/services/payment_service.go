@@ -8,20 +8,24 @@ import (
 )
 
 type PaymentService struct {
-	db       *sql.DB
-	supabase *SupabaseClient
+	db          *sql.DB
+	supabase    *SupabaseClient
+	supabaseURL string
+	supabaseKey string
 }
 
 func NewPaymentService(db *sql.DB, supabaseURL, supabaseKey string) *PaymentService {
 	return &PaymentService{
-		db:       db,
-		supabase: NewSupabaseClient(supabaseURL, supabaseKey),
+		db:          db,
+		supabase:    NewSupabaseClient(supabaseURL, supabaseKey),
+		supabaseURL: supabaseURL,
+		supabaseKey: supabaseKey,
 	}
 }
 
 func (s *PaymentService) CreateCheckoutSession(userID, productID, redirectURL string) (map[string]interface{}, error) {
 	// Use DodoPayments service
-	dodoService := NewDodoPaymentService(s.db)
+	dodoService := NewDodoPaymentService(s.db, s.supabaseURL, s.supabaseKey)
 	return dodoService.CreateCheckoutSession(userID, productID, redirectURL)
 }
 
@@ -46,31 +50,35 @@ func (s *PaymentService) GetSubscription(userID string) (*models.UserSubscriptio
 
 func (s *PaymentService) GetCustomerPortalUrl(userID string) (string, error) {
 	// Use DodoPayments service
-	dodoService := NewDodoPaymentService(s.db)
+	dodoService := NewDodoPaymentService(s.db, s.supabaseURL, s.supabaseKey)
 	return dodoService.GetCustomerPortalUrl(userID)
 }
 
 func (s *PaymentService) HandleWebhook(rawPayload string, headers map[string][]string) error {
 	// Use DodoPayments service
-	dodoService := NewDodoPaymentService(s.db)
+	dodoService := NewDodoPaymentService(s.db, s.supabaseURL, s.supabaseKey)
 	return dodoService.HandleWebhook(rawPayload, headers)
 }
 
 type ProductPaymentsService struct {
-	db       *sql.DB
-	supabase *SupabaseClient
+	db          *sql.DB
+	supabase    *SupabaseClient
+	supabaseURL string
+	supabaseKey string
 }
 
 func NewProductPaymentsService(db *sql.DB, supabaseURL, supabaseKey string) *ProductPaymentsService {
 	return &ProductPaymentsService{
-		db:       db,
-		supabase: NewSupabaseClient(supabaseURL, supabaseKey),
+		db:          db,
+		supabase:    NewSupabaseClient(supabaseURL, supabaseKey),
+		supabaseURL: supabaseURL,
+		supabaseKey: supabaseKey,
 	}
 }
 
 func (s *ProductPaymentsService) CreateProductCheckout(userID string, dto models.ProductCheckoutDto) (map[string]interface{}, error) {
 	// Use DodoPayments service
-	dodoService := NewDodoPaymentService(s.db)
+	dodoService := NewDodoPaymentService(s.db, s.supabaseURL, s.supabaseKey)
 	return dodoService.CreateCheckoutSession(userID, dto.ProductID, "")
 }
 

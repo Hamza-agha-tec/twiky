@@ -23,7 +23,15 @@ func NewMessagingHandler(messagingService *services.MessagingService, socketIOSe
 // --- DIRECT CONVERSATIONS ---
 
 func (h *MessagingHandler) GetDirectConversations(c echo.Context) error {
-	userID := c.Get("userID").(string)
+	userIDInterface := c.Get("userID")
+	if userIDInterface == nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "user not authenticated"})
+	}
+
+	userID, ok := userIDInterface.(string)
+	if !ok {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "invalid user ID format"})
+	}
 
 	conversations, err := h.messagingService.GetDirectConversations(userID)
 	if err != nil {
@@ -41,8 +49,8 @@ func (h *MessagingHandler) CreateDirectConversation(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request format"})
 	}
 
-	if dto.UserID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "userId is required"})
+	if dto.TargetUserID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "targetUserId is required"})
 	}
 
 	conv, err := h.messagingService.CreateDirectConversation(userID, dto)
@@ -87,6 +95,18 @@ func (h *MessagingHandler) SendDirectMessage(c echo.Context) error {
 	h.socketIOService.BroadcastToRoom("conversation_"+conversationID, "newMessage", msg)
 
 	return c.JSON(http.StatusCreated, msg)
+}
+
+func (h *MessagingHandler) DeleteDirectConversation(c echo.Context) error {
+	userID := c.Get("userID").(string)
+	conversationID := c.Param("id")
+
+	result, err := h.messagingService.DeleteDirectConversation(userID, conversationID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, result)
 }
 
 func (h *MessagingHandler) ToggleDirectMessageReaction(c echo.Context) error {

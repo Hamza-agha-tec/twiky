@@ -1,75 +1,88 @@
 package services
 
 import (
-	"database/sql"
 	"fmt"
 
 	"github.com/Hamza-agha-tec/goback/models"
 )
 
 type InvitationService struct {
-	db *sql.DB
+	supabase *SupabaseClient
 }
 
-func NewInvitationService(db *sql.DB) *InvitationService {
+func NewInvitationService(supabaseURL, supabaseKey string) *InvitationService {
 	return &InvitationService{
-		db: db,
+		supabase: NewSupabaseClient(supabaseURL, supabaseKey),
 	}
 }
 
 func (s *InvitationService) CreateInvitation(inviterID string, req models.CreateInvitationRequest) (*models.Invitation, error) {
-	query := `
-		INSERT INTO invitations (id, inviter_id, invitee_id, entity_type, entity_id, status, created_at, updated_at)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, 'PENDING', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-		RETURNING id, inviter_id, invitee_id, entity_type, entity_id, status, created_at, updated_at
-	`
-
-	inv := &models.Invitation{}
-	err := s.db.QueryRow(query, inviterID, req.InviteeID, req.EntityType, req.EntityID).Scan(
-		&inv.ID, &inv.InviterID, &inv.InviteeID, &inv.EntityType, &inv.EntityID, &inv.Status, &inv.CreatedAt, &inv.UpdatedAt,
-	)
+	var invitations []models.Invitation
+	err := s.supabase.GetClient().DB.From("invitations").
+		Insert(map[string]interface{}{
+			"inviter_id":  inviterID,
+			"invitee_id":  req.InviteeID,
+			"entity_type": req.EntityType,
+			"entity_id":   req.EntityID,
+			"status":      "PENDING",
+		}).
+		Execute(&invitations)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create invitation: %w", err)
 	}
 
-	return inv, nil
+	if len(invitations) == 0 {
+		return nil, fmt.Errorf("failed to create invitation: no data returned")
+	}
+
+	return &invitations[0], nil
 }
 
 func (s *InvitationService) RespondToInvitation(userID, invitationID, status string) error {
-	_, err := s.db.Exec(`
-		UPDATE invitations SET status = $1, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $2 AND invitee_id = $3
-	`, status, invitationID, userID)
+	var result []map[string]interface{}
+	err := s.supabase.GetClient().DB.From("invitations").
+		Update(map[string]interface{}{
+			"status":     status,
+			"updated_at": "now()",
+		}).
+		Eq("id", invitationID).
+		Eq("invitee_id", userID).
+		Execute(&result)
 
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to respond to invitation: %w", err)
+	}
+
+	return nil
 }
 
 func (s *InvitationService) GetInvitations(userID string) ([]*models.Invitation, error) {
-	query := `
-		SELECT id, inviter_id, invitee_id, entity_type, entity_id, status, created_at, updated_at
-		FROM invitations
-		WHERE invitee_id = $1 AND status = 'PENDING'
-		ORDER BY created_at DESC
-	`
+	// Get invitations where user is either inviter or invitee
+	var invitationsSent []models.Invitation
+	err1 := s.supabase.GetClient().DB.From("invitations").
+		Select("*").
+		Eq("inviter_id", userID).
+		Execute(&invitationsSent)
 
-	rows, err := s.db.Query(query, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+	var invitationsReceived []models.Invitation
+	err2 := s.supabase.GetClient().DB.From("invitations").
+		Select("*").
+		Eq("invitee_id", userID).
+		Execute(&invitationsReceived)
 
-	var invs []*models.Invitation
-	for rows.Next() {
-		inv := &models.Invitation{}
-		err := rows.Scan(
-			&inv.ID, &inv.InviterID, &inv.InviteeID, &inv.EntityType, &inv.EntityID, &inv.Status, &inv.CreatedAt, &inv.UpdatedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-		invs = append(invs, inv)
+	if err1 != nil || err2 != nil {
+		return nil, fmt.Errorf("failed to query invitations: %w", fmt.Errorf("%v, %v", err1, err2))
 	}
 
-	return invs, nil
+	// Combine both lists
+	var result []*models.Invitation
+	for i := range invitationsSent {
+		result = append(result, &invitationsSent[i])
+	}
+	for i := range invitationsReceived {
+		result = append(result, &invitationsReceived[i])
+	}
+
+	return result, nil
 }

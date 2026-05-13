@@ -8,462 +8,526 @@ import (
 )
 
 type GroupService struct {
-	db *sql.DB
+	db       *sql.DB
+	supabase *SupabaseClient
 }
 
-func NewGroupService(db *sql.DB) *GroupService {
+func NewGroupService(db *sql.DB, supabaseURL, supabaseKey string) *GroupService {
 	return &GroupService{
-		db: db,
+		db:       db,
+		supabase: NewSupabaseClient(supabaseURL, supabaseKey),
 	}
 }
 
 func (s *GroupService) CreateGroup(channelID, userID string, createData models.CreateGroupDto) (*models.Group, error) {
-	query := `
-		INSERT INTO groups (id, channel_id, name, description, group_type, access_type, owner_id, created_at, updated_at)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-		RETURNING id, channel_id, name, description, group_type, access_type, owner_id, created_at, updated_at
-	`
-	
-	group := &models.Group{}
-	err := s.db.QueryRow(query,
-		channelID, createData.Name, createData.Description,
-		createData.GroupType, createData.AccessType, userID,
-	).Scan(
-		&group.ID, &group.ChannelID, &group.Name, &group.Description,
-		&group.GroupType, &group.AccessType, &group.OwnerID,
-		&group.CreatedAt, &group.UpdatedAt,
-	)
-	
+	var groups []models.Group
+	err := s.supabase.GetClient().DB.From("groups").
+		Insert(map[string]interface{}{
+			"channel_id":  channelID,
+			"name":        createData.Name,
+			"description": createData.Description,
+			"group_type":  createData.GroupType,
+			"access_type": createData.AccessType,
+			"owner_id":    userID,
+		}).
+		Execute(&groups)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to create group: %w", err)
 	}
-	
+
+	if len(groups) == 0 {
+		return nil, fmt.Errorf("failed to create group: no data returned")
+	}
+
 	// Add owner as admin member
-	_, err = s.db.Exec(`
-		INSERT INTO group_members (id, group_id, user_id, role, joined_at)
-		VALUES (gen_random_uuid(), $1, $2, 'ADMIN', CURRENT_TIMESTAMP)
-	`, group.ID, userID)
-	
+	var members []interface{}
+	err = s.supabase.GetClient().DB.From("group_members").
+		Insert(map[string]interface{}{
+			"group_id": groups[0].ID,
+			"user_id":  userID,
+			"role":     "ADMIN",
+		}).
+		Execute(&members)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to add owner as group member: %w", err)
 	}
-	
-	return group, nil
+
+	return &groups[0], nil
 }
 
 func (s *GroupService) GetGroupsInChannel(channelID, requestingUserID string) ([]*models.Group, error) {
 	// Check if user is a member of the channel
-	var isMember bool
-	err := s.db.QueryRow(`
-		SELECT EXISTS(SELECT 1 FROM channel_members WHERE channel_id = $1 AND user_id = $2)
-	`, channelID, requestingUserID).Scan(&isMember)
-	
+	var members []models.ChannelMember
+	err := s.supabase.GetClient().DB.From("channel_members").
+		Select("*").
+		Eq("channel_id", channelID).
+		Eq("user_id", requestingUserID).
+		Execute(&members)
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to check channel membership: %w", err)
+		return nil, fmt.Errorf("failed to check channel membership (channelID=%s, userID=%s): %w", channelID, requestingUserID, err)
 	}
-	
-	if !isMember {
-		return nil, fmt.Errorf("access denied")
+
+	if len(members) == 0 {
+		return nil, fmt.Errorf("access denied: user is not a member of this channel")
 	}
-	
-	query := `
-		SELECT id, channel_id, name, description, group_type, access_type, owner_id, created_at, updated_at
-		FROM groups 
-		WHERE channel_id = $1
-		ORDER BY created_at DESC
-	`
-	
-	rows, err := s.db.Query(query, channelID)
+
+	var groups []models.Group
+	err = s.supabase.GetClient().DB.From("groups").
+		Select("*").
+		Eq("channel_id", channelID).
+		Execute(&groups)
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to query groups: %w", err)
+		return nil, fmt.Errorf("failed to query groups (channelID=%s): %w", channelID, err)
 	}
-	defer rows.Close()
-	
-	var groups []*models.Group
-	for rows.Next() {
-		group := &models.Group{}
-		err := rows.Scan(
-			&group.ID, &group.ChannelID, &group.Name, &group.Description,
-			&group.GroupType, &group.AccessType, &group.OwnerID,
-			&group.CreatedAt, &group.UpdatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan group row: %w", err)
-		}
-		groups = append(groups, group)
+
+	// Convert to slice of pointers
+	var result []*models.Group
+	for i := range groups {
+		result = append(result, &groups[i])
 	}
-	
-	return groups, nil
+
+	return result, nil
 }
 
 func (s *GroupService) GetGroupMembers(groupID, requestingUserID string) ([]*models.GroupMember, error) {
 	// Check if user is a member of the group
-	var isMember bool
-	err := s.db.QueryRow(`
-		SELECT EXISTS(SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2)
-	`, groupID, requestingUserID).Scan(&isMember)
-	
+	var members []models.GroupMember
+	err := s.supabase.GetClient().DB.From("group_members").
+		Select("id").
+		Filter("group_id", "eq", groupID).
+		Filter("user_id", "eq", requestingUserID).
+		Execute(&members)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to check group membership: %w", err)
 	}
-	
-	if !isMember {
+
+	if len(members) == 0 {
 		return nil, fmt.Errorf("access denied")
 	}
-	
-	query := `
-		SELECT id, group_id, user_id, role, joined_at
-		FROM group_members 
-		WHERE group_id = $1
-		ORDER BY joined_at ASC
-	`
-	
-	rows, err := s.db.Query(query, groupID)
+
+	var allMembers []models.GroupMember
+	err = s.supabase.GetClient().DB.From("group_members").
+		Select("id, group_id, user_id, role, joined_at").
+		Filter("group_id", "eq", groupID).
+		Execute(&allMembers)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to query group members: %w", err)
 	}
-	defer rows.Close()
-	
-	var members []*models.GroupMember
-	for rows.Next() {
-		member := &models.GroupMember{}
-		err := rows.Scan(
-			&member.ID, &member.GroupID, &member.UserID,
-			&member.Role, &member.JoinedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan member row: %w", err)
-		}
-		members = append(members, member)
+
+	// Convert to slice of pointers
+	var result []*models.GroupMember
+	for i := range allMembers {
+		result = append(result, &allMembers[i])
 	}
-	
-	return members, nil
+
+	return result, nil
 }
 
 func (s *GroupService) UpdateGroup(groupID, userID string, updateData models.UpdateGroupDto) error {
 	// Check if user is admin or owner
-	var role string
-	err := s.db.QueryRow(`
-		SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2
-	`, groupID, userID).Scan(&role)
-	
+	var members []models.GroupMember
+	err := s.supabase.GetClient().DB.From("group_members").
+		Select("role").
+		Filter("group_id", "eq", groupID).
+		Filter("user_id", "eq", userID).
+		Execute(&members)
+
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("access denied")
-		}
 		return fmt.Errorf("failed to check user role: %w", err)
 	}
-	
+
+	if len(members) == 0 {
+		return fmt.Errorf("access denied")
+	}
+
+	role := members[0].Role
 	if role != "ADMIN" && role != "MODERATOR" {
 		return fmt.Errorf("insufficient permissions")
 	}
-	
-	query := `
-		UPDATE groups 
-		SET name = COALESCE($1, name),
-		    description = COALESCE($2, description),
-		    group_type = COALESCE($3, group_type),
-		    access_type = COALESCE($4, access_type),
-		    updated_at = CURRENT_TIMESTAMP
-		WHERE id = $5
-	`
-	
-	_, err = s.db.Exec(query,
-		updateData.Name, updateData.Description, updateData.GroupType,
-		updateData.AccessType, groupID,
-	)
-	
+
+	// Build update map with only non-empty fields
+	updateFields := make(map[string]interface{})
+	if updateData.Name != "" {
+		updateFields["name"] = updateData.Name
+	}
+	if updateData.Description != "" {
+		updateFields["description"] = updateData.Description
+	}
+	if updateData.GroupType != "" {
+		updateFields["group_type"] = updateData.GroupType
+	}
+	if updateData.AccessType != "" {
+		updateFields["access_type"] = updateData.AccessType
+	}
+	updateFields["updated_at"] = "now()"
+
+	var updatedGroups []models.Group
+	err = s.supabase.GetClient().DB.From("groups").
+		Update(updateFields).
+		Filter("id", "eq", groupID).
+		Execute(&updatedGroups)
+
 	if err != nil {
 		return fmt.Errorf("failed to update group: %w", err)
 	}
-	
+
 	return nil
 }
 
 func (s *GroupService) DeleteGroup(groupID, userID string) error {
 	// Check if user is owner
-	var ownerID string
-	err := s.db.QueryRow("SELECT owner_id FROM groups WHERE id = $1", groupID).Scan(&ownerID)
+	var groups []models.Group
+	err := s.supabase.GetClient().DB.From("groups").
+		Select("owner_id").
+		Filter("id", "eq", groupID).
+		Execute(&groups)
+
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("group not found")
-		}
 		return fmt.Errorf("failed to check group ownership: %w", err)
 	}
-	
-	if ownerID != userID {
+
+	if len(groups) == 0 {
+		return fmt.Errorf("group not found")
+	}
+
+	if groups[0].OwnerID != userID {
 		return fmt.Errorf("only group owner can delete group")
 	}
-	
+
 	// Delete group (cascade should handle members)
-	_, err = s.db.Exec("DELETE FROM groups WHERE id = $1", groupID)
+	err = s.supabase.GetClient().DB.From("groups").
+		Delete().
+		Filter("id", "eq", groupID).
+		Execute(nil)
+
 	if err != nil {
 		return fmt.Errorf("failed to delete group: %w", err)
 	}
-	
+
 	return nil
 }
 
 func (s *GroupService) AddMemberToGroup(groupID, userID string, addData models.AddGroupMemberDto) error {
 	// Check if requesting user is admin or moderator
-	var role string
-	err := s.db.QueryRow(`
-		SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2
-	`, groupID, userID).Scan(&role)
-	
+	var members []models.GroupMember
+	err := s.supabase.GetClient().DB.From("group_members").
+		Select("role").
+		Filter("group_id", "eq", groupID).
+		Filter("user_id", "eq", userID).
+		Execute(&members)
+
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("access denied")
-		}
 		return fmt.Errorf("failed to check user role: %w", err)
 	}
-	
+
+	if len(members) == 0 {
+		return fmt.Errorf("access denied")
+	}
+
+	role := members[0].Role
 	if role != "ADMIN" && role != "MODERATOR" {
 		return fmt.Errorf("insufficient permissions")
 	}
-	
+
 	// Check if user is already a member
-	var exists bool
-	err = s.db.QueryRow(`
-		SELECT EXISTS(SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2)
-	`, groupID, addData.UserID).Scan(&exists)
-	
+	var existingMembers []models.GroupMember
+	err = s.supabase.GetClient().DB.From("group_members").
+		Select("id").
+		Filter("group_id", "eq", groupID).
+		Filter("user_id", "eq", addData.UserID).
+		Execute(&existingMembers)
+
 	if err != nil {
 		return fmt.Errorf("failed to check existing membership: %w", err)
 	}
-	
-	if exists {
+
+	if len(existingMembers) > 0 {
 		return fmt.Errorf("user is already a member")
 	}
-	
+
 	// Add member
-	_, err = s.db.Exec(`
-		INSERT INTO group_members (id, group_id, user_id, role, joined_at)
-		VALUES (gen_random_uuid(), $1, $2, $3, CURRENT_TIMESTAMP)
-	`, groupID, addData.UserID, addData.Role)
-	
+	var newMembers []models.GroupMember
+	err = s.supabase.GetClient().DB.From("group_members").
+		Insert(map[string]interface{}{
+			"group_id":  groupID,
+			"user_id":   addData.UserID,
+			"role":      addData.Role,
+			"joined_at": "now()",
+		}).
+		Execute(&newMembers)
+
 	if err != nil {
 		return fmt.Errorf("failed to add member: %w", err)
 	}
-	
+
 	return nil
 }
 
 func (s *GroupService) UpdateGroupMemberRole(groupID, userID string, updateData models.AddGroupMemberDto) error {
 	// Check if requesting user is admin
-	var role string
-	err := s.db.QueryRow(`
-		SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2
-	`, groupID, userID).Scan(&role)
-	
+	var members []models.GroupMember
+	err := s.supabase.GetClient().DB.From("group_members").
+		Select("role").
+		Filter("group_id", "eq", groupID).
+		Filter("user_id", "eq", userID).
+		Execute(&members)
+
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("access denied")
-		}
 		return fmt.Errorf("failed to check user role: %w", err)
 	}
-	
+
+	if len(members) == 0 {
+		return fmt.Errorf("access denied")
+	}
+
+	role := members[0].Role
 	if role != "ADMIN" {
 		return fmt.Errorf("only admins can update member roles")
 	}
-	
+
 	// Update member role
-	_, err = s.db.Exec(`
-		UPDATE group_members SET role = $1 WHERE group_id = $2 AND user_id = $3
-	`, updateData.Role, groupID, updateData.UserID)
-	
+	var updatedMembers []models.GroupMember
+	err = s.supabase.GetClient().DB.From("group_members").
+		Update(map[string]interface{}{"role": updateData.Role}).
+		Filter("group_id", "eq", groupID).
+		Filter("user_id", "eq", updateData.UserID).
+		Execute(&updatedMembers)
+
 	if err != nil {
 		return fmt.Errorf("failed to update member role: %w", err)
 	}
-	
+
 	return nil
 }
 
 func (s *GroupService) DeleteGroupMember(groupID, userID, memberID string) error {
 	// Check if requesting user is admin or moderator
-	var role string
-	err := s.db.QueryRow(`
-		SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2
-	`, groupID, userID).Scan(&role)
-	
+	var members []models.GroupMember
+	err := s.supabase.GetClient().DB.From("group_members").
+		Select("role").
+		Filter("group_id", "eq", groupID).
+		Filter("user_id", "eq", userID).
+		Execute(&members)
+
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("access denied")
-		}
 		return fmt.Errorf("failed to check user role: %w", err)
 	}
-	
+
+	if len(members) == 0 {
+		return fmt.Errorf("access denied")
+	}
+
+	role := members[0].Role
 	if role != "ADMIN" && role != "MODERATOR" {
 		return fmt.Errorf("insufficient permissions")
 	}
-	
+
 	// Remove member
-	_, err = s.db.Exec(`
-		DELETE FROM group_members WHERE group_id = $1 AND user_id = $2
-	`, groupID, memberID)
-	
+	err = s.supabase.GetClient().DB.From("group_members").
+		Delete().
+		Filter("group_id", "eq", groupID).
+		Filter("user_id", "eq", memberID).
+		Execute(nil)
+
 	if err != nil {
 		return fmt.Errorf("failed to remove member: %w", err)
 	}
-	
+
 	return nil
 }
 
 func (s *GroupService) RequestJoinGroup(groupID, userID string) error {
 	// Check if group is private
-	var accessType string
-	err := s.db.QueryRow("SELECT access_type FROM groups WHERE id = $1", groupID).Scan(&accessType)
+	var groups []models.Group
+	err := s.supabase.GetClient().DB.From("groups").
+		Select("access_type").
+		Filter("id", "eq", groupID).
+		Execute(&groups)
+
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("group not found")
-		}
 		return fmt.Errorf("failed to check group access type: %w", err)
 	}
-	
-	if accessType != "PRIVATE" {
+
+	if len(groups) == 0 {
+		return fmt.Errorf("group not found")
+	}
+
+	if groups[0].AccessType != "PRIVATE" {
 		return fmt.Errorf("can only request to join private groups")
 	}
-	
+
 	// Check if already a member
-	var exists bool
-	err = s.db.QueryRow(`
-		SELECT EXISTS(SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2)
-	`, groupID, userID).Scan(&exists)
-	
+	var existingMembers []models.GroupMember
+	err = s.supabase.GetClient().DB.From("group_members").
+		Select("id").
+		Filter("group_id", "eq", groupID).
+		Filter("user_id", "eq", userID).
+		Execute(&existingMembers)
+
 	if err != nil {
 		return fmt.Errorf("failed to check existing membership: %w", err)
 	}
-	
-	if exists {
+
+	if len(existingMembers) > 0 {
 		return fmt.Errorf("already a member")
 	}
-	
+
 	// Check if request already exists
-	var requestExists bool
-	err = s.db.QueryRow(`
-		SELECT EXISTS(SELECT 1 FROM group_join_requests WHERE group_id = $1 AND user_id = $2 AND status = 'PENDING')
-	`, groupID, userID).Scan(&requestExists)
-	
+	var existingRequests []models.GroupJoinRequest
+	err = s.supabase.GetClient().DB.From("group_join_requests").
+		Select("id").
+		Filter("group_id", "eq", groupID).
+		Filter("user_id", "eq", userID).
+		Filter("status", "eq", "PENDING").
+		Execute(&existingRequests)
+
 	if err != nil {
 		return fmt.Errorf("failed to check existing request: %w", err)
 	}
-	
-	if requestExists {
-		return fmt.Errorf("join request already pending")
+
+	if len(existingRequests) > 0 {
+		return fmt.Errorf("join request already exists")
 	}
-	
+
 	// Create join request
-	_, err = s.db.Exec(`
-		INSERT INTO group_join_requests (id, group_id, user_id, status, message, created_at, updated_at)
-		VALUES (gen_random_uuid(), $1, $2, 'PENDING', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-	`, groupID, userID)
-	
+	var requests []models.GroupJoinRequest
+	err = s.supabase.GetClient().DB.From("group_join_requests").
+		Insert(map[string]interface{}{
+			"group_id":   groupID,
+			"user_id":    userID,
+			"status":     "PENDING",
+			"message":    "",
+			"created_at": "now()",
+			"updated_at": "now()",
+		}).
+		Execute(&requests)
+
 	if err != nil {
 		return fmt.Errorf("failed to create join request: %w", err)
 	}
-	
+
 	return nil
 }
 
 func (s *GroupService) GetJoinRequests(groupID, userID string) ([]*models.GroupJoinRequest, error) {
 	// Check if user is admin or moderator
-	var role string
-	err := s.db.QueryRow(`
-		SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2
-	`, groupID, userID).Scan(&role)
-	
+	var members []models.GroupMember
+	err := s.supabase.GetClient().DB.From("group_members").
+		Select("role").
+		Filter("group_id", "eq", groupID).
+		Filter("user_id", "eq", userID).
+		Execute(&members)
+
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("access denied")
-		}
 		return nil, fmt.Errorf("failed to check user role: %w", err)
 	}
-	
+
+	if len(members) == 0 {
+		return nil, fmt.Errorf("access denied")
+	}
+
+	role := members[0].Role
 	if role != "ADMIN" && role != "MODERATOR" {
 		return nil, fmt.Errorf("insufficient permissions")
 	}
-	
-	query := `
-		SELECT id, group_id, user_id, status, message, created_at, updated_at
-		FROM group_join_requests 
-		WHERE group_id = $1 AND status = 'PENDING'
-		ORDER BY created_at ASC
-	`
-	
-	rows, err := s.db.Query(query, groupID)
+
+	var requests []models.GroupJoinRequest
+	err = s.supabase.GetClient().DB.From("group_join_requests").
+		Select("id, group_id, user_id, status, message, created_at, updated_at").
+		Filter("group_id", "eq", groupID).
+		Filter("status", "eq", "PENDING").
+		Execute(&requests)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to query join requests: %w", err)
 	}
-	defer rows.Close()
-	
-	var requests []*models.GroupJoinRequest
-	for rows.Next() {
-		request := &models.GroupJoinRequest{}
-		err := rows.Scan(
-			&request.ID, &request.GroupID, &request.UserID,
-			&request.Status, &request.Message, &request.CreatedAt, &request.UpdatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan request row: %w", err)
-		}
-		requests = append(requests, request)
+
+	// Convert to slice of pointers
+	var result []*models.GroupJoinRequest
+	for i := range requests {
+		result = append(result, &requests[i])
 	}
-	
-	return requests, nil
+
+	return result, nil
 }
 
 func (s *GroupService) RespondToJoinRequest(groupID, requestID, status, userID string) error {
 	// Check if user is admin or moderator
-	var role string
-	err := s.db.QueryRow(`
-		SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2
-	`, groupID, userID).Scan(&role)
-	
+	var members []models.GroupMember
+	err := s.supabase.GetClient().DB.From("group_members").
+		Select("role").
+		Filter("group_id", "eq", groupID).
+		Filter("user_id", "eq", userID).
+		Execute(&members)
+
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("access denied")
-		}
 		return fmt.Errorf("failed to check user role: %w", err)
 	}
-	
+
+	if len(members) == 0 {
+		return fmt.Errorf("access denied")
+	}
+
+	role := members[0].Role
 	if role != "ADMIN" && role != "MODERATOR" {
 		return fmt.Errorf("insufficient permissions")
 	}
-	
+
 	// Get request details
-	var requestingUserID string
-	err = s.db.QueryRow(`
-		SELECT user_id FROM group_join_requests WHERE id = $1 AND group_id = $2
-	`, requestID, groupID).Scan(&requestingUserID)
-	
+	var requests []models.GroupJoinRequest
+	err = s.supabase.GetClient().DB.From("group_join_requests").
+		Select("user_id").
+		Filter("id", "eq", requestID).
+		Filter("group_id", "eq", groupID).
+		Execute(&requests)
+
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("join request not found")
-		}
 		return fmt.Errorf("failed to get join request: %w", err)
 	}
-	
+
+	if len(requests) == 0 {
+		return fmt.Errorf("join request not found")
+	}
+
+	requestingUserID := requests[0].UserID
+
 	// Update request status
-	_, err = s.db.Exec(`
-		UPDATE group_join_requests SET status = $1, updated_at = CURRENT_TIMESTAMP 
-		WHERE id = $2 AND group_id = $3
-	`, status, requestID, groupID)
-	
+	var updatedRequests []models.GroupJoinRequest
+	err = s.supabase.GetClient().DB.From("group_join_requests").
+		Update(map[string]interface{}{
+			"status":     status,
+			"updated_at": "now()",
+		}).
+		Filter("id", "eq", requestID).
+		Filter("group_id", "eq", groupID).
+		Execute(&updatedRequests)
+
 	if err != nil {
 		return fmt.Errorf("failed to update join request: %w", err)
 	}
-	
+
 	// If accepted, add user as member
 	if status == "ACCEPTED" {
-		_, err = s.db.Exec(`
-			INSERT INTO group_members (id, group_id, user_id, role, joined_at)
-			VALUES (gen_random_uuid(), $1, $2, 'MEMBER', CURRENT_TIMESTAMP)
-		`, groupID, requestingUserID)
-		
+		var newMembers []models.GroupMember
+		err = s.supabase.GetClient().DB.From("group_members").
+			Insert(map[string]interface{}{
+				"group_id":  groupID,
+				"user_id":   requestingUserID,
+				"role":      "MEMBER",
+				"joined_at": "now()",
+			}).
+			Execute(&newMembers)
+
 		if err != nil {
 			return fmt.Errorf("failed to add member: %w", err)
 		}
 	}
-	
+
 	return nil
 }

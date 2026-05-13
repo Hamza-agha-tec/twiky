@@ -44,12 +44,12 @@ func UpdateUser(userService *services.UserService) echo.HandlerFunc {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		}
 
-		err := userService.UpdateProfile(id, input)
+		updatedUser, err := userService.UpdateProfile(id, input)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
 
-		return c.JSON(http.StatusOK, map[string]string{"message": "user updated successfully"})
+		return c.JSON(http.StatusOK, updatedUser)
 	}
 }
 

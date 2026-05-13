@@ -8,343 +8,606 @@ import (
 )
 
 type MessagingService struct {
-	db *sql.DB
+	db       *sql.DB
+	supabase *SupabaseClient
 }
 
-func NewMessagingService(db *sql.DB) *MessagingService {
+func NewMessagingService(db *sql.DB, supabaseURL, supabaseKey string) *MessagingService {
 	return &MessagingService{
-		db: db,
+		db:       db,
+		supabase: NewSupabaseClient(supabaseURL, supabaseKey),
 	}
 }
 
 // --- DIRECT CONVERSATIONS ---
 
-func (s *MessagingService) GetDirectConversations(userID string) ([]*models.DirectConversation, error) {
-	query := `
-		SELECT id, user_one_id, user_two_id, created_at, updated_at
-		FROM direct_conversations
-		WHERE user_one_id = $1 OR user_two_id = $1
-		ORDER BY updated_at DESC
-	`
+func (s *MessagingService) GetDirectConversations(userID string) ([]*models.DirectConversationResponse, error) {
+	// Get conversations where user is participant
+	var conversations []models.DirectConversation
 
-	rows, err := s.db.Query(query, userID)
+	// Add better error handling for the Supabase query
+	err := s.supabase.GetClient().DB.From("direct_conversations").
+		Select("*").
+		Execute(&conversations)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to get direct conversations: %w", err)
 	}
-	defer rows.Close()
 
-	var conversations []*models.DirectConversation
-	for rows.Next() {
-		conv := &models.DirectConversation{}
-		err := rows.Scan(&conv.ID, &conv.UserOneID, &conv.UserTwoID, &conv.CreatedAt, &conv.UpdatedAt)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan conversation: %w", err)
-		}
-		conversations = append(conversations, conv)
+	// Initialize empty slice if nil to prevent JSON parsing issues
+	if conversations == nil {
+		conversations = make([]models.DirectConversation, 0)
 	}
 
-	return conversations, nil
+	// Filter conversations where user is participant
+	var result []*models.DirectConversationResponse
+	for _, conv := range conversations {
+		if conv.UserOneID == userID || conv.UserTwoID == userID {
+			// Get user details for both participants
+			var userOneSlice, userTwoSlice []models.User
+			err1 := s.supabase.GetClient().DB.From("users").
+				Select("*").
+				Eq("id", conv.UserOneID).
+				Execute(&userOneSlice)
+
+			if err1 != nil {
+				return nil, fmt.Errorf("failed to get user one details (ID=%s): %w", conv.UserOneID, err1)
+			}
+
+			err2 := s.supabase.GetClient().DB.From("users").
+				Select("*").
+				Eq("id", conv.UserTwoID).
+				Execute(&userTwoSlice)
+
+			if err2 != nil {
+				return nil, fmt.Errorf("failed to get user two details (ID=%s): %w", conv.UserTwoID, err2)
+			}
+
+			if len(userOneSlice) == 0 {
+				return nil, fmt.Errorf("user one not found (ID=%s)", conv.UserOneID)
+			}
+
+			if len(userTwoSlice) == 0 {
+				return nil, fmt.Errorf("user two not found (ID=%s)", conv.UserTwoID)
+			}
+
+			// Map user one to simplified struct
+			userOne := models.DirectConversationUser{
+				ID:         userOneSlice[0].ID,
+				Banner:     userOneSlice[0].Banner,
+				SubPlan:    userOneSlice[0].SubPlan,
+				Username:   userOneSlice[0].Username,
+				AvatarURL:  userOneSlice[0].AvatarURL,
+				IsVerified: userOneSlice[0].IsVerified,
+				LastSeenAt: userOneSlice[0].LastSeenAt,
+			}
+
+			// Map user two to simplified struct
+			userTwo := models.DirectConversationUser{
+				ID:         userTwoSlice[0].ID,
+				Banner:     userTwoSlice[0].Banner,
+				SubPlan:    userTwoSlice[0].SubPlan,
+				Username:   userTwoSlice[0].Username,
+				AvatarURL:  userTwoSlice[0].AvatarURL,
+				IsVerified: userTwoSlice[0].IsVerified,
+				LastSeenAt: userTwoSlice[0].LastSeenAt,
+			}
+
+			// Parse unread_count as int
+			unreadCount := 0
+			if conv.UnreadCount != "" {
+				fmt.Sscanf(conv.UnreadCount, "%d", &unreadCount)
+			}
+
+			// Build conversation with simplified user details
+			convResponse := &models.DirectConversationResponse{
+				ID:          conv.ID,
+				UserOneID:   conv.UserOneID,
+				UserTwoID:   conv.UserTwoID,
+				CreatedAt:   conv.CreatedAt,
+				LastMessage: []map[string]interface{}{},
+				UserOne:     userOne,
+				UserTwo:     userTwo,
+				UnreadCount: unreadCount,
+			}
+			result = append(result, convResponse)
+		}
+	}
+
+	return result, nil
 }
 
 func (s *MessagingService) CreateDirectConversation(userID string, dto models.StartDirectConversationDto) (*models.DirectConversation, error) {
-	// Check if conversation already exists
-	var existingConv models.DirectConversation
-	err := s.db.QueryRow(`
-		SELECT id, user_one_id, user_two_id, created_at, updated_at
-		FROM direct_conversations
-		WHERE (user_one_id = $1 AND user_two_id = $2) OR (user_one_id = $2 AND user_two_id = $1)
-	`, userID, dto.UserID).Scan(&existingConv.ID, &existingConv.UserOneID, &existingConv.UserTwoID, &existingConv.CreatedAt, &existingConv.UpdatedAt)
+	// Enforce MUTUAL FOLLOW RULE
+	// Ensure A follows B
+	var followA []models.Follow
+	errA := s.supabase.GetClient().DB.From("follows").
+		Select("*").
+		Eq("follower_id", userID).
+		Eq("following_id", dto.TargetUserID).
+		Execute(&followA)
 
-	if err == nil {
-		return &existingConv, nil
+	// Ensure B follows A
+	var followB []models.Follow
+	errB := s.supabase.GetClient().DB.From("follows").
+		Select("*").
+		Eq("follower_id", dto.TargetUserID).
+		Eq("following_id", userID).
+		Execute(&followB)
+
+	if errA != nil || errB != nil {
+		return nil, fmt.Errorf("failed to check follow relationships: %v", errA)
 	}
 
-	if err != sql.ErrNoRows {
+	if len(followA) == 0 || len(followB) == 0 {
+		return nil, fmt.Errorf("you can only message mutual followers")
+	}
+
+	// Sort alphabetically to prevent duplicate conversations (A->B and B->A)
+	userOneId, userTwoId := userID, dto.TargetUserID
+	if userOneId > userTwoId {
+		userOneId, userTwoId = userTwoId, userOneId
+	}
+
+	// Check if conversation already exists
+	var existing []models.DirectConversation
+	err := s.supabase.GetClient().DB.From("direct_conversations").
+		Select("*").
+		Eq("user_one_id", userOneId).
+		Eq("user_two_id", userTwoId).
+		Execute(&existing)
+
+	if err != nil {
 		return nil, fmt.Errorf("failed to check existing conversation: %w", err)
 	}
 
-	// Create new conversation
-	query := `
-		INSERT INTO direct_conversations (id, user_one_id, user_two_id, created_at, updated_at)
-		VALUES (gen_random_uuid(), $1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-		RETURNING id, user_one_id, user_two_id, created_at, updated_at
-	`
+	if len(existing) > 0 {
+		return &existing[0], nil
+	}
 
-	conv := &models.DirectConversation{}
-	err = s.db.QueryRow(query, userID, dto.UserID).Scan(
-		&conv.ID, &conv.UserOneID, &conv.UserTwoID, &conv.CreatedAt, &conv.UpdatedAt,
-	)
+	// Create new conversation
+	var conversations []models.DirectConversation
+	err = s.supabase.GetClient().DB.From("direct_conversations").
+		Insert(map[string]interface{}{
+			"user_one_id": userOneId,
+			"user_two_id": userTwoId,
+			"created_at":  "now()",
+			"updated_at":  "now()",
+		}).
+		Execute(&conversations)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create direct conversation: %w", err)
 	}
 
-	return conv, nil
+	if len(conversations) == 0 {
+		return nil, fmt.Errorf("failed to create direct conversation: no data returned")
+	}
+
+	return &conversations[0], nil
 }
 
 func (s *MessagingService) GetDirectMessages(userID string, conversationID string) ([]*models.DirectMessage, error) {
 	// Verify user is part of conversation
-	var exists bool
-	err := s.db.QueryRow(`
-		SELECT EXISTS(
-			SELECT 1 FROM direct_conversations 
-			WHERE id = $1 AND (user_one_id = $2 OR user_two_id = $2)
-		)
-	`, conversationID, userID).Scan(&exists)
+	var conv []models.DirectConversation
+	err := s.supabase.GetClient().DB.From("direct_conversations").
+		Select("id").
+		Filter("id", "eq", conversationID).
+		Filter("user_one_id", "eq", userID).
+		Execute(&conv)
 
-	if err != nil || !exists {
-		return nil, fmt.Errorf("conversation not found or access denied")
+	if err != nil || len(conv) == 0 {
+		// Check if user is user_two_id
+		err = s.supabase.GetClient().DB.From("direct_conversations").
+			Select("id").
+			Filter("id", "eq", conversationID).
+			Filter("user_two_id", "eq", userID).
+			Execute(&conv)
+
+		if err != nil || len(conv) == 0 {
+			return nil, fmt.Errorf("conversation not found or access denied")
+		}
 	}
 
-	query := `
-		SELECT id, conversation_id, sender_id, content, created_at, updated_at
-		FROM direct_messages
-		WHERE conversation_id = $1
-		ORDER BY created_at ASC
-	`
+	var messages []models.DirectMessage
+	err = s.supabase.GetClient().DB.From("direct_messages").
+		Select("id, conversation_id, sender_id, content, created_at, updated_at").
+		Filter("conversation_id", "eq", conversationID).
+		Execute(&messages)
 
-	rows, err := s.db.Query(query, conversationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get direct messages: %w", err)
 	}
-	defer rows.Close()
 
-	var messages []*models.DirectMessage
-	for rows.Next() {
-		msg := &models.DirectMessage{}
-		err := rows.Scan(&msg.ID, &msg.ConversationID, &msg.SenderID, &msg.Content, &msg.CreatedAt, &msg.UpdatedAt)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan message: %w", err)
-		}
-		messages = append(messages, msg)
+	// Convert to slice of pointers
+	var result []*models.DirectMessage
+	for i := range messages {
+		result = append(result, &messages[i])
 	}
 
-	return messages, nil
+	return result, nil
 }
 
 func (s *MessagingService) SendDirectMessage(userID string, conversationID string, dto models.SendDirectMessageDto) (*models.DirectMessage, error) {
 	// Verify user is part of conversation
-	var exists bool
-	err := s.db.QueryRow(`
-		SELECT EXISTS(
-			SELECT 1 FROM direct_conversations 
-			WHERE id = $1 AND (user_one_id = $2 OR user_two_id = $2)
-		)
-	`, conversationID, userID).Scan(&exists)
+	var conv []models.DirectConversation
+	err := s.supabase.GetClient().DB.From("direct_conversations").
+		Select("id").
+		Filter("id", "eq", conversationID).
+		Filter("user_one_id", "eq", userID).
+		Execute(&conv)
 
-	if err != nil || !exists {
-		return nil, fmt.Errorf("conversation not found or access denied")
+	if err != nil || len(conv) == 0 {
+		// Check if user is user_two_id
+		err = s.supabase.GetClient().DB.From("direct_conversations").
+			Select("id").
+			Filter("id", "eq", conversationID).
+			Filter("user_two_id", "eq", userID).
+			Execute(&conv)
+
+		if err != nil || len(conv) == 0 {
+			return nil, fmt.Errorf("conversation not found or access denied")
+		}
 	}
 
-	query := `
-		INSERT INTO direct_messages (id, conversation_id, sender_id, content, created_at, updated_at)
-		VALUES (gen_random_uuid(), $1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-		RETURNING id, conversation_id, sender_id, content, created_at, updated_at
-	`
-
-	msg := &models.DirectMessage{}
-	err = s.db.QueryRow(query, conversationID, userID, dto.Content).Scan(
-		&msg.ID, &msg.ConversationID, &msg.SenderID, &msg.Content, &msg.CreatedAt, &msg.UpdatedAt,
-	)
+	// Create message
+	var messages []models.DirectMessage
+	err = s.supabase.GetClient().DB.From("direct_messages").
+		Insert(map[string]interface{}{
+			"conversation_id": conversationID,
+			"sender_id":       userID,
+			"content":         dto.Content,
+			"created_at":      "now()",
+			"updated_at":      "now()",
+		}).
+		Execute(&messages)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to send direct message: %w", err)
 	}
 
-	return msg, nil
+	if len(messages) == 0 {
+		return nil, fmt.Errorf("failed to send direct message: no data returned")
+	}
+
+	return &messages[0], nil
 }
 
 func (s *MessagingService) ToggleDirectMessageReaction(userID string, messageID string, emoji string) (*models.DirectMessage, error) {
 	// Verify user sent the message
-	var senderID string
-	err := s.db.QueryRow("SELECT sender_id FROM direct_messages WHERE id = $1", messageID).Scan(&senderID)
-	if err != nil || senderID != userID {
+	var messages []models.DirectMessage
+	err := s.supabase.GetClient().DB.From("direct_messages").
+		Select("sender_id").
+		Filter("id", "eq", messageID).
+		Execute(&messages)
+
+	if err != nil || len(messages) == 0 || messages[0].SenderID != userID {
 		return nil, fmt.Errorf("message not found or access denied")
 	}
 
-	// Upsert reaction
-	_, err = s.db.Exec(`
-		INSERT INTO message_reactions (id, message_id, user_id, emoji, created_at)
-		VALUES (gen_random_uuid(), $1, $2, $3, CURRENT_TIMESTAMP)
-		ON CONFLICT (message_id, user_id)
-		DO UPDATE SET emoji = $3
-	`, messageID, userID, emoji)
+	// Upsert reaction - first check if reaction exists
+	var reactions []models.MessageReaction
+	err = s.supabase.GetClient().DB.From("message_reactions").
+		Select("id").
+		Filter("message_id", "eq", messageID).
+		Filter("user_id", "eq", userID).
+		Execute(&reactions)
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to toggle reaction: %w", err)
+		return nil, fmt.Errorf("failed to check existing reaction: %w", err)
+	}
+
+	if len(reactions) > 0 {
+		// Update existing reaction
+		var updatedReactions []models.MessageReaction
+		err = s.supabase.GetClient().DB.From("message_reactions").
+			Update(map[string]interface{}{"emoji": emoji}).
+			Filter("message_id", "eq", messageID).
+			Filter("user_id", "eq", userID).
+			Execute(&updatedReactions)
+		if err != nil {
+			return nil, fmt.Errorf("failed to update reaction: %w", err)
+		}
+	} else {
+		// Insert new reaction
+		var newReactions []models.MessageReaction
+		err = s.supabase.GetClient().DB.From("message_reactions").
+			Insert(map[string]interface{}{
+				"message_id": messageID,
+				"user_id":    userID,
+				"emoji":      emoji,
+				"created_at": "now()",
+			}).
+			Execute(&newReactions)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create reaction: %w", err)
+		}
 	}
 
 	// Return updated message
-	query := `
-		SELECT id, conversation_id, sender_id, content, created_at, updated_at
-		FROM direct_messages
-		WHERE id = $1
-	`
+	var updatedMessages []models.DirectMessage
+	err = s.supabase.GetClient().DB.From("direct_messages").
+		Select("id, conversation_id, sender_id, content, created_at, updated_at").
+		Filter("id", "eq", messageID).
+		Execute(&updatedMessages)
 
-	msg := &models.DirectMessage{}
-	err = s.db.QueryRow(query, messageID).Scan(
-		&msg.ID, &msg.ConversationID, &msg.SenderID, &msg.Content, &msg.CreatedAt, &msg.UpdatedAt,
-	)
-
-	if err != nil {
+	if err != nil || len(updatedMessages) == 0 {
 		return nil, fmt.Errorf("failed to get updated message: %w", err)
 	}
 
-	return msg, nil
+	return &updatedMessages[0], nil
 }
 
 // --- GROUP MESSAGING ---
 
-func (s *MessagingService) GetGroupMessages(userID string, groupID string) ([]*models.GroupMessage, error) {
+func (s *MessagingService) GetGroupMessages(userID string, groupID string) ([]*models.GroupMessageResponse, error) {
 	// Verify user is member of group
-	var exists bool
-	err := s.db.QueryRow(`
-		SELECT EXISTS(
-			SELECT 1 FROM group_members 
-			WHERE group_id = $1 AND user_id = $2
-		)
-	`, groupID, userID).Scan(&exists)
+	var members []models.GroupMember
+	err := s.supabase.GetClient().DB.From("group_members").
+		Select("*").
+		Eq("group_id", groupID).
+		Eq("user_id", userID).
+		Execute(&members)
 
-	if err != nil || !exists {
-		return nil, fmt.Errorf("group not found or access denied")
-	}
-
-	query := `
-		SELECT id, group_id, sender_id, content, pinned, created_at, updated_at
-		FROM group_messages
-		WHERE group_id = $1
-		ORDER BY created_at ASC
-	`
-
-	rows, err := s.db.Query(query, groupID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get group messages: %w", err)
+		return nil, fmt.Errorf("failed to check group membership (groupID=%s, userID=%s): %w", groupID, userID, err)
 	}
-	defer rows.Close()
 
-	var messages []*models.GroupMessage
-	for rows.Next() {
-		msg := &models.GroupMessage{}
-		err := rows.Scan(&msg.ID, &msg.GroupID, &msg.SenderID, &msg.Content, &msg.Pinned, &msg.CreatedAt, &msg.UpdatedAt)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan message: %w", err)
+	if len(members) == 0 {
+		return nil, fmt.Errorf("group not found or access denied: user is not a member of this group")
+	}
+
+	var messages []models.GroupMessage
+	err = s.supabase.GetClient().DB.From("group_messages").
+		Select("*").
+		Eq("group_id", groupID).
+		Execute(&messages)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get group messages (groupID=%s): %w", groupID, err)
+	}
+
+	// Build response with sender details
+	var result []*models.GroupMessageResponse
+	for _, msg := range messages {
+		var sender *models.GroupMessageSender
+		if msg.SenderID != "" {
+			// Get sender details
+			var userSlice []models.User
+			err := s.supabase.GetClient().DB.From("users").
+				Select("*").
+				Eq("id", msg.SenderID).
+				Execute(&userSlice)
+
+			if err != nil {
+				return nil, fmt.Errorf("failed to get sender details (senderID=%s): %w", msg.SenderID, err)
+			}
+
+			if len(userSlice) > 0 {
+				sender = &models.GroupMessageSender{
+					ID:         userSlice[0].ID,
+					Fullname:   userSlice[0].FullName,
+					SubPlan:    userSlice[0].SubPlan,
+					Username:   userSlice[0].Username,
+					AvatarURL:  userSlice[0].AvatarURL,
+					IsVerified: userSlice[0].IsVerified,
+				}
+			}
 		}
-		messages = append(messages, msg)
+
+		// Build message response
+		senderIDPtr := &msg.SenderID
+		if msg.SenderID == "" {
+			senderIDPtr = nil
+		}
+
+		messageResponse := &models.GroupMessageResponse{
+			ID:             msg.ID,
+			GroupID:        msg.GroupID,
+			SenderID:       senderIDPtr,
+			Content:        msg.Content,
+			FileURL:        nil,
+			ReplyToID:      nil,
+			CreatedAt:      msg.CreatedAt,
+			Status:         "sent",
+			IsEdited:       false,
+			EntityMentions: []map[string]interface{}{},
+			Reactions:      []map[string]interface{}{},
+			IsPinned:       msg.Pinned,
+			FileURLs:       []string{},
+			Type:           nil,
+			Mime:           nil,
+			Duration:       nil,
+			Size:           nil,
+			Sender:         sender,
+		}
+		result = append(result, messageResponse)
 	}
 
-	return messages, nil
+	return result, nil
 }
 
 func (s *MessagingService) SendGroupMessage(userID string, groupID string, dto models.SendGroupMessageDto) (*models.GroupMessage, error) {
 	// Verify user is member of group
-	var exists bool
-	err := s.db.QueryRow(`
-		SELECT EXISTS(
-			SELECT 1 FROM group_members 
-			WHERE group_id = $1 AND user_id = $2
-		)
-	`, groupID, userID).Scan(&exists)
+	var members []models.GroupMember
+	err := s.supabase.GetClient().DB.From("group_members").
+		Select("id").
+		Filter("group_id", "eq", groupID).
+		Filter("user_id", "eq", userID).
+		Execute(&members)
 
-	if err != nil || !exists {
+	if err != nil || len(members) == 0 {
 		return nil, fmt.Errorf("group not found or access denied")
 	}
 
-	query := `
-		INSERT INTO group_messages (id, group_id, sender_id, content, pinned, created_at, updated_at)
-		VALUES (gen_random_uuid(), $1, $2, $3, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-		RETURNING id, group_id, sender_id, content, pinned, created_at, updated_at
-	`
-
-	msg := &models.GroupMessage{}
-	err = s.db.QueryRow(query, groupID, userID, dto.Content).Scan(
-		&msg.ID, &msg.GroupID, &msg.SenderID, &msg.Content, &msg.Pinned, &msg.CreatedAt, &msg.UpdatedAt,
-	)
+	// Create message
+	var messages []models.GroupMessage
+	err = s.supabase.GetClient().DB.From("group_messages").
+		Insert(map[string]interface{}{
+			"group_id":   groupID,
+			"sender_id":  userID,
+			"content":    dto.Content,
+			"pinned":     false,
+			"created_at": "now()",
+			"updated_at": "now()",
+		}).
+		Execute(&messages)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to send group message: %w", err)
 	}
 
-	return msg, nil
+	if len(messages) == 0 {
+		return nil, fmt.Errorf("failed to send group message: no data returned")
+	}
+
+	return &messages[0], nil
 }
 
 func (s *MessagingService) ToggleGroupMessageReaction(userID string, messageID string, emoji string) (*models.GroupMessage, error) {
 	// Verify user sent the message
-	var senderID string
-	err := s.db.QueryRow("SELECT sender_id FROM group_messages WHERE id = $1", messageID).Scan(&senderID)
-	if err != nil || senderID != userID {
+	var messages []models.GroupMessage
+	err := s.supabase.GetClient().DB.From("group_messages").
+		Select("sender_id").
+		Filter("id", "eq", messageID).
+		Execute(&messages)
+
+	if err != nil || len(messages) == 0 || messages[0].SenderID != userID {
 		return nil, fmt.Errorf("message not found or access denied")
 	}
 
-	// Upsert reaction
-	_, err = s.db.Exec(`
-		INSERT INTO message_reactions (id, message_id, user_id, emoji, created_at)
-		VALUES (gen_random_uuid(), $1, $2, $3, CURRENT_TIMESTAMP)
-		ON CONFLICT (message_id, user_id)
-		DO UPDATE SET emoji = $3
-	`, messageID, userID, emoji)
+	// Upsert reaction - first check if reaction exists
+	var reactions []models.MessageReaction
+	err = s.supabase.GetClient().DB.From("message_reactions").
+		Select("id").
+		Filter("message_id", "eq", messageID).
+		Filter("user_id", "eq", userID).
+		Execute(&reactions)
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to toggle reaction: %w", err)
+		return nil, fmt.Errorf("failed to check existing reaction: %w", err)
+	}
+
+	if len(reactions) > 0 {
+		// Update existing reaction
+		var updatedReactions []models.MessageReaction
+		err = s.supabase.GetClient().DB.From("message_reactions").
+			Update(map[string]interface{}{"emoji": emoji}).
+			Filter("message_id", "eq", messageID).
+			Filter("user_id", "eq", userID).
+			Execute(&updatedReactions)
+		if err != nil {
+			return nil, fmt.Errorf("failed to update reaction: %w", err)
+		}
+	} else {
+		// Insert new reaction
+		var newReactions []models.MessageReaction
+		err = s.supabase.GetClient().DB.From("message_reactions").
+			Insert(map[string]interface{}{
+				"message_id": messageID,
+				"user_id":    userID,
+				"emoji":      emoji,
+				"created_at": "now()",
+			}).
+			Execute(&newReactions)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create reaction: %w", err)
+		}
 	}
 
 	// Return updated message
-	query := `
-		SELECT id, group_id, sender_id, content, pinned, created_at, updated_at
-		FROM group_messages
-		WHERE id = $1
-	`
+	var updatedMessages []models.GroupMessage
+	err = s.supabase.GetClient().DB.From("group_messages").
+		Select("id, group_id, sender_id, content, pinned, created_at, updated_at").
+		Filter("id", "eq", messageID).
+		Execute(&updatedMessages)
 
-	msg := &models.GroupMessage{}
-	err = s.db.QueryRow(query, messageID).Scan(
-		&msg.ID, &msg.GroupID, &msg.SenderID, &msg.Content, &msg.Pinned, &msg.CreatedAt, &msg.UpdatedAt,
-	)
-
-	if err != nil {
+	if err != nil || len(updatedMessages) == 0 {
 		return nil, fmt.Errorf("failed to get updated message: %w", err)
 	}
 
-	return msg, nil
+	return &updatedMessages[0], nil
 }
 
 func (s *MessagingService) ToggleGroupMessagePin(userID string, messageID string) (*models.GroupMessage, error) {
 	// Verify user sent the message
-	var senderID string
-	err := s.db.QueryRow("SELECT sender_id FROM group_messages WHERE id = $1", messageID).Scan(&senderID)
-	if err != nil || senderID != userID {
+	var messages []models.GroupMessage
+	err := s.supabase.GetClient().DB.From("group_messages").
+		Select("sender_id, pinned").
+		Filter("id", "eq", messageID).
+		Execute(&messages)
+
+	if err != nil || len(messages) == 0 || messages[0].SenderID != userID {
 		return nil, fmt.Errorf("message not found or access denied")
 	}
 
 	// Toggle pin
-	query := `
-		UPDATE group_messages
-		SET pinned = NOT pinned, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $1
-		RETURNING id, group_id, sender_id, content, pinned, created_at, updated_at
-	`
+	var updatedMessages []models.GroupMessage
+	err = s.supabase.GetClient().DB.From("group_messages").
+		Update(map[string]interface{}{
+			"pinned":     !messages[0].Pinned,
+			"updated_at": "now()",
+		}).
+		Filter("id", "eq", messageID).
+		Execute(&updatedMessages)
 
-	msg := &models.GroupMessage{}
-	err = s.db.QueryRow(query, messageID).Scan(
-		&msg.ID, &msg.GroupID, &msg.SenderID, &msg.Content, &msg.Pinned, &msg.CreatedAt, &msg.UpdatedAt,
-	)
-
-	if err != nil {
+	if err != nil || len(updatedMessages) == 0 {
 		return nil, fmt.Errorf("failed to toggle pin: %w", err)
 	}
 
-	return msg, nil
+	return &updatedMessages[0], nil
+}
+
+func (s *MessagingService) DeleteDirectConversation(userID string, conversationID string) (map[string]interface{}, error) {
+	// Verify user is part of conversation
+	var conv []models.DirectConversation
+	err := s.supabase.GetClient().DB.From("direct_conversations").
+		Select("user_one_id, user_two_id").
+		Filter("id", "eq", conversationID).
+		Execute(&conv)
+
+	if err != nil || len(conv) == 0 {
+		return nil, fmt.Errorf("conversation not found")
+	}
+
+	conversation := conv[0]
+	if conversation.UserOneID != userID && conversation.UserTwoID != userID {
+		return nil, fmt.Errorf("access denied")
+	}
+
+	// Delete conversation
+	err = s.supabase.GetClient().DB.From("direct_conversations").
+		Delete().
+		Filter("id", "eq", conversationID).
+		Execute(nil)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to delete conversation: %w", err)
+	}
+
+	return map[string]interface{}{"success": true}, nil
 }
 
 func (s *MessagingService) DeleteGroupMessage(userID string, messageID string) (map[string]interface{}, error) {
 	// Verify user sent the message
-	var senderID string
-	var groupID string
-	err := s.db.QueryRow("SELECT sender_id, group_id FROM group_messages WHERE id = $1", messageID).Scan(&senderID, &groupID)
-	if err != nil || senderID != userID {
+	var messages []models.GroupMessage
+	err := s.supabase.GetClient().DB.From("group_messages").
+		Select("sender_id, group_id").
+		Filter("id", "eq", messageID).
+		Execute(&messages)
+
+	if err != nil || len(messages) == 0 || messages[0].SenderID != userID {
 		return nil, fmt.Errorf("message not found or access denied")
 	}
 
+	groupID := messages[0].GroupID
+
 	// Delete message
-	_, err = s.db.Exec("DELETE FROM group_messages WHERE id = $1", messageID)
+	err = s.supabase.GetClient().DB.From("group_messages").
+		Delete().
+		Filter("id", "eq", messageID).
+		Execute(nil)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to delete message: %w", err)
 	}

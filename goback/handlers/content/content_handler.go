@@ -1,6 +1,7 @@
 package content
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -48,6 +49,11 @@ func (h *ContentHandler) GetUserPosts(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	// Ensure we always return an empty array instead of null
+	if posts == nil {
+		posts = []*models.PostWithUser{}
+	}
+
 	return c.JSON(http.StatusOK, posts)
 }
 
@@ -89,7 +95,7 @@ func (h *ContentHandler) UnlikePost(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, map[string]bool{"success": true})
+	return c.NoContent(http.StatusNoContent)
 }
 
 // --- STORIES ---
@@ -116,11 +122,23 @@ func (h *ContentHandler) CreateStory(c echo.Context) error {
 
 func (h *ContentHandler) GetFeed(c echo.Context) error {
 	userID := c.Get("userID").(string)
+
+	// Add debug logging
+	fmt.Printf("GetFeed called for userID: %s\n", userID)
+
 	stories, err := h.contentService.GetFeed(userID)
 	if err != nil {
+		fmt.Printf("GetFeed service error: %v\n", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	// Ensure we always return an empty array instead of null
+	if stories == nil {
+		fmt.Printf("GetFeed returned nil, initializing empty array\n")
+		stories = []*models.FeedGroup{}
+	}
+
+	fmt.Printf("GetFeed returning %d feed groups\n", len(stories))
 	return c.JSON(http.StatusOK, stories)
 }
 
@@ -157,6 +175,11 @@ func (h *ContentHandler) GetStoryViewers(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	// Ensure we always return an empty array instead of null
+	if viewers == nil {
+		viewers = []*models.StoryView{}
+	}
+
 	return c.JSON(http.StatusOK, viewers)
 }
 
@@ -174,6 +197,11 @@ func (h *ContentHandler) ReactToStory(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	// Ensure we always return a valid result instead of null
+	if result == nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to react to story"})
+	}
+
 	return c.JSON(http.StatusOK, result)
 }
 
@@ -186,7 +214,7 @@ func (h *ContentHandler) RemoveReaction(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, map[string]bool{"success": true})
+	return c.NoContent(http.StatusNoContent)
 }
 
 func (h *ContentHandler) DeleteStory(c echo.Context) error {
@@ -198,7 +226,7 @@ func (h *ContentHandler) DeleteStory(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, map[string]bool{"success": true})
+	return c.NoContent(http.StatusNoContent)
 }
 
 // --- STORE (PRODUCTS) ---
@@ -223,6 +251,11 @@ func (h *ContentHandler) GetActiveProducts(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	// Ensure we always return an empty array instead of null
+	if products == nil {
+		products = []*models.Product{}
+	}
+
 	return c.JSON(http.StatusOK, products)
 }
 
@@ -230,6 +263,11 @@ func (h *ContentHandler) GetFeaturedProducts(c echo.Context) error {
 	products, err := h.contentService.GetFeaturedProducts()
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Ensure we always return an empty array instead of null
+	if products == nil {
+		products = []*models.Product{}
 	}
 
 	return c.JSON(http.StatusOK, products)
@@ -241,6 +279,11 @@ func (h *ContentHandler) GetProductsByCategory(c echo.Context) error {
 	products, err := h.contentService.GetProductsByCategory(category)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Ensure we always return an empty array instead of null
+	if products == nil {
+		products = []*models.Product{}
 	}
 
 	return c.JSON(http.StatusOK, products)
@@ -255,6 +298,11 @@ func (h *ContentHandler) SearchProducts(c echo.Context) error {
 	products, err := h.contentService.SearchProducts(query)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Ensure we always return an empty array instead of null
+	if products == nil {
+		products = []*models.Product{}
 	}
 
 	return c.JSON(http.StatusOK, products)
@@ -280,6 +328,11 @@ func (h *ContentHandler) GetProductsByPriceRange(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	// Ensure we always return an empty array instead of null
+	if products == nil {
+		products = []*models.Product{}
+	}
+
 	return c.JSON(http.StatusOK, products)
 }
 
@@ -287,6 +340,11 @@ func (h *ContentHandler) GetOnSaleProducts(c echo.Context) error {
 	products, err := h.contentService.GetOnSaleProducts()
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Ensure we always return an empty array instead of null
+	if products == nil {
+		products = []*models.Product{}
 	}
 
 	return c.JSON(http.StatusOK, products)
@@ -338,13 +396,18 @@ func (h *ContentHandler) DeleteProduct(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, map[string]bool{"success": true})
+	return c.NoContent(http.StatusNoContent)
 }
 
 func (h *ContentHandler) GetProducts(c echo.Context) error {
 	products, err := h.contentService.GetProducts()
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Ensure we always return an empty array instead of null
+	if products == nil {
+		products = []*models.Product{}
 	}
 
 	return c.JSON(http.StatusOK, products)

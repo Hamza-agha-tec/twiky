@@ -19,7 +19,7 @@ export class WebRTCManager {
   private userId: string | null = null;
   private eventListeners = new Map<keyof WebRTCManagerEvents, Function[]>();
 
-  constructor(private serverUrl: string = 'http://localhost:3500') {}
+  constructor(private serverUrl: string = 'http://localhost:8080') {}
 
   async connect(userId: string, token: string) {
     this.userId = userId;

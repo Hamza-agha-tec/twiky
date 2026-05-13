@@ -18,6 +18,7 @@ import (
 
 type DodoPaymentService struct {
 	db            *sql.DB
+	supabase      *SupabaseClient
 	apiKey        string
 	webhookSecret string
 	environment   string
@@ -59,9 +60,10 @@ type DodoWebhookEvent struct {
 	Signature string                 `json:"signature"` // HMAC signature for verification
 }
 
-func NewDodoPaymentService(db *sql.DB) *DodoPaymentService {
+func NewDodoPaymentService(db *sql.DB, supabaseURL, supabaseKey string) *DodoPaymentService {
 	return &DodoPaymentService{
 		db:            db,
+		supabase:      NewSupabaseClient(supabaseURL, supabaseKey),
 		apiKey:        os.Getenv("DODO_PAYMENTS_API_KEY"),
 		webhookSecret: os.Getenv("DODO_PAYMENTS_WEBHOOK_SECRET"),
 		environment:   os.Getenv("DODO_PAYMENTS_ENVIRONMENT"),
@@ -331,9 +333,15 @@ func (s *DodoPaymentService) createOrder(userID, dodoID string, product *models.
 func (s *DodoPaymentService) handlePaymentCompleted(data map[string]interface{}) error {
 	// Update order status to completed
 	orderID := data["order_id"].(string)
-	query := `UPDATE orders SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE dodo_order_id = $1`
+	var orders []models.Order
+	err := s.supabase.GetClient().DB.From("orders").
+		Update(map[string]interface{}{
+			"status":     "completed",
+			"updated_at": "now()",
+		}).
+		Filter("dodo_order_id", "eq", orderID).
+		Execute(&orders)
 
-	_, err := s.db.Exec(query, orderID)
 	if err != nil {
 		return fmt.Errorf("failed to update order status: %w", err)
 	}
@@ -343,9 +351,15 @@ func (s *DodoPaymentService) handlePaymentCompleted(data map[string]interface{})
 func (s *DodoPaymentService) handlePaymentFailed(data map[string]interface{}) error {
 	// Update order status to failed
 	orderID := data["order_id"].(string)
-	query := `UPDATE orders SET status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE dodo_order_id = $1`
+	var orders []models.Order
+	err := s.supabase.GetClient().DB.From("orders").
+		Update(map[string]interface{}{
+			"status":     "failed",
+			"updated_at": "now()",
+		}).
+		Filter("dodo_order_id", "eq", orderID).
+		Execute(&orders)
 
-	_, err := s.db.Exec(query, orderID)
 	if err != nil {
 		return fmt.Errorf("failed to update order status: %w", err)
 	}
@@ -358,20 +372,32 @@ func (s *DodoPaymentService) handleSubscriptionCreated(data map[string]interface
 	planType := data["plan_type"].(string)
 	userID := data["metadata"].(map[string]interface{})["user_id"].(string)
 
-	query := `
-		INSERT INTO user_subscriptions (id, user_id, dodo_subscription_id, dodo_customer_id, status, plan_type, created_at, updated_at)
-		VALUES (gen_random_uuid(), $1, $2, '', 'active', $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-	`
+	var subscriptions []models.UserSubscription
+	err := s.supabase.GetClient().DB.From("user_subscriptions").
+		Insert(map[string]interface{}{
+			"user_id":              userID,
+			"dodo_subscription_id": subID,
+			"plan_type":            planType,
+			"status":               "active",
+			"created_at":           "now()",
+			"updated_at":           "now()",
+		}).
+		Execute(&subscriptions)
 
-	_, err := s.db.Exec(query, userID, subID, planType)
 	return err
 }
 
 func (s *DodoPaymentService) handleSubscriptionCancelled(data map[string]interface{}) error {
 	// Update subscription status
 	subID := data["id"].(string)
-	query := `UPDATE user_subscriptions SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE dodo_subscription_id = $1`
+	var subscriptions []models.UserSubscription
+	err := s.supabase.GetClient().DB.From("user_subscriptions").
+		Update(map[string]interface{}{
+			"status":     "cancelled",
+			"updated_at": "now()",
+		}).
+		Filter("dodo_subscription_id", "eq", subID).
+		Execute(&subscriptions)
 
-	_, err := s.db.Exec(query, subID)
 	return err
 }

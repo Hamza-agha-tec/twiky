@@ -1,11 +1,12 @@
 package services
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 
-	socketio "github.com/googollee/go-socket.io"
 	"github.com/labstack/echo/v4"
+	socketio "github.com/zishang520/socket.io/v2/socket"
 )
 
 type SocketIOService struct {
@@ -28,56 +29,174 @@ type VoiceEvent struct {
 }
 
 func NewSocketIOService() *SocketIOService {
-	server := socketio.NewServer(nil)
+	server := socketio.NewServer(nil, nil)
 
 	// Configure connection handling
-	server.OnConnect("/", func(s socketio.Conn) error {
-		log.Printf("Socket.IO client connected: %s", s.ID())
-		return nil
-	})
+	server.On("connection", func(clients ...any) {
+		client := clients[0].(*socketio.Socket)
+		log.Printf("Socket.IO client connected: %s", client.Id())
 
-	server.OnDisconnect("/", func(s socketio.Conn, reason string) {
-		log.Printf("Socket.IO client disconnected: %s, reason: %s", s.ID(), reason)
-	})
+		// Handle voice room joining
+		client.On("join-voice-room", func(datas ...any) {
+			if len(datas) > 0 {
+				roomID := fmt.Sprintf("%v", datas[0])
+				log.Printf("Client %s joining voice room: %s", client.Id(), roomID)
+				client.Join(socketio.Room(roomID))
+			}
+		})
 
-	// Handle chat messages
-	server.OnEvent("/", "chat_message", func(s socketio.Conn, msg ChatMessage) {
-		log.Printf("Chat message received from %s in channel %s: %s", msg.UserID, msg.ChannelID, msg.Message)
+		// Handle voice room leaving
+		client.On("leave-voice-room", func(datas ...any) {
+			if len(datas) > 0 {
+				roomID := fmt.Sprintf("%v", datas[0])
+				log.Printf("Client %s leaving voice room: %s", client.Id(), roomID)
+				client.Leave(socketio.Room(roomID))
+			}
+		})
 
-		// Broadcast to all clients in the same channel room
-		server.BroadcastToRoom("/", msg.ChannelID, "chat_message", msg)
-	})
+		// Handle DM call invite
+		client.On("dm-call-invite", func(datas ...any) {
+			if len(datas) > 0 {
+				log.Printf("DM call invite received from %s: %v", client.Id(), datas[0])
+				// Broadcast to target user or handle call logic
+				server.Emit("dm-call-invite", datas[0])
+			}
+		})
 
-	// Handle voice events
-	server.OnEvent("/", "voice_event", func(s socketio.Conn, event VoiceEvent) {
-		log.Printf("Voice event from %s in room %s: %s", event.UserID, event.RoomID, event.Event)
+		// Handle DM call accepted
+		client.On("dm-call-accepted", func(datas ...any) {
+			if len(datas) > 0 {
+				log.Printf("DM call accepted by %s: %v", client.Id(), datas[0])
+				server.Emit("dm-call-accepted", datas[0])
+			}
+		})
 
-		// Broadcast to all clients in the same voice room
-		server.BroadcastToRoom("/", event.RoomID, "voice_event", event)
-	})
+		// Handle DM call rejected
+		client.On("dm-call-rejected", func(datas ...any) {
+			if len(datas) > 0 {
+				log.Printf("DM call rejected by %s: %v", client.Id(), datas[0])
+				server.Emit("dm-call-rejected", datas[0])
+			}
+		})
 
-	// Handle channel joining
-	server.OnEvent("/", "join_channel", func(s socketio.Conn, channelID string) {
-		log.Printf("Client %s joining channel: %s", s.ID(), channelID)
-		s.Join(channelID)
-	})
+		// Handle DM call cancelled
+		client.On("dm-call-cancelled", func(datas ...any) {
+			if len(datas) > 0 {
+				log.Printf("DM call cancelled by %s: %v", client.Id(), datas[0])
+				server.Emit("dm-call-cancelled", datas[0])
+			}
+		})
 
-	// Handle channel leaving
-	server.OnEvent("/", "leave_channel", func(s socketio.Conn, channelID string) {
-		log.Printf("Client %s leaving channel: %s", s.ID(), channelID)
-		s.Leave(channelID)
-	})
+		// Handle DM call ended
+		client.On("dm-call-ended", func(datas ...any) {
+			if len(datas) > 0 {
+				log.Printf("DM call ended by %s: %v", client.Id(), datas[0])
+				server.Emit("dm-call-ended", datas[0])
+			}
+		})
 
-	// Handle voice room joining
-	server.OnEvent("/", "join_voice_room", func(s socketio.Conn, roomID string) {
-		log.Printf("Client %s joining voice room: %s", s.ID(), roomID)
-		s.Join(roomID)
-	})
+		// Handle watch join
+		client.On("watch:join", func(datas ...any) {
+			if len(datas) > 0 {
+				roomID := fmt.Sprintf("%v", datas[0])
+				log.Printf("Client %s joining watch room: %s", client.Id(), roomID)
+				client.Join(socketio.Room(roomID))
+				server.To(socketio.Room(roomID)).Emit("watch:join", client.Id())
+			}
+		})
 
-	// Handle voice room leaving
-	server.OnEvent("/", "leave_voice_room", func(s socketio.Conn, roomID string) {
-		log.Printf("Client %s leaving voice room: %s", s.ID(), roomID)
-		s.Leave(roomID)
+		// Handle watch play
+		client.On("watch:play", func(datas ...any) {
+			if len(datas) > 0 {
+				log.Printf("Watch play event from %s: %v", client.Id(), datas[0])
+				// Broadcast to all clients in the same watch room
+				server.Emit("watch:play", datas[0])
+			}
+		})
+
+		// Handle watch pause
+		client.On("watch:pause", func(datas ...any) {
+			if len(datas) > 0 {
+				log.Printf("Watch pause event from %s: %v", client.Id(), datas[0])
+				server.Emit("watch:pause", datas[0])
+			}
+		})
+
+		// Handle watch seek
+		client.On("watch:seek", func(datas ...any) {
+			if len(datas) > 0 {
+				log.Printf("Watch seek event from %s: %v", client.Id(), datas[0])
+				server.Emit("watch:seek", datas[0])
+			}
+		})
+
+		// Handle watch sync request
+		client.On("watch:sync-request", func(datas ...any) {
+			if len(datas) > 0 {
+				log.Printf("Watch sync request from %s: %v", client.Id(), datas[0])
+				server.Emit("watch:sync-request", datas[0])
+			}
+		})
+
+		// Handle watch sync response
+		client.On("watch:sync-response", func(datas ...any) {
+			if len(datas) > 0 {
+				log.Printf("Watch sync response from %s: %v", client.Id(), datas[0])
+				server.Emit("watch:sync-response", datas[0])
+			}
+		})
+
+		// Handle voice room audio toggle
+		client.On("voice-room-audio-toggle", func(datas ...any) {
+			if len(datas) > 0 {
+				log.Printf("Voice room audio toggle from %s: %v", client.Id(), datas[0])
+				server.Emit("voice-room-audio-toggle", datas[0])
+			}
+		})
+
+		// Handle voice speaking
+		client.On("voice-speaking", func(datas ...any) {
+			if len(datas) > 0 {
+				log.Printf("Voice speaking event from %s: %v", client.Id(), datas[0])
+				server.Emit("voice-speaking", datas[0])
+			}
+		})
+
+		// Handle voice soundboard
+		client.On("voice-soundboard", func(datas ...any) {
+			if len(datas) > 0 {
+				log.Printf("Voice soundboard event from %s: %v", client.Id(), datas[0])
+				server.Emit("voice-soundboard", datas[0])
+			}
+		})
+
+		// Handle voice kick
+		client.On("voice-kick", func(datas ...any) {
+			if len(datas) > 0 {
+				log.Printf("Voice kick event from %s: %v", client.Id(), datas[0])
+				server.Emit("voice-kick", datas[0])
+			}
+		})
+
+		// Handle voice server mute
+		client.On("voice-server-mute", func(datas ...any) {
+			if len(datas) > 0 {
+				log.Printf("Voice server mute event from %s: %v", client.Id(), datas[0])
+				server.Emit("voice-server-mute", datas[0])
+			}
+		})
+
+		// Handle subscribe voice rooms
+		client.On("subscribe-voice-rooms", func(datas ...any) {
+			if len(datas) > 0 {
+				log.Printf("Subscribe voice rooms from %s: %v", client.Id(), datas[0])
+				server.Emit("subscribe-voice-rooms", datas[0])
+			}
+		})
+
+		client.On("disconnect", func(datas ...any) {
+			log.Printf("Socket.IO client disconnected: %s", client.Id())
+		})
 	})
 
 	return &SocketIOService{
@@ -86,27 +205,27 @@ func NewSocketIOService() *SocketIOService {
 }
 
 func (s *SocketIOService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.server.ServeHTTP(w, r)
+	s.server.ServeHandler(nil).ServeHTTP(w, r)
 }
 
-func (s *SocketIOService) Close() error {
-	return s.server.Close()
+func (s *SocketIOService) Close() {
+	s.server.Close(nil)
 }
 
 func (s *SocketIOService) BroadcastToChannel(channelID, event string, data interface{}) {
-	s.server.BroadcastToRoom("/", channelID, event, data)
+	s.server.To(socketio.Room(channelID)).Emit(event, data)
 }
 
 func (s *SocketIOService) BroadcastToRoom(roomID, event string, data interface{}) {
-	s.server.BroadcastToRoom("/", roomID, event, data)
+	s.server.To(socketio.Room(roomID)).Emit(event, data)
 }
 
 func (s *SocketIOService) BroadcastToAll(event string, data interface{}) {
-	s.server.BroadcastToRoom("/", "", event, data)
+	s.server.Emit(event, data)
 }
 
 func (s *SocketIOService) GetConnectedClientsCount() int {
-	// Note: go-socket.io doesn't provide a direct way to get connected client count
+	// Note: zishang520/socket.io doesn't provide a direct way to get connected client count
 	// This would need to be tracked manually
 	return 0 // Placeholder
 }

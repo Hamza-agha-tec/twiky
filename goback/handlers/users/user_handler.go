@@ -38,12 +38,12 @@ func (h *UserHandler) UpdateProfile(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
-	err := h.userService.UpdateProfile(user.UserID, updateData)
+	updatedProfile, err := h.userService.UpdateProfile(user.UserID, updateData)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update profile"})
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"message": "profile updated successfully"})
+	return c.JSON(http.StatusOK, updatedProfile)
 }
 
 func (h *UserHandler) GetSettings(c echo.Context) error {
@@ -51,7 +51,7 @@ func (h *UserHandler) GetSettings(c echo.Context) error {
 
 	settings, err := h.userService.GetSettings(user.UserID)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get settings"})
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get settings", "err": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, settings)
@@ -65,9 +65,12 @@ func (h *UserHandler) UpdateSettings(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
-	// TODO: Implement settings update service method using user.UserID
-	_ = user.UserID // Placeholder to avoid unused variable error
-	return c.JSON(http.StatusOK, map[string]string{"message": "settings updated successfully"})
+	updatedSettings, err := h.userService.UpdateSettings(user.UserID, updateData)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update settings"})
+	}
+
+	return c.JSON(http.StatusOK, updatedSettings)
 }
 
 func (h *UserHandler) Search(c echo.Context) error {

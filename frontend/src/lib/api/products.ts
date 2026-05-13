@@ -1,6 +1,6 @@
 import { Product, ProductCategory, CreateProductDto, UpdateProductDto } from '@/types/product';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 
 class ProductsAPI {
   private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
