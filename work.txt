@@ -1,0 +1,4 @@
+micro services et decoupage metier,
+ddd
+problem de coherence
+process metier

@@ -1,4 +1,4 @@
-﻿package services
+package services
 
 import (
 	"database/sql"
@@ -19,23 +19,23 @@ func NewAuthService(db *sql.DB) *AuthService {
 
 func (s *AuthService) GetUserByID(userID string) (*models.User, error) {
 	query := `
-		SELECT id, email, fullname, username, avatar_url, bio, status, phone_number, 
+		SELECT id, fullname, username, avatar_url, bio, status, phone_number, 
 		       last_seen_at, banner, logo, x_url, website_url, enter_sound_url, 
-		       is_verified, is_online, sub_plan, last_active_at, created_at, updated_at
+		       is_verified, sub_plan, created_at
 		FROM users 
 		WHERE id = $1
 	`
 
 	user := &models.User{}
-	var fullName, username, avatarURL, bio, status, phoneNumber, lastSeenAt,
+	var fullName, username, avatarURL, bio, status, phoneNumber,
 		banner, logo, xURL, websiteURL, enterSoundURL sql.NullString
+	var lastSeenAt sql.NullTime
 	var isVerified sql.NullBool
 
 	err := s.db.QueryRow(query, userID).Scan(
-		&user.ID, &user.Email, &fullName, &username, &avatarURL, &bio, &status,
+		&user.ID, &fullName, &username, &avatarURL, &bio, &status,
 		&phoneNumber, &lastSeenAt, &banner, &logo, &xURL, &websiteURL,
-		&enterSoundURL, &isVerified, &user.IsOnline, &user.SubPlan,
-		&user.LastActiveAt, &user.CreatedAt, &user.UpdatedAt,
+		&enterSoundURL, &isVerified, &user.SubPlan, &user.CreatedAt,
 	)
 
 	if err != nil {
@@ -47,7 +47,7 @@ func (s *AuthService) GetUserByID(userID string) (*models.User, error) {
 
 	// Convert sql.NullString to pointers
 	if fullName.Valid {
-		user.FullName = &fullName.String
+		user.Fullname = &fullName.String
 	}
 	if username.Valid {
 		user.Username = &username.String
@@ -65,7 +65,7 @@ func (s *AuthService) GetUserByID(userID string) (*models.User, error) {
 		user.PhoneNumber = &phoneNumber.String
 	}
 	if lastSeenAt.Valid {
-		user.LastSeenAt = &lastSeenAt.String
+		user.LastSeenAt = &lastSeenAt.Time
 	}
 	if banner.Valid {
 		user.Banner = &banner.String
@@ -83,7 +83,7 @@ func (s *AuthService) GetUserByID(userID string) (*models.User, error) {
 		user.EnterSoundURL = &enterSoundURL.String
 	}
 	if isVerified.Valid {
-		user.IsVerified = &isVerified.Bool
+		user.IsVerified = isVerified.Bool
 	}
 
 	return user, nil

@@ -301,7 +301,7 @@ func (s *DodoPaymentService) getProduct(productID string) (*models.Product, erro
 }
 
 func (s *DodoPaymentService) getUserEmail(userID string) (string, error) {
-	query := `SELECT email FROM users WHERE id = $1`
+	query := `SELECT email FROM user_settings WHERE user_id = $1`
 
 	var email string
 	err := s.db.QueryRow(query, userID).Scan(&email)

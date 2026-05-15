@@ -58,11 +58,17 @@ export interface ChannelInviteLink {
 
 export const channelApi = {
   getChannels: () => authedFetch<BackendChannel[]>('/channels'),
-  createChannel: (data: CreateChannelInput) =>
-    authedFetch<BackendChannel>('/channels', {
+  createChannel: (data: CreateChannelInput) => {
+    console.log("Creating channel ", data);
+
+    const res = authedFetch<BackendChannel>('/channels', {
       method: 'POST',
       body: JSON.stringify(data),
-    }),
+    })
+
+    console.log("Creating channel Response", res);
+    return res;
+  },
   getInviteLink: (channelId: string) =>
     authedFetch<ChannelInviteLink>(`/channels/${channelId}/invite-link`),
   deleteChannel: (channelId: string) =>

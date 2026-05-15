@@ -26,16 +26,16 @@ func (s *ContentService) CreatePost(userID string, req models.CreatePostRequest)
 	urlsJSON, _ := json.Marshal(req.MediaURLs)
 
 	query := `
-		INSERT INTO posts (id, user_id, caption, media_urls, created_at, updated_at)
-		VALUES (gen_random_uuid(), $1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-		RETURNING id, user_id, caption, media_urls, created_at, updated_at
+		INSERT INTO user_posts (id, user_id, caption, media_urls, created_at)
+		VALUES (gen_random_uuid(), $1, $2, $3, CURRENT_TIMESTAMP)
+		RETURNING id, user_id, caption, media_urls, created_at
 	`
 
 	post := &models.Post{}
 	var mediaURLs []byte
 
 	err := s.db.QueryRow(query, userID, req.Caption, urlsJSON).Scan(
-		&post.ID, &post.UserID, &post.Caption, &mediaURLs, &post.CreatedAt, &post.UpdatedAt,
+		&post.ID, &post.UserID, &post.Caption, &mediaURLs, &post.CreatedAt,
 	)
 
 	if err != nil {
@@ -74,7 +74,12 @@ func (s *ContentService) GetUserPosts(userID string) ([]*models.PostWithUser, er
 		postWithUser := &models.PostWithUser{
 			ID:        posts[i].ID,
 			UserID:    posts[i].UserID,
-			Caption:   posts[i].Caption,
+			Caption: func() string {
+				if posts[i].Caption != nil {
+					return *posts[i].Caption
+				}
+				return ""
+			}(),
 			MediaURLs: posts[i].MediaURLs,
 			CreatedAt: posts[i].CreatedAt,
 		}
@@ -246,8 +251,14 @@ func (s *ContentService) GetFeed(userID string) ([]*models.FeedGroup, error) {
 		userStoriesMap[story.UserID].Stories = append(userStoriesMap[story.UserID].Stories, *story)
 	}
 
-	fmt.Printf("GetFeed query returned %d stories for user %s\n", len(stories), userID)
-	return stories, nil
+	// Convert map to slice
+	var result []*models.FeedGroup
+	for _, group := range userStoriesMap {
+		result = append(result, group)
+	}
+
+	fmt.Printf("GetFeed query returned %d story groups for user %s\n", len(result), userID)
+	return result, nil
 }
 
 func (s *ContentService) GetStoryById(userID string, storyID string) (*models.Story, error) {
@@ -327,7 +338,7 @@ func (s *ContentService) GetStoryViewers(userID string, storyID string) ([]*mode
 	var viewers []*models.StoryView
 	for rows.Next() {
 		view := &models.StoryView{}
-		err := rows.Scan(&view.ID, &view.StoryID, &view.UserID, &view.CreatedAt)
+		err := rows.Scan(&view.StoryID, &view.UserID, &view.ViewedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan story viewer: %w", err)
 		}
@@ -422,6 +433,7 @@ func (s *ContentService) CreateProduct(req models.CreateProductRequest) (*models
 		return nil, fmt.Errorf("failed to create product: no data returned")
 	}
 
+	// No need to reassign if types match, but let's ensure we return what was sent
 	products[0].Features = req.Features
 	products[0].Images = req.Images
 
@@ -520,7 +532,7 @@ func (s *ContentService) SearchProducts(query string) ([]*models.Product, error)
 			&product.ID, &product.Title, &product.Description, &product.Price,
 			&product.Category, &featuresJSON, &product.Slug, &product.Active,
 			&product.DodoProductID, &product.Discount, &imagesJSON,
-			&product.CreatedAt, &product.UpdatedAt,
+			&product.CreatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan product: %w", err)

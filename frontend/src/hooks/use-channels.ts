@@ -28,6 +28,9 @@ export function useCreateChannel() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: CHANNEL_KEYS.all });
     },
+    onError: (error) => {
+      console.error('Error creating channel:', error);
+    },
   });
 }
 

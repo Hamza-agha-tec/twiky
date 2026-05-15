@@ -23,8 +23,8 @@ func (s *ContactService) FindAll(userID string) ([]*models.ContactWithUserInfo, 
 	query := `
 		SELECT c.id, c.user_id, c.contact_id, c.is_blocked, c.is_archived, c.is_favorite, 
 		       c.is_pinned, c.is_muted, c.notes, c.created_at, c.updated_at,
-		       u.id, u.email, u.full_name, u.username, u.avatar_url, u.bio, u.status,
-		       u.is_online, u.last_active_at, u.created_at, u.updated_at
+		       u.id, u.fullname, u.username, u.avatar_url, u.bio, u.status,
+		       u.created_at
 		FROM contacts c
 		INNER JOIN users u ON c.contact_id = u.id
 		WHERE c.user_id = $1
@@ -50,10 +50,8 @@ func (s *ContactService) FindAll(userID string) ([]*models.ContactWithUserInfo, 
 			&contact.ID, &contact.UserID, &contact.ContactID, &contact.IsBlocked,
 			&contact.IsArchived, &contact.IsFavorite, &contact.IsPinned, &contact.IsMuted,
 			&contact.Notes, &contact.CreatedAt, &contact.UpdatedAt,
-			&contact.ContactUser.ID, &contact.ContactUser.Email, &fullName, &username,
-			&avatarURL, &bio, &status, &contact.ContactUser.IsOnline,
-			&contact.ContactUser.LastActiveAt, &contact.ContactUser.CreatedAt,
-			&contact.ContactUser.UpdatedAt,
+			&contact.ContactUser.ID, &fullName, &username,
+			&avatarURL, &bio, &status, &contact.ContactUser.CreatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan contact row: %w", err)
@@ -61,7 +59,7 @@ func (s *ContactService) FindAll(userID string) ([]*models.ContactWithUserInfo, 
 
 		// Convert sql.NullString to pointers
 		if fullName.Valid {
-			contact.ContactUser.FullName = &fullName.String
+			contact.ContactUser.Fullname = &fullName.String
 		}
 		if username.Valid {
 			contact.ContactUser.Username = &username.String
@@ -123,16 +121,14 @@ func (s *ContactService) AddContact(userID string, createData models.CreateConta
 
 	// Get user info for the contact
 	userQuery := `
-		SELECT id, email, full_name, username, avatar_url, bio, status, is_online, last_active_at, created_at, updated_at
+		SELECT id, fullname, username, avatar_url, bio, status, created_at
 		FROM users WHERE id = $1
 	`
 
 	var fullName, username, avatarURL, bio, status sql.NullString
 	err = s.db.QueryRow(userQuery, createData.ContactID).Scan(
-		&contact.ContactUser.ID, &contact.ContactUser.Email, &fullName, &username,
-		&avatarURL, &bio, &status, &contact.ContactUser.IsOnline,
-		&contact.ContactUser.LastActiveAt, &contact.ContactUser.CreatedAt,
-		&contact.ContactUser.UpdatedAt,
+		&contact.ContactUser.ID, &fullName, &username,
+		&avatarURL, &bio, &status, &contact.ContactUser.CreatedAt,
 	)
 
 	if err != nil {
@@ -141,7 +137,7 @@ func (s *ContactService) AddContact(userID string, createData models.CreateConta
 
 	// Convert sql.NullString to pointers
 	if fullName.Valid {
-		contact.ContactUser.FullName = &fullName.String
+		contact.ContactUser.Fullname = &fullName.String
 	}
 	if username.Valid {
 		contact.ContactUser.Username = &username.String

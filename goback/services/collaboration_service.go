@@ -386,7 +386,7 @@ func (s *CollaborationService) ToggleMilestone(userID string, milestoneID string
 func (s *CollaborationService) GetGoalNotes(userID string, goalID string) ([]*models.GoalNote, error) {
 	var notes []models.GoalNote
 	err := s.supabase.GetClient().DB.From("goal_notes").
-		Select("id, goal_id, content, created_at, updated_at").
+		Select("id", "goal_id", "content", "created_at", "updated_at").
 		Eq("goal_id", goalID).
 		Execute(&notes)
 

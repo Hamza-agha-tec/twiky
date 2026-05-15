@@ -29,7 +29,7 @@ func (h *ChannelHandler) CreateChannel(c echo.Context) error {
 
 	channel, err := h.channelService.CreateChannel(user.UserID, createData)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create channel"})
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusCreated, channel)

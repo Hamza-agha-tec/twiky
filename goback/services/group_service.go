@@ -178,18 +178,26 @@ func (s *GroupService) GetGroupMembers(groupID, requestingUserID string) ([]*mod
 		if !hasOwner && member.UserID == ownerID {
 			role = "OWNER"
 		}
+		fullname := ""
+		if u.Fullname != nil {
+			fullname = *u.Fullname
+		}
+		username := ""
+		if u.Username != nil {
+			username = *u.Username
+		}
 		result = append(result, &models.GroupMemberResponse{
 			Role:     role,
 			JoinedAt: member.JoinedAt,
 			User: models.GroupMemberUser{
 				ID:         u.ID,
 				Email:      u.Email,
-				Fullname:   u.Fullname,
-				Username:   u.Username,
+				Fullname:   fullname,
+				Username:   username,
 				AvatarURL:  u.AvatarURL,
 				Banner:     u.Banner,
 				Bio:        u.Bio,
-				IsVerified: u.IsVerified,
+				IsVerified: &u.IsVerified,
 				SubPlan:    u.SubPlan,
 			},
 		})
@@ -326,7 +334,7 @@ func (s *GroupService) AddMemberToGroup(groupID, userID string, addData models.A
 	// Check if user is already a member
 	var existingMembers []models.GroupMember
 	err = s.supabase.GetClient().DB.From("group_members").
-		Select("id").
+		Select("user_id").
 		Filter("group_id", "eq", groupID).
 		Filter("user_id", "eq", addData.UserID).
 		Execute(&existingMembers)
@@ -443,10 +451,10 @@ func (s *GroupService) DeleteGroupMember(groupID, userID, memberID string) error
 }
 
 func (s *GroupService) RequestJoinGroup(groupID, userID string) error {
-	// Check if group is private
+	// Check if group is private and get channel_id
 	var groups []models.Group
 	err := s.supabase.GetClient().DB.From("groups").
-		Select("access_type").
+		Select("access_type", "channel_id").
 		Filter("id", "eq", groupID).
 		Execute(&groups)
 
@@ -462,10 +470,26 @@ func (s *GroupService) RequestJoinGroup(groupID, userID string) error {
 		return fmt.Errorf("can only request to join private groups")
 	}
 
+	// Must be a channel member to request joining
+	var channelMembers []models.ChannelMember
+	err = s.supabase.GetClient().DB.From("channel_members").
+		Select("user_id").
+		Eq("channel_id", groups[0].ChannelID).
+		Eq("user_id", userID).
+		Execute(&channelMembers)
+
+	if err != nil {
+		return fmt.Errorf("failed to check channel membership: %w", err)
+	}
+
+	if len(channelMembers) == 0 {
+		return fmt.Errorf("must be a channel member to request joining")
+	}
+
 	// Check if already a member
 	var existingMembers []models.GroupMember
 	err = s.supabase.GetClient().DB.From("group_members").
-		Select("id").
+		Select("user_id").
 		Filter("group_id", "eq", groupID).
 		Filter("user_id", "eq", userID).
 		Execute(&existingMembers)
@@ -492,19 +516,16 @@ func (s *GroupService) RequestJoinGroup(groupID, userID string) error {
 	}
 
 	if len(existingRequests) > 0 {
-		return fmt.Errorf("join request already exists")
+		return nil // Emulate Upsert behavior by silently succeeding if it already exists
 	}
 
 	// Create join request
 	var requests []models.GroupJoinRequest
 	err = s.supabase.GetClient().DB.From("group_join_requests").
 		Insert(map[string]interface{}{
-			"group_id":   groupID,
-			"user_id":    userID,
-			"status":     "PENDING",
-			"message":    "",
-			"created_at": "now()",
-			"updated_at": "now()",
+			"group_id": groupID,
+			"user_id":  userID,
+			"status":   "PENDING",
 		}).
 		Execute(&requests)
 
@@ -545,7 +566,7 @@ func (s *GroupService) GetJoinRequests(groupID, userID string) ([]*models.GroupJ
 
 	var requests []models.GroupJoinRequest
 	err = s.supabase.GetClient().DB.From("group_join_requests").
-		Select("id, group_id, user_id, status, message, created_at, updated_at").
+		Select("id", "group_id", "user_id", "status", "created_at").
 		Filter("group_id", "eq", groupID).
 		Filter("status", "eq", "PENDING").
 		Execute(&requests)
@@ -614,7 +635,6 @@ func (s *GroupService) RespondToJoinRequest(groupID, requestID, status, userID s
 	err = s.supabase.GetClient().DB.From("group_join_requests").
 		Update(map[string]interface{}{
 			"status":     status,
-			"updated_at": "now()",
 		}).
 		Filter("id", "eq", requestID).
 		Filter("group_id", "eq", groupID).

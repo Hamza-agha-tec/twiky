@@ -48,7 +48,7 @@ export function useVoiceInvitationListener(
 
   useEffect(() => {
     if (!myId) return
-    pending
+    pending?
       .filter(
         (inv) =>
           (inv.entity_type === 'GROUP' || inv.entity_type === 'CHANNEL') &&

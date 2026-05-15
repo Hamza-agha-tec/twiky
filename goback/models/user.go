@@ -20,6 +20,8 @@ type UserSettings struct {
 	DodoCustomerID          string    `json:"dodo_customer_id"`
 	WhoCanSeeMyProfilePhoto string    `json:"who_can_see_my_profile_photo"`
 	WhoCanDiscoverMe        string    `json:"who_can_discover_me"`
+	IsVerified              bool      `json:"is_verified"`
+	SubPlan                 string    `json:"sub_plan"`
 }
 
 type UserProfile struct {
@@ -28,11 +30,4 @@ type UserProfile struct {
 	Followers   int          `json:"followers_count"`
 	Following   int          `json:"following_count"`
 	IsFollowing bool         `json:"is_following,omitempty"`
-}
-
-type Follow struct {
-	ID          string    `json:"id" db:"id"`
-	FollowerID  string    `json:"follower_id" db:"follower_id"`
-	FollowingID string    `json:"following_id" db:"following_id"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
 }
