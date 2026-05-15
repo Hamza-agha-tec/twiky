@@ -45,10 +45,23 @@ type ChannelJoinRequest struct {
 	ID        string    `json:"id" db:"id"`
 	ChannelID string    `json:"channel_id" db:"channel_id"`
 	UserID    string    `json:"user_id" db:"user_id"`
-	Status    string    `json:"status" db:"status"` // PENDING, ACCEPTED, REJECTED
+	Status    string    `json:"status" db:"status"`
 	Message   string    `json:"message" db:"message"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}
+
+type JoinRequestUser struct {
+	ID        string  `json:"id"`
+	Username  *string `json:"username"`
+	AvatarURL *string `json:"avatar_url"`
+}
+
+type ChannelJoinRequestWithUser struct {
+	ID        string          `json:"id"`
+	Status    string          `json:"status"`
+	CreatedAt time.Time       `json:"created_at"`
+	User      JoinRequestUser `json:"user"`
 }
 
 type Group struct {
@@ -60,6 +73,7 @@ type Group struct {
 	CreatedAt   time.Time `json:"created_at" db:"created_at"`
 	GroupType   string    `json:"group_type" db:"group_type"`
 	AccessType  string    `json:"access_type" db:"access_type"`
+	IsMember    bool      `json:"is_member"`
 }
 
 type GroupMember struct {
@@ -70,11 +84,14 @@ type GroupMember struct {
 }
 
 type GroupJoinRequest struct {
-	ID        string    `json:"id" db:"id"`
-	GroupID   string    `json:"group_id" db:"group_id"`
-	UserID    string    `json:"user_id" db:"user_id"`
-	Status    string    `json:"status" db:"status"`
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	ID        string    `json:"id"`
+	GroupID   string    `json:"group_id"`
+	UserID    string    `json:"user_id"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+	Username  *string   `json:"username,omitempty"`
+	AvatarURL *string   `json:"avatar_url,omitempty"`
+	User      *JoinRequestUser `json:"user,omitempty"`
 }
 
 type GroupMemberUser struct {

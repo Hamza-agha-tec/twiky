@@ -24,7 +24,8 @@ async function uploadForm(path: string, file: File): Promise<UploadSlotResult> {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.message ?? `Upload failed (${res.status})`);
   }
-  return res.json();
+  const json = await res.json();
+  return { path: json.path ?? '', publicUrl: json.publicUrl ?? json.url ?? '' };
 }
 
 export const filesApi = {

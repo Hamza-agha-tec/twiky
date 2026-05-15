@@ -45,8 +45,8 @@ import {
   WorkspaceSidebar,
 } from '@/components/chat/workspace-sidebar'
 import type { CreateEntityValues } from '@/components/chat/create-entity-dialog'
-import { useChannels, useCreateChannel, useUpdateChannel, useChannelMembers, CHANNEL_KEYS, CHANNEL_MEMBER_KEYS } from '@/hooks/use-channels'
-import { useCreateGroup, useGroupMembers, useGroupMessages, useGroupMessageRealtime, backendGroupToMock } from '@/hooks/use-groups'
+import { useChannels, useCreateChannel, useUpdateChannel, useChannelMembers, useChannelsRealtime, CHANNEL_KEYS, CHANNEL_MEMBER_KEYS } from '@/hooks/use-channels'
+import { useCreateGroup, useGroupMembers, useGroupMessages, useGroupMessageRealtime, useGroupsRealtime, backendGroupToMock } from '@/hooks/use-groups'
 import { useToggleGroupMessageReaction } from '@/hooks/use-groups'
 import { groupsApi, type BackendGroup, type GroupJoinRequest, type GroupMessage } from '@/lib/groups-api'
 import { useQueryClient, useQueries } from '@tanstack/react-query'
@@ -506,6 +506,8 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const isRealVoiceGroupId = /^[0-9a-f-]{36}$/i.test(activeVoiceGroupId ?? '')
   const { data: voiceGroupMembers = [] } = useGroupMembers(isRealVoiceGroupId ? (activeVoiceGroupId ?? undefined) : undefined)
   const isRealChannelId = /^[0-9a-f-]{36}$/i.test(activeChannelId)
+  useGroupsRealtime(isRealChannelId ? activeChannelId : undefined)
+  useChannelsRealtime()
   const { data: activeChannelMembers = [] } = useChannelMembers(isRealChannelId ? activeChannelId : undefined)
 
   const groupPosts: FeedPost[] = useMemo(() => {
@@ -781,7 +783,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       setPendingVoiceJoin(groupId)
       return
     }
-    const channelForGroup = workspaceChannels.find((ch) => ch.groups.some((g) => g.id === groupId))
+    const channelForGroup = workspaceChannels?.find((ch) => ch.groups.some((g) => g.id === groupId))
     if (channelForGroup) {
       setActiveChannelId(channelForGroup.id)
       setActiveGroupId(groupId)
@@ -837,7 +839,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     }
 
     const groupId = invitation.entity_id
-    const allGroups = workspaceChannels.flatMap((ch) => ch.groups)
+    const allGroups = (workspaceChannels ?? []).flatMap((ch) => ch.groups)
     const group = allGroups.find((g) => g.id === groupId)
     const groupName = group?.label ?? 'a voice channel'
 
@@ -865,7 +867,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                     if (group?.kind === 'voice') {
                       handleJoinVoiceGroup(groupId)
                     } else {
-                      const channelForGroup = workspaceChannels.find((ch) => ch.groups.some((g) => g.id === groupId))
+                      const channelForGroup = workspaceChannels?.find((ch) => ch.groups.some((g) => g.id === groupId))
                       if (channelForGroup) {
                         setActiveChannelId(channelForGroup.id)
                         setActiveGroupId(groupId)
@@ -904,7 +906,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     setActiveVoiceGroupId(voice.currentGroupId)
     if (!voice.currentGroupId) return
 
-    const voiceChannel = workspaceChannelsRef.current.find((channel) =>
+    const voiceChannel = workspaceChannelsRef.current?.find((channel) =>
       channel.groups.some((group) => group.id === voice.currentGroupId),
     )
     if (!voiceChannel) return
@@ -1237,7 +1239,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     setActiveView('chat')
     setShowDirectProfile(false)
     if (mode === 'channels') {
-      const nextChannelId = activeChannelId || workspaceChannels[0]?.id
+      const nextChannelId = activeChannelId || workspaceChannels?.[0]?.id
       if (nextChannelId) openChannelSurface(nextChannelId)
     } else setActiveSurface('direct')
   }
@@ -1287,7 +1289,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       avatar_url: avatarUrl,
       banner_url: bannerUrl,
     }
-    const nextChannel = toWorkspaceChannel(channelWithAssets, workspaceChannels.length, channelGroupsById)
+    const nextChannel = toWorkspaceChannel(channelWithAssets, workspaceChannels?.length ?? 0, channelGroupsById)
     setActiveChannelId(nextChannel.id)
     setActiveGroupId(nextChannel.groups[0]?.id ?? '')
     setWorkspaceMode('channels')

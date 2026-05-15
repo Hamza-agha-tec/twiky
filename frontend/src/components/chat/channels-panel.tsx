@@ -296,133 +296,9 @@ export function buildWorkspaceChannel({
   }
 }
 
-export const MOCK_WORKSPACE_CHANNELS: WorkspaceChannel[] = [
-  {
-    ...buildWorkspaceChannel({
-      id: 'twiky-studio',
-      label: 'Twiky Studio',
-      description: 'Main studio channel for broadcast updates, planning, and team-wide discussion.',
-      index: 0,
-      type: 'WORKSPACE',
-    }),
-    groups: [
-      buildChannelGroup({
-        channelId: 'twiky-studio',
-        channelLabel: 'Twiky Studio',
-        label: 'general',
-        description: 'Default studio group for day-to-day updates and decisions that affect everyone.',
-        membersLabel: '26 online',
-        pinnedBy: 'Amina',
-        pinnedMessage: 'Start broad studio updates here before splitting them into focused groups.',
-        unreadCount: 2,
-      }),
-      buildChannelGroup({
-        channelId: 'twiky-studio',
-        channelLabel: 'Twiky Studio',
-        label: 'announcements',
-        description: 'Launch notes, milestones, and team-wide calls.',
-        membersLabel: '26 online',
-        pinnedBy: 'Amina',
-        pinnedMessage: 'Major releases and leadership notes live here first.',
-        unreadCount: 4,
-      }),
-      buildChannelGroup({
-        channelId: 'twiky-studio',
-        channelLabel: 'Twiky Studio',
-        label: 'release-sync',
-        description: 'Build status, QA signoff, and deployment coordination.',
-        membersLabel: '14 online',
-        pinnedBy: 'Zakaria',
-        pinnedMessage: 'Keep release blockers and go-live decisions in this group.',
-        hasUnread: true,
-      }),
-    ],
-  },
-  {
-    ...buildWorkspaceChannel({
-      id: 'design-lab',
-      label: 'Design Lab',
-      description: 'Design channel for critiques, component polish, and implementation handoff.',
-      index: 1,
-      type: 'NORMAL',
-    }),
-    groups: [
-      buildChannelGroup({
-        channelId: 'design-lab',
-        channelLabel: 'Design Lab',
-        label: 'general',
-        description: 'Default design group for broad reviews before moving into narrower threads.',
-        membersLabel: '18 online',
-        pinnedBy: 'Sara',
-        pinnedMessage: 'Use this group for shared design updates before opening focused discussions.',
-      }),
-      buildChannelGroup({
-        channelId: 'design-lab',
-        channelLabel: 'Design Lab',
-        label: 'ui-critique',
-        description: 'Interface review, spacing decisions, and motion polish.',
-        membersLabel: '11 online',
-        pinnedBy: 'Sara',
-        pinnedMessage: 'Keep screenshots and action items tight and easy to scan.',
-        unreadCount: 3,
-      }),
-      buildChannelGroup({
-        channelId: 'design-lab',
-        channelLabel: 'Design Lab',
-        label: 'frontend-sync',
-        description: 'Design-to-code handoff, component fixes, and polish requests.',
-        membersLabel: '9 online',
-        pinnedBy: 'Omar',
-        pinnedMessage: 'Implementation notes should include exact surfaces and expected behavior.',
-        hasUnread: true,
-      }),
-    ],
-  },
-  {
-    ...buildWorkspaceChannel({
-      id: 'game-room',
-      label: 'Game Room',
-      description: 'Gameplay channel for the future room system, playtests, and progression ideas.',
-      index: 2,
-      type: 'NORMAL',
-    }),
-    groups: [
-      buildChannelGroup({
-        channelId: 'game-room',
-        channelLabel: 'Game Room',
-        label: 'general',
-        description: 'Default game group for high-level gameplay direction and room planning.',
-        membersLabel: '12 online',
-        pinnedBy: 'Rayan',
-        pinnedMessage: 'Gameplay changes start in #general before they move into specialized groups.',
-      }),
-      buildChannelGroup({
-        channelId: 'game-room',
-        channelLabel: 'Game Room',
-        label: 'showroom',
-        description: 'Profile rooms, trophies, and decoration ideas for future rollout.',
-        membersLabel: '8 online',
-        pinnedBy: 'Rayan',
-        pinnedMessage: 'Keep room concepts tied to profile surfaces and progression systems.',
-        unreadCount: 2,
-      }),
-      buildChannelGroup({
-        channelId: 'game-room',
-        channelLabel: 'Game Room',
-        label: 'playtests',
-        description: 'Live test sessions and quick voice syncs.',
-        kind: 'voice',
-        membersLabel: '4 in voice',
-        pinnedBy: 'Studio Bot',
-        pinnedMessage: 'Drop notes back into #general after each test session.',
-      }),
-    ],
-  },
-]
-
 export function getMockChannel(
   channelId: string,
-  channels: WorkspaceChannel[] = MOCK_WORKSPACE_CHANNELS,
+  channels: WorkspaceChannel[] = [],
 ) {
   return channels.find((channel) => channel.id === channelId) ?? channels[0] ?? null
 }
@@ -430,7 +306,7 @@ export function getMockChannel(
 export function getMockGroup(
   channelId: string,
   groupId: string,
-  channels: WorkspaceChannel[] = MOCK_WORKSPACE_CHANNELS,
+  channels: WorkspaceChannel[] = [],
 ) {
   const channel = getMockChannel(channelId, channels)
   if (!channel) return null
@@ -1140,7 +1016,8 @@ function RequestJoinButton({
 }
 
 function GroupPendingDot({ groupId }: { groupId: string }) {
-  const { data: requests = [] } = useGroupJoinRequests(groupId)
+  const { data } = useGroupJoinRequests(groupId)
+  const requests = data ?? []
   if (!requests.length) return null
   return (
     <span className="flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-destructive text-[8px] font-bold text-white ring-1 ring-background">

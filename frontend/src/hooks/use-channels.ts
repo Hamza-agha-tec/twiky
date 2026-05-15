@@ -166,6 +166,47 @@ export function useChannelJoinRequests(channelId: string | undefined) {
   });
 }
 
+export function useChannelsRealtime() {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    let mounted = true;
+    let cleanup: (() => void) | null = null;
+
+    getSocket().then((socket) => {
+      if (!mounted) return;
+
+      const invalidate = () => {
+        if (!mounted) return;
+        queryClient.invalidateQueries({ queryKey: CHANNEL_KEYS.all });
+      };
+
+      const onChannelDeleted = (payload: { channelId?: string }) => {
+        if (!mounted) return;
+        queryClient.invalidateQueries({ queryKey: CHANNEL_KEYS.all });
+        if (payload?.channelId) {
+          queryClient.removeQueries({ queryKey: CHANNEL_KEYS.detail(payload.channelId) });
+        }
+      };
+
+      socket.on('channelCreated', invalidate);
+      socket.on('channelUpdated', invalidate);
+      socket.on('channelDeleted', onChannelDeleted);
+
+      cleanup = () => {
+        socket.off('channelCreated', invalidate);
+        socket.off('channelUpdated', invalidate);
+        socket.off('channelDeleted', onChannelDeleted);
+      };
+    });
+
+    return () => {
+      mounted = false;
+      cleanup?.();
+    };
+  }, [queryClient]);
+}
+
 export function useRespondToChannelJoinRequest(channelId: string) {
   const queryClient = useQueryClient();
   return useMutation({

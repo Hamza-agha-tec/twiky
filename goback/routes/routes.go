@@ -63,11 +63,11 @@ func SetupRoutes(e *echo.Echo) {
 	// Initialize handlers
 	authHandler := auth.NewAuthHandler(authService)
 	userHandler := userhandlers.NewUserHandler(userService)
-	channelHandler := channels.NewChannelHandler(channelService)
+	channelHandler := channels.NewChannelHandler(channelService, socketIOService)
 	contactHandler := contacts.NewContactHandler(contactService)
 	paymentHandler := payments.NewPaymentHandler(paymentService, productPaymentsService)
 	voiceHandler := voice.NewVoiceHandler(voiceService)
-	groupHandler := groups.NewGroupHandler(groupService)
+	groupHandler := groups.NewGroupHandler(groupService, socketIOService)
 	webSocketHandler := websocket.NewWebSocketHandler(socketIOService)
 	notificationHandler := notifications.NewNotificationHandler(notificationService)
 

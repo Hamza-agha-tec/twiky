@@ -127,6 +127,10 @@ func (h *MessagingHandler) ToggleDirectMessageReaction(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	if convID := msg.ConversationID; convID != "" {
+		h.socketIOService.BroadcastToRoom("conversation_"+convID, "directMessageUpdated", msg)
+	}
+
 	return c.JSON(http.StatusOK, msg)
 }
 
@@ -165,7 +169,7 @@ func (h *MessagingHandler) SendGroupMessage(c echo.Context) error {
 	}
 
 	// Emit via WebSockets
-	h.socketIOService.BroadcastToRoom("group_"+groupID, "newMessage", msg)
+	h.socketIOService.BroadcastToRoom("group_"+groupID, "newGroupMessage", msg)
 
 	return c.JSON(http.StatusCreated, msg)
 }
@@ -188,6 +192,10 @@ func (h *MessagingHandler) ToggleGroupMessageReaction(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	if msg.GroupID != "" {
+		h.socketIOService.BroadcastToRoom("group_"+msg.GroupID, "groupMessageUpdated", msg)
+	}
+
 	return c.JSON(http.StatusOK, msg)
 }
 
@@ -198,6 +206,10 @@ func (h *MessagingHandler) ToggleGroupMessagePin(c echo.Context) error {
 	msg, err := h.messagingService.ToggleGroupMessagePin(userID, messageID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	if msg.GroupID != "" {
+		h.socketIOService.BroadcastToRoom("group_"+msg.GroupID, "groupMessageUpdated", msg)
 	}
 
 	return c.JSON(http.StatusOK, msg)
@@ -214,7 +226,7 @@ func (h *MessagingHandler) DeleteGroupMessage(c echo.Context) error {
 
 	// Emit via WebSockets
 	if groupID, ok := result["groupId"].(string); ok {
-		h.socketIOService.BroadcastToRoom("group_"+groupID, "messageDeleted", map[string]interface{}{
+		h.socketIOService.BroadcastToRoom("group_"+groupID, "groupMessageDeleted", map[string]interface{}{
 			"groupId":   groupID,
 			"messageId": messageID,
 		})

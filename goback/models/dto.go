@@ -12,7 +12,8 @@ type CreateChannelDto struct {
 type UpdateChannelDto struct {
 	Name        string `json:"name" validate:"min=1,max=100"`
 	Description string `json:"description" validate:"max=500"`
-	AvatarURL   string `json:"avatar_url" validate:"url"`
+	AvatarURL   string `json:"avatar_url"`
+	BannerURL   string `json:"banner_url"`
 	AccessType  string `json:"access_type" validate:"oneof=PUBLIC PRIVATE"`
 }
 

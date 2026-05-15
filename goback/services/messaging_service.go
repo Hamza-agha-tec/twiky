@@ -94,9 +94,97 @@ func (s *MessagingService) GetDirectConversations(userID string) ([]*models.Dire
 		}
 	}
 
+	// Assign user data to conversations
 	for _, c := range convs {
-		_ = users[c.UserOneID]
-		_ = users[c.UserTwoID]
+		if u, ok := users[c.UserOneID]; ok {
+			c.UserOne = u
+		}
+		if u, ok := users[c.UserTwoID]; ok {
+			c.UserTwo = u
+		}
+	}
+
+	// Fetch last message for each conversation
+	if len(convs) > 0 {
+		convIDs := make([]string, len(convs))
+		for i, c := range convs {
+			convIDs[i] = c.ID
+		}
+
+		lmRows, err := s.db.Query(`
+			SELECT DISTINCT ON (conversation_id)
+				id, conversation_id, sender_id, content, file_url, created_at, type, status
+			FROM direct_messages
+			WHERE conversation_id = ANY($1)
+			ORDER BY conversation_id, created_at DESC
+		`, pq.Array(convIDs))
+		if err == nil {
+			defer lmRows.Close()
+			lastMsgByConv := map[string]*models.DirectMessage{}
+			for lmRows.Next() {
+				var (
+					id, convID, senderID string
+					content, fileURL     sql.NullString
+					msgType, status      sql.NullString
+					createdAt            time.Time
+				)
+				if err := lmRows.Scan(&id, &convID, &senderID, &content, &fileURL, &createdAt, &msgType, &status); err == nil {
+					msg := &models.DirectMessage{
+						ID:             id,
+						ConversationID: convID,
+						SenderID:       senderID,
+						CreatedAt:      createdAt,
+						Status:         status.String,
+					}
+					if content.Valid {
+						msg.Content = &content.String
+					}
+					if fileURL.Valid {
+						msg.FileURL = &fileURL.String
+					}
+					if msgType.Valid {
+						msg.Type = &msgType.String
+					}
+					lastMsgByConv[convID] = msg
+				}
+			}
+			for _, c := range convs {
+				if msg, ok := lastMsgByConv[c.ID]; ok {
+					c.LastMessage = []models.DirectMessage{*msg}
+				}
+			}
+		}
+	}
+
+	// Fetch unread counts per conversation for this user
+	if len(convs) > 0 {
+		convIDs := make([]string, len(convs))
+		for i, c := range convs {
+			convIDs[i] = c.ID
+		}
+
+		ucRows, err := s.db.Query(`
+			SELECT conversation_id, COUNT(*) as cnt
+			FROM direct_messages
+			WHERE conversation_id = ANY($1)
+			  AND sender_id != $2
+			  AND status != 'read'
+			GROUP BY conversation_id
+		`, pq.Array(convIDs), userID)
+		if err == nil {
+			defer ucRows.Close()
+			unreadByConv := map[string]int{}
+			for ucRows.Next() {
+				var convID string
+				var cnt int
+				if err := ucRows.Scan(&convID, &cnt); err == nil {
+					unreadByConv[convID] = cnt
+				}
+			}
+			for _, c := range convs {
+				c.UnreadCount = unreadByConv[c.ID]
+			}
+		}
 	}
 
 	return convs, nil
@@ -461,151 +549,135 @@ func (s *MessagingService) ToggleDirectMessageReaction(userID string, messageID 
 // --- GROUP MESSAGING ---
 
 func (s *MessagingService) GetGroupMessages(userID string, groupID string) ([]*models.GroupMessageResponse, error) {
-	// Verify user is member of group
-	var members []models.GroupMember
-	err := s.supabase.GetClient().DB.From("group_members").
-		Select("*").
-		Eq("group_id", groupID).
-		Eq("user_id", userID).
-		Execute(&members)
+	var count int
+	err := s.db.QueryRow(`
+		SELECT COUNT(*) FROM channel_members cm
+		JOIN groups g ON g.channel_id = cm.channel_id
+		WHERE g.id = $1 AND cm.user_id = $2
+	`, groupID, userID).Scan(&count)
+	if err != nil || count == 0 {
+		return nil, fmt.Errorf("group not found or access denied")
+	}
 
+	rows, err := s.db.Query(`
+		SELECT
+			m.id, m.group_id, m.sender_id, m.content, m.type, m.file_url,
+			m.reply_to_id, m.mime, m.duration, m.size, m.is_pinned, m.created_at,
+			u.id, u.username, u.avatar_url, u.sub_plan, u.is_verified
+		FROM group_messages m
+		LEFT JOIN users u ON u.id = m.sender_id
+		WHERE m.group_id = $1
+		ORDER BY m.created_at ASC
+	`, groupID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check group membership (groupID=%s, userID=%s): %w", groupID, userID, err)
+		return nil, fmt.Errorf("failed to get group messages: %w", err)
 	}
+	defer rows.Close()
 
-	if len(members) == 0 {
-		return nil, fmt.Errorf("group not found or access denied: user is not a member of this group")
-	}
-
-	var messages []models.GroupMessage
-	err = s.supabase.GetClient().DB.From("group_messages").
-		Select("*").
-		Eq("group_id", groupID).
-		Execute(&messages)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to get group messages (groupID=%s): %w", groupID, err)
-	}
-
-	// Build response with sender details
-	var result []*models.GroupMessageResponse
-	for _, msg := range messages {
-		var sender *models.GroupMessageSender
-		if msg.SenderID != nil && *msg.SenderID != "" {
-			// Get sender details
-			var userSlice []models.User
-			err := s.supabase.GetClient().DB.From("users").
-				Select("*").
-				Eq("id", *msg.SenderID).
-				Execute(&userSlice)
-
-			if err != nil {
-				return nil, fmt.Errorf("failed to get sender details (senderID=%s): %w", msg.SenderID, err)
-			}
-
-			if len(userSlice) > 0 {
-				sender = &models.GroupMessageSender{
-					ID:         userSlice[0].ID,
-					Fullname:   userSlice[0].Fullname,
-					SubPlan:    userSlice[0].SubPlan,
-					Username:   userSlice[0].Username,
-					AvatarURL:  userSlice[0].AvatarURL,
-					IsVerified: &userSlice[0].IsVerified,
-				}
-			}
-		}
-
-		// Build message response
-		senderIDPtr := msg.SenderID
-
-		messageResponse := &models.GroupMessageResponse{
-			ID:             msg.ID,
-			GroupID:        msg.GroupID,
-			SenderID:       senderIDPtr,
-			Content:        msg.Content,
-			FileURL:        nil,
-			ReplyToID:      nil,
-			CreatedAt:      msg.CreatedAt,
-			Status:         "sent",
-			IsEdited:       false,
+	result := make([]*models.GroupMessageResponse, 0)
+	for rows.Next() {
+		msg := &models.GroupMessageResponse{
 			EntityMentions: []map[string]interface{}{},
 			Reactions:      []map[string]interface{}{},
-			IsPinned:       msg.IsPinned,
 			FileURLs:       []string{},
-			Type:           nil,
-			Mime:           nil,
-			Duration:       nil,
-			Size:           nil,
-			Sender:         sender,
+			Status:         "sent",
 		}
-		result = append(result, messageResponse)
+		var sender models.GroupMessageSender
+		var senderID, senderUsername, senderAvatar, senderSubPlan *string
+		var senderVerified *bool
+
+		err := rows.Scan(
+			&msg.ID, &msg.GroupID, &msg.SenderID, &msg.Content, &msg.Type, &msg.FileURL,
+			&msg.ReplyToID, &msg.Mime, &msg.Duration, &msg.Size, &msg.IsPinned, &msg.CreatedAt,
+			&senderID, &senderUsername, &senderAvatar, &senderSubPlan, &senderVerified,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan message: %w", err)
+		}
+		if senderID != nil {
+			sender.ID = *senderID
+			sender.Username = senderUsername
+			sender.AvatarURL = senderAvatar
+			sender.IsVerified = senderVerified
+			if senderSubPlan != nil {
+				sender.SubPlan = *senderSubPlan
+			}
+			msg.Sender = &sender
+		}
+		result = append(result, msg)
 	}
 
 	return result, nil
 }
 
-func (s *MessagingService) SendGroupMessage(userID string, groupID string, dto models.SendGroupMessageDto) (*models.GroupMessage, error) {
-	// Verify user is member of group
-	var members []models.GroupMember
-	err := s.supabase.GetClient().DB.From("group_members").
-		Select("user_id").
-		Filter("group_id", "eq", groupID).
-		Filter("user_id", "eq", userID).
-		Execute(&members)
-
-	if err != nil || len(members) == 0 {
+func (s *MessagingService) SendGroupMessage(userID string, groupID string, dto models.SendGroupMessageDto) (*models.GroupMessageResponse, error) {
+	// Verify user is a member of the channel that owns this group
+	var count int
+	err := s.db.QueryRow(`
+		SELECT COUNT(*) FROM channel_members cm
+		JOIN groups g ON g.channel_id = cm.channel_id
+		WHERE g.id = $1 AND cm.user_id = $2
+	`, groupID, userID).Scan(&count)
+	if err != nil || count == 0 {
 		return nil, fmt.Errorf("group not found or access denied")
 	}
 
-	insertData := map[string]interface{}{
-		"group_id":   groupID,
-		"sender_id":  userID,
-		"is_pinned":  false,
-		"created_at": "now()",
+	msgType := dto.Type
+	if msgType == "" {
+		msgType = "text"
 	}
 
-	if dto.Content != "" {
-		insertData["content"] = dto.Content
+	msg := &models.GroupMessageResponse{
+		EntityMentions: []map[string]interface{}{},
+		Reactions:      []map[string]interface{}{},
+		FileURLs:       []string{},
+		Status:         "sent",
 	}
-	if dto.Type != "" {
-		insertData["type"] = dto.Type
-	} else {
-		insertData["type"] = "text"
-	}
-	if dto.FileUrl != "" {
-		insertData["file_url"] = dto.FileUrl
-	}
-	if dto.ReplyToId != "" {
-		insertData["reply_to_id"] = dto.ReplyToId
-	}
-	if dto.Mime != "" {
-		insertData["mime"] = dto.Mime
-	}
-	if dto.Duration > 0 {
-		insertData["duration"] = dto.Duration
-	}
-	if dto.Size > 0 {
-		insertData["size"] = dto.Size
-	}
-	if dto.IsForwarded {
-		insertData["is_forwarded"] = dto.IsForwarded
-	}
-
-	// Create message
-	var messages []models.GroupMessage
-	err = s.supabase.GetClient().DB.From("group_messages").
-		Insert(insertData).
-		Execute(&messages)
-
+	err = s.db.QueryRow(`
+		INSERT INTO group_messages (group_id, sender_id, content, type, file_url, reply_to_id, mime, duration, size, is_pinned)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false)
+		RETURNING id, group_id, sender_id, content, type, file_url, reply_to_id, mime, duration, size, is_pinned, created_at
+	`,
+		groupID, userID,
+		nullableString(dto.Content),
+		msgType,
+		nullableString(dto.FileUrl),
+		nullableString(dto.ReplyToId),
+		nullableString(dto.Mime),
+		dto.Duration,
+		dto.Size,
+	).Scan(
+		&msg.ID, &msg.GroupID, &msg.SenderID, &msg.Content, &msg.Type,
+		&msg.FileURL, &msg.ReplyToID, &msg.Mime, &msg.Duration, &msg.Size,
+		&msg.IsPinned, &msg.CreatedAt,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send group message: %w", err)
 	}
 
-	if len(messages) == 0 {
-		return nil, fmt.Errorf("failed to send group message: no data returned")
+	// Fetch sender data so the socket broadcast includes name + avatar
+	var sender models.GroupMessageSender
+	var username, avatarURL *string
+	var isVerified *bool
+	var subPlan string
+	err = s.db.QueryRow(`SELECT id, username, avatar_url, sub_plan, is_verified FROM users WHERE id = $1`, userID).
+		Scan(&sender.ID, &username, &avatarURL, &subPlan, &isVerified)
+	if err == nil {
+		sender.Username = username
+		sender.AvatarURL = avatarURL
+		sender.SubPlan = subPlan
+		sender.IsVerified = isVerified
+		msg.Sender = &sender
 	}
 
-	return &messages[0], nil
+	return msg, nil
+}
+
+func nullableString(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 func (s *MessagingService) ToggleGroupMessageReaction(userID string, messageID string, emoji string) (*models.GroupMessage, error) {

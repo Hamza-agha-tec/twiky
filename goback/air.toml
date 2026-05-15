@@ -4,11 +4,11 @@ tmp_dir = "tmp"
 
 [build]
   args_bin = []
-  bin = "./tmp/main.exe"
-  cmd = "go build -o ./tmp/main.exe ."
+  bin = "./goback_dev.exe"
+  cmd = "go build -o ./goback_dev.exe ."
   delay = 1000
   exclude_dir = ["assets", "tmp", "vendor", "testdata"]
-  exclude_file = []
+  exclude_file = ["goback_dev.exe"]
   exclude_regex = ["_test.go"]
   exclude_unchanged = false
   follow_symlink = false

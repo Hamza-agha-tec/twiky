@@ -26,6 +26,7 @@ interface MessageBubbleProps {
   onMessage?: (userId: string) => void;
   onViewProfile?: (userId: string) => void;
   hideMessage?: boolean;
+  isReceiverOnline?: boolean;
 }
 
 interface ProfilePayload { __twiky_type: 'profile'; username: string; name: string; avatarUrl: string | null; url: string }
@@ -76,7 +77,7 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
   );
 }
 
-export function MessageBubble({ message, showAvatar = true, searchHighlight, onReply, onPin, onForward, onDelete, onReact, onAvatarClick, onMessage, onViewProfile, hideMessage }: MessageBubbleProps) {
+export function MessageBubble({ message, showAvatar = true, searchHighlight, onReply, onPin, onForward, onDelete, onReact, onAvatarClick, onMessage, onViewProfile, hideMessage, isReceiverOnline = false }: MessageBubbleProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [lightbox, setLightbox] = useState(false);
@@ -163,8 +164,8 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
               <span className="ml-0.5">
                 {message.isRead ? (
                   <CheckCheck aria-label="Read" className="h-3 w-3 text-blue-500 inline" />
-                ) : message.isDelivered ? (
-                  <CheckCheck aria-label="Received" className="h-3 w-3 text-muted-foreground/60 inline" />
+                ) : isReceiverOnline ? (
+                  <CheckCheck aria-label="Delivered" className="h-3 w-3 text-muted-foreground/60 inline" />
                 ) : (
                   <Check aria-label="Sent" className="h-3 w-3 text-muted-foreground/60 inline" />
                 )}

@@ -10,12 +10,14 @@ import (
 )
 
 type ChannelHandler struct {
-	channelService *services.ChannelService
+	channelService  *services.ChannelService
+	socketIOService *services.SocketIOService
 }
 
-func NewChannelHandler(channelService *services.ChannelService) *ChannelHandler {
+func NewChannelHandler(channelService *services.ChannelService, socketIOService *services.SocketIOService) *ChannelHandler {
 	return &ChannelHandler{
-		channelService: channelService,
+		channelService:  channelService,
+		socketIOService: socketIOService,
 	}
 }
 
@@ -31,6 +33,8 @@ func (h *ChannelHandler) CreateChannel(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+
+	h.socketIOService.BroadcastToAll("channelCreated", channel)
 
 	return c.JSON(http.StatusCreated, channel)
 }
@@ -92,6 +96,11 @@ func (h *ChannelHandler) UpdateChannel(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update channel"})
 	}
 
+	h.socketIOService.BroadcastToRoom("channel_"+channelID, "channelUpdated", map[string]interface{}{
+		"channelId": channelID,
+		"data":      updateData,
+	})
+
 	return c.JSON(http.StatusOK, map[string]string{"message": "channel updated successfully"})
 }
 
@@ -109,6 +118,9 @@ func (h *ChannelHandler) DeleteChannel(c echo.Context) error {
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to delete channel"})
 	}
+
+	h.socketIOService.BroadcastToRoom("channel_"+channelID, "channelDeleted", map[string]interface{}{"channelId": channelID})
+	h.socketIOService.BroadcastToAll("channelDeleted", map[string]interface{}{"channelId": channelID})
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "channel deleted successfully"})
 }
@@ -192,40 +204,44 @@ func (h *ChannelHandler) RequestJoinChannel(c echo.Context) error {
 			err.Error() == "join request already pending" {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to request join channel"})
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "join request sent successfully"})
 }
 
 func (h *ChannelHandler) GetChannelJoinRequests(c echo.Context) error {
-	user := c.Get("user").(*middleware.AuthenticatedUser)
 	channelID := c.Param("id")
 
-	// TODO: Implement get channel join requests
-	_ = user.UserID
-	_ = channelID
-	return c.JSON(http.StatusOK, []interface{}{})
+	requests, err := h.channelService.GetChannelJoinRequests(channelID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, requests)
 }
 
 func (h *ChannelHandler) RespondToChannelJoinRequest(c echo.Context) error {
-	user := c.Get("user").(*middleware.AuthenticatedUser)
 	channelID := c.Param("id")
 	requestID := c.Param("requestId")
 
 	var body struct {
-		Status string `json:"status" validate:"required,oneof=ACCEPTED REJECTED"`
+		Status string `json:"status"`
 	}
-
 	if err := c.Bind(&body); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
+	if body.Status != "ACCEPTED" && body.Status != "REJECTED" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "status must be ACCEPTED or REJECTED"})
+	}
 
-	// TODO: Implement respond to channel join request
-	_ = user.UserID
-	_ = channelID
-	_ = requestID
-	_ = body.Status
+	err := h.channelService.RespondToChannelJoinRequest(channelID, requestID, body.Status)
+	if err != nil {
+		if err.Error() == "join request not found" {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "join request processed successfully"})
 }

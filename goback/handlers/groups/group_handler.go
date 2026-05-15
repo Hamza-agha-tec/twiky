@@ -11,12 +11,14 @@ import (
 )
 
 type GroupHandler struct {
-	groupService *services.GroupService
+	groupService    *services.GroupService
+	socketIOService *services.SocketIOService
 }
 
-func NewGroupHandler(groupService *services.GroupService) *GroupHandler {
+func NewGroupHandler(groupService *services.GroupService, socketIOService *services.SocketIOService) *GroupHandler {
 	return &GroupHandler{
-		groupService: groupService,
+		groupService:    groupService,
+		socketIOService: socketIOService,
 	}
 }
 
@@ -33,6 +35,8 @@ func (h *GroupHandler) CreateGroup(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create group"})
 	}
+
+	h.socketIOService.BroadcastToRoom("channel_"+channelID, "groupCreated", group)
 
 	return c.JSON(http.StatusCreated, group)
 }
@@ -81,6 +85,11 @@ func (h *GroupHandler) UpdateGroup(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update group"})
 	}
 
+	h.socketIOService.BroadcastToRoom("group_"+groupID, "groupUpdated", map[string]interface{}{
+		"groupId": groupID,
+		"data":    updateData,
+	})
+
 	return c.JSON(http.StatusOK, map[string]string{"message": "group updated successfully"})
 }
 
@@ -98,6 +107,8 @@ func (h *GroupHandler) DeleteGroup(c echo.Context) error {
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to delete group"})
 	}
+
+	h.socketIOService.BroadcastToRoom("group_"+groupID, "groupDeleted", map[string]interface{}{"groupId": groupID})
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "group deleted successfully"})
 }

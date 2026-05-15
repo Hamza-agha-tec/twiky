@@ -575,6 +575,7 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
                         onReact={(emoji) => onReact?.(message.id, emoji)}
                         hideMessage={true}
                         onViewProfile={onProfileClick ? (userId) => onProfileClick() : undefined}
+                        isReceiverOnline={isOnline}
                       />
                     )}
                   </div>

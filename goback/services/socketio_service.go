@@ -679,6 +679,55 @@ func (s *SocketIOService) setupHandlers() {
 			}
 		})
 
+		// ── Group & channel rooms ────────────────────────────────────────────
+
+		client.On("joinGroupRoom", func(datas ...any) {
+			if len(datas) > 0 {
+				groupID := fmt.Sprintf("%v", datas[0])
+				client.Join(socketio.Room("group_" + groupID))
+			}
+		})
+		client.On("leaveGroupRoom", func(datas ...any) {
+			if len(datas) > 0 {
+				groupID := fmt.Sprintf("%v", datas[0])
+				client.Leave(socketio.Room("group_" + groupID))
+			}
+		})
+		client.On("joinChannelRoom", func(datas ...any) {
+			if len(datas) > 0 {
+				channelID := fmt.Sprintf("%v", datas[0])
+				client.Join(socketio.Room("channel_" + channelID))
+			}
+		})
+		client.On("leaveChannelRoom", func(datas ...any) {
+			if len(datas) > 0 {
+				channelID := fmt.Sprintf("%v", datas[0])
+				client.Leave(socketio.Room("channel_" + channelID))
+			}
+		})
+
+		// ── Typing indicators ────────────────────────────────────────────────
+
+		client.On("userTyping", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload, ok := datas[0].(map[string]interface{})
+			if !ok {
+				return
+			}
+			s.presenceMu.RLock()
+			userID := s.socketUsers[socketID]
+			s.presenceMu.RUnlock()
+			payload["userId"] = userID
+
+			if convID, _ := payload["conversationId"].(string); convID != "" {
+				server.To(socketio.Room("conversation_" + convID)).Emit("userTyping", payload)
+			} else if groupID, _ := payload["groupId"].(string); groupID != "" {
+				server.To(socketio.Room("group_" + groupID)).Emit("userTyping", payload)
+			}
+		})
+
 		// ── DM room ──────────────────────────────────────────────────────────
 
 		client.On("joinDirectRoom", func(datas ...any) {
@@ -693,8 +742,60 @@ func (s *SocketIOService) setupHandlers() {
 				client.Leave(socketio.Room(room))
 			}
 		})
-		client.On("markDirectRead", func(_ ...any) {})
-		client.On("directMessageDelivered", func(_ ...any) {})
+		client.On("markDirectRead", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload, ok := datas[0].(map[string]interface{})
+			if !ok {
+				return
+			}
+			conversationID := fmt.Sprintf("%v", payload["conversationId"])
+			messageID := fmt.Sprintf("%v", payload["messageId"])
+			if conversationID == "" || messageID == "" {
+				return
+			}
+			_, err := s.db.Exec(
+				`UPDATE direct_messages SET status = 'read' WHERE conversation_id = $1 AND status != 'read'`,
+				conversationID,
+			)
+			if err != nil {
+				log.Printf("markDirectRead DB error: %v", err)
+				return
+			}
+			server.To(socketio.Room("conversation_"+conversationID)).Emit("directMessageStatusUpdate", map[string]interface{}{
+				"messageId":      messageID,
+				"conversationId": conversationID,
+				"status":         "read",
+			})
+		})
+		client.On("directMessageDelivered", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload, ok := datas[0].(map[string]interface{})
+			if !ok {
+				return
+			}
+			conversationID := fmt.Sprintf("%v", payload["conversationId"])
+			messageID := fmt.Sprintf("%v", payload["messageId"])
+			if conversationID == "" || messageID == "" {
+				return
+			}
+			_, err := s.db.Exec(
+				`UPDATE direct_messages SET status = 'delivered' WHERE id = $1 AND status = 'sent'`,
+				messageID,
+			)
+			if err != nil {
+				log.Printf("directMessageDelivered DB error: %v", err)
+				return
+			}
+			server.To(socketio.Room("conversation_"+conversationID)).Emit("directMessageStatusUpdate", map[string]interface{}{
+				"messageId":      messageID,
+				"conversationId": conversationID,
+				"status":         "delivered",
+			})
+		})
 
 		// ── Disconnect ───────────────────────────────────────────────────────
 

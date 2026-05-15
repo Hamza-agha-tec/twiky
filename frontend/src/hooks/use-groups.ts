@@ -131,7 +131,7 @@ export function useGroupMessageRealtime(groupId: string | undefined) {
         socket.off('newGroupMessage', onMessageCreated);
         socket.off('groupMessageUpdated', onMessageUpdated);
         socket.off('groupMessageDeleted', onMessageDeleted);
-        socket.emit('leaveRoom', `group_${groupId}`);
+        socket.emit('leaveGroupRoom', groupId);
       };
     });
 
@@ -140,6 +140,61 @@ export function useGroupMessageRealtime(groupId: string | undefined) {
       cleanup?.();
     };
   }, [groupId, queryClient]);
+}
+
+export function useGroupsRealtime(channelId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!channelId) return;
+
+    let mounted = true;
+    let cleanup: (() => void) | null = null;
+
+    getSocket().then((socket) => {
+      if (!mounted) return;
+
+      const joinRoom = () => socket.emit('joinChannelRoom', channelId);
+      const groupsKey = GROUP_KEYS.byChannel(channelId);
+
+      const onGroupCreated = () => {
+        if (!mounted) return;
+        queryClient.invalidateQueries({ queryKey: groupsKey });
+      };
+
+      const onGroupUpdated = (payload: { groupId?: string }) => {
+        if (!mounted) return;
+        queryClient.invalidateQueries({ queryKey: groupsKey });
+        if (payload?.groupId) {
+          queryClient.invalidateQueries({ queryKey: GROUP_KEYS.members(payload.groupId) });
+        }
+      };
+
+      const onGroupDeleted = () => {
+        if (!mounted) return;
+        queryClient.invalidateQueries({ queryKey: groupsKey });
+      };
+
+      joinRoom();
+      socket.on('connect', joinRoom);
+      socket.on('groupCreated', onGroupCreated);
+      socket.on('groupUpdated', onGroupUpdated);
+      socket.on('groupDeleted', onGroupDeleted);
+
+      cleanup = () => {
+        socket.off('connect', joinRoom);
+        socket.off('groupCreated', onGroupCreated);
+        socket.off('groupUpdated', onGroupUpdated);
+        socket.off('groupDeleted', onGroupDeleted);
+        socket.emit('leaveChannelRoom', channelId);
+      };
+    });
+
+    return () => {
+      mounted = false;
+      cleanup?.();
+    };
+  }, [channelId, queryClient]);
 }
 
 export function useUpdateGroupMemberRole(groupId: string) {

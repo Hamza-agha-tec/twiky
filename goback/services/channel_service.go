@@ -3,6 +3,7 @@ package services
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/Hamza-agha-tec/goback/models"
 )
@@ -38,27 +39,29 @@ func (s *ChannelService) CreateChannel(userID string, createData models.CreateCh
 		return nil, fmt.Errorf("failed to create channel: %w", err)
 	}
 
+	_, err = s.db.Exec(`
+		INSERT INTO channel_members (channel_id, user_id, role)
+		VALUES ($1, $2, 'OWNER')
+	`, channel.ID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to add owner to channel_members: %w", err)
+	}
+
 	var generalGroupID string
-
 	err = s.db.QueryRow(`
-		SELECT id
-		FROM groups
-		WHERE channel_id = $1
-		AND name = '#general'
-		LIMIT 1
+		INSERT INTO groups (channel_id, name, description, is_general, group_type, access_type)
+		VALUES ($1, 'general', 'Default group for general discussion', true, 'text', 'PUBLIC')
+		RETURNING id
 	`, channel.ID).Scan(&generalGroupID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create general group: %w", err)
+	}
 
-	if err == nil {
-		_, err = s.db.Exec(`
-			INSERT INTO group_members (group_id, user_id, role)
-			VALUES ($1, $2, 'OWNER')
-		`, generalGroupID, userID)
-
-		if err != nil {
-			return nil, fmt.Errorf("failed to add owner to general group: %w", err)
-		}
-
-		// notifyMemberJoined equivalent here
+	_, err = s.db.Exec(`
+		INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, 'OWNER')
+	`, generalGroupID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to add owner to general group: %w", err)
 	}
 
 	return channel, nil
@@ -90,7 +93,7 @@ func (s *ChannelService) GetUserChannels(userID string) ([]*models.Channel, erro
 	}
 	defer rows.Close()
 
-	var channels []*models.Channel
+	channels := make([]*models.Channel, 0)
 
 	for rows.Next() {
 		ch := &models.Channel{}
@@ -139,11 +142,10 @@ func (s *ChannelService) DiscoverChannels(userID string) ([]*models.Channel, err
 		channelIDs = append(channelIDs, member.ChannelID)
 	}
 
-	// Get public channels not already joined
+	// Get all channels not already joined
 	var channels []models.Channel
 	err = s.supabase.GetClient().DB.From("channels").
 		Select("*").
-		Eq("access_type", "PUBLIC").
 		Execute(&channels)
 
 	if err != nil {
@@ -151,7 +153,7 @@ func (s *ChannelService) DiscoverChannels(userID string) ([]*models.Channel, err
 	}
 
 	// Filter out channels user is already a member of
-	var filteredChannels []*models.Channel
+	filteredChannels := make([]*models.Channel, 0)
 	for _, channel := range channels {
 		isMember := false
 		for _, memberChannelID := range channelIDs {
@@ -189,29 +191,107 @@ func (s *ChannelService) GetChannelDetails(channelID string) (*models.Channel, e
 }
 
 func (s *ChannelService) UpdateChannel(channelID string, updateData models.UpdateChannelDto) error {
-	// Build update map with only non-empty fields
-	updateFields := make(map[string]interface{})
+	setClauses := []string{}
+	args := []interface{}{}
+	i := 1
+
 	if updateData.Name != "" {
-		updateFields["name"] = updateData.Name
+		setClauses = append(setClauses, fmt.Sprintf("name = $%d", i))
+		args = append(args, updateData.Name)
+		i++
 	}
 	if updateData.Description != "" {
-		updateFields["description"] = updateData.Description
+		setClauses = append(setClauses, fmt.Sprintf("description = $%d", i))
+		args = append(args, updateData.Description)
+		i++
 	}
 	if updateData.AvatarURL != "" {
-		updateFields["avatar_url"] = updateData.AvatarURL
+		setClauses = append(setClauses, fmt.Sprintf("avatar_url = $%d", i))
+		args = append(args, updateData.AvatarURL)
+		i++
+	}
+	if updateData.BannerURL != "" {
+		setClauses = append(setClauses, fmt.Sprintf("banner_url = $%d", i))
+		args = append(args, updateData.BannerURL)
+		i++
 	}
 	if updateData.AccessType != "" {
-		updateFields["access_type"] = updateData.AccessType
+		setClauses = append(setClauses, fmt.Sprintf("access_type = $%d", i))
+		args = append(args, updateData.AccessType)
+		i++
 	}
 
-	var updatedChannels []models.Channel
-	err := s.supabase.GetClient().DB.From("channels").
-		Update(updateFields).
-		Eq("id", channelID).
-		Execute(&updatedChannels)
+	if len(setClauses) == 0 {
+		return nil
+	}
 
+	args = append(args, channelID)
+	query := fmt.Sprintf("UPDATE channels SET %s WHERE id = $%d",
+		strings.Join(setClauses, ", "), i)
+
+	_, err := s.db.Exec(query, args...)
 	if err != nil {
 		return fmt.Errorf("failed to update channel: %w", err)
+	}
+
+	return nil
+}
+
+func (s *ChannelService) GetChannelJoinRequests(channelID string) ([]*models.ChannelJoinRequestWithUser, error) {
+	rows, err := s.db.Query(`
+		SELECT cjr.id, cjr.status, cjr.created_at, u.id, u.username, u.avatar_url
+		FROM channel_join_requests cjr
+		JOIN users u ON cjr.user_id = u.id
+		WHERE cjr.channel_id = $1 AND cjr.status = 'PENDING'
+		ORDER BY cjr.created_at ASC
+	`, channelID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query join requests: %w", err)
+	}
+	defer rows.Close()
+
+	result := make([]*models.ChannelJoinRequestWithUser, 0)
+	for rows.Next() {
+		req := &models.ChannelJoinRequestWithUser{}
+		err := rows.Scan(&req.ID, &req.Status, &req.CreatedAt, &req.User.ID, &req.User.Username, &req.User.AvatarURL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan join request: %w", err)
+		}
+		result = append(result, req)
+	}
+	return result, nil
+}
+
+func (s *ChannelService) RespondToChannelJoinRequest(channelID, requestID, status string) error {
+	var userID string
+	err := s.db.QueryRow(`
+		SELECT user_id FROM channel_join_requests WHERE id = $1 AND channel_id = $2 AND status = 'PENDING'
+	`, requestID, channelID).Scan(&userID)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("join request not found")
+	}
+	if err != nil {
+		return fmt.Errorf("failed to fetch join request: %w", err)
+	}
+
+	_, err = s.db.Exec(`
+		UPDATE channel_join_requests SET status = $1, updated_at = NOW() WHERE id = $2
+	`, status, requestID)
+	if err != nil {
+		return fmt.Errorf("failed to update join request: %w", err)
+	}
+
+	if status == "ACCEPTED" {
+		var count int
+		_ = s.db.QueryRow(`SELECT COUNT(*) FROM channel_members WHERE channel_id = $1 AND user_id = $2`, channelID, userID).Scan(&count)
+		if count == 0 {
+			_, err = s.db.Exec(`
+				INSERT INTO channel_members (channel_id, user_id, role) VALUES ($1, $2, 'MEMBER')
+			`, channelID, userID)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to add member: %w", err)
+		}
 	}
 
 	return nil
@@ -251,69 +331,46 @@ func (s *ChannelService) DeleteChannel(userID, channelID string) error {
 }
 
 func (s *ChannelService) GetMembers(channelID, requestingUserID string) ([]*models.ChannelMemberResponse, error) {
-	// Check if requesting user is a member
-	var members []models.ChannelMember
-	err := s.supabase.GetClient().DB.From("channel_members").
-		Select("*").
-		Eq("channel_id", channelID).
-		Eq("user_id", requestingUserID).
-		Execute(&members)
-
+	rows, err := s.db.Query(`
+		SELECT cm.role, cm.joined_at,
+		       u.id, u.username, u.avatar_url, u.bio, u.banner, u.sub_plan, u.is_verified
+		FROM channel_members cm
+		JOIN users u ON u.id = cm.user_id
+		WHERE cm.channel_id = $1
+		ORDER BY cm.joined_at ASC
+	`, channelID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check channel membership (channelID=%s, userID=%s): %w", channelID, requestingUserID, err)
+		return nil, fmt.Errorf("failed to query members: %w", err)
 	}
+	defer rows.Close()
 
-	if len(members) == 0 {
-		return nil, fmt.Errorf("access denied: user is not a member of this channel")
-	}
-
-	// Get all members
-	var allMembers []models.ChannelMember
-	err = s.supabase.GetClient().DB.From("channel_members").
-		Select("*").
-		Eq("channel_id", channelID).
-		Execute(&allMembers)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to query channel members (channelID=%s): %w", channelID, err)
-	}
-
-	// Build response with user details
-	var result []*models.ChannelMemberResponse
-	for _, member := range allMembers {
-		// Get user details
-		var userSlice []models.User
-		err := s.supabase.GetClient().DB.From("users").
-			Select("*").
-			Eq("id", member.UserID).
-			Execute(&userSlice)
-
+	result := make([]*models.ChannelMemberResponse, 0)
+	isMember := false
+	for rows.Next() {
+		var m models.ChannelMemberResponse
+		var u models.ChannelMemberUser
+		var isVerified bool
+		var subPlan *string
+		err := rows.Scan(
+			&m.Role, &m.JoinedAt,
+			&u.ID, &u.Username, &u.AvatarURL, &u.Bio, &u.Banner, &subPlan, &isVerified,
+		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get user details (userID=%s): %w", member.UserID, err)
+			return nil, fmt.Errorf("failed to scan member: %w", err)
 		}
+		if subPlan != nil {
+			u.SubPlan = *subPlan
+		}
+		u.IsVerified = &isVerified
+		m.User = u
+		if u.ID == requestingUserID {
+			isMember = true
+		}
+		result = append(result, &m)
+	}
 
-		if len(userSlice) == 0 {
-			return nil, fmt.Errorf("user not found (userID=%s)", member.UserID)
-		}
-
-		// Map user to simplified struct
-		user := models.ChannelMemberUser{
-			ID:         userSlice[0].ID,
-			Bio:        userSlice[0].Bio,
-			Banner:     userSlice[0].Banner,
-			SubPlan:    userSlice[0].SubPlan,
-			Username:   userSlice[0].Username,
-			AvatarURL:  userSlice[0].AvatarURL,
-			IsVerified: &userSlice[0].IsVerified,
-		}
-
-		// Build member response
-		memberResponse := &models.ChannelMemberResponse{
-			Role:     member.Role,
-			JoinedAt: member.JoinedAt,
-			User:     user,
-		}
-		result = append(result, memberResponse)
+	if !isMember {
+		return nil, fmt.Errorf("access denied")
 	}
 
 	return result, nil
@@ -443,67 +500,38 @@ func (s *ChannelService) JoinChannel(userID, channelID string) error {
 }
 
 func (s *ChannelService) RequestJoinChannel(userID, channelID string) error {
-	// Check if channel is private
-	var channels []models.Channel
-	err := s.supabase.GetClient().DB.From("channels").
-		Select("access_type").
-		Eq("id", channelID).
-		Execute(&channels)
-
-	if err != nil {
-		return fmt.Errorf("failed to check channel access type: %w", err)
-	}
-
-	if len(channels) == 0 {
+	var accessType string
+	err := s.db.QueryRow(`SELECT access_type FROM channels WHERE id = $1`, channelID).Scan(&accessType)
+	if err == sql.ErrNoRows {
 		return fmt.Errorf("channel not found")
 	}
+	if err != nil {
+		return fmt.Errorf("failed to check channel: %w", err)
+	}
 
-	if channels[0].AccessType != "PRIVATE" {
+	if accessType != "PRIVATE" {
 		return fmt.Errorf("can only request to join private channels")
 	}
 
-	// Check if already a member
-	var existingMembers []models.ChannelMember
-	err = s.supabase.GetClient().DB.From("channel_members").
-		Select("user_id").
-		Eq("channel_id", channelID).
-		Eq("user_id", userID).
-		Execute(&existingMembers)
-
+	var memberCount int
+	err = s.db.QueryRow(`SELECT COUNT(*) FROM channel_members WHERE channel_id = $1 AND user_id = $2`, channelID, userID).Scan(&memberCount)
 	if err != nil {
-		return fmt.Errorf("failed to check existing membership: %w", err)
+		return fmt.Errorf("failed to check membership: %w", err)
 	}
-
-	if len(existingMembers) > 0 {
+	if memberCount > 0 {
 		return fmt.Errorf("already a member")
 	}
 
-	// Check if request already exists
-	var existingRequests []models.ChannelJoinRequest
-	err = s.supabase.GetClient().DB.From("channel_join_requests").
-		Select("id").
-		Eq("channel_id", channelID).
-		Eq("user_id", userID).
-		Eq("status", "PENDING").
-		Execute(&existingRequests)
-
+	var pendingCount int
+	err = s.db.QueryRow(`SELECT COUNT(*) FROM channel_join_requests WHERE channel_id = $1 AND user_id = $2 AND status = 'PENDING'`, channelID, userID).Scan(&pendingCount)
 	if err != nil {
 		return fmt.Errorf("failed to check existing request: %w", err)
 	}
-
-	if len(existingRequests) > 0 {
-		return fmt.Errorf("join request already exists")
+	if pendingCount > 0 {
+		return fmt.Errorf("join request already pending")
 	}
 
-	// Create join request
-	var requests []models.ChannelJoinRequest
-	err = s.supabase.GetClient().DB.From("channel_join_requests").
-		Insert(map[string]interface{}{
-			"channel_id": channelID,
-			"user_id":    userID,
-			"status":     "PENDING",
-		}).
-		Execute(&requests)
+	_, err = s.db.Exec(`INSERT INTO channel_join_requests (channel_id, user_id, status) VALUES ($1, $2, 'PENDING')`, channelID, userID)
 
 	if err != nil {
 		return fmt.Errorf("failed to create join request: %w", err)
