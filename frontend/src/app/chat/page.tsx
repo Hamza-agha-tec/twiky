@@ -251,6 +251,7 @@ function toWorkspaceChannel(
     membersLabel: '',
     access_type: channel.access_type,
     role: (channel.role as 'OWNER' | 'ADMIN' | 'MEMBER') ?? 'MEMBER',
+    owner_id: channel.owner_id,
     type: channel.type ?? 'NORMAL',
   }
 }
