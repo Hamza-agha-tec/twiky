@@ -111,6 +111,11 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
   private pendingDmCalls = new Map<string, PendingDmCall>();
   private activeCallMeta = new Map<string, ActiveCallMeta>();
 
+  // watch rooms: roomId → Map<userId, { socketId, username, avatarUrl, isHost, joinedAt }>
+  private watchRooms = new Map<string, Map<string, { socketId: string; username: string; avatarUrl?: string | null; isHost: boolean; joinedAt: number }>>();
+  // reverse index: socketId → [roomId, userId]
+  private watchSocketIndex = new Map<string, [string, string]>();
+
   constructor(
     private readonly configService: ConfigService,
     private readonly supabaseService: SupabaseService,
@@ -146,6 +151,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
         this.userSockets.delete(userId);
       }
       this.leaveAllVoiceRooms(userId, client.id);
+      this.leaveAllWatchRooms(client.id);
       this.logger.log(`User ${userId} disconnected [${client.id}]`);
     }
   }
@@ -671,6 +677,130 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
       roomId: data.roomId,
       participants: participants.map((u) => u.id),
       users: participants,
+    });
+  }
+
+  // ── Watch Room Handlers ───────────────────────────────────────────────────
+
+  private emitWatchParticipants(roomId: string) {
+    const room = this.watchRooms.get(roomId);
+    if (!room) return;
+    const participants = Array.from(room.entries()).map(([uid, p]) => ({
+      userId: uid,
+      username: p.username,
+      avatarUrl: p.avatarUrl ?? null,
+      isHost: p.isHost,
+      joinedAt: p.joinedAt,
+    }));
+    this.server.to(`watch-${roomId}`).emit('watch:participants', { participants });
+  }
+
+  private leaveAllWatchRooms(socketId: string) {
+    const entry = this.watchSocketIndex.get(socketId);
+    if (!entry) return;
+    const [roomId, userId] = entry;
+    this.watchSocketIndex.delete(socketId);
+    const room = this.watchRooms.get(roomId);
+    if (!room) return;
+    room.delete(userId);
+    if (room.size === 0) this.watchRooms.delete(roomId);
+    else this.emitWatchParticipants(roomId);
+  }
+
+  @SubscribeMessage('watch:join')
+  handleWatchJoin(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomId: string; userId: string; username?: string; avatarUrl?: string; isHost?: boolean },
+  ) {
+    if (!data.roomId || !data.userId) return;
+    const roomId = data.roomId;
+    const userId = data.userId;
+
+    // Remove from previous watch room if any
+    const prev = this.watchSocketIndex.get(client.id);
+    if (prev) {
+      const [prevRoomId, prevUserId] = prev;
+      this.watchRooms.get(prevRoomId)?.delete(prevUserId);
+      this.emitWatchParticipants(prevRoomId);
+    }
+
+    if (!this.watchRooms.has(roomId)) this.watchRooms.set(roomId, new Map());
+    this.watchRooms.get(roomId)!.set(userId, {
+      socketId: client.id,
+      username: data.username ?? userId,
+      avatarUrl: data.avatarUrl ?? null,
+      isHost: data.isHost ?? false,
+      joinedAt: Date.now(),
+    });
+    this.watchSocketIndex.set(client.id, [roomId, userId]);
+    client.join(`watch-${roomId}`);
+    this.emitWatchParticipants(roomId);
+  }
+
+  @SubscribeMessage('watch:leave')
+  handleWatchLeave(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomId: string; userId: string },
+  ) {
+    this.leaveAllWatchRooms(client.id);
+  }
+
+  @SubscribeMessage('watch:play')
+  handleWatchPlay(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomId: string; timestamp: number; serverNow: number },
+  ) {
+    if (!data.roomId) return;
+    client.to(`watch-${data.roomId}`).emit('watch:play', {
+      timestamp: data.timestamp,
+      serverNow: Date.now(),
+    });
+  }
+
+  @SubscribeMessage('watch:pause')
+  handleWatchPause(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomId: string; timestamp: number; serverNow: number },
+  ) {
+    if (!data.roomId) return;
+    client.to(`watch-${data.roomId}`).emit('watch:pause', {
+      timestamp: data.timestamp,
+      serverNow: Date.now(),
+    });
+  }
+
+  @SubscribeMessage('watch:seek')
+  handleWatchSeek(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomId: string; timestamp: number; serverNow: number },
+  ) {
+    if (!data.roomId) return;
+    client.to(`watch-${data.roomId}`).emit('watch:seek', {
+      timestamp: data.timestamp,
+      serverNow: Date.now(),
+    });
+  }
+
+  @SubscribeMessage('watch:sync-request')
+  handleWatchSyncRequest(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomId: string },
+  ) {
+    if (!data.roomId) return;
+    // Relay to host (all others) — host responds via watch:sync-response
+    client.to(`watch-${data.roomId}`).emit('watch:sync-request', { roomId: data.roomId });
+  }
+
+  @SubscribeMessage('watch:sync-response')
+  handleWatchSyncResponse(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomId: string; timestamp: number; paused: boolean; serverNow: number },
+  ) {
+    if (!data.roomId) return;
+    client.to(`watch-${data.roomId}`).emit('watch:sync-response', {
+      timestamp: data.timestamp,
+      paused: data.paused,
+      serverNow: Date.now(),
     });
   }
 

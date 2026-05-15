@@ -14,16 +14,18 @@ export type WatchParticipant = {
   username: string
   avatarUrl?: string | null
   isHost: boolean
+  joinedAt: number
 }
 
 type UseWatchRoomOptions = {
   roomId: string
   userId: string
+  username: string
   isHost: boolean
   videoRef: React.RefObject<HTMLVideoElement | null>
 }
 
-export function useWatchRoom({ roomId, userId, isHost, videoRef }: UseWatchRoomOptions) {
+export function useWatchRoom({ roomId, userId, username, isHost, videoRef }: UseWatchRoomOptions) {
   const [participants, setParticipants] = useState<WatchParticipant[]>([])
   const [syncing, setSyncing] = useState(false)
   const suppressSync = useRef(false)
@@ -93,7 +95,7 @@ export function useWatchRoom({ roomId, userId, isHost, videoRef }: UseWatchRoomO
     getSocket().then((socket) => {
       if (!mounted) return
 
-      socket.emit('watch:join', { roomId, userId })
+      socket.emit('watch:join', { roomId, userId, username, isHost })
 
       const onPlay = (data: any) => applySync({ ...data, type: 'play' })
       const onPause = (data: any) => applySync({ ...data, type: 'pause' })
@@ -144,7 +146,7 @@ export function useWatchRoom({ roomId, userId, isHost, videoRef }: UseWatchRoomO
       mounted = false
       cleanup?.()
     }
-  }, [roomId, userId, isHost, applySync, videoRef])
+  }, [roomId, userId, username, isHost, applySync, videoRef])
 
   return { participants, syncing, emitPlay, emitPause, emitSeek }
 }

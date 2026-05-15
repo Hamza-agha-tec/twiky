@@ -22,6 +22,7 @@ import { InvitationsModule } from './invitations/invitations.module';
 import { PaymentsModule } from './payments/payments.module';
 import { StoreModule } from './store/store.module';
 import { VoiceModule } from './voice/voice.module';
+import { LiveKitModule } from './livekit/livekit.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { VoiceModule } from './voice/voice.module';
     PaymentsModule,
     StoreModule,
     VoiceModule,
+    LiveKitModule,
   ],
   controllers: [AppController, AuthController],
   providers: [AppService, AuthService, SupabaseStrategy],
