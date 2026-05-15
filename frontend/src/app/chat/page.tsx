@@ -293,6 +293,8 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const [activeGroupId, setActiveGroupId] = useState('')
   const [channelFeedClosed, setChannelFeedClosed] = useState(false)
   const [activeVoiceGroupId, setActiveVoiceGroupId] = useState<string | null>(null)
+  const [watchParticipantsByGroup, setWatchParticipantsByGroup] = useState<Record<string, { userId: string; username: string; avatarUrl?: string | null; isHost: boolean; joinedAt: number }[]>>({})
+  const [watchSessionStartByGroup, setWatchSessionStartByGroup] = useState<Record<string, number | null>>({})
   const [deafened, setDeafened] = useState(false)
   const [pendingJoinRequests, setPendingJoinRequests] = useState<Record<string, JoinRequestPayload[]>>({})
   const [voiceProfileTarget, setVoiceProfileTarget] = useState<VoicePresenceUser | null>(null)
@@ -315,6 +317,24 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const readReceiptsEnabled = settings?.read_confirmation !== false
   const [typingIndicatorsEnabled, setTypingIndicatorsEnabled] = useState(true)
   usePresenceSocket(Boolean(profile?.id))
+
+  // Direct watch:participants listener — same pattern as voice presence,
+  // bypasses the WatchRoomView callback chain so the sidebar always stays in sync
+  useEffect(() => {
+    if (!profile?.id) return
+    let cleanup: (() => void) | null = null
+    getSocket().then((socket) => {
+      const handler = (data: { roomId?: string; participants: { userId: string; username: string; avatarUrl?: string | null; isHost: boolean; joinedAt: number }[]; sessionStartedAt?: number | null }) => {
+        if (!data.roomId) return
+        setWatchParticipantsByGroup(prev => ({ ...prev, [data.roomId!]: data.participants }))
+        setWatchSessionStartByGroup(prev => ({ ...prev, [data.roomId!]: data.sessionStartedAt ?? null }))
+      }
+      socket.on('watch:participants', handler)
+      cleanup = () => socket.off('watch:participants', handler)
+    })
+    return () => { cleanup?.() }
+  }, [profile?.id])
+
   const _onlineUsers = useOnlineUsers()
   const onlineUsers = useMemo(() => {
     if (!profile?.id) return _onlineUsers
@@ -778,6 +798,11 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   }, [voice.joinedGroupId])
 
   const handleJoinVoiceGroup = useCallback((groupId: string) => {
+    const currentGroup = workspaceChannels?.flatMap((ch) => ch.groups).find((g) => g.id === activeGroupIdRef.current)
+    if (currentGroup?.kind === 'watch') {
+      toast.error('Leave the watch room before joining a voice group')
+      return
+    }
     if (dmCallStatusRef.current.state === 'active') {
       prevGroupIdRef.current = activeGroupIdRef.current
       setPendingVoiceJoin(groupId)
@@ -954,6 +979,9 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     () => getMockGroup(activeChannelId, activeGroupId, workspaceChannels),
     [activeChannelId, activeGroupId, workspaceChannels],
   )
+
+  // derived — no state needed; clears automatically when user navigates away
+  const activeWatchGroupId = activeGroup?.kind === 'watch' ? activeGroup.id : null
 
   useEffect(() => {
     if (!workspaceChannels?.length) return
@@ -1803,7 +1831,19 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             roomId={activeGroup.id}
             userId={profile?.id ?? ''}
             username={profile?.username ?? ''}
+            fullname={profile?.fullname ?? null}
+            avatarUrl={profile?.avatar_url ?? null}
+            bannerUrl={profile?.banner ?? null}
+            subPlan={profile?.sub_plan ?? null}
+            isVerified={profile?.is_verified ?? null}
             isHost={activeChannel.role === 'OWNER' || activeChannel.role === 'ADMIN'}
+            onLeave={() => {
+              setWatchParticipantsByGroup(prev => { const next = { ...prev }; delete next[activeGroup.id]; return next })
+              setActiveGroupId('')
+            }}
+            onParticipantsChange={(ps) => {
+              setWatchParticipantsByGroup(prev => ({ ...prev, [activeGroup.id]: ps }))
+            }}
           />
         </div>
       ) : activeGroup.kind === 'voice' ? (
@@ -2091,6 +2131,16 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             }}
             onCreateGroup={handleCreateGroup}
             onSelectGroup={(groupId) => {
+              const allGroups = workspaceChannels?.flatMap((ch) => ch.groups) ?? []
+              const targetGroup = allGroups.find((g) => g.id === groupId)
+              if (activeWatchGroupId && targetGroup?.kind === 'voice') {
+                toast.error('Leave the watch room before joining a voice group')
+                return
+              }
+              if (activeVoiceGroupId && targetGroup?.kind === 'watch') {
+                toast.error('Leave the voice group before joining a watch room')
+                return
+              }
               setActiveGroupId(groupId)
               setWorkspaceMode('channels')
               setActiveSurface('channel')
@@ -2121,6 +2171,26 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             soundboardUserId={voice.soundboardUserId}
             soundboardIntensity={voice.soundboardIntensity}
             onlineUsers={onlineUsers}
+            watchParticipants={watchParticipantsByGroup}
+            watchSessionStarts={watchSessionStartByGroup}
+            activeWatchGroupId={activeWatchGroupId}
+            onWatchLeave={() => {
+              if (activeWatchGroupId) setWatchParticipantsByGroup(prev => { const next = { ...prev }; delete next[activeWatchGroupId]; return next })
+              setActiveGroupId('')
+            }}
+            onKickWatchParticipant={(targetUserId, groupId) => {
+              getSocket().then(s => s.emit('watch:kick', { roomId: groupId, targetUserId }))
+            }}
+            onViewWatchParticipantProfile={(p) => setVoiceProfileTarget({
+              id: p.userId,
+              name: p.fullname ?? p.username,
+              avatarUrl: p.avatarUrl ?? null,
+              bannerUrl: p.bannerUrl ?? null,
+              subPlan: (p.subPlan ?? null) as VoicePresenceUser['subPlan'],
+              isVerified: p.isVerified ?? null,
+              isMuted: false,
+              joinedAt: p.joinedAt,
+            } as VoicePresenceUser)}
           />
 
             {activeSurface === 'channel'

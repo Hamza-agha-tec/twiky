@@ -8,6 +8,7 @@ import {
   BellOff,
   Check,
   Copy,
+  Crown,
   Globe,
   Hash,
   Link,
@@ -145,6 +146,29 @@ export interface VoiceParticipant {
   joinedAt?: number
 }
 
+function WatchGroupTimer({ sessionStartedAt }: { sessionStartedAt: number | null | undefined }) {
+  const startMs = sessionStartedAt ?? 0
+  const [elapsed, setElapsed] = useState(0)
+
+  useEffect(() => {
+    if (!startMs) return
+    const tick = () => setElapsed(Math.floor((Date.now() - startMs) / 1000))
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [startMs])
+
+  if (!startMs) return null
+  const h = Math.floor(elapsed / 3600)
+  const m = Math.floor((elapsed % 3600) / 60).toString().padStart(2, '0')
+  const s = (elapsed % 60).toString().padStart(2, '0')
+  return (
+    <span className="text-[9px] font-semibold tabular-nums" style={{ color: '#55FF55' }}>
+      {h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`}
+    </span>
+  )
+}
+
 function VoiceGroupTimer({ participants }: { participants: VoiceParticipant[] }) {
   const joinTimes = participants.map(p => p.joinedAt).filter((t): t is number => typeof t === 'number' && t > 0)
   const startMs = joinTimes.length > 0 ? Math.min(...joinTimes) : 0
@@ -194,6 +218,12 @@ interface ChannelsPanelProps {
   soundboardUserId?: string | null
   soundboardIntensity?: number
   onlineUsers?: Set<string>
+  watchParticipants?: Record<string, { userId: string; username: string; fullname?: string | null; avatarUrl?: string | null; bannerUrl?: string | null; subPlan?: string | null; isVerified?: boolean | null; isHost: boolean; joinedAt: number }[]>
+  watchSessionStarts?: Record<string, number | null>
+  activeWatchGroupId?: string | null
+  onWatchLeave?: () => void
+  onKickWatchParticipant?: (userId: string, groupId: string) => void
+  onViewWatchParticipantProfile?: (participant: { userId: string; username: string; fullname?: string | null; avatarUrl?: string | null; bannerUrl?: string | null; subPlan?: string | null; isVerified?: boolean | null; isHost: boolean; joinedAt: number }) => void
 }
 
 const MEMBER_LABELS = ['26 online', '18 online', '12 online', '9 online', '6 online']
@@ -1321,6 +1351,12 @@ export function ChannelsPanel({
   soundboardUserId,
   soundboardIntensity = 0,
   onlineUsers = new Set(),
+  watchParticipants = {},
+  watchSessionStarts = {},
+  activeWatchGroupId,
+  onWatchLeave,
+  onKickWatchParticipant,
+  onViewWatchParticipantProfile,
 }: ChannelsPanelProps) {
   const [showCreateGroup, setShowCreateGroup] = useState(false)
   const [channelSettingsOpen, setChannelSettingsOpen] = useState(false)
@@ -1497,6 +1533,7 @@ export function ChannelsPanel({
               const hasRequested = requestedGroups.has(group.id)
               const memberCanRequest = !canManage && isPrivate && !group.is_member
               const participants = group.kind === 'voice' ? (voiceParticipants[group.id] ?? []) : []
+              const watchPeople = group.kind === 'watch' ? (watchParticipants[group.id] ?? []) : []
 
               const isFirstWatch = idx === watchStart && watchGroups.length > 0
               const isFirstVoice = idx === voiceStart && voiceStart > 0 && voiceGroups.length > 0
@@ -1636,6 +1673,13 @@ export function ChannelsPanel({
                     </div>
                   )}
 
+                  {/* Watch timer — shown on the group card while session is active */}
+                  {group.kind === 'watch' && watchPeople.length > 0 && watchSessionStarts[group.id] && (
+                    <span className={cn('absolute right-1.5 top-1/2 z-10 -translate-y-1/2 pointer-events-none transition-opacity duration-150', canManage && 'group-hover/row:opacity-0')}>
+                      <WatchGroupTimer sessionStartedAt={watchSessionStarts[group.id]} />
+                    </span>
+                  )}
+
                   {/* Voice call timer — non-joined users */}
                   {group.kind === 'voice' && group.id !== activeVoiceGroupId && participants.length > 0 && (
                     <span className={cn('absolute right-1.5 top-1/2 z-10 -translate-y-1/2 pointer-events-none transition-opacity duration-150', canManage && 'group-hover/row:opacity-0')}>
@@ -1698,6 +1742,82 @@ export function ChannelsPanel({
                   </DropdownMenu>
                   ) : null}
                   </div>{/* end row */}
+
+                  {/* Watch participants — same style as voice */}
+                  {group.kind === 'watch' && watchPeople.length > 0 && (
+                    <div className="ml-6 mb-1 space-y-0.5">
+                      {watchPeople.map((p) => {
+                        const isSelf = p.userId === myId
+                        const hasGeekBanner = p.subPlan === 'GEEK' && Boolean(p.bannerUrl)
+                        return (
+                          <ContextMenu key={p.userId}>
+                            <ContextMenuTrigger asChild>
+                              <div
+                                className={cn(
+                                  'group/watch-participant relative flex min-h-7 items-center gap-2 overflow-hidden rounded-lg px-2 py-0.5',
+                                  hasGeekBanner && 'transition-shadow duration-300 ease-out hover:shadow-[0_10px_22px_rgba(0,0,0,0.22)]',
+                                  'hover:bg-accent/40 transition-colors',
+                                )}
+                              >
+                                {hasGeekBanner ? (
+                                  <>
+                                    <motion.img
+                                      src={p.bannerUrl ?? ''}
+                                      alt=""
+                                      aria-hidden="true"
+                                      draggable={false}
+                                      className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-300 group-hover/watch-participant:opacity-100"
+                                      initial={false}
+                                      whileHover={{ scale: 1.05 }}
+                                      transition={{ duration: 0.35, ease: 'easeOut' }}
+                                    />
+                                    <span className="pointer-events-none absolute inset-0 bg-gradient-to-r from-sidebar/95 via-sidebar/58 to-sidebar/18 opacity-0 transition-opacity duration-300 group-hover/watch-participant:opacity-100" />
+                                    <span className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-[linear-gradient(90deg,rgba(0,0,0,0.92)_0%,rgba(0,0,0,0.72)_34%,rgba(0,0,0,0.34)_68%,rgba(0,0,0,0)_100%)] opacity-0 shadow-[inset_18px_0_22px_rgba(0,0,0,0.86)] transition-opacity duration-300 group-hover/watch-participant:opacity-100" />
+                                  </>
+                                ) : null}
+                                <div className="relative z-10 shrink-0">
+                                  <UserAvatar src={p.avatarUrl} alt={p.username} className="h-5 w-5 rounded-full" />
+                                  {p.isHost && (
+                                    <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-amber-500 ring-1 ring-sidebar">
+                                      <Crown className="h-1.5 w-1.5 text-white" />
+                                    </span>
+                                  )}
+                                </div>
+                                <span className={cn(
+                                  'relative z-10 min-w-0 flex-1 truncate text-[11px] font-medium transition-colors duration-300',
+                                  isSelf ? 'text-foreground' : 'text-muted-foreground',
+                                  hasGeekBanner && 'group-hover/watch-participant:text-white',
+                                )}>
+                                  {p.username}{isSelf ? ' (You)' : ''}
+                                </span>
+                                {p.isHost && (
+                                  <span className="relative z-10 shrink-0 text-[9px] font-bold text-amber-500">HOST</span>
+                                )}
+                              </div>
+                            </ContextMenuTrigger>
+                            <ContextMenuContent className="w-44 bg-sidebar border-border">
+                              <ContextMenuItem onClick={() => onViewWatchParticipantProfile?.(p)}>
+                                <User className="mr-2 h-3.5 w-3.5" />
+                                View profile
+                              </ContextMenuItem>
+                              {!isSelf && !p.isHost && canManage && (
+                                <>
+                                  <ContextMenuSeparator />
+                                  <ContextMenuItem
+                                    className="text-destructive focus:text-destructive"
+                                    onClick={() => onKickWatchParticipant?.(p.userId, group.id)}
+                                  >
+                                    <UserMinus className="mr-2 h-3.5 w-3.5" />
+                                    Kick from watch
+                                  </ContextMenuItem>
+                                </>
+                              )}
+                            </ContextMenuContent>
+                          </ContextMenu>
+                        )
+                      })}
+                    </div>
+                  )}
 
                   {/* Voice participants — Discord-style list below, outside the row div */}
                   {group.kind === 'voice' && participants.length > 0 && (

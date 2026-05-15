@@ -12,7 +12,11 @@ export type WatchSyncEvent =
 export type WatchParticipant = {
   userId: string
   username: string
+  fullname?: string | null
   avatarUrl?: string | null
+  bannerUrl?: string | null
+  subPlan?: 'FREE' | 'PRO' | 'GEEK' | string | null
+  isVerified?: boolean | null
   isHost: boolean
   joinedAt: number
 }
@@ -21,14 +25,26 @@ type UseWatchRoomOptions = {
   roomId: string
   userId: string
   username: string
+  fullname?: string | null
+  avatarUrl?: string | null
+  bannerUrl?: string | null
+  subPlan?: string | null
+  isVerified?: boolean | null
   isHost: boolean
   videoRef: React.RefObject<HTMLVideoElement | null>
+  onEnded?: () => void
+  onKicked?: () => void
 }
 
-export function useWatchRoom({ roomId, userId, username, isHost, videoRef }: UseWatchRoomOptions) {
+export function useWatchRoom({ roomId, userId, username, fullname, avatarUrl, bannerUrl, subPlan, isVerified, isHost, videoRef, onEnded, onKicked }: UseWatchRoomOptions) {
   const [participants, setParticipants] = useState<WatchParticipant[]>([])
   const [syncing, setSyncing] = useState(false)
+  const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null)
   const suppressSync = useRef(false)
+  const onEndedRef = useRef(onEnded)
+  useEffect(() => { onEndedRef.current = onEnded }, [onEnded])
+  const onKickedRef = useRef(onKicked)
+  useEffect(() => { onKickedRef.current = onKicked }, [onKicked])
 
   // ── emit helpers ─────────────────────────────────────────────────────────
   const emitPlay = useCallback(async () => {
@@ -39,6 +55,8 @@ export function useWatchRoom({ roomId, userId, username, isHost, videoRef }: Use
       timestamp: videoRef.current?.currentTime ?? 0,
       serverNow: Date.now(),
     })
+    // host records session start locally on first play (backend also sets it and broadcasts)
+    setSessionStartedAt(prev => prev ?? Date.now())
   }, [isHost, roomId, videoRef])
 
   const emitPause = useCallback(async () => {
@@ -59,6 +77,18 @@ export function useWatchRoom({ roomId, userId, username, isHost, videoRef }: Use
       timestamp,
       serverNow: Date.now(),
     })
+  }, [isHost, roomId])
+
+  const emitEnd = useCallback(async () => {
+    if (!isHost) return
+    const socket = await getSocket()
+    socket.emit('watch:end', { roomId })
+  }, [isHost, roomId])
+
+  const emitKick = useCallback(async (targetUserId: string) => {
+    if (!isHost) return
+    const socket = await getSocket()
+    socket.emit('watch:kick', { roomId, targetUserId })
   }, [isHost, roomId])
 
   // ── apply sync with latency compensation ─────────────────────────────────
@@ -95,8 +125,6 @@ export function useWatchRoom({ roomId, userId, username, isHost, videoRef }: Use
     getSocket().then((socket) => {
       if (!mounted) return
 
-      socket.emit('watch:join', { roomId, userId, username, isHost })
-
       const onPlay = (data: any) => applySync({ ...data, type: 'play' })
       const onPause = (data: any) => applySync({ ...data, type: 'pause' })
       const onSeek = (data: any) => applySync({ ...data, type: 'seek' })
@@ -104,19 +132,23 @@ export function useWatchRoom({ roomId, userId, username, isHost, videoRef }: Use
         setSyncing(false)
         applySync({ ...data, type: 'sync-response' })
       }
-      const onParticipants = (data: { participants: WatchParticipant[] }) => {
-        if (mounted) setParticipants(data.participants)
+      const onParticipants = (data: { roomId?: string; participants: WatchParticipant[]; sessionStartedAt?: number | null }) => {
+        if (!mounted) return
+        setParticipants(data.participants)
+        if (data.sessionStartedAt) setSessionStartedAt(data.sessionStartedAt)
       }
       const onSyncRequest = () => {
-        if (!isHost || !videoRef.current) return
+        if (!isHost) return
         const video = videoRef.current
         socket.emit('watch:sync-response', {
           roomId,
-          timestamp: video.currentTime,
-          paused: video.paused,
+          timestamp: video?.currentTime ?? 0,
+          paused: video?.paused ?? true,
           serverNow: Date.now(),
         })
       }
+      const onEnd = () => { onEndedRef.current?.() }
+      const onKicked = () => { onKickedRef.current?.() }
 
       socket.on('watch:play', onPlay)
       socket.on('watch:pause', onPause)
@@ -124,8 +156,20 @@ export function useWatchRoom({ roomId, userId, username, isHost, videoRef }: Use
       socket.on('watch:sync-response', onSyncResponse)
       socket.on('watch:participants', onParticipants)
       socket.on('watch:sync-request', onSyncRequest)
+      socket.on('watch:end', onEnd)
+      socket.on('watch:kicked', onKicked)
 
-      // new viewer joining requests sync from host
+      // join AFTER listeners so the initial participants broadcast is received
+      socket.emit('watch:join', {
+        roomId, userId, username,
+        fullname: fullname ?? null,
+        avatarUrl: avatarUrl ?? null,
+        bannerUrl: bannerUrl ?? null,
+        subPlan: subPlan ?? null,
+        isVerified: isVerified ?? null,
+        isHost,
+      })
+
       if (!isHost) {
         setSyncing(true)
         socket.emit('watch:sync-request', { roomId })
@@ -138,6 +182,8 @@ export function useWatchRoom({ roomId, userId, username, isHost, videoRef }: Use
         socket.off('watch:sync-response', onSyncResponse)
         socket.off('watch:participants', onParticipants)
         socket.off('watch:sync-request', onSyncRequest)
+        socket.off('watch:end', onEnd)
+        socket.off('watch:kicked', onKicked)
         socket.emit('watch:leave', { roomId, userId })
       }
     })
@@ -148,5 +194,5 @@ export function useWatchRoom({ roomId, userId, username, isHost, videoRef }: Use
     }
   }, [roomId, userId, username, isHost, applySync, videoRef])
 
-  return { participants, syncing, emitPlay, emitPause, emitSeek }
+  return { participants, syncing, sessionStartedAt, emitPlay, emitPause, emitSeek, emitEnd, emitKick }
 }

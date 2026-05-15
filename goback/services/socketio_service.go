@@ -28,6 +28,29 @@ type SocketIOService struct {
 	voiceMu      sync.RWMutex
 	voiceRooms   map[string]map[string]interface{} // roomID → userID → user payload
 	socketVoice  map[string]string                 // socketID → roomID (for disconnect cleanup)
+
+	// Watch room tracking
+	watchMu          sync.RWMutex
+	watchRooms       map[string]map[string]*watchParticipant // roomID → userID → participant
+	watchSocketIndex map[string][2]string                    // socketID → [roomID, userID]
+	watchRoomMeta    map[string]*watchRoomMeta               // roomID → meta
+}
+
+type watchParticipant struct {
+	SocketID   string
+	UserID     string
+	Username   string
+	Fullname   *string
+	AvatarURL  *string
+	BannerURL  *string
+	SubPlan    *string
+	IsVerified *bool
+	IsHost     bool
+	JoinedAt   int64
+}
+
+type watchRoomMeta struct {
+	SessionStartedAt int64 // 0 means not started
 }
 
 type ChatMessage struct {
@@ -53,6 +76,9 @@ func NewSocketIOService(db *sql.DB) *SocketIOService {
 		socketUsers: make(map[string]string),
 		voiceRooms:  make(map[string]map[string]interface{}),
 		socketVoice: make(map[string]string),
+		watchRooms:       make(map[string]map[string]*watchParticipant),
+		watchSocketIndex: make(map[string][2]string),
+		watchRoomMeta:    make(map[string]*watchRoomMeta),
 	}
 	svc.setupHandlers()
 	return svc
@@ -263,6 +289,89 @@ func (s *SocketIOService) removeFromAllVoiceRooms(socketID string) (roomID, user
 		delete(s.socketVoice, socketID)
 	}
 	return roomID, userID
+}
+
+// ── watch room helpers ────────────────────────────────────────────────────────
+
+func (s *SocketIOService) watchParticipantsList(roomID string) ([]map[string]interface{}, int64) {
+	s.watchMu.RLock()
+	defer s.watchMu.RUnlock()
+	room := s.watchRooms[roomID]
+	list := make([]map[string]interface{}, 0, len(room))
+	for _, p := range room {
+		var avatar interface{} = nil
+		if p.AvatarURL != nil {
+			avatar = *p.AvatarURL
+		}
+		var banner interface{} = nil
+		if p.BannerURL != nil {
+			banner = *p.BannerURL
+		}
+		var sub interface{} = nil
+		if p.SubPlan != nil {
+			sub = *p.SubPlan
+		}
+		var full interface{} = nil
+		if p.Fullname != nil {
+			full = *p.Fullname
+		}
+		var ver interface{} = nil
+		if p.IsVerified != nil {
+			ver = *p.IsVerified
+		}
+		list = append(list, map[string]interface{}{
+			"userId":     p.UserID,
+			"username":   p.Username,
+			"fullname":   full,
+			"avatarUrl":  avatar,
+			"bannerUrl":  banner,
+			"subPlan":    sub,
+			"isVerified": ver,
+			"isHost":     p.IsHost,
+			"joinedAt":   p.JoinedAt,
+		})
+	}
+	var started int64
+	if meta := s.watchRoomMeta[roomID]; meta != nil {
+		started = meta.SessionStartedAt
+	}
+	return list, started
+}
+
+func (s *SocketIOService) emitWatchParticipants(roomID string) {
+	list, started := s.watchParticipantsList(roomID)
+	payload := map[string]interface{}{
+		"roomId":       roomID,
+		"participants": list,
+	}
+	if started > 0 {
+		payload["sessionStartedAt"] = started
+	} else {
+		payload["sessionStartedAt"] = nil
+	}
+	// broadcast globally so sidebar of users not inside the room still updates
+	s.server.Emit("watch:participants", payload)
+}
+
+// removeFromWatchRoom returns roomID it was removed from, or "" if not in any.
+func (s *SocketIOService) removeFromWatchRoom(socketID string) string {
+	s.watchMu.Lock()
+	entry, ok := s.watchSocketIndex[socketID]
+	if !ok {
+		s.watchMu.Unlock()
+		return ""
+	}
+	delete(s.watchSocketIndex, socketID)
+	roomID, userID := entry[0], entry[1]
+	if room, ok := s.watchRooms[roomID]; ok {
+		delete(room, userID)
+		if len(room) == 0 {
+			delete(s.watchRooms, roomID)
+			delete(s.watchRoomMeta, roomID)
+		}
+	}
+	s.watchMu.Unlock()
+	return roomID
 }
 
 // ── socket event setup ────────────────────────────────────────────────────────
@@ -647,36 +756,239 @@ func (s *SocketIOService) setupHandlers() {
 		// ── Watch party ──────────────────────────────────────────────────────
 
 		client.On("watch:join", func(datas ...any) {
-			if len(datas) > 0 {
-				roomID := fmt.Sprintf("%v", datas[0])
-				client.Join(socketio.Room(roomID))
-				server.To(socketio.Room(roomID)).Emit("watch:join", client.Id())
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			if payload == nil {
+				return
+			}
+			roomID := mapStr(payload, "roomId")
+			userID := mapStr(payload, "userId")
+			if roomID == "" || userID == "" {
+				return
+			}
+			username := mapStr(payload, "username")
+			if username == "" {
+				username = userID
+			}
+			strPtr := func(key string) *string {
+				if v, ok := payload[key]; ok {
+					if s, ok := v.(string); ok && s != "" {
+						return &s
+					}
+				}
+				return nil
+			}
+			avatar := strPtr("avatarUrl")
+			banner := strPtr("bannerUrl")
+			sub := strPtr("subPlan")
+			full := strPtr("fullname")
+			var verified *bool
+			if v, ok := payload["isVerified"]; ok {
+				if b, ok := v.(bool); ok {
+					verified = &b
+				}
+			}
+			isHost, _ := payload["isHost"].(bool)
+
+			// Remove any previous watch room membership for this socket
+			if prev, ok := s.watchSocketIndex[socketID]; ok {
+				prevRoom := prev[0]
+				s.watchMu.Lock()
+				if room, ok := s.watchRooms[prevRoom]; ok {
+					delete(room, prev[1])
+					if len(room) == 0 {
+						delete(s.watchRooms, prevRoom)
+						delete(s.watchRoomMeta, prevRoom)
+					}
+				}
+				delete(s.watchSocketIndex, socketID)
+				s.watchMu.Unlock()
+				client.Leave(socketio.Room("watch_" + prevRoom))
+				s.emitWatchParticipants(prevRoom)
+			}
+
+			s.watchMu.Lock()
+			if s.watchRooms[roomID] == nil {
+				s.watchRooms[roomID] = make(map[string]*watchParticipant)
+			}
+			s.watchRooms[roomID][userID] = &watchParticipant{
+				SocketID:   socketID,
+				UserID:     userID,
+				Username:   username,
+				Fullname:   full,
+				AvatarURL:  avatar,
+				BannerURL:  banner,
+				SubPlan:    sub,
+				IsVerified: verified,
+				IsHost:     isHost,
+				JoinedAt:   time.Now().UnixMilli(),
+			}
+			s.watchSocketIndex[socketID] = [2]string{roomID, userID}
+			s.watchMu.Unlock()
+
+			client.Join(socketio.Room("watch_" + roomID))
+			s.emitWatchParticipants(roomID)
+		})
+
+		client.On("watch:leave", func(_ ...any) {
+			roomID := s.removeFromWatchRoom(socketID)
+			if roomID != "" {
+				client.Leave(socketio.Room("watch_" + roomID))
+				s.emitWatchParticipants(roomID)
 			}
 		})
+
 		client.On("watch:play", func(datas ...any) {
-			if len(datas) > 0 {
-				server.Emit("watch:play", datas[0])
+			if len(datas) == 0 {
+				return
 			}
+			payload := asMap(datas[0])
+			roomID := mapStr(payload, "roomId")
+			if roomID == "" {
+				return
+			}
+			// record session start on first play
+			s.watchMu.Lock()
+			meta, ok := s.watchRoomMeta[roomID]
+			if !ok {
+				meta = &watchRoomMeta{}
+				s.watchRoomMeta[roomID] = meta
+			}
+			started := meta.SessionStartedAt == 0
+			if started {
+				meta.SessionStartedAt = time.Now().UnixMilli()
+			}
+			s.watchMu.Unlock()
+			if started {
+				s.emitWatchParticipants(roomID)
+			}
+			client.To(socketio.Room("watch_" + roomID)).Emit("watch:play", map[string]interface{}{
+				"timestamp": payload["timestamp"],
+				"serverNow": time.Now().UnixMilli(),
+			})
 		})
+
 		client.On("watch:pause", func(datas ...any) {
-			if len(datas) > 0 {
-				server.Emit("watch:pause", datas[0])
+			if len(datas) == 0 {
+				return
 			}
+			payload := asMap(datas[0])
+			roomID := mapStr(payload, "roomId")
+			if roomID == "" {
+				return
+			}
+			client.To(socketio.Room("watch_" + roomID)).Emit("watch:pause", map[string]interface{}{
+				"timestamp": payload["timestamp"],
+				"serverNow": time.Now().UnixMilli(),
+			})
 		})
+
 		client.On("watch:seek", func(datas ...any) {
-			if len(datas) > 0 {
-				server.Emit("watch:seek", datas[0])
+			if len(datas) == 0 {
+				return
 			}
+			payload := asMap(datas[0])
+			roomID := mapStr(payload, "roomId")
+			if roomID == "" {
+				return
+			}
+			client.To(socketio.Room("watch_" + roomID)).Emit("watch:seek", map[string]interface{}{
+				"timestamp": payload["timestamp"],
+				"serverNow": time.Now().UnixMilli(),
+			})
 		})
+
 		client.On("watch:sync-request", func(datas ...any) {
-			if len(datas) > 0 {
-				server.Emit("watch:sync-request", datas[0])
+			if len(datas) == 0 {
+				return
 			}
+			payload := asMap(datas[0])
+			roomID := mapStr(payload, "roomId")
+			if roomID == "" {
+				return
+			}
+			client.To(socketio.Room("watch_" + roomID)).Emit("watch:sync-request", map[string]interface{}{
+				"roomId": roomID,
+			})
 		})
+
 		client.On("watch:sync-response", func(datas ...any) {
-			if len(datas) > 0 {
-				server.Emit("watch:sync-response", datas[0])
+			if len(datas) == 0 {
+				return
 			}
+			payload := asMap(datas[0])
+			roomID := mapStr(payload, "roomId")
+			if roomID == "" {
+				return
+			}
+			client.To(socketio.Room("watch_" + roomID)).Emit("watch:sync-response", map[string]interface{}{
+				"timestamp": payload["timestamp"],
+				"paused":    payload["paused"],
+				"serverNow": time.Now().UnixMilli(),
+			})
+		})
+
+		client.On("watch:end", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			roomID := mapStr(payload, "roomId")
+			if roomID == "" {
+				return
+			}
+			client.To(socketio.Room("watch_" + roomID)).Emit("watch:end", map[string]interface{}{
+				"roomId": roomID,
+			})
+			s.watchMu.Lock()
+			// clear all socket index entries pointing at this room
+			for sid, entry := range s.watchSocketIndex {
+				if entry[0] == roomID {
+					delete(s.watchSocketIndex, sid)
+				}
+			}
+			delete(s.watchRooms, roomID)
+			delete(s.watchRoomMeta, roomID)
+			s.watchMu.Unlock()
+		})
+
+		client.On("watch:kick", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			roomID := mapStr(payload, "roomId")
+			targetID := mapStr(payload, "targetUserId")
+			if roomID == "" || targetID == "" {
+				return
+			}
+			s.watchMu.Lock()
+			room, ok := s.watchRooms[roomID]
+			if !ok {
+				s.watchMu.Unlock()
+				return
+			}
+			target, ok := room[targetID]
+			if !ok {
+				s.watchMu.Unlock()
+				return
+			}
+			targetSocketID := target.SocketID
+			delete(room, targetID)
+			delete(s.watchSocketIndex, targetSocketID)
+			if len(room) == 0 {
+				delete(s.watchRooms, roomID)
+				delete(s.watchRoomMeta, roomID)
+			}
+			s.watchMu.Unlock()
+
+			// notify the kicked user via their user_ room (reliable across sockets)
+			server.To(socketio.Room("user_" + targetID)).Emit("watch:kicked", map[string]interface{}{
+				"roomId": roomID,
+			})
+			s.emitWatchParticipants(roomID)
 		})
 
 		// ── Group & channel rooms ────────────────────────────────────────────
@@ -808,6 +1120,11 @@ func (s *SocketIOService) setupHandlers() {
 				leftPayload := map[string]interface{}{"roomId": roomID, "userId": userID}
 				server.To(socketio.Room("voice_" + roomID)).Emit("user-left-voice", leftPayload)
 				server.To(socketio.Room("sub_voice_" + roomID)).Emit("user-left-voice", leftPayload)
+			}
+
+			// Watch cleanup
+			if watchRoomID := s.removeFromWatchRoom(socketID); watchRoomID != "" {
+				s.emitWatchParticipants(watchRoomID)
 			}
 
 			// Presence cleanup

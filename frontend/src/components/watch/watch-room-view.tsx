@@ -12,11 +12,18 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Play, Pause, SkipBack, SkipForward, Volume2, VolumeX,
   Scan, FolderOpen, Users, Crown, Loader2, WifiOff, Tv2,
-  RefreshCw, X,
+  RefreshCw, X, UserMinus, ChevronDown,
 } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useLiveKitToken } from '@/hooks/use-livekit-token'
 import { useWatchRoom, type WatchParticipant } from '@/hooks/use-watch-room'
 import { UserAvatar } from '@/components/chat/user-avatar'
+import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
 const LIVEKIT_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL ?? 'wss://twikyapp-spq2q6t8.livekit.cloud'
@@ -116,7 +123,8 @@ function HostPublisher({ videoRef }: { videoRef: React.RefObject<HTMLVideoElemen
       const lt = new LocalVideoTrack(raw, { name: 'watch-video' })
       await room.localParticipant.publishTrack(lt, {
         source: Track.Source.Camera,
-        videoEncoding: { maxBitrate: 8_000_000, maxFramerate: 60 },
+        videoEncoding: { maxBitrate: 15_000_000, maxFramerate: 60 },
+        videoCodec: 'vp9',
       })
       publishedRef.current = lt
     } catch (e) {
@@ -166,14 +174,19 @@ interface WatchRoomInnerProps {
   participants: WatchParticipant[]
   syncing: boolean
   videoRef: React.RefObject<HTMLVideoElement | null>
+  ended: boolean
+  sessionStartedAt: number | null
   emitPlay: () => void
   emitPause: () => void
   emitSeek: (t: number) => void
+  onLeave: () => void
+  onEnd: () => void
+  onKick: (userId: string) => void
 }
 
 function WatchRoomInner({
-  isHost, participants, syncing, videoRef,
-  emitPlay, emitPause, emitSeek,
+  isHost, participants, syncing, videoRef, ended, sessionStartedAt,
+  emitPlay, emitPause, emitSeek, onLeave, onEnd, onKick,
 }: WatchRoomInnerProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const objectUrlRef = useRef<string | null>(null)
@@ -189,10 +202,7 @@ function WatchRoomInner({
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [watchersOpen, setWatchersOpen] = useState(false)
 
-  const sessionStart = participants.length > 0
-    ? Math.min(...participants.map(p => p.joinedAt))
-    : Date.now()
-  const sessionTimer = useElapsed(sessionStart)
+  const sessionTimer = useElapsed(sessionStartedAt ?? 0)
 
   useEffect(() => {
     if (!isFullscreen) return
@@ -237,6 +247,27 @@ function WatchRoomInner({
     if (videoRef.current) { videoRef.current.volume = v; videoRef.current.muted = v === 0; setMuted(v === 0) }
   }, [videoRef])
 
+  if (ended && !isHost) {
+    return (
+      <motion.div
+        className="flex min-w-0 flex-1 flex-col items-center justify-center gap-4 bg-background"
+        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}
+      >
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
+          <Tv2 className="h-6 w-6 text-muted-foreground" />
+        </div>
+        <p className="text-[13px] font-semibold text-foreground">Watch party ended</p>
+        <p className="text-[11px] text-muted-foreground">The host ended the session</p>
+        <button
+          onClick={onLeave}
+          className="mt-1 rounded-xl bg-primary px-5 py-2 text-[12px] font-semibold text-primary-foreground hover:bg-primary/90"
+        >
+          Leave
+        </button>
+      </motion.div>
+    )
+  }
+
   return (
     <motion.div
       className={cn(
@@ -249,22 +280,6 @@ function WatchRoomInner({
     >
       <input ref={fileInputRef} type="file" accept="video/*" className="hidden" onChange={handleFileChange} />
 
-      {/* video element — always in DOM */}
-      <video
-        ref={videoRef}
-        className="hidden"
-        onLoadedMetadata={() => {
-          setDuration(videoRef.current?.duration ?? 0)
-          const fn = (videoRef.current as any)?.__watchPublish
-          if (typeof fn === 'function') fn()
-        }}
-        onTimeUpdate={() => !dragging && setProgress(videoRef.current?.currentTime ?? 0)}
-        onDurationChange={() => setDuration(videoRef.current?.duration ?? 0)}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        playsInline
-      />
-
       {isHost && <HostPublisher videoRef={videoRef} />}
 
       {/* Main area */}
@@ -273,6 +288,27 @@ function WatchRoomInner({
         onMouseEnter={() => setControlsVisible(true)}
         onMouseLeave={() => setControlsVisible(false)}
       >
+        {/* video — always in DOM so captureStream works; visible only when host has file */}
+        <video
+          ref={videoRef}
+          className={cn(
+            'pointer-events-none',
+            isHost && fileLoaded
+              ? 'absolute inset-0 z-[1] h-full w-full bg-black object-contain'
+              : 'absolute opacity-0',
+          )}
+          style={!(isHost && fileLoaded) ? { width: 1, height: 1 } : undefined}
+          onLoadedMetadata={(e) => {
+            setDuration(e.currentTarget.duration)
+            const fn = (videoRef.current as any)?.__watchPublish
+            if (typeof fn === 'function') fn()
+          }}
+          onTimeUpdate={(e) => { if (!dragging) setProgress(e.currentTarget.currentTime) }}
+          onDurationChange={(e) => setDuration(e.currentTarget.duration)}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          playsInline
+        />
         {/* Floating header */}
         <AnimatePresence>
           {controlsVisible && (
@@ -320,17 +356,7 @@ function WatchRoomInner({
                   Choose video file
                 </button>
               </motion.div>
-            ) : (
-              /* Host — show video via canvas mirror */
-              <motion.div
-                className="relative flex flex-1 overflow-hidden rounded-xl bg-black"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.2 }}
-              >
-                <HostVideoMirror videoRef={videoRef} />
-              </motion.div>
-            )
+            ) : null /* video shown via absolute z-[1] above */
           ) : (
             /* Viewer */
             <div className="relative flex flex-1 overflow-hidden rounded-xl">
@@ -382,7 +408,7 @@ function WatchRoomInner({
                   <div className="flex shrink-0 items-center gap-1.5 pr-3 border-r border-border/40">
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
                     <span className="text-[11px] font-medium text-muted-foreground">Watch</span>
-                    <span className="font-mono text-[10px] tabular-nums text-primary">{sessionTimer}</span>
+                    <span className="font-mono text-[10px] tabular-nums" style={{ color: '#55FF55' }}>{sessionTimer}</span>
                   </div>
 
                   <div className="flex items-center gap-1.5">
@@ -449,7 +475,7 @@ function WatchRoomInner({
                     </WatchCtrlBtn>
                   </div>
 
-                  <div className="flex shrink-0 items-center pl-3 border-l border-border/40">
+                  <div className="flex shrink-0 items-center gap-1.5 pl-3 border-l border-border/40">
                     <motion.button
                       title="Fullscreen"
                       whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.88 }}
@@ -459,6 +485,59 @@ function WatchRoomInner({
                     >
                       <Scan className="h-4 w-4" />
                     </motion.button>
+                    {/* Leave / End */}
+                    {isHost ? (
+                      <div className="flex items-center gap-1">
+                        {/* Kick individual — dropdown of non-host participants */}
+                        {participants.filter(p => !p.isHost).length > 0 && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <motion.button
+                                title="Kick viewer"
+                                whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.9 }}
+                                transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+                                className="flex h-9 items-center gap-1 rounded-xl bg-amber-500/10 px-2 text-amber-500 transition-colors hover:bg-amber-500/20"
+                              >
+                                <UserMinus className="h-4 w-4" />
+                                <ChevronDown className="h-3 w-3" />
+                              </motion.button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-44 bg-sidebar border-border">
+                              {participants.filter(p => !p.isHost).map(p => (
+                                <DropdownMenuItem
+                                  key={p.userId}
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={() => onKick(p.userId)}
+                                >
+                                  <UserMinus className="mr-2 h-3.5 w-3.5" />
+                                  {p.username}
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                        <motion.button
+                          title="End watch party (kicks all)"
+                          whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.9 }}
+                          transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+                          onClick={onEnd}
+                          className="flex h-9 items-center gap-1.5 rounded-xl bg-destructive/10 px-2.5 text-[11px] font-semibold text-destructive transition-colors hover:bg-destructive/20"
+                        >
+                          <X className="h-4 w-4" />
+                          End
+                        </motion.button>
+                      </div>
+                    ) : (
+                      <motion.button
+                        title="Leave watch party"
+                        whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.9 }}
+                        transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+                        onClick={onLeave}
+                        className="flex h-9 w-9 items-center justify-center rounded-xl bg-destructive/10 text-destructive transition-colors hover:bg-destructive/20"
+                      >
+                        <X className="h-4 w-4" />
+                      </motion.button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -513,48 +592,47 @@ function WatchRoomInner({
   )
 }
 
-// ── Host video mirror ─────────────────────────────────────────────────────
-function HostVideoMirror({ videoRef }: { videoRef: React.RefObject<HTMLVideoElement | null> }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-
-  useEffect(() => {
-    const video = videoRef.current
-    const canvas = canvasRef.current
-    if (!video || !canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    let raf: number
-    const draw = () => {
-      if (video.readyState >= 2) {
-        canvas.width = video.videoWidth || 1280
-        canvas.height = video.videoHeight || 720
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-      }
-      raf = requestAnimationFrame(draw)
-    }
-    draw()
-    return () => cancelAnimationFrame(raf)
-  }, [videoRef])
-
-  return <canvas ref={canvasRef} className="h-full w-full object-contain bg-black" />
-}
-
 // ── Public entry ──────────────────────────────────────────────────────────
+export type { WatchParticipant }
+
 interface WatchRoomViewProps {
   roomId: string
   userId: string
   username: string
+  fullname?: string | null
+  avatarUrl?: string | null
+  bannerUrl?: string | null
+  subPlan?: string | null
+  isVerified?: boolean | null
   isHost: boolean
+  onLeave: () => void
+  onParticipantsChange?: (participants: WatchParticipant[]) => void
 }
 
-export function WatchRoomView({ roomId, userId, username, isHost }: WatchRoomViewProps) {
+export function WatchRoomView({ roomId, userId, username, fullname, avatarUrl, bannerUrl, subPlan, isVerified, isHost, onLeave, onParticipantsChange }: WatchRoomViewProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const participantIdentity = `${userId}__${username}`
+  const [ended, setEnded] = useState(false)
 
   const { token, loading, error } = useLiveKitToken(roomId, participantIdentity)
-  const { participants, syncing, emitPlay, emitPause, emitSeek } = useWatchRoom({
-    roomId, userId, username, isHost, videoRef,
+  const { participants, syncing, sessionStartedAt, emitPlay, emitPause, emitSeek, emitEnd, emitKick } = useWatchRoom({
+    roomId, userId, username, fullname, avatarUrl, bannerUrl, subPlan, isVerified, isHost, videoRef,
+    onEnded: () => setEnded(true),
+    onKicked: () => {
+      toast.error('You were removed from the watch party')
+      onLeave()
+    },
   })
+
+  // stable ref so the effect doesn't re-run (and loop) when the parent re-renders
+  const onParticipantsChangeRef = useRef(onParticipantsChange)
+  useEffect(() => { onParticipantsChangeRef.current = onParticipantsChange })
+  useEffect(() => { onParticipantsChangeRef.current?.(participants) }, [participants])
+
+  const handleEnd = useCallback(async () => {
+    await emitEnd()
+    onLeave()
+  }, [emitEnd, onLeave])
 
   if (loading) {
     return (
@@ -593,7 +671,9 @@ export function WatchRoomView({ roomId, userId, username, isHost }: WatchRoomVie
       <WatchRoomInner
         roomId={roomId} userId={userId} username={username} isHost={isHost}
         participants={participants} syncing={syncing} videoRef={videoRef}
+        ended={ended} sessionStartedAt={sessionStartedAt}
         emitPlay={emitPlay} emitPause={emitPause} emitSeek={emitSeek}
+        onLeave={onLeave} onEnd={handleEnd} onKick={emitKick}
       />
     </LiveKitRoom>
   )
