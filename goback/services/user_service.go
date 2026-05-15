@@ -140,7 +140,7 @@ func (s *UserService) UpdateProfile(userID string, updateData models.UpdateUserI
 		updateMap["logo"] = *updateData.Logo
 	}
 	if updateData.Fullname != nil {
-		updateMap["full_name"] = *updateData.Fullname
+		updateMap["fullname"] = *updateData.Fullname
 	}
 	if updateData.XURL != nil {
 		updateMap["x_url"] = *updateData.XURL
@@ -200,11 +200,32 @@ func (s *UserService) GetSettings(userID string) (*models.UserSettings, error) {
 
 	log.Printf("RAW SETTINGS: %+v", settings)
 
-	if len(settings) == 0 {
+	return &settings[0], nil
+}
+
+func (s *UserService) UpdateSettings(userID string, updateData models.UserSettings) (*models.UserSettings, error) {
+	// Build update map
+	updateMap := make(map[string]interface{})
+	updateMap["email"] = updateData.Email
+	updateMap["is_verified"] = updateData.IsVerified
+	updateMap["sub_plan"] = updateData.SubPlan
+	updateMap["updated_at"] = time.Now()
+
+	var result []models.UserSettings
+	err := s.supabase.GetClient().DB.From("user_settings").
+		Update(updateMap).
+		Eq("user_id", userID).
+		Execute(&result)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to update user settings: %w", err)
+	}
+
+	if len(result) == 0 {
 		return nil, fmt.Errorf("settings not found")
 	}
 
-	return &settings[0], nil
+	return &result[0], nil
 }
 
 func (s *UserService) SearchByUsername(username string, requestingUserID string) ([]*models.User, error) {

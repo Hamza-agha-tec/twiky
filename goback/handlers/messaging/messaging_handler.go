@@ -1,6 +1,7 @@
 package messaging
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/Hamza-agha-tec/goback/models"
@@ -146,6 +147,8 @@ func (h *MessagingHandler) GetGroupMessages(c echo.Context) error {
 func (h *MessagingHandler) SendGroupMessage(c echo.Context) error {
 	userID := c.Get("userID").(string)
 	groupID := c.Param("groupId")
+
+	log.Println("send group message", userID, groupID)
 
 	var dto models.SendGroupMessageDto
 	if err := c.Bind(&dto); err != nil {

@@ -149,7 +149,7 @@ func (s *VoiceService) validateVoiceRoomAccess(roomID, userID string) (bool, err
 	// Check if user is a member of the voice room
 	var members []models.VoiceRoomMember
 	err := s.supabase.GetClient().DB.From("voice_room_members").
-		Select("id").
+		Select("user_id").
 		Eq("room_id", roomID).
 		Eq("user_id", userID).
 		Execute(&members)

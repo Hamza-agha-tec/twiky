@@ -5,15 +5,22 @@ import (
 )
 
 type Notification struct {
-	ID         string                 `json:"id" db:"id"`
-	RecipientID string                `json:"recipient_id" db:"recipient_id"`
-	ActorID    string                 `json:"actor_id" db:"actor_id"`
-	Type       string                 `json:"type" db:"type"` // "follow", "like", "comment", "mention", etc.
-	EntityID   string                 `json:"entity_id" db:"entity_id"`
-	EntityType string                 `json:"entity_type" db:"entity_type"` // "post", "comment", "user", etc.
-	IsRead     bool                   `json:"is_read" db:"is_read"`
-	Metadata   map[string]interface{} `json:"metadata" db:"metadata"`
-	CreatedAt  time.Time              `json:"created_at" db:"created_at"`
+	ID          string                 `json:"id" db:"id"`
+	RecipientID string                 `json:"recipient_id" db:"recipient_id"`
+	ActorID     string                 `json:"actor_id" db:"actor_id"`
+	Type        string                 `json:"type" db:"type"`
+	EntityID    string                 `json:"entity_id" db:"entity_id"`
+	EntityType  string                 `json:"entity_type" db:"entity_type"`
+	IsRead      bool                   `json:"is_read" db:"is_read"`
+	Metadata    map[string]interface{} `json:"metadata" db:"metadata"`
+	CreatedAt   time.Time              `json:"created_at" db:"created_at"`
+	Actor       *NotificationActor     `json:"actor,omitempty"`
+}
+
+type NotificationActor struct {
+	ID        string `json:"id"`
+	Username  string `json:"username"`
+	AvatarURL string `json:"avatar_url"`
 }
 
 type NotificationCreateDto struct {

@@ -8,7 +8,7 @@ import { AddMemberDto } from './dto/add-member.dto';
 @UseGuards(JwtAuthGuard)
 @Controller('channels')
 export class ChannelsController {
-    constructor(private readonly channelsService: ChannelsService) {}
+    constructor(private readonly channelsService: ChannelsService) { }
 
     @Post()
     async createChannel(@Request() req: any, @Body() createChannelDto: CreateChannelDto) {

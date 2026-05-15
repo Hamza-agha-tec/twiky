@@ -36,19 +36,19 @@ type Order struct {
 }
 
 type Product struct {
-	ID            string    `json:"id" db:"id"`
-	Title         string    `json:"title" db:"title"`
-	Description   string    `json:"description" db:"description"`
-	Price         float64   `json:"price" db:"price"`
-	Category      string    `json:"category" db:"category"` // ROOM_ITEM, STICKER, THEME
-	Features      []string  `json:"features" db:"features"`
-	Slug          string    `json:"slug" db:"slug"`
-	Currency      string    `json:"currency" db:"currency"`
-	Active        bool      `json:"active" db:"active"`
-	Sales         int       `json:"sales" db:"sales"`
-	DodoProductID string    `json:"dodo_product_id" db:"dodo_product_id"`
-	Discount      float64   `json:"discount,omitempty" db:"discount"`
-	Images        []string  `json:"images,omitempty" db:"images"`
-	CreatedAt     time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at" db:"updated_at"`
+	ID            string                   `json:"id" db:"id"`
+	CreatedAt     time.Time                `json:"created_at" db:"created_at"`
+	UpdatedAt     *time.Time               `json:"updated_at,omitempty" db:"updated_at"`
+	Title         string                   `json:"title" db:"title"`
+	Description   string                   `json:"description" db:"description"`
+	Price         float64                  `json:"price" db:"price"`
+	Currency      string                   `json:"currency,omitempty"`
+	Category      string                   `json:"category" db:"category"`
+	Features      []string                 `json:"features" db:"features"`
+	Slug          string                   `json:"slug" db:"slug"`
+	Active        bool                     `json:"active" db:"active"`
+	Sales         int64                    `json:"sales" db:"sales"`
+	DodoProductID string                   `json:"dodo_product_id" db:"dodo_product_id"`
+	Discount      *int64                   `json:"discount" db:"discount"`
+	Images        []string                 `json:"images" db:"images"`
 }

@@ -23,7 +23,8 @@ export interface CreateEntityValues {
   avatarFile?: File | null
   bannerFile?: File | null
   access_type?: 'PUBLIC' | 'PRIVATE'
-  group_type?: 'text' | 'voice' | 'watch'
+  group_type?: 'text' | 'voice' | 'watch',
+  type?: 'NORMAL' | 'WORKSPACE'
 }
 
 interface CreateEntityDialogProps {

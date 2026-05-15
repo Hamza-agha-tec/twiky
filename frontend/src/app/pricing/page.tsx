@@ -8,10 +8,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ??
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  'http://localhost:8080/api';
+const API_URL = process.env.NEXT_PUBLIC_API_URL 
 
 type PlanType = 'FREE' | 'PRO' | 'GEEK';
 

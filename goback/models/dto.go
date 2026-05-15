@@ -4,7 +4,9 @@ type CreateChannelDto struct {
 	Name        string `json:"name" validate:"required,min=1,max=100"`
 	Description string `json:"description" validate:"max=500"`
 	AvatarURL   string `json:"avatar_url" validate:"url"`
-	AccessType  string `json:"access_type" validate:"oneof=PUBLIC PRIVATE"`
+	AccessType  string `json:"access_type"`
+	Type        string `json:"type"`
+	BannerURL   string `json:"banner_url" db:"banner_url "`
 }
 
 type UpdateChannelDto struct {
@@ -48,7 +50,7 @@ type UpdateContactDto struct {
 }
 
 type CreateCheckoutDto struct {
-	ProductID  string `json:"product_id" validate:"required"`
+	ProductID   string `json:"product_id" validate:"required"`
 	RedirectURL string `json:"redirect_url" validate:"required,url"`
 }
 
@@ -58,10 +60,10 @@ type ProductCheckoutDto struct {
 }
 
 type UpdateSettingsDto struct {
-	Theme             string `json:"theme" validate:"oneof=light dark"`
-	Language          string `json:"language" validate:"required"`
-	Notifications     bool   `json:"notifications"`
-	EmailNotifications bool  `json:"email_notifications"`
-	PushNotifications bool   `json:"push_notifications"`
-	PrivacyLevel      string `json:"privacy_level" validate:"oneof=public private"`
+	Theme              string `json:"theme" validate:"oneof=light dark"`
+	Language           string `json:"language" validate:"required"`
+	Notifications      bool   `json:"notifications"`
+	EmailNotifications bool   `json:"email_notifications"`
+	PushNotifications  bool   `json:"push_notifications"`
+	PrivacyLevel       string `json:"privacy_level" validate:"oneof=public private"`
 }

@@ -37,22 +37,22 @@ func SetupRoutes(e *echo.Echo) {
 
 	// Initialize services
 	authService := services.NewAuthService(db.DB)
-	userService := services.NewUserService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_ANON_KEY"))
-	channelService := services.NewChannelService(os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_ANON_KEY"))
-	contactService := services.NewContactService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_ANON_KEY"))
-	paymentService := services.NewPaymentService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_ANON_KEY"))
-	productPaymentsService := services.NewProductPaymentsService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_ANON_KEY"))
-	voiceService := services.NewVoiceService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_ANON_KEY"))
-	groupService := services.NewGroupService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_ANON_KEY"))
+	userService := services.NewUserService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
+	channelService := services.NewChannelService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
+	contactService := services.NewContactService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
+	paymentService := services.NewPaymentService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
+	productPaymentsService := services.NewProductPaymentsService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
+	voiceService := services.NewVoiceService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
+	groupService := services.NewGroupService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	socketIOService := services.NewSocketIOService(db.DB)
-	notificationService := services.NewNotificationService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_ANON_KEY"))
+	notificationService := services.NewNotificationService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 
-	collaborationService := services.NewCollaborationService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_ANON_KEY"))
-	messagingService := services.NewMessagingService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_ANON_KEY"))
-	contentService := services.NewContentService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_ANON_KEY"))
-	fileService := services.NewFileService(os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_ANON_KEY"))
-	spotifyService := services.NewSpotifyService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_ANON_KEY"))
-	invitationService := services.NewInvitationService(os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_ANON_KEY"))
+	collaborationService := services.NewCollaborationService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
+	messagingService := services.NewMessagingService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
+	contentService := services.NewContentService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
+	fileService := services.NewFileService(os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
+	spotifyService := services.NewSpotifyService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
+	invitationService := services.NewInvitationService(os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 
 	// Add user routes with new code style
 	userRoutes(e, userService, contentService)
@@ -95,7 +95,6 @@ func SetupRoutes(e *echo.Echo) {
 	optionalAuth.GET("/users/:id/followers", userHandler.GetFollowers)
 	optionalAuth.GET("/users/:id/following", userHandler.GetFollowing)
 	optionalAuth.GET("/users/username/:username", userHandler.GetUserByUsername)
-	optionalAuth.GET("/users/:id", userHandler.GetUserByID)
 
 	// Protected routes — with middleware
 	protected := e.Group("")

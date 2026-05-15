@@ -137,10 +137,10 @@ func (s *MessagingService) CreateDirectConversation(userID string, dto models.St
 	// Check if conversation already exists
 	var existingConv models.DirectConversation
 	err := s.db.QueryRow(`
-		SELECT id, user_one_id, user_two_id, created_at, updated_at
+		SELECT id, user_one_id, user_two_id, created_at
 		FROM direct_conversations
 		WHERE (user_one_id = $1 AND user_two_id = $2) OR (user_one_id = $2 AND user_two_id = $1)
-	`, userID, dto.UserID).Scan(&existingConv.ID, &existingConv.UserOneID, &existingConv.UserTwoID, &existingConv.CreatedAt)
+		`, userID, dto.TargetUserID).Scan(&existingConv.ID, &existingConv.UserOneID, &existingConv.UserTwoID, &existingConv.CreatedAt)
 
 	if err == nil {
 		return &existingConv, nil
@@ -150,19 +150,15 @@ func (s *MessagingService) CreateDirectConversation(userID string, dto models.St
 		return nil, fmt.Errorf("failed to check existing conversation: %w", err)
 	}
 
-	if len(existing) > 0 {
-		return &existing[0], nil
-	}
-
 	// Create new conversation
 	query := `
-		INSERT INTO direct_conversations (id, user_one_id, user_two_id, created_at, updated_at)
-		VALUES (gen_random_uuid(), $1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-		RETURNING id, user_one_id, user_two_id, created_at, updated_at
+		INSERT INTO direct_conversations (id, user_one_id, user_two_id, created_at)
+		VALUES (gen_random_uuid(), $1, $2, CURRENT_TIMESTAMP)
+		RETURNING id, user_one_id, user_two_id, created_at
 	`
 
 	conv := &models.DirectConversation{}
-	err = s.db.QueryRow(query, userID, dto.UserID).Scan(
+	err = s.db.QueryRow(query, userOneId, userTwoId).Scan(
 		&conv.ID, &conv.UserOneID, &conv.UserTwoID, &conv.CreatedAt,
 	)
 
@@ -170,11 +166,7 @@ func (s *MessagingService) CreateDirectConversation(userID string, dto models.St
 		return nil, fmt.Errorf("failed to create direct conversation: %w", err)
 	}
 
-	if len(conversations) == 0 {
-		return nil, fmt.Errorf("failed to create direct conversation: no data returned")
-	}
-
-	return &conversations[0], nil
+	return conv, nil
 }
 
 func (s *MessagingService) GetDirectMessages(userID string, conversationID string) ([]*models.DirectMessageResponse, error) {
@@ -209,15 +201,15 @@ func (s *MessagingService) GetDirectMessages(userID string, conversationID strin
 	var result []*models.DirectMessageResponse
 	for rows.Next() {
 		var (
-			id, convID, senderID string
+			id, convID, senderID                       string
 			content, fileURL, replyToID, msgType, mime sql.NullString
-			status                                      string
-			isPinned, isForwarded                       sql.NullBool
-			createdAt                                   time.Time
-			sID                                         sql.NullString
-			sUsername, sFullName, sAvatarURL            sql.NullString
-			sIsVerified                                 sql.NullBool
-			sSubPlan                                    sql.NullString
+			status                                     string
+			isPinned, isForwarded                      sql.NullBool
+			createdAt                                  time.Time
+			sID                                        sql.NullString
+			sUsername, sFullName, sAvatarURL           sql.NullString
+			sIsVerified                                sql.NullBool
+			sSubPlan                                   sql.NullString
 		)
 		if err := rows.Scan(
 			&id, &convID, &senderID,
@@ -230,24 +222,42 @@ func (s *MessagingService) GetDirectMessages(userID string, conversationID strin
 		}
 
 		var contentPtr *string
-		if content.Valid { contentPtr = &content.String }
+		if content.Valid {
+			contentPtr = &content.String
+		}
 		var fileURLPtr *string
-		if fileURL.Valid { fileURLPtr = &fileURL.String }
+		if fileURL.Valid {
+			fileURLPtr = &fileURL.String
+		}
 		var replyToIDPtr *string
-		if replyToID.Valid { replyToIDPtr = &replyToID.String }
+		if replyToID.Valid {
+			replyToIDPtr = &replyToID.String
+		}
 		var typePtr *string
-		if msgType.Valid { typePtr = &msgType.String }
+		if msgType.Valid {
+			typePtr = &msgType.String
+		}
 		var mimePtr *string
-		if mime.Valid { mimePtr = &mime.String }
+		if mime.Valid {
+			mimePtr = &mime.String
+		}
 
 		var sender *models.DirectMessageSender
 		if sID.Valid {
 			var isVerifiedPtr *bool
-			if sIsVerified.Valid { isVerifiedPtr = &sIsVerified.Bool }
+			if sIsVerified.Valid {
+				isVerifiedPtr = &sIsVerified.Bool
+			}
 			var usernamePtr, fullNamePtr, avatarPtr *string
-			if sUsername.Valid { usernamePtr = &sUsername.String }
-			if sFullName.Valid { fullNamePtr = &sFullName.String }
-			if sAvatarURL.Valid { avatarPtr = &sAvatarURL.String }
+			if sUsername.Valid {
+				usernamePtr = &sUsername.String
+			}
+			if sFullName.Valid {
+				fullNamePtr = &sFullName.String
+			}
+			if sAvatarURL.Valid {
+				avatarPtr = &sAvatarURL.String
+			}
 			sender = &models.DirectMessageSender{
 				ID:         sID.String,
 				Username:   usernamePtr,
@@ -302,11 +312,19 @@ func (s *MessagingService) SendDirectMessage(userID string, conversationID strin
 	}
 
 	var replyToID, fileURL, mime *string
-	if dto.ReplyToId != "" { replyToID = &dto.ReplyToId }
-	if dto.FileUrl != "" { fileURL = &dto.FileUrl }
-	if dto.Mime != "" { mime = &dto.Mime }
+	if dto.ReplyToId != "" {
+		replyToID = &dto.ReplyToId
+	}
+	if dto.FileUrl != "" {
+		fileURL = &dto.FileUrl
+	}
+	if dto.Mime != "" {
+		mime = &dto.Mime
+	}
 	var content *string
-	if dto.Content != "" { content = &dto.Content }
+	if dto.Content != "" {
+		content = &dto.Content
+	}
 
 	var msgID string
 	var createdAt time.Time
@@ -332,10 +350,18 @@ func (s *MessagingService) SendDirectMessage(userID string, conversationID strin
 
 	var usernamePtr, fullNamePtr, avatarPtr *string
 	var isVerifiedPtr *bool
-	if sUsername.Valid { usernamePtr = &sUsername.String }
-	if sFullName.Valid { fullNamePtr = &sFullName.String }
-	if sAvatarURL.Valid { avatarPtr = &sAvatarURL.String }
-	if sIsVerified.Valid { isVerifiedPtr = &sIsVerified.Bool }
+	if sUsername.Valid {
+		usernamePtr = &sUsername.String
+	}
+	if sFullName.Valid {
+		fullNamePtr = &sFullName.String
+	}
+	if sAvatarURL.Valid {
+		avatarPtr = &sAvatarURL.String
+	}
+	if sIsVerified.Valid {
+		isVerifiedPtr = &sIsVerified.Bool
+	}
 
 	sender := &models.DirectMessageSender{
 		ID:         userID,
@@ -421,7 +447,7 @@ func (s *MessagingService) ToggleDirectMessageReaction(userID string, messageID 
 	// Return updated message
 	var updatedMessages []models.DirectMessage
 	err = s.supabase.GetClient().DB.From("direct_messages").
-		Select("id, conversation_id, sender_id, content, created_at, updated_at").
+		Select("id", "conversation_id", "sender_id", "content", "created_at", "updated_at").
 		Filter("id", "eq", messageID).
 		Execute(&updatedMessages)
 
@@ -465,12 +491,12 @@ func (s *MessagingService) GetGroupMessages(userID string, groupID string) ([]*m
 	var result []*models.GroupMessageResponse
 	for _, msg := range messages {
 		var sender *models.GroupMessageSender
-		if msg.SenderID != "" {
+		if msg.SenderID != nil && *msg.SenderID != "" {
 			// Get sender details
 			var userSlice []models.User
 			err := s.supabase.GetClient().DB.From("users").
 				Select("*").
-				Eq("id", msg.SenderID).
+				Eq("id", *msg.SenderID).
 				Execute(&userSlice)
 
 			if err != nil {
@@ -480,20 +506,17 @@ func (s *MessagingService) GetGroupMessages(userID string, groupID string) ([]*m
 			if len(userSlice) > 0 {
 				sender = &models.GroupMessageSender{
 					ID:         userSlice[0].ID,
-					Fullname:   userSlice[0].FullName,
+					Fullname:   userSlice[0].Fullname,
 					SubPlan:    userSlice[0].SubPlan,
 					Username:   userSlice[0].Username,
 					AvatarURL:  userSlice[0].AvatarURL,
-					IsVerified: userSlice[0].IsVerified,
+					IsVerified: &userSlice[0].IsVerified,
 				}
 			}
 		}
 
 		// Build message response
-		senderIDPtr := &msg.SenderID
-		if msg.SenderID == "" {
-			senderIDPtr = nil
-		}
+		senderIDPtr := msg.SenderID
 
 		messageResponse := &models.GroupMessageResponse{
 			ID:             msg.ID,
@@ -507,7 +530,7 @@ func (s *MessagingService) GetGroupMessages(userID string, groupID string) ([]*m
 			IsEdited:       false,
 			EntityMentions: []map[string]interface{}{},
 			Reactions:      []map[string]interface{}{},
-			IsPinned:       msg.Pinned,
+			IsPinned:       msg.IsPinned,
 			FileURLs:       []string{},
 			Type:           nil,
 			Mime:           nil,
@@ -525,7 +548,7 @@ func (s *MessagingService) SendGroupMessage(userID string, groupID string, dto m
 	// Verify user is member of group
 	var members []models.GroupMember
 	err := s.supabase.GetClient().DB.From("group_members").
-		Select("id").
+		Select("user_id").
 		Filter("group_id", "eq", groupID).
 		Filter("user_id", "eq", userID).
 		Execute(&members)
@@ -534,17 +557,44 @@ func (s *MessagingService) SendGroupMessage(userID string, groupID string, dto m
 		return nil, fmt.Errorf("group not found or access denied")
 	}
 
+	insertData := map[string]interface{}{
+		"group_id":   groupID,
+		"sender_id":  userID,
+		"is_pinned":  false,
+		"created_at": "now()",
+	}
+
+	if dto.Content != "" {
+		insertData["content"] = dto.Content
+	}
+	if dto.Type != "" {
+		insertData["type"] = dto.Type
+	} else {
+		insertData["type"] = "text"
+	}
+	if dto.FileUrl != "" {
+		insertData["file_url"] = dto.FileUrl
+	}
+	if dto.ReplyToId != "" {
+		insertData["reply_to_id"] = dto.ReplyToId
+	}
+	if dto.Mime != "" {
+		insertData["mime"] = dto.Mime
+	}
+	if dto.Duration > 0 {
+		insertData["duration"] = dto.Duration
+	}
+	if dto.Size > 0 {
+		insertData["size"] = dto.Size
+	}
+	if dto.IsForwarded {
+		insertData["is_forwarded"] = dto.IsForwarded
+	}
+
 	// Create message
 	var messages []models.GroupMessage
 	err = s.supabase.GetClient().DB.From("group_messages").
-		Insert(map[string]interface{}{
-			"group_id":   groupID,
-			"sender_id":  userID,
-			"content":    dto.Content,
-			"pinned":     false,
-			"created_at": "now()",
-			"updated_at": "now()",
-		}).
+		Insert(insertData).
 		Execute(&messages)
 
 	if err != nil {
@@ -566,7 +616,7 @@ func (s *MessagingService) ToggleGroupMessageReaction(userID string, messageID s
 		Filter("id", "eq", messageID).
 		Execute(&messages)
 
-	if err != nil || len(messages) == 0 || messages[0].SenderID != userID {
+	if err != nil || len(messages) == 0 || (messages[0].SenderID != nil && *messages[0].SenderID != userID) {
 		return nil, fmt.Errorf("message not found or access denied")
 	}
 
@@ -612,7 +662,7 @@ func (s *MessagingService) ToggleGroupMessageReaction(userID string, messageID s
 	// Return updated message
 	var updatedMessages []models.GroupMessage
 	err = s.supabase.GetClient().DB.From("group_messages").
-		Select("id, group_id, sender_id, content, pinned, created_at, updated_at").
+		Select("id", "group_id", "sender_id", "content", "is_pinned", "created_at").
 		Filter("id", "eq", messageID).
 		Execute(&updatedMessages)
 
@@ -627,11 +677,11 @@ func (s *MessagingService) ToggleGroupMessagePin(userID string, messageID string
 	// Verify user sent the message
 	var messages []models.GroupMessage
 	err := s.supabase.GetClient().DB.From("group_messages").
-		Select("sender_id, pinned").
+		Select("sender_id", "is_pinned").
 		Filter("id", "eq", messageID).
 		Execute(&messages)
 
-	if err != nil || len(messages) == 0 || messages[0].SenderID != userID {
+	if err != nil || len(messages) == 0 || (messages[0].SenderID != nil && *messages[0].SenderID != userID) {
 		return nil, fmt.Errorf("message not found or access denied")
 	}
 
@@ -639,8 +689,7 @@ func (s *MessagingService) ToggleGroupMessagePin(userID string, messageID string
 	var updatedMessages []models.GroupMessage
 	err = s.supabase.GetClient().DB.From("group_messages").
 		Update(map[string]interface{}{
-			"pinned":     !messages[0].Pinned,
-			"updated_at": "now()",
+			"is_pinned": !messages[0].IsPinned,
 		}).
 		Filter("id", "eq", messageID).
 		Execute(&updatedMessages)
@@ -656,7 +705,7 @@ func (s *MessagingService) DeleteDirectConversation(userID string, conversationI
 	// Verify user is part of conversation
 	var conv []models.DirectConversation
 	err := s.supabase.GetClient().DB.From("direct_conversations").
-		Select("user_one_id, user_two_id").
+		Select("user_one_id", "user_two_id").
 		Filter("id", "eq", conversationID).
 		Execute(&conv)
 
@@ -686,11 +735,11 @@ func (s *MessagingService) DeleteGroupMessage(userID string, messageID string) (
 	// Verify user sent the message
 	var messages []models.GroupMessage
 	err := s.supabase.GetClient().DB.From("group_messages").
-		Select("sender_id, group_id").
+		Select("sender_id", "group_id").
 		Filter("id", "eq", messageID).
 		Execute(&messages)
 
-	if err != nil || len(messages) == 0 || messages[0].SenderID != userID {
+	if err != nil || len(messages) == 0 || (messages[0].SenderID != nil && *messages[0].SenderID != userID) {
 		return nil, fmt.Errorf("message not found or access denied")
 	}
 

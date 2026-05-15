@@ -2,6 +2,7 @@ package services
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -21,66 +22,77 @@ func NewNotificationService(db *sql.DB, supabaseURL, supabaseKey string) *Notifi
 }
 
 func (s *NotificationService) GetNotifications(userID string, limit, offset int) ([]*models.Notification, error) {
-	var notifications []models.Notification
-	err := s.supabase.GetClient().DB.From("notifications").
-		Select("*").
-		Eq("recipient_id", userID).
-		Execute(&notifications)
+	query := `
+		SELECT n.id, n.recipient_id, n.actor_id, n.type, n.entity_id, n.entity_type, n.is_read, n.metadata, n.created_at,
+		       u.id, u.username, u.avatar_url
+		FROM notifications n
+		LEFT JOIN users u ON n.actor_id = u.id
+		WHERE n.recipient_id = $1
+		ORDER BY n.created_at DESC
+		LIMIT $2 OFFSET $3
+	`
 
+	rows, err := s.db.Query(query, userID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query notifications: %w", err)
 	}
+	defer rows.Close()
 
-	// Apply pagination manually since Supabase client doesn't support LIMIT/OFFSET
-	start := offset
-	end := offset + limit
-	if start > len(notifications) {
-		return []*models.Notification{}, nil
-	}
-	if end > len(notifications) {
-		end = len(notifications)
-	}
-
-	// Convert to pointer slice with pagination
 	var notificationPtrs []*models.Notification
-	for i := start; i < end; i++ {
-		notificationPtrs = append(notificationPtrs, &notifications[i])
+	for rows.Next() {
+		n := &models.Notification{
+			Actor: &models.NotificationActor{},
+		}
+		var metadataJSON []byte
+		var actorID, actorUsername, actorAvatar sql.NullString
+
+		err := rows.Scan(
+			&n.ID, &n.RecipientID, &n.ActorID, &n.Type, &n.EntityID, &n.EntityType,
+			&n.IsRead, &metadataJSON, &n.CreatedAt,
+			&actorID, &actorUsername, &actorAvatar,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan notification row: %w", err)
+		}
+
+		// Handle metadata
+		// If metadataJSON is nil or empty, use an empty map
+		n.Metadata = make(map[string]interface{})
+		if len(metadataJSON) > 0 {
+			_ = json.Unmarshal(metadataJSON, &n.Metadata)
+		}
+
+		// Handle actor
+		if actorID.Valid {
+			n.Actor.ID = actorID.String
+			n.Actor.Username = actorUsername.String
+			n.Actor.AvatarURL = actorAvatar.String
+		} else {
+			n.Actor = nil
+		}
+
+		notificationPtrs = append(notificationPtrs, n)
 	}
 
 	return notificationPtrs, nil
 }
 
 func (s *NotificationService) GetUnreadCount(userID string) (int, error) {
-	var notifications []models.Notification
-	err := s.supabase.GetClient().DB.From("notifications").
-		Select("id").
-		Eq("recipient_id", userID).
-		Eq("is_read", "false").
-		Execute(&notifications)
-
+	query := `SELECT COUNT(*) FROM notifications WHERE recipient_id = $1 AND is_read = false`
+	var count int
+	err := s.db.QueryRow(query, userID).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("failed to query unread count: %w", err)
 	}
-
-	return len(notifications), nil
+	return count, nil
 }
 
 func (s *NotificationService) MarkAsRead(userID, notificationID string) error {
-	updateData := map[string]interface{}{
-		"is_read": true,
-	}
-
-	var notifications []models.Notification
-	err := s.supabase.GetClient().DB.From("notifications").
-		Update(updateData).
-		Eq("id", notificationID).
-		Eq("recipient_id", userID).
-		Execute(&notifications)
-
+	query := `UPDATE notifications SET is_read = true WHERE id = $1 AND recipient_id = $2`
+	_, err := s.db.Exec(query, notificationID, userID)
 	if err != nil {
 		return fmt.Errorf("failed to mark notification as read: %w", err)
 	}
-
 	return nil
 }
 

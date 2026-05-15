@@ -1090,10 +1090,10 @@ function RequestJoinButton({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       className={cn(
-        'absolute right-1.5 top-1/2 z-10 -translate-y-1/2 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[8.5px] font-semibold transition-all duration-200 opacity-0 group-hover:opacity-100',
+        'absolute right-1.5 top-1/2 z-10 -translate-y-1/2 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[8.5px] font-semibold transition-all duration-200',
         hasRequested
-          ? 'border border-border bg-muted/50 text-muted-foreground'
-          : 'border border-primary/25 bg-primary/5 text-primary hover:bg-primary/12 hover:border-primary/50',
+          ? 'opacity-100 border border-border bg-muted/50 text-muted-foreground'
+          : 'opacity-0 group-hover/row:opacity-100 border border-primary/25 bg-primary/5 text-primary hover:bg-primary/12 hover:border-primary/50',
       )}
     >
       <span className="relative h-2.5 w-2.5 flex-shrink-0 overflow-hidden">

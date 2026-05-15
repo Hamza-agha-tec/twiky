@@ -364,7 +364,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     const supabase = createClient()
     const { data: { session } } = await supabase.auth.getSession()
     const token = session?.access_token ?? ''
-    const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api"'
+    const API_URL = process.env.NEXT_PUBLIC_API_URL
     await fetch(`${API_URL}/contacts/${targetUserId}/${path}`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -470,22 +470,22 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const [startDmOpen, setStartDmOpen] = useState(false)
   const [startDmQuery, setStartDmQuery] = useState('')
   const { data: allNotifications = [] } = useNotifications()
-  const unreadNotificationCount = allNotifications.filter((n) => !n.is_read && n.type !== 'MENTION').length
+  const unreadNotificationCount = allNotifications?.filter((n) => !n.is_read && n.type !== 'MENTION').length ?? 0
   const { data: backendChannels = [] } = useChannels()
   const createChannel = useCreateChannel()
   const updateChannel = useUpdateChannel()
   const channelGroupQueries = useQueries({
-    queries: backendChannels.map((ch) => ({
+    queries: backendChannels?.map((ch) => ({
       queryKey: GROUP_KEYS.byChannel(ch.id),
       queryFn: () => groupsApi.getChannelGroups(ch.id),
       staleTime: 30_000,
       enabled: !!ch.id,
-    })),
+    })) ?? [],
   })
 
   const allBackendGroupsById = useMemo(() => {
     const result: Record<string, ReturnType<typeof backendGroupToMock>[]> = {}
-    backendChannels.forEach((ch, idx) => {
+    backendChannels?.forEach((ch, idx) => {
       const data = channelGroupQueries[idx]?.data
       if (data) result[ch.id] = data.map(backendGroupToMock)
     })
@@ -680,8 +680,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
 
   const mentionedGroupIds = useMemo(
     () => new Set(
-      allNotifications
-        .filter((n) => !n.is_read && n.type === 'MENTION')
+      allNotifications?.filter((n) => !n.is_read && n.type === 'MENTION')
         .flatMap((n) => {
           const candidates: string[] = []
           if (typeof n.metadata?.group_id === 'string') candidates.push(n.metadata.group_id)
@@ -697,7 +696,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
 
   const workspaceChannels = useMemo(
     () =>
-      backendChannels.map((channel, index) => {
+      backendChannels?.map((channel, index) => {
         const wc = toWorkspaceChannel(channel, index, mergedGroupsById)
         return {
           ...wc,
@@ -711,7 +710,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   )
 
   const voiceGroupIds = useMemo(
-    () => workspaceChannels.flatMap((channel) =>
+    () => workspaceChannels?.flatMap((channel) =>
       channel.groups.filter((group) => group.kind === 'voice').map((group) => group.id),
     ),
     [workspaceChannels],
@@ -925,7 +924,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   // Clear mention badge when user opens a group
   useEffect(() => {
     if (!activeGroupId) return
-    const toMark = allNotifications.filter(
+    const toMark = allNotifications?.filter(
       (n) =>
         !n.is_read &&
         n.type === 'MENTION' &&
@@ -936,7 +935,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
           n.entity_id === activeGroupId
         ),
     )
-    toMark.forEach((n) => markNotifAsRead(n.id))
+    toMark?.forEach((n) => markNotifAsRead(n.id))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeGroupId])
 
@@ -955,7 +954,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   )
 
   useEffect(() => {
-    if (!workspaceChannels.length) return
+    if (!workspaceChannels?.length) return
 
     const channel = workspaceChannels.find((item) => item.id === activeChannelId)
     if (!channel) {
@@ -1256,6 +1255,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       name: values.name,
       description: values.description || undefined,
       access_type: values.access_type,
+      type: values.type || "NORMAL"
     })
 
     let avatarUrl = channel.avatar_url ?? null

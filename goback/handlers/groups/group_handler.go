@@ -1,6 +1,7 @@
 package groups
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/Hamza-agha-tec/goback/middleware"
@@ -164,6 +165,8 @@ func (h *GroupHandler) RequestJoin(c echo.Context) error {
 	user := c.Get("user").(*middleware.AuthenticatedUser)
 	groupID := c.Param("groupId")
 
+	log.Println("trying to join a private group")
+
 	err := h.groupService.RequestJoinGroup(groupID, user.UserID)
 	if err != nil {
 		if err.Error() == "group not found" {
@@ -171,10 +174,10 @@ func (h *GroupHandler) RequestJoin(c echo.Context) error {
 		}
 		if err.Error() == "can only request to join private groups" ||
 			err.Error() == "already a member" ||
-			err.Error() == "join request already pending" {
+			err.Error() == "join request already exists" {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to request join"})
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "join request sent successfully"})
