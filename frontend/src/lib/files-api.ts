@@ -11,10 +11,30 @@ async function getToken(): Promise<string> {
   return data.session?.access_token ?? '';
 }
 
+function sanitizeFilename(name: string): string {
+  const ext = name.includes('.') ? '.' + name.split('.').pop() : ''
+  const base = name.slice(0, name.length - ext.length)
+  const clean = base
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^\w\s.-]/g, '')
+    .replace(/\s+/g, '_')
+    .replace(/_{2,}/g, '_')
+    .slice(0, 80)
+    || 'file'
+  return clean + ext
+}
+
+function sanitizedFile(file: File): File {
+  const safe = sanitizeFilename(file.name)
+  if (safe === file.name) return file
+  return new File([file], safe, { type: file.type })
+}
+
 async function uploadForm(path: string, file: File): Promise<UploadSlotResult> {
   const token = await getToken();
   const form = new FormData();
-  form.append('file', file);
+  form.append('file', sanitizedFile(file));
   const res = await fetch(`${API_URL}${path}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
@@ -54,4 +74,7 @@ export const filesApi = {
 
   uploadGroupExtra: (groupId: string, file: File) =>
     uploadForm(`/files/groups/${groupId}/files`, file),
+
+  uploadMessageFile: (file: File) =>
+    uploadForm('/files/messages/upload', file).then((r) => ({ url: r.publicUrl, path: r.path })),
 };

@@ -233,7 +233,7 @@ func (h *FileHandler) UploadMessageFile(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "file missing from request"})
 	}
 
-	path := fmt.Sprintf("messages/%s/%s", userID, file.Filename)
+	path := fmt.Sprintf("messages/%s/%d_%s", userID, time.Now().Unix(), file.Filename)
 	url, err := h.fileService.UploadToSupabase("messages", path, file)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})

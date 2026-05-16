@@ -5,6 +5,7 @@ import (
 
 	"github.com/Hamza-agha-tec/goback/db"
 	"github.com/Hamza-agha-tec/goback/handlers/auth"
+	"github.com/Hamza-agha-tec/goback/handlers/boards"
 	"github.com/Hamza-agha-tec/goback/handlers/channels"
 	"github.com/Hamza-agha-tec/goback/handlers/collaboration"
 	"github.com/Hamza-agha-tec/goback/handlers/contacts"
@@ -53,6 +54,7 @@ func SetupRoutes(e *echo.Echo) {
 	fileService := services.NewFileService(os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	spotifyService := services.NewSpotifyService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	invitationService := services.NewInvitationService(os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
+	boardService := services.NewBoardService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"), socketIOService)
 
 	// Add user routes with new code style
 	userRoutes(e, userService, contentService, notificationService, socketIOService)
@@ -77,6 +79,7 @@ func SetupRoutes(e *echo.Echo) {
 	fileHandler := files.NewFileHandler(fileService)
 	spotifyHandler := spotify.NewSpotifyHandler(spotifyService)
 	invitationHandler := invitations.NewInvitationHandler(invitationService)
+	boardHandler := boards.NewBoardHandler(boardService)
 
 	// Health check
 	e.GET("/health", func(c echo.Context) error {
@@ -268,4 +271,22 @@ func SetupRoutes(e *echo.Echo) {
 	protected.POST("/invitations", invitationHandler.Create)
 	protected.POST("/invitations/respond", invitationHandler.Respond)
 	protected.GET("/invitations", invitationHandler.GetInvitations)
+
+	// Board routes
+	protected.GET("/groups/:groupId/board-tags", boardHandler.GetTags)
+	protected.POST("/groups/:groupId/board-tags", boardHandler.CreateTag)
+	protected.DELETE("/groups/:groupId/board-tags/:tagId", boardHandler.DeleteTag)
+
+	protected.GET("/groups/:groupId/board-posts", boardHandler.GetPosts)
+	protected.POST("/groups/:groupId/board-posts", boardHandler.CreatePost)
+	protected.GET("/board-posts/:postId", boardHandler.GetPost)
+	protected.PATCH("/board-posts/:postId", boardHandler.UpdatePost)
+	protected.DELETE("/board-posts/:postId", boardHandler.DeletePost)
+	protected.POST("/board-posts/:postId/likes", boardHandler.LikePost)
+	protected.DELETE("/board-posts/:postId/likes", boardHandler.UnlikePost)
+
+	protected.GET("/board-posts/:postId/comments", boardHandler.GetComments)
+	protected.POST("/board-posts/:postId/comments", boardHandler.AddComment)
+	protected.PATCH("/board-comments/:commentId", boardHandler.UpdateComment)
+	protected.DELETE("/board-comments/:commentId", boardHandler.DeleteComment)
 }

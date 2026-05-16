@@ -24,6 +24,7 @@ import {
 import { ChatWindow } from '@/components/chat/chat-window'
 import { VoiceGroupView } from '@/components/chat/voice-group-view'
 import { WatchRoomView } from '@/components/watch/watch-room-view'
+import { BoardView } from '@/components/chat/board-view'
 import { useVoicePresence, type VoicePresenceUser } from '@/hooks/use-voice-presence'
 import { useLiveKitVoice } from '@/hooks/use-livekit-voice'
 import { DirectProfileSidebar } from '@/components/chat/direct-profile-sidebar'
@@ -992,6 +993,9 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
 
   useEffect(() => {
     if (!workspaceChannels?.length) return
+    // wait for all group queries to settle before resetting — avoids wiping
+    // a restored board/watch groupId that hasn't appeared in the data yet
+    if (channelGroupQueries.some((q) => q.isLoading)) return
 
     const channel = workspaceChannels.find((item) => item.id === activeChannelId)
     if (!channel) {
@@ -1004,7 +1008,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
     if (!channel.groups.some((group) => group.id === activeGroupId)) {
       setActiveGroupId(channel.groups[0]?.id ?? '')
     }
-  }, [activeChannelId, activeGroupId, workspaceChannels])
+  }, [activeChannelId, activeGroupId, workspaceChannels, channelGroupQueries])
 
   useEffect(() => {
     if (activeChannel?.type === 'NORMAL' && channelTab !== 'feed') {
@@ -1914,6 +1918,51 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
                     )
                     return getEffectiveRole(channelRole, groupRole)
                   })(),
+                })}
+                messagePending={false}
+                onBack={() => setVoiceProfileTarget(null)}
+                onMessage={() => voiceProfileTarget && openDirectChat(voiceProfileTarget.id)}
+                onOpenStory={openUserStories}
+                posts={[]}
+                showMessageAction={false}
+                storyRingState={getUserStoryRingState(voiceProfileTarget.id)}
+              />
+            )}
+          </FeedProfileSidebarDock>
+        </div>
+      ) : activeGroup.kind === 'board' ? (
+        <div className="flex min-w-0 flex-1 overflow-hidden">
+          <BoardView
+            key={activeGroup.id}
+            groupId={activeGroup.id}
+            groupName={activeGroup.label}
+            channelName={activeChannel.label}
+            channelAvatar={activeChannel.avatarUrl}
+            myId={profile?.id}
+            isAdmin={activeChannel.role === 'OWNER' || activeChannel.role === 'ADMIN'}
+            onMessage={async (userId) => {
+              try {
+                const conv = await createDirectConversation.mutateAsync(userId)
+                openDirectChat(conv.id)
+              } catch {}
+            }}
+            onViewProfile={(userId, userData) => setVoiceProfileTarget({ id: userId, name: userData?.name ?? '', avatarUrl: userData?.avatarUrl ?? null, isMuted: false, joinedAt: 0 })}
+          />
+          <FeedProfileSidebarDock
+            open={!!voiceProfileTarget}
+            width={320}
+            onBack={() => setVoiceProfileTarget(null)}
+          >
+            {voiceProfileTarget && (
+              <FeedMemberProfileView
+                currentGroupLabel={activeGroup.label}
+                isOwn={voiceProfileTarget.id === profile?.id}
+                memberProfile={buildStandaloneFeedMemberProfile({
+                  id: voiceProfileTarget.id,
+                  avatarUrl: voiceProfileTarget.avatarUrl,
+                  name: voiceProfileTarget.name,
+                  handle: voiceProfileTarget.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+                  role: getChannelRoleLabel(activeChannelMembers.find((m) => m.user?.id === voiceProfileTarget.id)?.role),
                 })}
                 messagePending={false}
                 onBack={() => setVoiceProfileTarget(null)}
