@@ -2311,7 +2311,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
               callerName,
               callerAvatar,
             )}
-            onReject={() => rejectCall(dmCallStatus.conversationId, dmCallStatus.callerId)}
+            onReject={() => rejectCall(dmCallStatus.conversationId, dmCallStatus.callerId, dmCallStatus.type)}
           />
         )
       })()}

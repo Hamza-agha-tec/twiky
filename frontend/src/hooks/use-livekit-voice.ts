@@ -7,11 +7,11 @@ import {
   Track,
   ParticipantEvent,
   LocalVideoTrack,
-  createLocalTracks,
   type RemoteTrack,
   type RemoteParticipant,
   type TrackPublication,
   type LocalTrack,
+  type LocalTrackPublication,
 } from 'livekit-client'
 import { fetchLiveKitToken } from './use-livekit-token'
 import { getSocket } from '@/lib/socket'
@@ -76,6 +76,8 @@ export function useLiveKitVoice(
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [remoteSpeakingUserIds, setRemoteSpeakingUserIds] = useState<Set<string>>(new Set())
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
+  const [isScreenSharing, setIsScreenSharing] = useState(false)
+  const [localScreenStream, setLocalScreenStream] = useState<MediaStream | null>(null)
 
   const roomRef = useRef<Room | null>(null)
   const isMutedRef = useRef(isMuted)
@@ -190,12 +192,29 @@ export function useLiveKitVoice(
       }
     }
 
+    // ── local screen share lifecycle ────────────────────────────────────
+    const onLocalPublished = (pub: LocalTrackPublication) => {
+      if (pub.source === Track.Source.ScreenShare) {
+        setIsScreenSharing(true)
+        const mt = pub.track?.mediaStreamTrack
+        if (mt) setLocalScreenStream(new MediaStream([mt]))
+      }
+    }
+    const onLocalUnpublished = (pub: LocalTrackPublication) => {
+      if (pub.source === Track.Source.ScreenShare) {
+        setIsScreenSharing(false)
+        setLocalScreenStream(null)
+      }
+    }
+
     room.on(RoomEvent.TrackSubscribed, onTrackSubscribed)
     room.on(RoomEvent.TrackUnsubscribed, onTrackUnsubscribed)
     room.on(RoomEvent.TrackMuted, onTrackMuted)
     room.on(RoomEvent.TrackUnmuted, onTrackUnmuted)
     room.on(RoomEvent.ParticipantDisconnected, onParticipantDisconnected)
     room.on(RoomEvent.ActiveSpeakersChanged, onActiveSpeakersChanged)
+    room.on(RoomEvent.LocalTrackPublished, onLocalPublished)
+    room.on(RoomEvent.LocalTrackUnpublished, onLocalUnpublished)
 
     // ── self speaking ───────────────────────────────────────────────────
     room.localParticipant.on(ParticipantEvent.IsSpeakingChanged, (speaking: boolean) => {
@@ -234,6 +253,10 @@ export function useLiveKitVoice(
       room.off(RoomEvent.TrackUnmuted, onTrackUnmuted)
       room.off(RoomEvent.ParticipantDisconnected, onParticipantDisconnected)
       room.off(RoomEvent.ActiveSpeakersChanged, onActiveSpeakersChanged)
+      room.off(RoomEvent.LocalTrackPublished, onLocalPublished)
+      room.off(RoomEvent.LocalTrackUnpublished, onLocalUnpublished)
+      setIsScreenSharing(false)
+      setLocalScreenStream(null)
       room.disconnect()
       roomRef.current = null
       setRemoteStreams(new Map())
@@ -258,11 +281,11 @@ export function useLiveKitVoice(
         return
       }
 
-      // camera: publish via LiveKit
+      // camera: publish via LiveKit at highest quality
       const livekitTrack = new LocalVideoTrack(track)
       await room.localParticipant.publishTrack(livekitTrack, {
         source: Track.Source.Camera,
-        videoEncoding: { maxBitrate: 1_500_000, maxFramerate: 30 },
+        videoEncoding: { maxBitrate: 4_000_000, maxFramerate: 60 },
       })
 
       const socket = await getSocket()
@@ -294,7 +317,16 @@ export function useLiveKitVoice(
       const gId = groupId
       if (!room || !gId) return
 
-      await room.localParticipant.setScreenShareEnabled(enabled)
+      if (enabled) {
+        await room.localParticipant.setScreenShareEnabled(true, {
+          video: { frameRate: 30, width: { ideal: 1920 }, height: { ideal: 1080 } },
+          contentHint: 'detail',
+        }, {
+          videoEncoding: { maxBitrate: 7_500_000, maxFramerate: 30 },
+        })
+      } else {
+        await room.localParticipant.setScreenShareEnabled(false)
+      }
       const socket = await getSocket()
       socket.emit('voice-screen-share', { roomId: gId, enabled })
     },
@@ -311,9 +343,11 @@ export function useLiveKitVoice(
 
   return {
     localStream,
+    localScreenStream,
     remoteStreams,
     remoteScreenStreams,
     isSpeaking,
+    isScreenSharing,
     remoteSpeakingUserIds,
     addVideoTrack,
     removeVideoTrack,
