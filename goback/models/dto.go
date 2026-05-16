@@ -25,14 +25,14 @@ type AddMemberDto struct {
 type CreateGroupDto struct {
 	Name        string `json:"name" validate:"required,min=1,max=100"`
 	Description string `json:"description" validate:"max=500"`
-	GroupType   string `json:"group_type" validate:"required,oneof=text voice"`
+	GroupType   string `json:"group_type" validate:"required,oneof=text board voice watch"`
 	AccessType  string `json:"access_type" validate:"required,oneof=PUBLIC PRIVATE"`
 }
 
 type UpdateGroupDto struct {
 	Name        string `json:"name" validate:"min=1,max=100"`
 	Description string `json:"description" validate:"max=500"`
-	GroupType   string `json:"group_type" validate:"oneof=text voice"`
+	GroupType   string `json:"group_type" validate:"oneof=text board voice watch"`
 	AccessType  string `json:"access_type" validate:"oneof=PUBLIC PRIVATE"`
 }
 

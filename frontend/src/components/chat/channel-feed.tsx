@@ -656,9 +656,11 @@ function buildFallbackPosts(channel: WorkspaceChannel, group: MockChannelGroup):
     author: 'Studio Bot',
     role: 'Automation',
     time: 'Now',
-    body: group.label.toLowerCase() === 'general'
-      ? `Welcome to ${channel.label}. Default group for broad coordination.`
-      : `${group.label} group is ready. Use it for focused updates inside ${channel.label}.`,
+    body: group.kind === 'board'
+      ? `Board is ready. Start topics, collect replies, and keep longer discussions organized inside ${channel.label}.`
+      : group.label.toLowerCase() === 'general'
+        ? `Welcome to ${channel.label}. Default group for broad coordination.`
+        : `${group.label} group is ready. Use it for focused updates inside ${channel.label}.`,
     pinned: true,
     reactions: [{ emoji: '👋', count: 1, mine: false }],
     replyCount: 0,
@@ -2279,7 +2281,7 @@ export function ChannelFeed({
     }
     onProfileSidebarContentChange?.(
       <FeedMemberProfileView
-        currentGroupLabel={group.kind === 'voice' ? group.label : `#${group.label}`}
+        currentGroupLabel={group.kind === 'voice' ? group.label : group.kind === 'board' ? `Board: ${group.label}` : `#${group.label}`}
         isOwn={!!selectedProfile.post.isOwn}
         memberProfile={selectedProfile.profile}
         messagePending={false}
@@ -3374,7 +3376,7 @@ export function ChannelFeed({
                     if (event.key !== 'Escape') syncMentionCursor()
                   }}
                   onSelect={syncMentionCursor}
-                  placeholder={`Message ${group.kind === 'voice' ? group.label : `#${group.label}`}`}
+                  placeholder={group.kind === 'board' ? `Start a topic in ${group.label}` : `Message ${group.kind === 'voice' ? group.label : `#${group.label}`}`}
                   className="max-h-40 min-h-[36px] w-full border-0 bg-transparent px-2 py-2 text-[13px] leading-[1.5] overflow-y-auto"
                 />
               </div>

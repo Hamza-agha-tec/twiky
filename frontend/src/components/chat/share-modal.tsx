@@ -73,7 +73,7 @@ export function ShareModal({ open, onClose, payload, title = 'Share to…' }: Sh
       setLoadingChannel(channelId)
       try {
         const groups = await groupsApi.getChannelGroups(channelId)
-        setChannelGroups(prev => ({ ...prev, [channelId]: groups.filter(g => g.group_type === 'text') }))
+        setChannelGroups(prev => ({ ...prev, [channelId]: groups.filter(g => g.group_type === 'text' || g.group_type === 'board') }))
       } catch {
         toast.error('Failed to load groups')
       } finally {
@@ -186,7 +186,7 @@ export function ShareModal({ open, onClose, payload, title = 'Share to…' }: Sh
                       {loadingChannel === channel.id ? (
                         <p className="px-8 py-2 text-[11px] text-muted-foreground">Loading…</p>
                       ) : (channelGroups[channel.id] ?? []).length === 0 ? (
-                        <p className="px-8 py-2 text-[11px] text-muted-foreground">No text groups</p>
+                        <p className="px-8 py-2 text-[11px] text-muted-foreground">No message groups</p>
                       ) : (
                         (channelGroups[channel.id] ?? []).map(group => {
                           const isSel = selected?.type === 'group' && selected.id === group.id
@@ -199,7 +199,7 @@ export function ShareModal({ open, onClose, payload, title = 'Share to…' }: Sh
                                 isSel && 'bg-primary/10'
                               )}
                             >
-                              <span className="text-[12px] text-muted-foreground">#</span>
+                              <span className="text-[12px] text-muted-foreground">{group.group_type === 'board' ? 'Board' : '#'}</span>
                               <span className="flex-1 truncate text-[12px]">{group.name}</span>
                               {isSel && <Check className="h-3 w-3 text-primary shrink-0" />}
                             </button>

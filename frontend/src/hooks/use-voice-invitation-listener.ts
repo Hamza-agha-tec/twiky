@@ -11,9 +11,12 @@ export function useVoiceInvitationListener(
   onInvitation: (invitation: Invitation) => void,
 ) {
   const onInvitationRef = useRef(onInvitation)
-  onInvitationRef.current = onInvitation
   const seenIds = useRef<Set<string>>(new Set())
   const queryClient = useQueryClient()
+
+  useEffect(() => {
+    onInvitationRef.current = onInvitation
+  }, [onInvitation])
 
   const { data: pending = [] } = useQuery<Invitation[]>({
     queryKey: ['invitations', 'pending'],
@@ -48,7 +51,7 @@ export function useVoiceInvitationListener(
 
   useEffect(() => {
     if (!myId) return
-    pending?
+    ;(pending ?? [])
       .filter(
         (inv) =>
           (inv.entity_type === 'GROUP' || inv.entity_type === 'CHANNEL') &&

@@ -46,6 +46,7 @@ export function IconRail({
             width={120}
             height={82}
             className="max-w-none object-contain"
+            style={{ width: 120, height: 82 }}
             priority
           />
         </div>

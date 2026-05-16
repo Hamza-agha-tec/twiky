@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import {
   Hash,
   ListTodo,
+  MessagesSquare,
   NotebookPen,
   Search,
   Target,
@@ -213,8 +214,8 @@ export function MainArea({
   const [membersOpen, setMembersOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const GroupIcon = activeGroup.kind === 'voice' ? Volume2 : activeGroup.kind === 'watch' ? Tv : Hash
-  const groupScopeLabel = activeGroup.kind === 'watch' ? `📺 ${activeGroup.label}` : activeGroup.label
+  const GroupIcon = activeGroup.kind === 'voice' ? Volume2 : activeGroup.kind === 'watch' ? Tv : activeGroup.kind === 'board' ? MessagesSquare : Hash
+  const groupScopeLabel = activeGroup.kind === 'board' ? `Board: ${activeGroup.label}` : activeGroup.label
   const feedChild = isValidElement(children)
     ? cloneElement(children as any, {
       onProfilePanelWidthChange: setFeedProfilePanelWidth,

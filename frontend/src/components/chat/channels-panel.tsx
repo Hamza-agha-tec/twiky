@@ -14,6 +14,7 @@ import {
   Link,
   Lock,
   LockOpen,
+  MessagesSquare,
   Mic,
   MicOff,
   MoreHorizontal,
@@ -87,7 +88,7 @@ export interface MockChannelGroup {
   id: string
   label: string
   description: string
-  kind: 'text' | 'voice' | 'watch'
+  kind: 'text' | 'board' | 'voice' | 'watch'
   access_type?: 'PUBLIC' | 'PRIVATE'
   is_general?: boolean
   is_member?: boolean
@@ -118,7 +119,7 @@ interface BuildChannelGroupInput {
   channelLabel: string
   label: string
   description?: string
-  kind?: 'text' | 'voice'
+  kind?: 'text' | 'board' | 'voice' | 'watch'
   membersLabel?: string
   pinnedBy?: string
   pinnedMessage?: string
@@ -1073,7 +1074,7 @@ function GroupSettingsSheet({
 }) {
   const [name, setName] = useState(group.label)
   const [description, setDescription] = useState(group.description)
-  const [kind, setKind] = useState<'text' | 'voice' | 'watch'>(group.kind)
+  const [kind, setKind] = useState<'text' | 'board' | 'voice' | 'watch'>(group.kind)
   const [accessType, setAccessType] = useState<'PUBLIC' | 'PRIVATE'>(group.access_type ?? 'PUBLIC')
   const [notifications, setNotifications] = useState(true)
   const [mentionsOnly, setMentionsOnly] = useState(false)
@@ -1131,9 +1132,10 @@ function GroupSettingsSheet({
             <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
               Type
             </p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {([
                 { value: 'text', icon: Hash, label: 'Text', desc: 'Messages and threads' },
+                { value: 'board', icon: MessagesSquare, label: 'Board', desc: 'Forum-style topics' },
                 { value: 'voice', icon: Volume2, label: 'Voice', desc: 'Audio conversations' },
                 { value: 'watch', icon: Tv, label: 'Watch', desc: 'Watch together room' },
               ] as const).map(({ value, icon: Icon, label, desc }) => (
@@ -1520,25 +1522,34 @@ export function ChannelsPanel({
           <div className="space-y-0.5">
             {(() => {
               const textGroups = channel.groups.filter((g) => g.kind === 'text')
+              const boardGroups = channel.groups.filter((g) => g.kind === 'board')
               const watchGroups = channel.groups.filter((g) => g.kind === 'watch')
               const voiceGroups = channel.groups.filter((g) => g.kind === 'voice')
-              const sorted = [...textGroups, ...watchGroups, ...voiceGroups]
-              const watchStart = textGroups.length
-              const voiceStart = textGroups.length + watchGroups.length
+              const sorted = [...textGroups, ...boardGroups, ...watchGroups, ...voiceGroups]
+              const boardStart = textGroups.length
+              const watchStart = textGroups.length + boardGroups.length
+              const voiceStart = textGroups.length + boardGroups.length + watchGroups.length
               return sorted.map((group, idx) => {
               const isActive = activeGroup === group.id
               const isDefault = group.label.toLowerCase() === 'general'
-              const GroupIcon = group.kind === 'voice' ? Volume2 : group.kind === 'watch' ? Tv : Hash
+              const GroupIcon = group.kind === 'voice' ? Volume2 : group.kind === 'watch' ? Tv : group.kind === 'board' ? MessagesSquare : Hash
               const isPrivate = group.access_type === 'PRIVATE'
               const hasRequested = requestedGroups.has(group.id)
               const memberCanRequest = !canManage && isPrivate && !group.is_member
               const participants = group.kind === 'voice' ? (voiceParticipants[group.id] ?? []) : []
               const watchPeople = group.kind === 'watch' ? (watchParticipants[group.id] ?? []) : []
 
+              const isFirstBoard = idx === boardStart && boardGroups.length > 0
               const isFirstWatch = idx === watchStart && watchGroups.length > 0
               const isFirstVoice = idx === voiceStart && voiceStart > 0 && voiceGroups.length > 0
               return (
                 <div key={group.id}>
+                {isFirstBoard && (
+                  <div className="flex items-center gap-2 px-1 pb-1 pt-2">
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50">Boards</span>
+                    <div className="flex-1 border-t border-border/50" />
+                  </div>
+                )}
                 {isFirstWatch && (
                   <div className="flex items-center gap-2 px-1 pb-1 pt-2">
                     <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50">Watch</span>

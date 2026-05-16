@@ -399,35 +399,26 @@ export function useVoicePresence(
   useEffect(() => {
     if (!observedKey) return
     const roomIds = observedKey.split('|')
-    const socket = socketRef.current
     let cancelled = false
-
-    const subscribe = (s: Awaited<ReturnType<typeof getSocket>>) => {
-      if (cancelled) return
-      s.emit('subscribe-voice-rooms', { roomIds })
-    }
-
-    if (socket) {
-      subscribe(socket)
-    } else {
-      void getSocket().then((s) => {
-        if (cancelled) return
-        socketRef.current = s
-        subscribe(s)
-      })
-    }
+    let boundSocket: Awaited<ReturnType<typeof getSocket>> | null = null
 
     const onConnect = () => {
-      if (socketRef.current) socketRef.current.emit('subscribe-voice-rooms', { roomIds })
+      boundSocket?.emit('subscribe-voice-rooms', { roomIds })
     }
-    socket?.on('connect', onConnect)
+
+    void getSocket().then((s) => {
+      if (cancelled) return
+      boundSocket = s
+      socketRef.current = s
+      s.emit('subscribe-voice-rooms', { roomIds })
+      s.on('connect', onConnect)
+    })
 
     return () => {
       cancelled = true
-      const s = socketRef.current
-      if (s) {
-        s.emit('unsubscribe-voice-rooms', { roomIds })
-        s.off('connect', onConnect)
+      if (boundSocket) {
+        boundSocket.emit('unsubscribe-voice-rooms', { roomIds })
+        boundSocket.off('connect', onConnect)
       }
     }
   }, [observedKey])

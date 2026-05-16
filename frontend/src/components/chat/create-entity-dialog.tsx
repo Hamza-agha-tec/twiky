@@ -23,7 +23,7 @@ export interface CreateEntityValues {
   avatarFile?: File | null
   bannerFile?: File | null
   access_type?: 'PUBLIC' | 'PRIVATE'
-  group_type?: 'text' | 'voice' | 'watch',
+  group_type?: 'text' | 'board' | 'voice' | 'watch',
   type?: 'NORMAL' | 'WORKSPACE'
 }
 
@@ -63,7 +63,7 @@ export function CreateEntityDialog({
   const [name, setName] = useState(defaultName)
   const [details, setDetails] = useState(defaultDescription)
   const [accessType, setAccessType] = useState<'PUBLIC' | 'PRIVATE'>('PUBLIC')
-  const [groupType, setGroupType] = useState<'text' | 'voice' | 'watch'>('text')
+  const [groupType, setGroupType] = useState<'text' | 'board' | 'voice' | 'watch'>('text')
   const [groupAccess, setGroupAccess] = useState<'PUBLIC' | 'PRIVATE'>('PUBLIC')
   const [bannerUrl, setBannerUrl] = useState<string | null>(null)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
@@ -202,12 +202,12 @@ export function CreateEntityDialog({
                 <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Preview</p>
                 <div className="mt-2 flex items-center gap-2.5">
                   <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-white">
-                    {groupType === 'voice' ? <Volume2 className="h-4 w-4" /> : groupType === 'watch' ? <Tv className="h-4 w-4" /> : <Hash className="h-4 w-4" />}
+                    {groupType === 'voice' ? <Volume2 className="h-4 w-4" /> : groupType === 'watch' ? <Tv className="h-4 w-4" /> : groupType === 'board' ? <MessagesSquare className="h-4 w-4" /> : <Hash className="h-4 w-4" />}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
                       <p className="truncate text-[12px] font-semibold text-foreground">
-                        {groupType === 'voice' ? '🔊' : groupType === 'watch' ? '📺' : '#'}{previewName}
+                        {groupType === 'board' ? 'Board: ' : groupType === 'voice' || groupType === 'watch' ? '' : '#'}{previewName}
                       </p>
                       {groupAccess === 'PRIVATE' && (
                         <Lock className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
@@ -222,9 +222,10 @@ export function CreateEntityDialog({
               </div>
 
               {/* Type selector */}
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="grid grid-cols-2 gap-1.5">
                 {([
                   { value: 'text', icon: Hash, label: 'Text', desc: 'Messages & threads' },
+                  { value: 'board', icon: MessagesSquare, label: 'Board', desc: 'Forum-style topics' },
                   { value: 'voice', icon: Volume2, label: 'Voice', desc: 'Audio conversations' },
                   { value: 'watch', icon: Tv, label: 'Watch', desc: 'Watch together room' },
                 ] as const).map(({ value, icon: Icon, label, desc }) => (

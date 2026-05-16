@@ -1885,6 +1885,8 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             onScreenShareToggle={webrtc.signalScreenShare}
             onCameraToggle={handleCameraToggle}
             onSwitchAudioInput={webrtc.switchAudioInput}
+            localScreenStream={webrtc.localScreenStream}
+            isScreenSharing={webrtc.isScreenSharing}
           />
           <FeedProfileSidebarDock
             open={!!voiceProfileTarget}

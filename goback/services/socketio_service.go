@@ -1,11 +1,13 @@
 package services
 
 import (
+	"crypto/rand"
 	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,6 +15,15 @@ import (
 	"github.com/labstack/echo/v4"
 	socketio "github.com/zishang520/socket.io/v2/socket"
 )
+
+func newUUID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+}
 
 // SocketIOService handles all real-time events.
 type SocketIOService struct {
@@ -28,6 +39,10 @@ type SocketIOService struct {
 	voiceMu      sync.RWMutex
 	voiceRooms   map[string]map[string]interface{} // roomID → userID → user payload
 	socketVoice  map[string]string                 // socketID → roomID (for disconnect cleanup)
+
+	// Voice chat message tracking
+	voiceChatMu   sync.RWMutex
+	voiceChatMsgs map[string][]map[string]interface{} // roomID → messages (max 100)
 
 	// Watch room tracking
 	watchMu          sync.RWMutex
@@ -74,8 +89,9 @@ func NewSocketIOService(db *sql.DB) *SocketIOService {
 		db:          db,
 		userSockets: make(map[string]string),
 		socketUsers: make(map[string]string),
-		voiceRooms:  make(map[string]map[string]interface{}),
-		socketVoice: make(map[string]string),
+		voiceRooms:    make(map[string]map[string]interface{}),
+		socketVoice:   make(map[string]string),
+		voiceChatMsgs: make(map[string][]map[string]interface{}),
 		watchRooms:       make(map[string]map[string]*watchParticipant),
 		watchSocketIndex: make(map[string][2]string),
 		watchRoomMeta:    make(map[string]*watchRoomMeta),
@@ -445,8 +461,11 @@ func (s *SocketIOService) setupHandlers() {
 				userID := s.socketUsers[socketID]
 				s.presenceMu.RUnlock()
 				leftPayload := map[string]interface{}{"roomId": oldRoomID, "userId": userID}
+				// Notify old room members and sidebar observers
 				server.To(socketio.Room("voice_" + oldRoomID)).Emit("user-left-voice", leftPayload)
 				server.To(socketio.Room("sub_voice_" + oldRoomID)).Emit("user-left-voice", leftPayload)
+				// Also send to the switching user themselves so their own sidebar updates
+				client.Emit("user-left-voice", leftPayload)
 			}
 
 			// Join socket.io room for broadcast
@@ -480,6 +499,8 @@ func (s *SocketIOService) setupHandlers() {
 			leftPayload := map[string]interface{}{"roomId": roomID, "userId": userID}
 			server.To(socketio.Room("voice_" + roomID)).Emit("user-left-voice", leftPayload)
 			server.To(socketio.Room("sub_voice_" + roomID)).Emit("user-left-voice", leftPayload)
+			// Also notify the leaving user so their own sidebar clears
+			client.Emit("user-left-voice", leftPayload)
 		})
 
 		client.On("subscribe-voice-rooms", func(datas ...any) {
@@ -664,6 +685,148 @@ func (s *SocketIOService) setupHandlers() {
 				"roomId":   roomID,
 				"senderId": senderID,
 			})
+		})
+
+		// ── Voice chat messages ──────────────────────────────────────────────
+
+		client.On("voice-chat-history", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			roomID := mapStr(payload, "roomId")
+			if roomID == "" {
+				return
+			}
+			s.voiceChatMu.RLock()
+			msgs := make([]interface{}, 0, len(s.voiceChatMsgs[roomID]))
+			for _, m := range s.voiceChatMsgs[roomID] {
+				msgs = append(msgs, m)
+			}
+			s.voiceChatMu.RUnlock()
+			client.Emit("voice-chat-history", map[string]interface{}{
+				"roomId":   roomID,
+				"messages": msgs,
+			})
+		})
+
+		client.On("voice-chat-message", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			roomID := mapStr(payload, "roomId")
+			text := strings.TrimSpace(mapStr(payload, "text"))
+			if roomID == "" || text == "" {
+				return
+			}
+			if len(text) > 1000 {
+				text = text[:1000]
+			}
+			s.presenceMu.RLock()
+			userID := s.socketUsers[socketID]
+			s.presenceMu.RUnlock()
+			if userID == "" {
+				return
+			}
+			// Get display name + avatar from voice room participant payload
+			s.voiceMu.RLock()
+			var name, avatar string
+			if room := s.voiceRooms[roomID]; room != nil {
+				if u := asMap(room[userID]); u != nil {
+					name = mapStr(u, "name")
+					avatar = mapStr(u, "avatarUrl")
+				}
+			}
+			s.voiceMu.RUnlock()
+			if name == "" {
+				name = userID
+			}
+			msg := map[string]interface{}{
+				"id":        newUUID(),
+				"roomId":    roomID,
+				"userId":    userID,
+				"name":      name,
+				"avatar":    avatar,
+				"text":      text,
+				"ts":        time.Now().UnixMilli(),
+				"reactions": []interface{}{},
+			}
+			s.voiceChatMu.Lock()
+			s.voiceChatMsgs[roomID] = append(s.voiceChatMsgs[roomID], msg)
+			if len(s.voiceChatMsgs[roomID]) > 100 {
+				s.voiceChatMsgs[roomID] = s.voiceChatMsgs[roomID][len(s.voiceChatMsgs[roomID])-100:]
+			}
+			s.voiceChatMu.Unlock()
+			server.To(socketio.Room("voice_" + roomID)).Emit("voice-chat-message", msg)
+		})
+
+		client.On("voice-chat-reaction", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			roomID := mapStr(payload, "roomId")
+			messageID := mapStr(payload, "messageId")
+			emoji := strings.TrimSpace(mapStr(payload, "emoji"))
+			if roomID == "" || messageID == "" || emoji == "" {
+				return
+			}
+			s.presenceMu.RLock()
+			userID := s.socketUsers[socketID]
+			s.presenceMu.RUnlock()
+			if userID == "" {
+				return
+			}
+			s.voiceChatMu.Lock()
+			var updatedMsg map[string]interface{}
+			for i, msg := range s.voiceChatMsgs[roomID] {
+				if mapStr(msg, "id") != messageID {
+					continue
+				}
+				reactions, _ := msg["reactions"].([]interface{})
+				found := false
+				for j, r := range reactions {
+					rm := asMap(r)
+					if rm == nil || mapStr(rm, "emoji") != emoji {
+						continue
+					}
+					found = true
+					users, _ := rm["users"].([]interface{})
+					idx := -1
+					for k, u := range users {
+						if fmt.Sprint(u) == userID {
+							idx = k
+							break
+						}
+					}
+					if idx >= 0 {
+						users = append(users[:idx], users[idx+1:]...)
+					} else {
+						users = append(users, userID)
+					}
+					if len(users) == 0 {
+						reactions = append(reactions[:j], reactions[j+1:]...)
+					} else {
+						rm["users"] = users
+						reactions[j] = rm
+					}
+					break
+				}
+				if !found {
+					reactions = append(reactions, map[string]interface{}{
+						"emoji": emoji,
+						"users": []interface{}{userID},
+					})
+				}
+				s.voiceChatMsgs[roomID][i]["reactions"] = reactions
+				updatedMsg = s.voiceChatMsgs[roomID][i]
+				break
+			}
+			s.voiceChatMu.Unlock()
+			if updatedMsg != nil {
+				server.To(socketio.Room("voice_" + roomID)).Emit("voice-chat-message-updated", updatedMsg)
+			}
 		})
 
 		client.On("voice-kick", func(datas ...any) {

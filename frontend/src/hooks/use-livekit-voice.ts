@@ -287,9 +287,6 @@ export function useLiveKitVoice(
         source: Track.Source.Camera,
         videoEncoding: { maxBitrate: 4_000_000, maxFramerate: 60 },
       })
-
-      const socket = await getSocket()
-      socket.emit('voice-room-video-toggle', { roomId: gId, enabled: true })
     },
     [groupId],
   )
@@ -304,8 +301,6 @@ export function useLiveKitVoice(
       if (camPub?.track) {
         await room.localParticipant.unpublishTrack(camPub.track as LocalTrack)
       }
-      const socket = await getSocket()
-      socket.emit('voice-room-video-toggle', { roomId: gId, enabled: false })
     },
     [groupId],
   )

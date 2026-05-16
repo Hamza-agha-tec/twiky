@@ -97,6 +97,8 @@ interface VoiceGroupViewProps {
   onScreenShareToggle?: (enabled: boolean) => void
   onCameraToggle?: (enabled: boolean) => void
   onSwitchAudioInput?: (deviceId: string) => void
+  localScreenStream?: MediaStream | null
+  isScreenSharing?: boolean
 }
 
 function useElapsedTime(startMs: number, active: boolean) {
@@ -141,6 +143,8 @@ export function VoiceGroupView({
   onScreenShareToggle,
   onCameraToggle,
   onSwitchAudioInput,
+  localScreenStream,
+  isScreenSharing,
 }: VoiceGroupViewProps) {
   const [videoOn, setVideoOn] = useState(false)
   const [sharing, setSharing] = useState(false)
@@ -196,7 +200,6 @@ export function VoiceGroupView({
   }, [isJoined]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const videoStreamRef = useRef<MediaStream | null>(null)
-  const screenStreamRef = useRef<MediaStream | null>(null)
   const localVideoRef = useRef<HTMLVideoElement | null>(null)
   const screenVideoRef = useRef<HTMLVideoElement | null>(null)
 
@@ -207,16 +210,22 @@ export function VoiceGroupView({
     if (videoOn && v.srcObject) v.play().catch(() => {})
   }, [videoOn])
 
-  // screenVideoRef always mounted (hidden video element), srcObject set directly in handler
+  // sync local sharing state from LiveKit prop
+  useEffect(() => {
+    setSharing(isScreenSharing ?? false)
+  }, [isScreenSharing])
+
+  // pipe localScreenStream into the preview video element
   useEffect(() => {
     const v = screenVideoRef.current
-    if (v && !sharing) v.srcObject = null
-  }, [sharing])
+    if (!v) return
+    v.srcObject = localScreenStream ?? null
+    if (localScreenStream) v.play().catch(() => {})
+  }, [localScreenStream])
 
   useEffect(() => {
     return () => {
       videoStreamRef.current?.getTracks().forEach((t) => t.stop())
-      screenStreamRef.current?.getTracks().forEach((t) => t.stop())
     }
   }, [])
 
@@ -244,39 +253,11 @@ export function VoiceGroupView({
   }, [videoOn, addVideoTrack, removeVideoTrack, onCameraToggle])
 
   const handleToggleSharing = useCallback(async () => {
-    if (sharing) {
-      const track = screenStreamRef.current?.getVideoTracks()[0]
-      if (track) removeVideoTrack?.(track)
-      screenStreamRef.current?.getTracks().forEach((t) => t.stop())
-      screenStreamRef.current = null
-      setSharing(false)
-      onScreenShareToggle?.(false)
-    } else {
-      try {
-        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true })
-        screenStreamRef.current = stream
-        const track = stream.getVideoTracks()[0]
-        if (track) {
-          // Emit socket signal BEFORE addVideoTrack so receivers know it's a screen share
-          // before the WebRTC track arrives
-          onScreenShareToggle?.(true)
-          addVideoTrack?.(track, stream, 'screen')
-          track.onended = () => {
-            removeVideoTrack?.(track)
-            screenStreamRef.current = null
-            setSharing(false)
-            onScreenShareToggle?.(false)
-          }
-        }
-        // Set srcObject immediately — ref is always mounted
-        if (screenVideoRef.current) {
-          screenVideoRef.current.srcObject = stream
-          void screenVideoRef.current.play().catch(() => {})
-        }
-        setSharing(true)
-      } catch {}
-    }
-  }, [sharing, addVideoTrack, removeVideoTrack, onScreenShareToggle])
+    // LiveKit owns getDisplayMedia — just signal it; sharing state syncs via isScreenSharing prop
+    try {
+      await onScreenShareToggle?.(!sharing)
+    } catch {}
+  }, [sharing, onScreenShareToggle])
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -374,10 +355,10 @@ export function VoiceGroupView({
 
   const sendChatMessage = useCallback(() => {
     const text = chatInput.trim()
-    if (!text || !me || !isJoined) return
-    chatSocketRef.current?.emit('voice-chat-message', { roomId: group.id, text })
+    if (!text || !isJoined) return
     setChatInput('')
-  }, [chatInput, group.id, isJoined, me])
+    void getSocket().then((s) => s.emit('voice-chat-message', { roomId: group.id, text }))
+  }, [chatInput, group.id, isJoined])
 
   const addChatEmoji = useCallback((emoji: string) => {
     setChatInput((prev) => `${prev}${emoji}`)
@@ -386,7 +367,7 @@ export function VoiceGroupView({
 
   const toggleChatReaction = useCallback((messageId: string, emoji: string) => {
     if (!isJoined) return
-    chatSocketRef.current?.emit('voice-chat-reaction', { roomId: group.id, messageId, emoji })
+    void getSocket().then((s) => s.emit('voice-chat-reaction', { roomId: group.id, messageId, emoji }))
   }, [group.id, isJoined])
 
   const openChatProfile = useCallback((message: VoiceChatMessage) => {
@@ -457,8 +438,6 @@ export function VoiceGroupView({
       videoStreamRef.current = null
       if (localVideoRef.current) localVideoRef.current.srcObject = null
       setVideoOn(false)
-      screenStreamRef.current?.getTracks().forEach((t) => t.stop())
-      screenStreamRef.current = null
       if (screenVideoRef.current) screenVideoRef.current.srcObject = null
       setSharing(false)
     }
@@ -502,6 +481,12 @@ export function VoiceGroupView({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.18, ease: 'easeOut' }}
     >
+    {/* Hidden audio elements — one per remote participant */}
+    {isJoined && remoteStreams && Array.from(remoteStreams.entries()).map(([id, stream]) =>
+      id !== myId ? (
+        <RemoteAudio key={id} stream={stream} volume={outputVolume / 100} muted={deafened} />
+      ) : null
+    )}
     {/* Main voice area */}
     <div
       className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
@@ -646,7 +631,7 @@ export function VoiceGroupView({
                   const remoteVideoTrack = remoteStream
                     ?.getVideoTracks()
                     .find((track) => track.readyState === 'live' && !track.muted)
-                  const showRemoteVideo = Boolean(remoteVideoTrack && member.isCameraOn)
+                  const showRemoteVideo = Boolean(remoteVideoTrack)
                   
                   return (
                     <ContextMenu key={member.id}>
@@ -1003,11 +988,7 @@ export function VoiceGroupView({
               videoStreamRef.current?.getTracks().forEach((t) => t.stop())
               videoStreamRef.current = null
               setVideoOn(false)
-              const screenTrack = screenStreamRef.current?.getVideoTracks()[0]
-              if (screenTrack) removeVideoTrack?.(screenTrack)
               if (screenVideoRef.current) screenVideoRef.current.srcObject = null
-              screenStreamRef.current?.getTracks().forEach((t) => t.stop())
-              screenStreamRef.current = null
               if (sharing) onScreenShareToggle?.(false)
               setSharing(false)
               if (isJoined) setExit('left')
@@ -1345,6 +1326,26 @@ export function VoiceGroupView({
     </Dialog>
     </motion.div>
   )
+}
+
+function RemoteAudio({ stream, volume, muted }: { stream: MediaStream; volume: number; muted: boolean }) {
+  const ref = useRef<HTMLAudioElement>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.srcObject = stream
+    void el.play().catch(() => {})
+    return () => {
+      if (el.srcObject === stream) el.srcObject = null
+    }
+  }, [stream])
+  useEffect(() => {
+    if (ref.current) ref.current.volume = Math.max(0, Math.min(1, volume))
+  }, [volume])
+  useEffect(() => {
+    if (ref.current) ref.current.muted = muted
+  }, [muted])
+  return <audio ref={ref} autoPlay playsInline className="hidden" />
 }
 
 function RemoteVideo({ stream, fit = 'cover' }: { stream: MediaStream; fit?: 'cover' | 'contain' }) {
