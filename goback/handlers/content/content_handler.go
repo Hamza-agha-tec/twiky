@@ -11,12 +11,14 @@ import (
 )
 
 type ContentHandler struct {
-	contentService *services.ContentService
+	contentService      *services.ContentService
+	notificationService *services.NotificationService
 }
 
-func NewContentHandler(contentService *services.ContentService) *ContentHandler {
+func NewContentHandler(contentService *services.ContentService, notificationService *services.NotificationService) *ContentHandler {
 	return &ContentHandler{
-		contentService: contentService,
+		contentService:      contentService,
+		notificationService: notificationService,
 	}
 }
 
@@ -71,6 +73,9 @@ func (h *ContentHandler) AddComment(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	// Create notification
+	_ = h.notificationService.CreateCommentNotification(userID, postID, comment.ID)
+
 	return c.JSON(http.StatusCreated, comment)
 }
 
@@ -82,6 +87,9 @@ func (h *ContentHandler) LikePost(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+
+	// Create notification
+	_ = h.notificationService.CreateLikeNotification(userID, postID)
 
 	return c.JSON(http.StatusCreated, like)
 }

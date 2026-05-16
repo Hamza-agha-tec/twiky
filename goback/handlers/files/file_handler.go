@@ -2,8 +2,10 @@ package files
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -32,11 +34,17 @@ func (h *FileHandler) UploadFile(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "file missing from request"})
 	}
 
-	userID := c.Get("userID").(string)
-	path := fmt.Sprintf("%s/%d_%s", userID, time.Now().Unix(), file.Filename)
+	userID, _ := c.Get("userID").(string)
+	if userID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	safeName := sanitizeFileName(file.Filename)
+	path := fmt.Sprintf("%s/%d_%s", userID, time.Now().Unix(), safeName)
 
 	url, err := h.fileService.UploadToSupabase(bucket, path, file)
 	if err != nil {
+		log.Printf("[FILE] Upload error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
@@ -53,9 +61,11 @@ func (h *FileHandler) UploadChannelBanner(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "file missing from request"})
 	}
 
-	path := fmt.Sprintf("channels/%s/banner_%s", channelID, file.Filename)
+	safeName := sanitizeFileName(file.Filename)
+	path := fmt.Sprintf("channels/%s/banner_%s", channelID, safeName)
 	url, err := h.fileService.UploadToSupabase("channels", path, file)
 	if err != nil {
+		log.Printf("[FILE] Channel banner upload error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
@@ -70,9 +80,11 @@ func (h *FileHandler) UploadChannelLogo(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "file missing from request"})
 	}
 
-	path := fmt.Sprintf("channels/%s/logo_%s", channelID, file.Filename)
+	safeName := sanitizeFileName(file.Filename)
+	path := fmt.Sprintf("channels/%s/logo_%s", channelID, safeName)
 	url, err := h.fileService.UploadToSupabase("channels", path, file)
 	if err != nil {
+		log.Printf("[FILE] Channel logo upload error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
@@ -80,16 +92,21 @@ func (h *FileHandler) UploadChannelLogo(c echo.Context) error {
 }
 
 func (h *FileHandler) UploadUserAvatar(c echo.Context) error {
-	userID := c.Get("userID").(string)
+	userID, _ := c.Get("userID").(string)
+	if userID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
 
 	file, err := c.FormFile("file")
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "file missing from request"})
 	}
 
-	path := fmt.Sprintf("users/%s/avatar_url_%s", userID, file.Filename)
+	safeName := sanitizeFileName(file.Filename)
+	path := fmt.Sprintf("users/%s/avatar_url_%s", userID, safeName)
 	url, err := h.fileService.UploadToSupabase("users", path, file)
 	if err != nil {
+		log.Printf("[FILE] Avatar upload error for user %s: %v", userID, err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
@@ -97,16 +114,21 @@ func (h *FileHandler) UploadUserAvatar(c echo.Context) error {
 }
 
 func (h *FileHandler) UploadUserEnterSound(c echo.Context) error {
-	userID := c.Get("userID").(string)
+	userID, _ := c.Get("userID").(string)
+	if userID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
 
 	file, err := c.FormFile("file")
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "file missing from request"})
 	}
 
-	path := fmt.Sprintf("users/%s/enter_sound_%s", userID, file.Filename)
+	safeName := sanitizeFileName(file.Filename)
+	path := fmt.Sprintf("users/%s/enter_sound_%s", userID, safeName)
 	url, err := h.fileService.UploadToSupabase("users", path, file)
 	if err != nil {
+		log.Printf("[FILE] Enter sound upload error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
@@ -114,16 +136,21 @@ func (h *FileHandler) UploadUserEnterSound(c echo.Context) error {
 }
 
 func (h *FileHandler) UploadUserLogo(c echo.Context) error {
-	userID := c.Get("userID").(string)
+	userID, _ := c.Get("userID").(string)
+	if userID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
 
 	file, err := c.FormFile("file")
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "file missing from request"})
 	}
 
-	path := fmt.Sprintf("users/%s/logo_%s", userID, file.Filename)
+	safeName := sanitizeFileName(file.Filename)
+	path := fmt.Sprintf("users/%s/logo_%s", userID, safeName)
 	url, err := h.fileService.UploadToSupabase("users", path, file)
 	if err != nil {
+		log.Printf("[FILE] User logo/banner upload error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
@@ -294,4 +321,10 @@ func (h *FileHandler) GetStorySignedUploadUrl(c echo.Context) error {
 		"publicUrl": result.PublicURL,
 		"type":      fileType,
 	})
+}
+
+func sanitizeFileName(name string) string {
+	// Remove anything that isn't alphanumeric, dot, underscore or hyphen
+	reg := regexp.MustCompile(`[^a-zA-Z0-9\._-]`)
+	return reg.ReplaceAllString(name, "_")
 }

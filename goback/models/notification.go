@@ -15,6 +15,8 @@ type Notification struct {
 	Metadata    map[string]interface{} `json:"metadata" db:"metadata"`
 	CreatedAt   time.Time              `json:"created_at" db:"created_at"`
 	Actor       *NotificationActor     `json:"actor,omitempty"`
+	Title       string                 `json:"title"`   // Computed field
+	Message     string                 `json:"message"` // Computed field
 }
 
 type NotificationActor struct {

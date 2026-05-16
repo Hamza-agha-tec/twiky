@@ -30,7 +30,7 @@ export type MainAreaTab = 'feed' | 'notes' | 'tasks' | 'goals'
 interface GroupMember {
   user: {
     id: string
-    username: string
+    username: string | null
     avatar_url?: string | null
     full_name?: string | null
     banner?: string | null
@@ -387,7 +387,7 @@ export function MainArea({
                               <div className="relative flex-shrink-0 cursor-pointer">
                                 <UserAvatar
                                   src={m.user.avatar_url}
-                                  alt={m.user.username}
+                                  alt={m.user.username || 'User'}
                                   className="h-8 w-8 rounded-full object-cover"
                                 />
                                 <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-sidebar bg-green-500" />
@@ -430,7 +430,7 @@ export function MainArea({
                               <div className="relative flex-shrink-0 cursor-pointer">
                                 <UserAvatar
                                   src={m.user.avatar_url}
-                                  alt={m.user.username}
+                                  alt={m.user.username || 'User'}
                                   className="h-8 w-8 rounded-full object-cover grayscale"
                                 />
                                 <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-sidebar bg-muted-foreground/40" />
@@ -484,8 +484,8 @@ export function MainArea({
             memberProfile={buildStandaloneFeedMemberProfile({
               id: memberProfileTarget.user.id,
               avatarUrl: memberProfileTarget.user.avatar_url ?? null,
-              name: memberProfileTarget.user.full_name || memberProfileTarget.user.username,
-              handle: memberProfileTarget.user.username,
+              name: memberProfileTarget.user.full_name || memberProfileTarget.user.username || 'User',
+              handle: memberProfileTarget.user.username || 'user',
               role: memberProfileTarget.role ?? 'Member',
             })}
             messagePending={false}

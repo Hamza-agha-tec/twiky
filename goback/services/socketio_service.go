@@ -1268,6 +1268,14 @@ func (s *SocketIOService) GetConnectedClientsCount() int {
 	return len(s.userSockets)
 }
 
+func (s *SocketIOService) NotifyUser(userID string, notification interface{}) {
+	s.server.To(socketio.Room("user_" + userID)).Emit("new_notification", notification)
+}
+
+func (s *SocketIOService) EmitToUser(userID, event string, data interface{}) {
+	s.server.To(socketio.Room("user_" + userID)).Emit(event, data)
+}
+
 func (s *SocketIOService) EchoMiddleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {

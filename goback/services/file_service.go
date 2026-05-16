@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -41,6 +42,11 @@ func (s *FileService) UploadToSupabase(bucket, path string, file *multipart.File
 		supabaseKey = os.Getenv("SUPABASE_ANON_KEY")
 	}
 
+	if supabaseURL == "" || supabaseKey == "" {
+		log.Printf("[SUPABASE] ERROR: Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in environment")
+		return "", fmt.Errorf("supabase configuration missing")
+	}
+
 	uploadURL := fmt.Sprintf("%s/storage/v1/object/%s/%s", supabaseURL, bucket, path)
 
 	req, err := http.NewRequest("POST", uploadURL, bytes.NewReader(fileBytes))
@@ -50,6 +56,7 @@ func (s *FileService) UploadToSupabase(bucket, path string, file *multipart.File
 
 	req.Header.Set("Authorization", "Bearer "+supabaseKey)
 	req.Header.Set("Content-Type", file.Header.Get("Content-Type"))
+	req.Header.Set("x-upsert", "true")
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -59,7 +66,9 @@ func (s *FileService) UploadToSupabase(bucket, path string, file *multipart.File
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		return "", fmt.Errorf("supabase storage error: %s", resp.Status)
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("[SUPABASE] Storage error: %s - Body: %s", resp.Status, string(body))
+		return "", fmt.Errorf("supabase storage error: %s (Details: %s)", resp.Status, string(body))
 	}
 
 	// Return public URL

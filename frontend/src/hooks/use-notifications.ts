@@ -21,8 +21,8 @@ export function useNotifications() {
       const handler = () => {
         queryClient.invalidateQueries({ queryKey: NOTIFICATION_KEYS.all });
       };
-      socket.on('newNotification', handler);
-      cleanup = () => socket.off('newNotification', handler);
+      socket.on('new_notification', handler);
+      cleanup = () => socket.off('new_notification', handler);
     });
 
     return () => {

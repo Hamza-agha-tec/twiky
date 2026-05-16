@@ -1,6 +1,7 @@
 package users
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/Hamza-agha-tec/goback/middleware"
@@ -10,12 +11,14 @@ import (
 )
 
 type UserHandler struct {
-	userService *services.UserService
+	userService         *services.UserService
+	notificationService *services.NotificationService
 }
 
-func NewUserHandler(userService *services.UserService) *UserHandler {
+func NewUserHandler(userService *services.UserService, notificationService *services.NotificationService) *UserHandler {
 	return &UserHandler{
-		userService: userService,
+		userService:         userService,
+		notificationService: notificationService,
 	}
 }
 
@@ -37,6 +40,11 @@ func (h *UserHandler) UpdateProfile(c echo.Context) error {
 	if err := c.Bind(&updateData); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
+
+	importLog := "UpdateProfile"
+	_ = importLog
+	// No need for custom helper, just log it
+	log.Printf("[HANDLER] UpdateProfile for user %s: %+v", user.UserID, updateData)
 
 	updatedProfile, err := h.userService.UpdateProfile(user.UserID, updateData)
 	if err != nil {
@@ -83,7 +91,10 @@ func (h *UserHandler) Search(c echo.Context) error {
 
 	users, err := h.userService.SearchByUsername(username, user.UserID)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to search users"})
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error":   "failed to search users",
+			"details": err.Error(),
+		})
 	}
 
 	return c.JSON(http.StatusOK, users)
@@ -110,10 +121,13 @@ func (h *UserHandler) FollowUser(c echo.Context) error {
 
 	err := h.userService.FollowUser(user.UserID, followingID)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to follow user"})
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"message": "user followed successfully"})
+	// Create notification
+	_ = h.notificationService.CreateFollowNotification(user.UserID, followingID)
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "successfully followed user"})
 }
 
 func (h *UserHandler) UnfollowUser(c echo.Context) error {

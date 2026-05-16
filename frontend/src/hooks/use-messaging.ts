@@ -40,7 +40,7 @@ export interface ChatMessage {
   conversation_id: string;
   sender_id: string;
   content: string | null;
-  type: 'text' | 'image' | 'file' | 'voice' | 'call';
+  type: 'text' | 'image' | 'file' | 'voice' | 'call' | 'gif' | 'sticker';
   file_url: string | null;
   metadata: Record<string, unknown>;
   status: 'sent' | 'delivered' | 'read';

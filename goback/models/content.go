@@ -257,15 +257,16 @@ type SendDirectMessageDto struct {
 }
 
 type SendGroupMessageDto struct {
-	Content     string   `json:"content"`
-	Type        string   `json:"type"`
-	FileUrl     string   `json:"fileUrl"`
-	ReplyToId   string   `json:"replyToId"`
-	FileUrls    []string `json:"fileUrls"`
-	Mime        string   `json:"mime"`
-	Duration    int      `json:"duration"`
-	Size        int      `json:"size"`
-	IsForwarded bool     `json:"isForwarded"`
+	Content        string          `json:"content"`
+	Type           string          `json:"type"`
+	FileUrl        string          `json:"fileUrl"`
+	ReplyToId      string          `json:"replyToId"`
+	FileUrls       []string        `json:"fileUrls"`
+	Mime           string          `json:"mime"`
+	Duration       int             `json:"duration"`
+	Size           int             `json:"size"`
+	IsForwarded    bool            `json:"isForwarded"`
+	EntityMentions []EntityMention `json:"entityMentions"`
 }
 
 type ToggleReactionDto struct {

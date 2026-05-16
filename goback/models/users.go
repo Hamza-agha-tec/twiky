@@ -53,6 +53,9 @@ type User struct {
 	IsOnline      bool       `json:"is_online,omitempty"`
 	SubPlan       string     `json:"sub_plan" db:"sub_plan"`
 	EnterSoundURL *string    `json:"enter_sound_url" db:"enter_sound_url"`
+	StatusMessage *string    `json:"status_message" db:"status_message"`
+	UserStatus    *string    `json:"user_status" db:"user_status"`
+	NameEffect    *string    `json:"name_effect" db:"name_effect"`
 }
 
 // UpdateUserInput holds only the fields a user is allowed to update
