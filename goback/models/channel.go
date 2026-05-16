@@ -5,17 +5,19 @@ import (
 )
 
 type Channel struct {
-	ID          string    `json:"id" db:"id"`
-	Name        string    `json:"name" db:"name"`
-	Description string    `json:"description" db:"description"`
-	AvatarURL   string    `json:"avatar_url" db:"avatar_url"`
-	OwnerID     string    `json:"owner_id" db:"owner_id"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
-	BannerURL   string    `json:"banner_url" db:"banner_url nullable"`
-	AccessType  string    `json:"access_type" db:"access_type"`
-	Type        string    `json:"type" db:"type"`
-	InviteCode  string    `json:"invite_code" db:"invite_code"`
-	Role        string    `json:"role,omitempty"`
+	ID               string    `json:"id" db:"id"`
+	Name             string    `json:"name" db:"name"`
+	Description      string    `json:"description" db:"description"`
+	AvatarURL        string    `json:"avatar_url" db:"avatar_url"`
+	OwnerID          string    `json:"owner_id" db:"owner_id"`
+	CreatedAt        time.Time `json:"created_at" db:"created_at"`
+	BannerURL        string    `json:"banner_url" db:"banner_url nullable"`
+	AccessType       string    `json:"access_type" db:"access_type"`
+	Type             string    `json:"type" db:"type"`
+	InviteCode       string    `json:"invite_code" db:"invite_code"`
+	Role             string    `json:"role,omitempty"`
+	MembershipStatus string    `json:"membership_status,omitempty"`
+	MemberCount      int       `json:"member_count"`
 }
 
 type ChannelMember struct {

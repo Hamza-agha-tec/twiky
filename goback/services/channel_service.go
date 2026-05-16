@@ -125,49 +125,42 @@ func (s *ChannelService) GetUserChannels(userID string) ([]*models.Channel, erro
 }
 
 func (s *ChannelService) DiscoverChannels(userID string) ([]*models.Channel, error) {
-	// Get channels user is member of
-	var members []models.ChannelMember
-	err := s.supabase.GetClient().DB.From("channel_members").
-		Select("channel_id").
-		Eq("user_id", userID).
-		Execute(&members)
-
+	rows, err := s.db.Query(`
+		SELECT
+			c.id, c.name, c.description, c.avatar_url, c.banner_url, c.owner_id,
+			c.access_type, c.type, c.invite_code, c.created_at,
+			COUNT(cm2.user_id) AS member_count,
+			CASE
+				WHEN cm.user_id IS NOT NULL THEN 'member'
+				WHEN cjr.id IS NOT NULL THEN 'requested'
+				ELSE 'none'
+			END AS membership_status
+		FROM channels c
+		LEFT JOIN channel_members cm ON cm.channel_id = c.id AND cm.user_id = $1
+		LEFT JOIN channel_join_requests cjr ON cjr.channel_id = c.id AND cjr.user_id = $1 AND cjr.status = 'PENDING'
+		LEFT JOIN channel_members cm2 ON cm2.channel_id = c.id
+		GROUP BY c.id, c.name, c.description, c.avatar_url, c.banner_url, c.owner_id,
+		         c.access_type, c.type, c.invite_code, c.created_at, cm.user_id, cjr.id
+		ORDER BY c.created_at DESC
+	`, userID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user channel memberships: %w", err)
+		return nil, fmt.Errorf("failed to discover channels: %w", err)
 	}
+	defer rows.Close()
 
-	// Extract channel IDs
-	var channelIDs []string
-	for _, member := range members {
-		channelIDs = append(channelIDs, member.ChannelID)
-	}
-
-	// Get all channels not already joined
-	var channels []models.Channel
-	err = s.supabase.GetClient().DB.From("channels").
-		Select("*").
-		Execute(&channels)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to query discoverable channels: %w", err)
-	}
-
-	// Filter out channels user is already a member of
-	filteredChannels := make([]*models.Channel, 0)
-	for _, channel := range channels {
-		isMember := false
-		for _, memberChannelID := range channelIDs {
-			if channel.ID == memberChannelID {
-				isMember = true
-				break
-			}
+	result := make([]*models.Channel, 0)
+	for rows.Next() {
+		ch := &models.Channel{}
+		if err := rows.Scan(
+			&ch.ID, &ch.Name, &ch.Description, &ch.AvatarURL, &ch.BannerURL, &ch.OwnerID,
+			&ch.AccessType, &ch.Type, &ch.InviteCode, &ch.CreatedAt,
+			&ch.MemberCount, &ch.MembershipStatus,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan channel: %w", err)
 		}
-		if !isMember {
-			filteredChannels = append(filteredChannels, &channel)
-		}
+		result = append(result, ch)
 	}
-
-	return filteredChannels, nil
+	return result, nil
 }
 
 func (s *ChannelService) GetChannelDetails(channelID string) (*models.Channel, error) {
