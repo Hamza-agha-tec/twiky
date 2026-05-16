@@ -61,6 +61,20 @@ export function ProfileSection({
   const enterSoundAudioRef = useRef<HTMLAudioElement | null>(null)
   const enterSoundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  useEffect(() => {
+    if (profile) {
+      setFullname(profile.fullname ?? '')
+      setUsername(profile.username ?? '')
+      setBio(profile.bio ?? '')
+      setStatus(profile.status ?? '')
+      setXUrl(profile.x_url ?? '')
+      setWebsiteUrl(profile.website_url ?? '')
+      setNameEffect(profile.name_effect ?? null)
+      setUserStatus(profile.user_status ?? 'online')
+      setEnterSoundUrl(profile.enter_sound_url ?? null)
+    }
+  }, [profile])
+
   async function handleSaveProfile() {
     setSaveMessage(null)
     await updateProfile.mutateAsync({

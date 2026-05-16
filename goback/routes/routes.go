@@ -36,16 +36,16 @@ func SetupRoutes(e *echo.Echo) {
 	})
 
 	// Initialize services
+	socketIOService := services.NewSocketIOService(db.DB)
 	authService := services.NewAuthService(db.DB)
-	userService := services.NewUserService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
+	userService := services.NewUserService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"), socketIOService)
 	channelService := services.NewChannelService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	contactService := services.NewContactService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	paymentService := services.NewPaymentService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	productPaymentsService := services.NewProductPaymentsService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	voiceService := services.NewVoiceService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	groupService := services.NewGroupService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
-	socketIOService := services.NewSocketIOService(db.DB)
-	notificationService := services.NewNotificationService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
+	notificationService := services.NewNotificationService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"), socketIOService)
 
 	collaborationService := services.NewCollaborationService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	messagingService := services.NewMessagingService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
@@ -55,14 +55,14 @@ func SetupRoutes(e *echo.Echo) {
 	invitationService := services.NewInvitationService(os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 
 	// Add user routes with new code style
-	userRoutes(e, userService, contentService, socketIOService)
+	userRoutes(e, userService, contentService, notificationService, socketIOService)
 
 	// Add Socket.IO middleware
 	e.Use(socketIOService.EchoMiddleware())
 
 	// Initialize handlers
 	authHandler := auth.NewAuthHandler(authService)
-	userHandler := userhandlers.NewUserHandler(userService)
+	userHandler := userhandlers.NewUserHandler(userService, notificationService)
 	channelHandler := channels.NewChannelHandler(channelService, socketIOService)
 	contactHandler := contacts.NewContactHandler(contactService)
 	paymentHandler := payments.NewPaymentHandler(paymentService, productPaymentsService)
@@ -72,8 +72,8 @@ func SetupRoutes(e *echo.Echo) {
 	notificationHandler := notifications.NewNotificationHandler(notificationService)
 
 	collaborationHandler := collaboration.NewCollaborationHandler(collaborationService)
-	messagingHandler := messaging.NewMessagingHandler(messagingService, socketIOService)
-	contentHandler := content.NewContentHandler(contentService, socketIOService)
+	messagingHandler := messaging.NewMessagingHandler(messagingService, socketIOService, notificationService)
+	contentHandler := content.NewContentHandler(contentService, notificationService, socketIOService)
 	fileHandler := files.NewFileHandler(fileService)
 	spotifyHandler := spotify.NewSpotifyHandler(spotifyService)
 	invitationHandler := invitations.NewInvitationHandler(invitationService)

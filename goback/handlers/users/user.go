@@ -63,3 +63,22 @@ func DeleteUser(userService *services.UserService) echo.HandlerFunc {
 		return c.JSON(http.StatusNotImplemented, map[string]string{"error": "not implemented"})
 	}
 }
+// SearchUsers — GET /api/users/search
+func SearchUsers(userService *services.UserService) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		username := c.QueryParam("username")
+		if username == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "username parameter is required"})
+		}
+
+		users, err := userService.SearchByUsername(username, "")
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": "failed to search users",
+				"details": err.Error(),
+			})
+		}
+
+		return c.JSON(http.StatusOK, users)
+	}
+}

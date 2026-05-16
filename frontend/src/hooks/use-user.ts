@@ -10,6 +10,7 @@ import {
   userApi,
 } from '@/lib/user-api';
 import { getSocket } from '@/lib/socket';
+import { useEffect } from 'react';
 
 const PROFILE_STALE_TIME = 2 * 60 * 1000; // 2 min
 
@@ -159,4 +160,31 @@ export function usePrefetchUserProfile() {
     queryClient.prefetchQuery({ queryKey: USER_KEYS.following(id), queryFn: () => userApi.getFollowing(id), staleTime: PROFILE_STALE_TIME });
     queryClient.prefetchQuery({ queryKey: USER_KEYS.posts(id), queryFn: () => userApi.getUserPosts(id), staleTime: PROFILE_STALE_TIME });
   };
+}
+
+export function useFollowRealtime(myId?: string) {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!myId) return;
+
+    let cleanup: (() => void) | null = null;
+    getSocket().then((socket) => {
+      const handler = (data: { follower_id: string; is_mutual: boolean }) => {
+        // Invalidate following and mutual followers
+        queryClient.invalidateQueries({ queryKey: USER_KEYS.following(myId) });
+        queryClient.invalidateQueries({ queryKey: USER_KEYS.mutualFollowers });
+        
+        if (data.is_mutual) {
+          // You are now friends!
+          // You might want to show a toast here
+        }
+      };
+
+      socket.on('follow_update', handler);
+      cleanup = () => socket.off('follow_update', handler);
+    });
+
+    return () => cleanup?.();
+  }, [myId, queryClient]);
 }

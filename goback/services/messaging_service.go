@@ -643,10 +643,19 @@ func (s *MessagingService) SendGroupMessage(userID string, groupID string, dto m
 		FileURLs:       []string{},
 		Status:         "sent",
 	}
+
+	mentionsJSON := "[]"
+	if len(dto.EntityMentions) > 0 {
+		if b, err := json.Marshal(dto.EntityMentions); err == nil {
+			mentionsJSON = string(b)
+		}
+	}
+
+	var mentionsBytes []byte
 	err = s.db.QueryRow(`
-		INSERT INTO group_messages (group_id, sender_id, content, type, file_url, reply_to_id, mime, duration, size, is_pinned)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false)
-		RETURNING id, group_id, sender_id, content, type, file_url, reply_to_id, mime, duration, size, is_pinned, created_at
+		INSERT INTO group_messages (group_id, sender_id, content, type, file_url, reply_to_id, mime, duration, size, is_pinned, entity_mentions)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, $10)
+		RETURNING id, group_id, sender_id, content, type, file_url, reply_to_id, mime, duration, size, is_pinned, entity_mentions, created_at
 	`,
 		groupID, userID,
 		nullableString(dto.Content),
@@ -656,11 +665,16 @@ func (s *MessagingService) SendGroupMessage(userID string, groupID string, dto m
 		nullableString(dto.Mime),
 		dto.Duration,
 		dto.Size,
+		mentionsJSON,
 	).Scan(
 		&msg.ID, &msg.GroupID, &msg.SenderID, &msg.Content, &msg.Type,
 		&msg.FileURL, &msg.ReplyToID, &msg.Mime, &msg.Duration, &msg.Size,
-		&msg.IsPinned, &msg.CreatedAt,
+		&msg.IsPinned, &mentionsBytes, &msg.CreatedAt,
 	)
+
+	if err == nil && len(mentionsBytes) > 0 {
+		_ = json.Unmarshal(mentionsBytes, &msg.EntityMentions)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to send group message: %w", err)
 	}

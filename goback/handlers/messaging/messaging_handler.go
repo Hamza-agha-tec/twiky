@@ -10,14 +10,16 @@ import (
 )
 
 type MessagingHandler struct {
-	messagingService *services.MessagingService
-	socketIOService  *services.SocketIOService
+	messagingService    *services.MessagingService
+	socketIOService     *services.SocketIOService
+	notificationService *services.NotificationService
 }
 
-func NewMessagingHandler(messagingService *services.MessagingService, socketIOService *services.SocketIOService) *MessagingHandler {
+func NewMessagingHandler(messagingService *services.MessagingService, socketIOService *services.SocketIOService, notificationService *services.NotificationService) *MessagingHandler {
 	return &MessagingHandler{
-		messagingService: messagingService,
-		socketIOService:  socketIOService,
+		messagingService:    messagingService,
+		socketIOService:     socketIOService,
+		notificationService: notificationService,
 	}
 }
 
@@ -170,6 +172,11 @@ func (h *MessagingHandler) SendGroupMessage(c echo.Context) error {
 
 	// Emit via WebSockets
 	h.socketIOService.BroadcastToRoom("group_"+groupID, "newGroupMessage", msg)
+
+	// Detect Mentions and create notifications
+	if msg.Content != "" {
+		go h.notificationService.CreateMentionNotifications(userID, groupID, msg.Content, dto.EntityMentions)
+	}
 
 	return c.JSON(http.StatusCreated, msg)
 }

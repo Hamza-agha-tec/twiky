@@ -67,7 +67,7 @@ export interface GroupMessage {
   sender_id: string;
   content: string;
   file_url: string | null;
-  type?: 'voice' | 'image' | 'file' | null;
+  type?: 'voice' | 'image' | 'file' | 'gif' | 'sticker' | null;
   mime?: string | null;
   duration?: number | null;
   size?: number | null;
@@ -131,7 +131,7 @@ export const groupsApi = {
     fileUrl?: string;
     replyToId?: string | null;
     entityMentions?: GroupMessageMention[];
-    type?: 'voice' | 'image' | 'file';
+    type?: 'voice' | 'image' | 'file' | 'gif' | 'sticker';
     mime?: string;
     duration?: number;
     size?: number;

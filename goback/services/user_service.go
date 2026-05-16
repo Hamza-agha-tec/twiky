@@ -12,12 +12,14 @@ import (
 type UserService struct {
 	db       *sql.DB
 	supabase *SupabaseClient
+	socketIO *SocketIOService
 }
 
-func NewUserService(db *sql.DB, supabaseURL, supabaseKey string) *UserService {
+func NewUserService(db *sql.DB, supabaseURL, supabaseKey string, socketIO *SocketIOService) *UserService {
 	return &UserService{
 		db:       db,
 		supabase: NewSupabaseClient(supabaseURL, supabaseKey),
+		socketIO: socketIO,
 	}
 }
 
@@ -116,65 +118,94 @@ func (s *UserService) GetMutualFollowers(userID string) ([]models.User, error) {
 }
 
 func (s *UserService) UpdateProfile(userID string, updateData models.UpdateUserInput) (*models.UserProfile, error) {
-	// Build update map with only non-nil fields
-	updateMap := make(map[string]interface{})
+	log.Printf("[PROFILE] Updating user %s with data: %+v", userID, updateData)
+
+	// Build update query dynamically
+	query := "UPDATE users SET updated_at = NOW()"
+	params := []interface{}{userID}
+	paramCount := 2
+
 	if updateData.Username != nil {
-		updateMap["username"] = *updateData.Username
+		query += fmt.Sprintf(", username = $%d", paramCount)
+		params = append(params, updateData.Username)
+		paramCount++
 	}
 	if updateData.AvatarURL != nil {
-		updateMap["avatar_url"] = *updateData.AvatarURL
+		query += fmt.Sprintf(", avatar_url = $%d", paramCount)
+		params = append(params, updateData.AvatarURL)
+		paramCount++
 	}
 	if updateData.PhoneNumber != nil {
-		updateMap["phone_number"] = *updateData.PhoneNumber
+		query += fmt.Sprintf(", phone_number = $%d", paramCount)
+		params = append(params, updateData.PhoneNumber)
+		paramCount++
 	}
 	if updateData.Bio != nil {
-		updateMap["bio"] = *updateData.Bio
+		query += fmt.Sprintf(", bio = $%d", paramCount)
+		params = append(params, updateData.Bio)
+		paramCount++
 	}
 	if updateData.Status != nil {
-		updateMap["status"] = *updateData.Status
+		query += fmt.Sprintf(", status = $%d", paramCount)
+		params = append(params, updateData.Status)
+		paramCount++
 	}
 	if updateData.Banner != nil {
-		updateMap["banner"] = *updateData.Banner
+		query += fmt.Sprintf(", banner = $%d", paramCount)
+		params = append(params, updateData.Banner)
+		paramCount++
 	}
 	if updateData.Logo != nil {
-		updateMap["logo"] = *updateData.Logo
+		query += fmt.Sprintf(", logo = $%d", paramCount)
+		params = append(params, updateData.Logo)
+		paramCount++
 	}
 	if updateData.Fullname != nil {
-		updateMap["fullname"] = *updateData.Fullname
+		query += fmt.Sprintf(", fullname = $%d", paramCount)
+		params = append(params, updateData.Fullname)
+		paramCount++
 	}
 	if updateData.XURL != nil {
-		updateMap["x_url"] = *updateData.XURL
+		query += fmt.Sprintf(", x_url = $%d", paramCount)
+		params = append(params, updateData.XURL)
+		paramCount++
 	}
 	if updateData.WebsiteURL != nil {
-		updateMap["website_url"] = *updateData.WebsiteURL
+		query += fmt.Sprintf(", website_url = $%d", paramCount)
+		params = append(params, updateData.WebsiteURL)
+		paramCount++
 	}
 	if updateData.EnterSoundURL != nil {
-		updateMap["enter_sound_url"] = *updateData.EnterSoundURL
+		query += fmt.Sprintf(", enter_sound_url = $%d", paramCount)
+		params = append(params, updateData.EnterSoundURL)
+		paramCount++
 	}
 	if updateData.NameEffect != nil {
-		updateMap["name_effect"] = *updateData.NameEffect
+		query += fmt.Sprintf(", name_effect = $%d", paramCount)
+		params = append(params, updateData.NameEffect)
+		paramCount++
 	}
 	if updateData.UserStatus != nil {
-		updateMap["user_status"] = *updateData.UserStatus
+		query += fmt.Sprintf(", user_status = $%d", paramCount)
+		params = append(params, updateData.UserStatus)
+		paramCount++
 	}
 	if updateData.StatusMessage != nil {
-		updateMap["status_message"] = *updateData.StatusMessage
+		query += fmt.Sprintf(", status_message = $%d", paramCount)
+		params = append(params, updateData.StatusMessage)
+		paramCount++
 	}
-	updateMap["updated_at"] = time.Now()
 
-	var result []models.User
-	err := s.supabase.GetClient().DB.From("users").
-		Update(updateMap).
-		Eq("id", userID).
-		Execute(&result)
+	query += " WHERE id = $1"
 
+	res, err := s.db.Exec(query, params...)
 	if err != nil {
+		log.Printf("[PROFILE] SQL Error updating user %s: %v | Query: %s", userID, err, query)
 		return nil, fmt.Errorf("failed to update user profile: %w", err)
 	}
 
-	if len(result) == 0 {
-		return nil, fmt.Errorf("user not found")
-	}
+	rows, _ := res.RowsAffected()
+	log.Printf("[PROFILE] Successfully updated user %s, rows affected: %d", userID, rows)
 
 	// Convert to UserProfile format
 	profile, err := s.GetUserByID(userID, userID)
@@ -229,23 +260,31 @@ func (s *UserService) UpdateSettings(userID string, updateData models.UserSettin
 }
 
 func (s *UserService) SearchByUsername(username string, requestingUserID string) ([]*models.User, error) {
-	var users []models.User
-	err := s.supabase.GetClient().DB.From("users").
-		Select("*").
-		Like("username", "%"+username+"%").
-		Execute(&users)
-
+	query := `
+		SELECT id, username, avatar_url, created_at, bio, status, banner, logo, fullname, x_url, website_url, is_verified, sub_plan 
+		FROM users 
+		WHERE username ILIKE $1
+	`
+	rows, err := s.db.Query(query, "%"+username+"%")
 	if err != nil {
 		return nil, fmt.Errorf("failed to search users: %w", err)
 	}
+	defer rows.Close()
 
-	// Convert to pointer slice
-	var userPtrs []*models.User
-	for i := range users {
-		userPtrs = append(userPtrs, &users[i])
+	var users []*models.User
+	for rows.Next() {
+		u := &models.User{}
+		err := rows.Scan(
+			&u.ID, &u.Username, &u.AvatarURL, &u.CreatedAt, &u.Bio, &u.Status,
+			&u.Banner, &u.Logo, &u.Fullname, &u.XURL, &u.WebsiteURL, &u.IsVerified, &u.SubPlan,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan user: %w", err)
+		}
+		users = append(users, u)
 	}
 
-	return userPtrs, nil
+	return users, nil
 }
 
 func (s *UserService) FollowUser(userID, followingID string) error {
@@ -275,6 +314,15 @@ func (s *UserService) FollowUser(userID, followingID string) error {
 
 	if err != nil {
 		return fmt.Errorf("failed to follow user: %w", err)
+	}
+
+	// Check if mutual follow and notify the other user
+	isMutual, _ := s.IsFollowing(followingID, userID)
+	if s.socketIO != nil {
+		s.socketIO.EmitToUser(followingID, "follow_update", map[string]interface{}{
+			"follower_id": userID,
+			"is_mutual":   isMutual,
+		})
 	}
 
 	return nil

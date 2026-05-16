@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
+	"regexp"
 	"time"
 
 	"github.com/Hamza-agha-tec/goback/models"
@@ -12,12 +14,61 @@ import (
 type NotificationService struct {
 	db       *sql.DB
 	supabase *SupabaseClient
+	socketIO *SocketIOService
 }
 
-func NewNotificationService(db *sql.DB, supabaseURL, supabaseKey string) *NotificationService {
+func NewNotificationService(db *sql.DB, supabaseURL, supabaseKey string, socketIO *SocketIOService) *NotificationService {
 	return &NotificationService{
 		db:       db,
 		supabase: NewSupabaseClient(supabaseURL, supabaseKey),
+		socketIO: socketIO,
+	}
+}
+
+func (s *NotificationService) formatNotification(n *models.Notification) {
+	if n.Actor == nil {
+		n.Actor = &models.NotificationActor{
+			Username: "Twiky",
+		}
+	}
+
+	switch n.Type {
+	case "follow":
+		n.Title = "New Follower"
+		n.Message = fmt.Sprintf("%s started following you.", n.Actor.Username)
+	case "like":
+		n.Title = "New Like"
+		n.Message = fmt.Sprintf("%s liked your post.", n.Actor.Username)
+	case "comment":
+		n.Title = "New Comment"
+		n.Message = fmt.Sprintf("%s commented on your post.", n.Actor.Username)
+	case "MENTION":
+		n.Title = "New Mention"
+		n.Message = fmt.Sprintf("%s mentioned you.", n.Actor.Username)
+	case "mention_group":
+		groupName := "a group"
+		if name, ok := n.Metadata["group_name"].(string); ok {
+			groupName = name
+		}
+		n.Title = "Group Mention"
+		n.Message = fmt.Sprintf("%s mentioned you in %s.", n.Actor.Username, groupName)
+	case "channel_invite":
+		channelName := "a channel"
+		if name, ok := n.Metadata["channel_name"].(string); ok {
+			channelName = name
+		}
+		n.Title = "Channel Invitation"
+		n.Message = fmt.Sprintf("%s invited you to join %s.", n.Actor.Username, channelName)
+	case "group_invite":
+		groupName := "a group"
+		if name, ok := n.Metadata["group_name"].(string); ok {
+			groupName = name
+		}
+		n.Title = "Group Invitation"
+		n.Message = fmt.Sprintf("%s invited you to join %s.", n.Actor.Username, groupName)
+	default:
+		n.Title = "New Notification"
+		n.Message = "You have a new update."
 	}
 }
 
@@ -55,14 +106,11 @@ func (s *NotificationService) GetNotifications(userID string, limit, offset int)
 			return nil, fmt.Errorf("failed to scan notification row: %w", err)
 		}
 
-		// Handle metadata
-		// If metadataJSON is nil or empty, use an empty map
 		n.Metadata = make(map[string]interface{})
 		if len(metadataJSON) > 0 {
 			_ = json.Unmarshal(metadataJSON, &n.Metadata)
 		}
 
-		// Handle actor
 		if actorID.Valid {
 			n.Actor.ID = actorID.String
 			n.Actor.Username = actorUsername.String
@@ -71,6 +119,7 @@ func (s *NotificationService) GetNotifications(userID string, limit, offset int)
 			n.Actor = nil
 		}
 
+		s.formatNotification(n)
 		notificationPtrs = append(notificationPtrs, n)
 	}
 
@@ -139,7 +188,32 @@ func (s *NotificationService) CreateNotification(notification models.Notificatio
 		return nil, fmt.Errorf("failed to create notification: no notification returned")
 	}
 
-	return &notifications[0], nil
+	newNotification := &notifications[0]
+
+	var actors []models.User
+	err = s.supabase.GetClient().DB.From("users").
+		Select("*").
+		Eq("id", newNotification.ActorID).
+		Execute(&actors)
+	if err == nil && len(actors) > 0 {
+		newNotification.Actor = &models.NotificationActor{
+			ID: actors[0].ID,
+		}
+		if actors[0].Username != nil {
+			newNotification.Actor.Username = *actors[0].Username
+		}
+		if actors[0].AvatarURL != nil {
+			newNotification.Actor.AvatarURL = *actors[0].AvatarURL
+		}
+	}
+
+	s.formatNotification(newNotification)
+
+	if s.socketIO != nil {
+		s.socketIO.NotifyUser(newNotification.RecipientID, newNotification)
+	}
+
+	return newNotification, nil
 }
 
 func (s *NotificationService) DeleteNotification(userID, notificationID string) error {
@@ -157,8 +231,6 @@ func (s *NotificationService) DeleteNotification(userID, notificationID string) 
 	return nil
 }
 
-// Helper methods for common notification types
-
 func (s *NotificationService) CreateFollowNotification(followerID, followingID string) error {
 	notification := models.NotificationCreateDto{
 		RecipientID: followingID,
@@ -167,7 +239,8 @@ func (s *NotificationService) CreateFollowNotification(followerID, followingID s
 		EntityID:    followerID,
 		EntityType:  "user",
 		Metadata: map[string]interface{}{
-			"follower_id": followerID,
+			"follower_id":     followerID,
+			"can_follow_back": true,
 		},
 	}
 
@@ -176,7 +249,6 @@ func (s *NotificationService) CreateFollowNotification(followerID, followingID s
 }
 
 func (s *NotificationService) CreateLikeNotification(likerID, postID string) error {
-	// Get post owner to notify them
 	var postOwnerID string
 	query := `SELECT user_id FROM user_posts WHERE id = $1`
 	err := s.db.QueryRow(query, postID).Scan(&postOwnerID)
@@ -184,7 +256,6 @@ func (s *NotificationService) CreateLikeNotification(likerID, postID string) err
 		return fmt.Errorf("failed to get post owner: %w", err)
 	}
 
-	// Don't notify if user liked their own post
 	if likerID == postOwnerID {
 		return nil
 	}
@@ -206,7 +277,6 @@ func (s *NotificationService) CreateLikeNotification(likerID, postID string) err
 }
 
 func (s *NotificationService) CreateCommentNotification(commenterID, postID, commentID string) error {
-	// Get post owner to notify them
 	var postOwnerID string
 	query := `SELECT user_id FROM user_posts WHERE id = $1`
 	err := s.db.QueryRow(query, postID).Scan(&postOwnerID)
@@ -214,7 +284,6 @@ func (s *NotificationService) CreateCommentNotification(commenterID, postID, com
 		return fmt.Errorf("failed to get post owner: %w", err)
 	}
 
-	// Don't notify if user commented on their own post
 	if commenterID == postOwnerID {
 		return nil
 	}
@@ -234,4 +303,128 @@ func (s *NotificationService) CreateCommentNotification(commenterID, postID, com
 
 	_, err = s.CreateNotification(notification)
 	return err
+}
+
+func (s *NotificationService) CreateMentionGroupNotification(actorID, recipientID, groupID, groupName string) error {
+	notification := models.NotificationCreateDto{
+		RecipientID: recipientID,
+		ActorID:     actorID,
+		Type:        "mention_group",
+		EntityID:    groupID,
+		EntityType:  "group",
+		Metadata: map[string]interface{}{
+			"group_id":   groupID,
+			"group_name": groupName,
+		},
+	}
+
+	_, err := s.CreateNotification(notification)
+	return err
+}
+
+func (s *NotificationService) CreateChannelInviteNotification(actorID, recipientID, channelID, channelName string) error {
+	notification := models.NotificationCreateDto{
+		RecipientID: recipientID,
+		ActorID:     actorID,
+		Type:        "channel_invite",
+		EntityID:    channelID,
+		EntityType:  "channel",
+		Metadata: map[string]interface{}{
+			"channel_id":   channelID,
+			"channel_name": channelName,
+		},
+	}
+
+	_, err := s.CreateNotification(notification)
+	return err
+}
+
+func (s *NotificationService) CreateGroupInviteNotification(actorID, recipientID, groupID, groupName string) error {
+	notification := models.NotificationCreateDto{
+		RecipientID: recipientID,
+		ActorID:     actorID,
+		Type:        "group_invite",
+		EntityID:    groupID,
+		EntityType:  "group",
+		Metadata: map[string]interface{}{
+			"group_id":   groupID,
+			"group_name": groupName,
+		},
+	}
+
+	_, err := s.CreateNotification(notification)
+	return err
+}
+
+func (s *NotificationService) CreateMentionNotifications(actorID, groupID, content string, explicitMentions []models.EntityMention) {
+	log.Printf("[MENTION] Scanning content and processing %d explicit mentions", len(explicitMentions))
+
+	// 1. Fetch Group info for metadata
+	var groupName string
+	err := s.db.QueryRow("SELECT name FROM groups WHERE id = $1", groupID).Scan(&groupName)
+	if err != nil {
+		log.Printf("[MENTION] Error fetching group name: %v", err)
+		groupName = "a group"
+	}
+
+	notified := make(map[string]bool)
+
+	// 2. Process explicit mentions from dropdown selection
+	for _, m := range explicitMentions {
+		if m.Type != "user" || m.EntityID == "" || m.EntityID == actorID {
+			continue
+		}
+		if notified[m.EntityID] {
+			continue
+		}
+
+		log.Printf("[MENTION] Processing explicit mention for user ID: %s", m.EntityID)
+		s.notifyMention(actorID, m.EntityID, groupID, groupName)
+		notified[m.EntityID] = true
+	}
+
+	// 3. Find all @username patterns in text (for manually typed mentions)
+	re := regexp.MustCompile(`@(\w+)`)
+	matches := re.FindAllStringSubmatch(content, -1)
+	for _, match := range matches {
+		username := match[1]
+		log.Printf("[MENTION] Found text mention candidate: %s", username)
+
+		// Find user by username (Case Insensitive)
+		var recipientID string
+		err := s.db.QueryRow("SELECT id FROM users WHERE LOWER(username) = LOWER($1)", username).Scan(&recipientID)
+		if err != nil {
+			log.Printf("[MENTION] User %s not found in database", username)
+			continue
+		}
+
+		if recipientID == actorID || notified[recipientID] {
+			continue
+		}
+
+		s.notifyMention(actorID, recipientID, groupID, groupName)
+		notified[recipientID] = true
+	}
+}
+
+func (s *NotificationService) notifyMention(actorID, recipientID, groupID, groupName string) {
+	metadata := map[string]interface{}{
+		"group_id":   groupID,
+		"group_name": groupName,
+	}
+
+	_, err := s.CreateNotification(models.NotificationCreateDto{
+		RecipientID: recipientID,
+		ActorID:     actorID,
+		Type:        "MENTION",
+		EntityID:    groupID,
+		EntityType:  "GROUP",
+		Metadata:    metadata,
+	})
+
+	if err != nil {
+		log.Printf("[MENTION] Failed to create notification for user %s: %v", recipientID, err)
+	} else {
+		log.Printf("[MENTION] Successfully notified user %s", recipientID)
+	}
 }

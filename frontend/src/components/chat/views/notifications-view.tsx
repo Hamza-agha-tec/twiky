@@ -1,10 +1,13 @@
 'use client'
+import React, { useState } from 'react'
 
-import { Bell, Check } from 'lucide-react'
+import { Bell, Check, UserPlus } from 'lucide-react'
 
 import { useNotifications, useMarkAllAsRead, useMarkAsRead } from '@/hooks/use-notifications'
 import { UserAvatar } from '@/components/chat/user-avatar'
 import { usePendingInvitations, useRespondToInvitation } from '@/hooks/use-invitations'
+import { useSendFollowRequest, useProfile, useUserFollowing } from '@/hooks/use-user'
+import { Button } from '@/components/ui/button'
 
 function formatTime(iso: string) {
   const d = new Date(iso)
@@ -16,7 +19,8 @@ function formatTime(iso: string) {
 }
 
 function notificationLabel(type: string) {
-  switch (type) {
+  const t = type.toUpperCase();
+  switch (t) {
     case 'FOLLOW': return 'started following you'
     case 'INVITATION': return 'sent you an invitation'
     case 'INVITATION_ACCEPTED': return 'accepted your invitation'
@@ -28,17 +32,21 @@ function notificationLabel(type: string) {
 }
 
 export function NotificationsView({ onAcceptGroupInvitation }: { onAcceptGroupInvitation?: (groupId: string) => void }) {
+  const { data: profile } = useProfile()
   const { data: notifications = [], isLoading } = useNotifications()
   const { data: invitations = [] } = usePendingInvitations()
+  const { data: following = [] } = useUserFollowing(profile?.id)
+  const followingIds = new Set(following.map(f => f.following_id))
+
   const markAsRead = useMarkAsRead()
   const markAllAsRead = useMarkAllAsRead()
   const respondToInvitation = useRespondToInvitation()
 
-  const nonMentionNotifications = notifications.filter((n) => n.type !== 'MENTION')
-  const unreadCount = nonMentionNotifications.filter((n) => !n.is_read).length
-  const followInvitations = invitations.filter((inv) => inv.entity_type === 'FOLLOW')
-  const groupInvitations = invitations.filter((inv) => inv.entity_type === 'GROUP')
-  const channelInvitations = invitations.filter((inv) => inv.entity_type === 'CHANNEL')
+  const displayNotifications = notifications || []
+  const unreadCount = displayNotifications.filter((n) => !n.is_read).length || 0
+  const followInvitations = invitations?.filter((inv) => inv.entity_type === 'FOLLOW') || []
+  const groupInvitations = invitations?.filter((inv) => inv.entity_type === 'GROUP') || []
+  const channelInvitations = invitations?.filter((inv) => inv.entity_type === 'CHANNEL') || []
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
@@ -112,7 +120,7 @@ export function NotificationsView({ onAcceptGroupInvitation }: { onAcceptGroupIn
             <div className="flex items-center justify-center py-12">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             </div>
-          ) : nonMentionNotifications.length === 0 ? (
+          ) : displayNotifications.length === 0 ? (
             <div className="flex flex-col items-center py-12 text-center">
               <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-muted">
                 <Bell className="h-7 w-7 text-muted-foreground" />
@@ -121,29 +129,87 @@ export function NotificationsView({ onAcceptGroupInvitation }: { onAcceptGroupIn
               <p className="mt-1.5 text-[13px] text-muted-foreground">Activity will show up here.</p>
             </div>
           ) : (
-            <div className="flex flex-col gap-2">
-              {nonMentionNotifications.map((notif) => (
-                <button
-                  key={notif.id}
-                  onClick={() => { if (!notif.is_read) markAsRead.mutate(notif.id) }}
-                  className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-left transition-all hover:bg-accent ${!notif.is_read ? 'border border-primary/20 bg-primary/5' : 'border border-border bg-card'}`}
-                >
-                  <UserAvatar src={notif.actor.avatar_url} alt={notif.actor.username} className="h-10 w-10 flex-shrink-0 rounded-xl object-cover" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[13px] text-foreground">
-                      <span className="font-semibold">@{notif.actor.username}</span>{' '}
-                      {notificationLabel(notif.type)}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">{formatTime(notif.created_at)}</p>
+                <div className="flex flex-col gap-3">
+                  {displayNotifications.map((notif) => (
+                    <div
+                      key={notif.id}
+                      onClick={() => !notif.is_read && markAsRead.mutate(notif.id)}
+                      className={`flex flex-col gap-3 rounded-2xl border px-4 py-3 transition-all hover:bg-accent/50 cursor-pointer ${!notif.is_read ? 'border-primary/20 bg-primary/5' : 'border-border bg-card'}`}
+                    >
+                  <div className="flex items-center gap-3">
+                    <UserAvatar src={notif.actor.avatar_url} alt={notif.actor.username} className="h-10 w-10 flex-shrink-0 rounded-xl object-cover" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] text-foreground">
+                        <span className="font-semibold">@{notif.actor.username}</span>{' '}
+                        {notificationLabel(notif.type)}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">{formatTime(notif.created_at)}</p>
+                    </div>
+                    {!notif.is_read ? (
+                      <button 
+                        onClick={() => markAsRead.mutate(notif.id)}
+                        className="h-2 w-2 flex-shrink-0 rounded-full bg-primary" 
+                      />
+                    ) : null}
                   </div>
-                  {!notif.is_read ? <span className="h-2 w-2 flex-shrink-0 rounded-full bg-primary" /> : null}
-                </button>
+
+                  {notif.type.toUpperCase() === 'FOLLOW' && 
+                   !!notif.metadata?.can_follow_back && 
+                   !followingIds.has(notif.actor_id) && (
+                    <div className="flex pl-[52px]">
+                      <FollowBackButton 
+                        userId={notif.actor_id} 
+                        notificationId={notif.id} 
+                        onFollowed={() => {
+                          if (!notif.is_read) markAsRead.mutate(notif.id)
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           )}
         </div>
       </div>
     </div>
+  )
+}
+
+function FollowBackButton({ userId, notificationId, onFollowed }: { userId: string, notificationId: string, onFollowed: () => void }) {
+  const follow = useSendFollowRequest()
+  const [followed, setFollowed] = useState(false)
+
+  const handleFollow = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      await follow.mutateAsync(userId)
+      setFollowed(true)
+      onFollowed()
+    } catch (error) {
+      console.error('Failed to follow back:', error)
+    }
+  }
+
+  if (followed) {
+    return (
+      <div className="flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-[11px] font-bold text-primary">
+        <Check className="h-3 w-3" />
+        Following
+      </div>
+    )
+  }
+
+  return (
+    <Button
+      size="sm"
+      onClick={handleFollow}
+      disabled={follow.isPending}
+      className="h-8 rounded-lg text-[10px] font-black uppercase tracking-wider"
+    >
+      <UserPlus className="mr-1.5 h-3 w-3" />
+      Follow Back
+    </Button>
   )
 }
 

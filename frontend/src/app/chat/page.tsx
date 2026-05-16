@@ -53,7 +53,7 @@ import { useQueryClient, useQueries } from '@tanstack/react-query'
 import { GROUP_KEYS } from '@/hooks/use-groups'
 import type { FeedPost } from '@/components/chat/channel-feed'
 import { type ChatMessage } from '@/hooks/use-messaging'
-import { useMutualFollowers, useProfile, useSettings } from '@/hooks/use-user'
+import { useMutualFollowers, useProfile, useSettings, useFollowRealtime } from '@/hooks/use-user'
 import { useNotifications, useMarkAsRead } from '@/hooks/use-notifications'
 import type { BackendChannel } from '@/lib/channel-api'
 import { filesApi } from '@/lib/files-api'
@@ -313,6 +313,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const queryClient = useQueryClient()
   const { data: profile } = useProfile()
   const { data: rawSettings } = useSettings()
+  useFollowRealtime(profile?.id)
   const settings = rawSettings as { read_confirmation?: boolean | null } | undefined
   const readReceiptsEnabled = settings?.read_confirmation !== false
   const [typingIndicatorsEnabled, setTypingIndicatorsEnabled] = useState(true)
@@ -1210,8 +1211,10 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         ? existingMessages.find((message) => message.id === replyToId) ?? null
         : null
       const senderId = profile?.id ?? 'local-user'
-      const normalizedType =
-        type === 'image' || type === 'gif' || type === 'sticker' || type === 'file' || type === 'voice' ? type : 'text'
+      const normalizedType: ChatMessage['type'] =
+        type === 'image' || type === 'gif' || type === 'sticker' || type === 'file' || type === 'voice' || type === 'call'
+          ? (type as ChatMessage['type'])
+          : 'text'
       const nextMessage: ChatMessage = {
         id: `${conversationId}-local-${Date.now()}`,
         conversation_id: conversationId,
