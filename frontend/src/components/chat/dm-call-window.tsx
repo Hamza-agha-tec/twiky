@@ -35,6 +35,7 @@ function CallWaveform({ active, compact = false }: { active: boolean; compact?: 
 interface DmCallWindowProps {
   roomId: string
   myId: string
+  myName?: string
   peerId: string
   peerName: string
   peerAvatar: string | null
@@ -47,7 +48,7 @@ interface DmCallWindowProps {
 }
 
 export function DmCallWindow({
-  roomId, myId, peerId, peerName, peerAvatar, type,
+  roomId, myId, myName, peerId, peerName, peerAvatar, type,
   inConversation, onHangUp, onMinimize, onExpand,
 }: DmCallWindowProps) {
   const [isMuted, setIsMuted] = useState(false)
@@ -87,6 +88,39 @@ export function DmCallWindow({
 
   const remoteStream = remoteStreams.get(peerId)
   const remoteScreenStream = remoteScreenStreams.get(peerId)
+
+  // Track whether the remote camera track is actually live (not muted by remote sender).
+  // When peer toggles cam off, sender does replaceTrack(null) → receiver's track fires `mute`.
+  const [remoteCamLive, setRemoteCamLive] = useState(false)
+  useEffect(() => {
+    if (!remoteStream) { setRemoteCamLive(false); return }
+    const tracks = remoteStream.getVideoTracks()
+    const update = () => {
+      setRemoteCamLive(remoteStream.getVideoTracks().some(t => t.readyState === 'live' && !t.muted))
+    }
+    update()
+    const cleanups: (() => void)[] = []
+    for (const t of tracks) {
+      const onChange = () => update()
+      t.addEventListener('mute', onChange)
+      t.addEventListener('unmute', onChange)
+      t.addEventListener('ended', onChange)
+      cleanups.push(() => {
+        t.removeEventListener('mute', onChange)
+        t.removeEventListener('unmute', onChange)
+        t.removeEventListener('ended', onChange)
+      })
+    }
+    const onAdd = () => update()
+    const onRemove = () => update()
+    remoteStream.addEventListener('addtrack', onAdd)
+    remoteStream.addEventListener('removetrack', onRemove)
+    cleanups.push(() => {
+      remoteStream.removeEventListener('addtrack', onAdd)
+      remoteStream.removeEventListener('removetrack', onRemove)
+    })
+    return () => cleanups.forEach(fn => fn())
+  }, [remoteStream])
 
   // Sync remote video element
   useEffect(() => {
@@ -161,7 +195,7 @@ export function DmCallWindow({
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
   const initials = peerName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
   const peerSpeaking = remoteSpeakingUserIds.has(peerId)
-  const hasRemoteVideo = Boolean(remoteScreenStream ?? (remoteStream && remoteStream.getVideoTracks().length > 0))
+  const hasRemoteVideo = Boolean(remoteScreenStream ?? (remoteStream && remoteCamLive))
 
   // ── Conversation content (portaled into #dm-call-portal-target) ──────────
   const conversationContent = (
@@ -194,7 +228,14 @@ export function DmCallWindow({
       {/* Video / avatar */}
       <div className="relative flex-1 flex items-center justify-center overflow-hidden bg-background">
         {hasRemoteVideo
-          ? <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-contain" />
+          ? (
+            <>
+              <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-contain" />
+              <span className="absolute bottom-3 left-3 z-10 rounded-md bg-black/55 px-2 py-1 text-[11px] font-semibold text-white shadow">
+                {peerName}
+              </span>
+            </>
+          )
           : type === 'audio'
           ? (
             <div className="flex flex-col items-center gap-4 w-full max-w-[260px] px-4">
@@ -226,8 +267,13 @@ export function DmCallWindow({
           )
         }
         {isCameraOn && (
-          <video ref={localVideoRef} autoPlay playsInline muted
-            className="absolute bottom-3 right-3 h-28 w-[100px] rounded-lg object-cover border border-border shadow-lg" />
+          <div className="absolute bottom-3 right-3 h-28 w-[100px] rounded-lg overflow-hidden border border-border shadow-lg">
+            <video ref={localVideoRef} autoPlay playsInline muted
+              className="h-full w-full object-cover" />
+            <span className="absolute bottom-1 left-1 rounded bg-black/55 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+              {myName ?? 'You'} (You)
+            </span>
+          </div>
         )}
       </div>
 
@@ -266,7 +312,14 @@ export function DmCallWindow({
     >
       <div className="relative bg-background flex items-center justify-center" style={{ aspectRatio: type === 'audio' ? 'unset' : '16/9' }}>
         {hasRemoteVideo
-          ? <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
+          ? (
+            <>
+              <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
+              <span className="absolute bottom-1.5 left-1.5 z-10 rounded bg-black/55 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+                {peerName}
+              </span>
+            </>
+          )
           : type === 'audio'
           ? (
             <div className="flex items-center gap-3 px-4 py-3 w-full">
@@ -296,8 +349,13 @@ export function DmCallWindow({
           )
         }
         {isCameraOn && (
-          <video ref={localVideoRef} autoPlay playsInline muted
-            className="absolute bottom-1.5 right-1.5 h-12 w-[44px] rounded object-cover border border-border" />
+          <div className="absolute bottom-1.5 right-1.5 h-12 w-[44px] rounded overflow-hidden border border-border">
+            <video ref={localVideoRef} autoPlay playsInline muted
+              className="h-full w-full object-cover" />
+            <span className="absolute bottom-0 left-0 right-0 bg-black/55 px-0.5 text-center text-[7px] font-semibold text-white">
+              You
+            </span>
+          </div>
         )}
         {type !== 'audio' && (
           <div className="absolute top-1.5 left-1.5 rounded-full bg-sidebar/90 px-1.5 py-0.5 text-[9px] font-mono text-muted-foreground">

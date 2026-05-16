@@ -259,10 +259,39 @@ func (h *FileHandler) GetStorySignedUploadUrl(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request format"})
 	}
 
-	// For now, return a simple signed URL (in production, you'd generate proper signed URLs)
-	signedUrl := fmt.Sprintf("https://your-supabase-url.com/storage/v1/upload/signature/stories/%s/%s", userID, body.Filename)
+	isVideo := strings.HasPrefix(body.MimeType, "video/")
+	ext := strings.ToLower(filepath.Ext(body.Filename))
+	if !isVideo {
+		switch ext {
+		case ".mp4", ".mov", ".webm", ".mkv":
+			isVideo = true
+		}
+	}
+	if ext == "" {
+		if isVideo {
+			ext = ".mp4"
+		} else {
+			ext = ".jpg"
+		}
+	}
 
-	return c.JSON(http.StatusOK, map[string]string{
-		"signedUrl": signedUrl,
+	objectPath := fmt.Sprintf("stories/%s/%d%s", userID, time.Now().UnixMilli(), ext)
+
+	result, err := h.fileService.CreateSignedUploadURL("messages", objectPath)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	fileType := "image"
+	if isVideo {
+		fileType = "video"
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"signedUrl": result.SignedURL,
+		"token":     result.Token,
+		"path":      result.Path,
+		"publicUrl": result.PublicURL,
+		"type":      fileType,
 	})
 }

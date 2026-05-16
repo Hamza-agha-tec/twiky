@@ -177,7 +177,7 @@ func (h *ContentHandler) GetStoryViewers(c echo.Context) error {
 
 	// Ensure we always return an empty array instead of null
 	if viewers == nil {
-		viewers = []*models.StoryView{}
+		viewers = []map[string]interface{}{}
 	}
 
 	return c.JSON(http.StatusOK, viewers)

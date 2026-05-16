@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/Hamza-agha-tec/goback/models"
 )
@@ -201,7 +202,7 @@ func (s *ContentService) GetFeed(userID string) ([]*models.FeedGroup, error) {
 	query := `
 		SELECT 
 			s.id, s.user_id, s.media_url, s.type, s.caption, s.music_preview_url, s.music_title, s.music_artist, s.music_cover_url, s.created_at, s.expires_at,
-			u.username, u.avatar_url, u.sub_plan
+			u.id, u.username, u.avatar_url, u.sub_plan
 		FROM stories s
 		LEFT JOIN users u ON s.user_id = u.id
 		WHERE s.expires_at > CURRENT_TIMESTAMP
@@ -321,12 +322,22 @@ func (s *ContentService) RecordView(userID string, storyID string) (*models.Stor
 	}, nil
 }
 
-func (s *ContentService) GetStoryViewers(userID string, storyID string) ([]*models.StoryView, error) {
+func (s *ContentService) GetStoryViewers(userID string, storyID string) ([]map[string]interface{}, error) {
+	// Only the story owner may see viewers
+	var ownerID string
+	if err := s.db.QueryRow("SELECT user_id FROM stories WHERE id = $1", storyID).Scan(&ownerID); err != nil {
+		return nil, fmt.Errorf("failed to get story: %w", err)
+	}
+	if ownerID != userID {
+		return []map[string]interface{}{}, nil
+	}
+
 	query := `
-		SELECT sv.id, sv.story_id, sv.user_id, sv.created_at
+		SELECT sv.viewed_at, u.id, u.username, u.avatar_url
 		FROM story_views sv
+		JOIN users u ON u.id = sv.user_id
 		WHERE sv.story_id = $1
-		ORDER BY sv.created_at DESC
+		ORDER BY sv.viewed_at DESC
 	`
 
 	rows, err := s.db.Query(query, storyID)
@@ -335,14 +346,44 @@ func (s *ContentService) GetStoryViewers(userID string, storyID string) ([]*mode
 	}
 	defer rows.Close()
 
-	var viewers []*models.StoryView
+	// reactions keyed by user_id for this story
+	reactionByUser := map[string]string{}
+	rRows, err := s.db.Query(`SELECT user_id, reaction FROM story_reactions WHERE story_id = $1`, storyID)
+	if err == nil {
+		defer rRows.Close()
+		for rRows.Next() {
+			var uid, reaction string
+			if err := rRows.Scan(&uid, &reaction); err == nil {
+				reactionByUser[uid] = reaction
+			}
+		}
+	}
+
+	viewers := []map[string]interface{}{}
 	for rows.Next() {
-		view := &models.StoryView{}
-		err := rows.Scan(&view.StoryID, &view.UserID, &view.ViewedAt)
-		if err != nil {
+		var viewedAt time.Time
+		var uid, username string
+		var avatarURL sql.NullString
+		if err := rows.Scan(&viewedAt, &uid, &username, &avatarURL); err != nil {
 			return nil, fmt.Errorf("failed to scan story viewer: %w", err)
 		}
-		viewers = append(viewers, view)
+		var avatar interface{} = nil
+		if avatarURL.Valid {
+			avatar = avatarURL.String
+		}
+		var reaction interface{} = nil
+		if r, ok := reactionByUser[uid]; ok {
+			reaction = r
+		}
+		viewers = append(viewers, map[string]interface{}{
+			"viewed_at": viewedAt,
+			"user": map[string]interface{}{
+				"id":         uid,
+				"username":   username,
+				"avatar_url": avatar,
+			},
+			"reaction": reaction,
+		})
 	}
 
 	return viewers, nil

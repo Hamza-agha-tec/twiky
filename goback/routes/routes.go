@@ -253,6 +253,7 @@ func SetupRoutes(e *echo.Echo) {
 	protected.POST("/files/groups/:groupId/files", fileHandler.UploadGroupExtra)
 	protected.POST("/files/messages/upload", fileHandler.UploadMessageFile)
 	protected.POST("/files/stories/upload", fileHandler.UploadStoryMedia)
+	protected.POST("/files/stories/signed-url", fileHandler.GetStorySignedUploadUrl)
 
 	// Spotify routes
 	protected.GET("/spotify/auth", spotifyHandler.GetAuthURL)

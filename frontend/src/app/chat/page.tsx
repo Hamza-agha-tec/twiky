@@ -2328,6 +2328,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         <DmCallWindow
           roomId={dmCallStatus.roomId}
           myId={profile.id}
+          myName={profile.fullname ?? profile.username ?? undefined}
           peerId={dmCallStatus.peerId}
           peerName={dmCallStatus.peerName}
           peerAvatar={dmCallStatus.peerAvatar}

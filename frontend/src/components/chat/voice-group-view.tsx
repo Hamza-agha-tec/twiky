@@ -646,7 +646,7 @@ export function VoiceGroupView({
                   const remoteVideoTrack = remoteStream
                     ?.getVideoTracks()
                     .find((track) => track.readyState === 'live' && !track.muted)
-                  const showRemoteVideo = Boolean(remoteVideoTrack && (member.isCameraOn || !member.isScreenSharing))
+                  const showRemoteVideo = Boolean(remoteVideoTrack && member.isCameraOn)
                   
                   return (
                     <ContextMenu key={member.id}>

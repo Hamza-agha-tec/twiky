@@ -545,6 +545,60 @@ func (s *SocketIOService) setupHandlers() {
 			server.To(socketio.Room("sub_voice_" + roomID)).Emit("user-audio-toggled", out)
 		})
 
+		client.On("voice-room-video-toggle", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			roomID := mapStr(payload, "roomId")
+			if roomID == "" {
+				return
+			}
+			s.presenceMu.RLock()
+			userID := s.socketUsers[socketID]
+			s.presenceMu.RUnlock()
+
+			s.voiceMu.Lock()
+			if room := s.voiceRooms[roomID]; room != nil {
+				if u := asMap(room[userID]); u != nil {
+					u["isCameraOn"] = payload["enabled"]
+					room[userID] = u
+				}
+			}
+			s.voiceMu.Unlock()
+
+			out := map[string]interface{}{"roomId": roomID, "userId": userID, "enabled": payload["enabled"]}
+			server.To(socketio.Room("voice_" + roomID)).Emit("user-video-toggled", out)
+			server.To(socketio.Room("sub_voice_" + roomID)).Emit("user-video-toggled", out)
+		})
+
+		client.On("voice-screen-share", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			roomID := mapStr(payload, "roomId")
+			if roomID == "" {
+				return
+			}
+			s.presenceMu.RLock()
+			userID := s.socketUsers[socketID]
+			s.presenceMu.RUnlock()
+
+			s.voiceMu.Lock()
+			if room := s.voiceRooms[roomID]; room != nil {
+				if u := asMap(room[userID]); u != nil {
+					u["isScreenSharing"] = payload["enabled"]
+					room[userID] = u
+				}
+			}
+			s.voiceMu.Unlock()
+
+			out := map[string]interface{}{"roomId": roomID, "userId": userID, "enabled": payload["enabled"]}
+			server.To(socketio.Room("voice_" + roomID)).Emit("user-screen-toggled", out)
+			server.To(socketio.Room("sub_voice_" + roomID)).Emit("user-screen-toggled", out)
+		})
+
 		client.On("voice-speaking", func(datas ...any) {
 			if len(datas) == 0 {
 				return
@@ -727,30 +781,83 @@ func (s *SocketIOService) setupHandlers() {
 
 		// ── DM call events ───────────────────────────────────────────────────
 
+		// senderID resolves the current authenticated user for this socket
+		senderID := func() string {
+			s.presenceMu.RLock()
+			defer s.presenceMu.RUnlock()
+			return s.socketUsers[socketID]
+		}
+
 		client.On("dm-call-invite", func(datas ...any) {
-			if len(datas) > 0 {
-				server.Emit("dm-call-invite", datas[0])
+			if len(datas) == 0 {
+				return
 			}
+			payload := asMap(datas[0])
+			calleeID := mapStr(payload, "calleeId")
+			callerID := senderID()
+			if calleeID == "" || callerID == "" || calleeID == callerID {
+				return
+			}
+			server.To(socketio.Room("user_" + calleeID)).Emit("dm-call-invite", map[string]interface{}{
+				"conversationId": payload["conversationId"],
+				"callerId":       callerID,
+				"type":           payload["type"],
+			})
 		})
 		client.On("dm-call-accepted", func(datas ...any) {
-			if len(datas) > 0 {
-				server.Emit("dm-call-accepted", datas[0])
+			if len(datas) == 0 {
+				return
 			}
+			payload := asMap(datas[0])
+			callerID := mapStr(payload, "callerId")
+			calleeID := senderID()
+			if callerID == "" || calleeID == "" {
+				return
+			}
+			server.To(socketio.Room("user_" + callerID)).Emit("dm-call-accepted", map[string]interface{}{
+				"conversationId": payload["conversationId"],
+				"calleeId":       calleeID,
+			})
 		})
 		client.On("dm-call-rejected", func(datas ...any) {
-			if len(datas) > 0 {
-				server.Emit("dm-call-rejected", datas[0])
+			if len(datas) == 0 {
+				return
 			}
+			payload := asMap(datas[0])
+			callerID := mapStr(payload, "callerId")
+			if callerID == "" {
+				return
+			}
+			server.To(socketio.Room("user_" + callerID)).Emit("dm-call-rejected", map[string]interface{}{
+				"conversationId": payload["conversationId"],
+				"reason":         payload["reason"],
+			})
 		})
 		client.On("dm-call-cancelled", func(datas ...any) {
-			if len(datas) > 0 {
-				server.Emit("dm-call-cancelled", datas[0])
+			if len(datas) == 0 {
+				return
 			}
+			payload := asMap(datas[0])
+			calleeID := mapStr(payload, "calleeId")
+			if calleeID == "" {
+				return
+			}
+			server.To(socketio.Room("user_" + calleeID)).Emit("dm-call-cancelled", map[string]interface{}{
+				"conversationId": payload["conversationId"],
+			})
 		})
 		client.On("dm-call-ended", func(datas ...any) {
-			if len(datas) > 0 {
-				server.Emit("dm-call-ended", datas[0])
+			if len(datas) == 0 {
+				return
 			}
+			payload := asMap(datas[0])
+			peerID := mapStr(payload, "peerId")
+			if peerID == "" {
+				return
+			}
+			server.To(socketio.Room("user_" + peerID)).Emit("dm-call-ended", map[string]interface{}{
+				"conversationId": payload["conversationId"],
+			})
 		})
 
 		// ── Watch party ──────────────────────────────────────────────────────
