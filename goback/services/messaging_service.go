@@ -2,6 +2,7 @@ package services
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -12,6 +13,11 @@ import (
 type MessagingService struct {
 	db       *sql.DB
 	supabase *SupabaseClient
+}
+
+type groupMessageReaction struct {
+	Emoji string   `json:"emoji"`
+	Users []string `json:"users"`
 }
 
 func NewMessagingService(db *sql.DB, supabaseURL, supabaseKey string) *MessagingService {
@@ -563,6 +569,7 @@ func (s *MessagingService) GetGroupMessages(userID string, groupID string) ([]*m
 		SELECT
 			m.id, m.group_id, m.sender_id, m.content, m.type, m.file_url,
 			m.reply_to_id, m.mime, m.duration, m.size, m.is_pinned, m.created_at,
+			COALESCE(m.reactions, '[]'::jsonb),
 			u.id, u.username, u.avatar_url, u.sub_plan, u.is_verified
 		FROM group_messages m
 		LEFT JOIN users u ON u.id = m.sender_id
@@ -585,15 +592,18 @@ func (s *MessagingService) GetGroupMessages(userID string, groupID string) ([]*m
 		var sender models.GroupMessageSender
 		var senderID, senderUsername, senderAvatar, senderSubPlan *string
 		var senderVerified *bool
+		var reactionsJSON []byte
 
 		err := rows.Scan(
 			&msg.ID, &msg.GroupID, &msg.SenderID, &msg.Content, &msg.Type, &msg.FileURL,
 			&msg.ReplyToID, &msg.Mime, &msg.Duration, &msg.Size, &msg.IsPinned, &msg.CreatedAt,
+			&reactionsJSON,
 			&senderID, &senderUsername, &senderAvatar, &senderSubPlan, &senderVerified,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan message: %w", err)
 		}
+		msg.Reactions = reactionGroupsToMaps(parseGroupMessageReactions(reactionsJSON))
 		if senderID != nil {
 			sender.ID = *senderID
 			sender.Username = senderUsername
@@ -673,6 +683,137 @@ func (s *MessagingService) SendGroupMessage(userID string, groupID string, dto m
 	return msg, nil
 }
 
+func parseGroupMessageReactions(raw []byte) []groupMessageReaction {
+	if len(raw) == 0 {
+		return []groupMessageReaction{}
+	}
+
+	var reactions []groupMessageReaction
+	if err := json.Unmarshal(raw, &reactions); err != nil {
+		return []groupMessageReaction{}
+	}
+
+	normalized := make([]groupMessageReaction, 0, len(reactions))
+	for _, reaction := range reactions {
+		if reaction.Emoji == "" {
+			continue
+		}
+		users := make([]string, 0, len(reaction.Users))
+		seen := make(map[string]bool)
+		for _, userID := range reaction.Users {
+			if userID == "" || seen[userID] {
+				continue
+			}
+			seen[userID] = true
+			users = append(users, userID)
+		}
+		if len(users) > 0 {
+			normalized = append(normalized, groupMessageReaction{Emoji: reaction.Emoji, Users: users})
+		}
+	}
+
+	return normalized
+}
+
+func reactionGroupsToMaps(groups []groupMessageReaction) []map[string]interface{} {
+	reactions := make([]map[string]interface{}, 0, len(groups))
+	for _, group := range groups {
+		reactions = append(reactions, map[string]interface{}{
+			"emoji": group.Emoji,
+			"users": group.Users,
+		})
+	}
+	return reactions
+}
+
+func toggleGroupReactionGroups(reactions []groupMessageReaction, userID string, emoji string) []groupMessageReaction {
+	alreadyReacted := false
+	for _, reaction := range reactions {
+		if reaction.Emoji != emoji {
+			continue
+		}
+		for _, id := range reaction.Users {
+			if id == userID {
+				alreadyReacted = true
+				break
+			}
+		}
+	}
+
+	next := make([]groupMessageReaction, 0, len(reactions)+1)
+	for _, reaction := range reactions {
+		users := make([]string, 0, len(reaction.Users))
+		for _, id := range reaction.Users {
+			if id != userID {
+				users = append(users, id)
+			}
+		}
+		if len(users) > 0 {
+			next = append(next, groupMessageReaction{Emoji: reaction.Emoji, Users: users})
+		}
+	}
+
+	if alreadyReacted {
+		return next
+	}
+
+	for i := range next {
+		if next[i].Emoji == emoji {
+			next[i].Users = append(next[i].Users, userID)
+			return next
+		}
+	}
+
+	return append(next, groupMessageReaction{Emoji: emoji, Users: []string{userID}})
+}
+
+func (s *MessagingService) getGroupMessageResponseByID(messageID string) (*models.GroupMessageResponse, error) {
+	msg := &models.GroupMessageResponse{
+		EntityMentions: []map[string]interface{}{},
+		Reactions:      []map[string]interface{}{},
+		FileURLs:       []string{},
+		Status:         "sent",
+	}
+	var sender models.GroupMessageSender
+	var senderID, senderUsername, senderAvatar, senderSubPlan *string
+	var senderVerified *bool
+	var reactionsJSON []byte
+
+	err := s.db.QueryRow(`
+		SELECT
+			m.id, m.group_id, m.sender_id, m.content, m.type, m.file_url,
+			m.reply_to_id, m.mime, m.duration, m.size, m.is_pinned, m.created_at,
+			COALESCE(m.reactions, '[]'::jsonb),
+			u.id, u.username, u.avatar_url, u.sub_plan, u.is_verified
+		FROM group_messages m
+		LEFT JOIN users u ON u.id = m.sender_id
+		WHERE m.id = $1
+	`, messageID).Scan(
+		&msg.ID, &msg.GroupID, &msg.SenderID, &msg.Content, &msg.Type, &msg.FileURL,
+		&msg.ReplyToID, &msg.Mime, &msg.Duration, &msg.Size, &msg.IsPinned, &msg.CreatedAt,
+		&reactionsJSON,
+		&senderID, &senderUsername, &senderAvatar, &senderSubPlan, &senderVerified,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get updated message: %w", err)
+	}
+
+	if senderID != nil {
+		sender.ID = *senderID
+		sender.Username = senderUsername
+		sender.AvatarURL = senderAvatar
+		sender.IsVerified = senderVerified
+		if senderSubPlan != nil {
+			sender.SubPlan = *senderSubPlan
+		}
+		msg.Sender = &sender
+	}
+
+	msg.Reactions = reactionGroupsToMaps(parseGroupMessageReactions(reactionsJSON))
+
+	return msg, nil
+}
+
 func nullableString(s string) interface{} {
 	if s == "" {
 		return nil
@@ -680,69 +821,40 @@ func nullableString(s string) interface{} {
 	return s
 }
 
-func (s *MessagingService) ToggleGroupMessageReaction(userID string, messageID string, emoji string) (*models.GroupMessage, error) {
-	// Verify user sent the message
-	var messages []models.GroupMessage
-	err := s.supabase.GetClient().DB.From("group_messages").
-		Select("sender_id").
-		Filter("id", "eq", messageID).
-		Execute(&messages)
-
-	if err != nil || len(messages) == 0 || (messages[0].SenderID != nil && *messages[0].SenderID != userID) {
+func (s *MessagingService) ToggleGroupMessageReaction(userID string, messageID string, emoji string) (*models.GroupMessageResponse, error) {
+	var groupID string
+	var reactionsJSON []byte
+	err := s.db.QueryRow(`
+		SELECT m.group_id, COALESCE(m.reactions, '[]'::jsonb)
+		FROM group_messages m
+		JOIN groups g ON g.id = m.group_id
+		JOIN channel_members cm ON cm.channel_id = g.channel_id
+		WHERE m.id = $1 AND cm.user_id = $2
+	`, messageID, userID).Scan(&groupID, &reactionsJSON)
+	if err != nil {
 		return nil, fmt.Errorf("message not found or access denied")
 	}
 
-	// Upsert reaction - first check if reaction exists
-	var reactions []models.MessageReaction
-	err = s.supabase.GetClient().DB.From("message_reactions").
-		Select("id").
-		Filter("message_id", "eq", messageID).
-		Filter("user_id", "eq", userID).
-		Execute(&reactions)
-
+	reactions := toggleGroupReactionGroups(parseGroupMessageReactions(reactionsJSON), userID, emoji)
+	nextReactionsJSON, err := json.Marshal(reactions)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check existing reaction: %w", err)
+		return nil, fmt.Errorf("failed to encode reactions: %w", err)
 	}
 
-	if len(reactions) > 0 {
-		// Update existing reaction
-		var updatedReactions []models.MessageReaction
-		err = s.supabase.GetClient().DB.From("message_reactions").
-			Update(map[string]interface{}{"emoji": emoji}).
-			Filter("message_id", "eq", messageID).
-			Filter("user_id", "eq", userID).
-			Execute(&updatedReactions)
-		if err != nil {
-			return nil, fmt.Errorf("failed to update reaction: %w", err)
-		}
-	} else {
-		// Insert new reaction
-		var newReactions []models.MessageReaction
-		err = s.supabase.GetClient().DB.From("message_reactions").
-			Insert(map[string]interface{}{
-				"message_id": messageID,
-				"user_id":    userID,
-				"emoji":      emoji,
-				"created_at": "now()",
-			}).
-			Execute(&newReactions)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create reaction: %w", err)
-		}
+	if _, err = s.db.Exec(`
+		UPDATE group_messages
+		SET reactions = $1::jsonb
+		WHERE id = $2
+	`, string(nextReactionsJSON), messageID); err != nil {
+		return nil, fmt.Errorf("failed to update reactions: %w", err)
 	}
 
-	// Return updated message
-	var updatedMessages []models.GroupMessage
-	err = s.supabase.GetClient().DB.From("group_messages").
-		Select("id", "group_id", "sender_id", "content", "is_pinned", "created_at").
-		Filter("id", "eq", messageID).
-		Execute(&updatedMessages)
-
-	if err != nil || len(updatedMessages) == 0 {
-		return nil, fmt.Errorf("failed to get updated message: %w", err)
+	msg, err := s.getGroupMessageResponseByID(messageID)
+	if err != nil {
+		return nil, err
 	}
-
-	return &updatedMessages[0], nil
+	msg.GroupID = groupID
+	return msg, nil
 }
 
 func (s *MessagingService) ToggleGroupMessagePin(userID string, messageID string) (*models.GroupMessage, error) {

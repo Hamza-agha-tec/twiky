@@ -125,6 +125,7 @@ function HostPublisher({ videoRef }: { videoRef: React.RefObject<HTMLVideoElemen
         source: Track.Source.Camera,
         videoEncoding: { maxBitrate: 15_000_000, maxFramerate: 60 },
         videoCodec: 'vp9',
+        scalabilityMode: 'L3T3',
       })
       publishedRef.current = lt
     } catch (e) {
@@ -199,6 +200,7 @@ function WatchRoomInner({
   const [duration, setDuration] = useState(0)
   const [dragging, setDragging] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(false)
+  const [flashIcon, setFlashIcon] = useState<'play' | 'pause' | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [watchersOpen, setWatchersOpen] = useState(false)
 
@@ -228,8 +230,14 @@ function WatchRoomInner({
   const handlePlayPause = useCallback(() => {
     const video = videoRef.current
     if (!video) return
-    if (video.paused) { video.play(); setPlaying(true); emitPlay() }
-    else { video.pause(); setPlaying(false); emitPause() }
+    if (video.paused) {
+      video.play(); setPlaying(true); emitPlay()
+      setFlashIcon('play')
+    } else {
+      video.pause(); setPlaying(false); emitPause()
+      setFlashIcon('pause')
+    }
+    setTimeout(() => setFlashIcon(null), 600)
   }, [videoRef, emitPlay, emitPause])
 
   const skip = useCallback((sec: number) => {
@@ -287,6 +295,12 @@ function WatchRoomInner({
         className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
         onMouseEnter={() => setControlsVisible(true)}
         onMouseLeave={() => setControlsVisible(false)}
+        onClick={(e) => {
+          // host click on video area = toggle play/pause (ignore clicks on controls)
+          if (!isHost || !fileLoaded) return
+          if ((e.target as HTMLElement).closest('[data-controls]')) return
+          handlePlayPause()
+        }}
       >
         {/* video — always in DOM so captureStream works; visible only when host has file */}
         <video
@@ -309,11 +323,32 @@ function WatchRoomInner({
           onPause={() => setPlaying(false)}
           playsInline
         />
+        {/* Center play/pause flash */}
+        <AnimatePresence>
+          {flashIcon && (
+            <motion.div
+              key={flashIcon}
+              className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center"
+              initial={{ opacity: 1, scale: 0.6 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.3 }}
+              transition={{ duration: 0.35, ease: 'easeOut' }}
+            >
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-black/50 backdrop-blur-sm">
+                {flashIcon === 'play'
+                  ? <Play className="h-9 w-9 fill-white text-white" />
+                  : <Pause className="h-9 w-9 fill-white text-white" />
+                }
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Floating header */}
         <AnimatePresence>
           {controlsVisible && (
             <motion.div
-              className="absolute top-0 left-0 right-0 z-20 flex h-12 items-center gap-2.5 bg-sidebar/90 px-4 backdrop-blur-xl border-b border-border/50 shadow-sm"
+              data-controls className="absolute top-0 left-0 right-0 z-20 flex h-12 items-center gap-2.5 bg-sidebar/90 px-4 backdrop-blur-xl border-b border-border/50 shadow-sm"
               initial={{ opacity: 0, y: -40 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -40 }}
@@ -383,7 +418,7 @@ function WatchRoomInner({
               exit={{ opacity: 0, y: 20, scale: 0.96 }}
               transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.7 }}
             >
-              <div className="flex flex-col gap-2 rounded-2xl border border-border/50 bg-sidebar/90 px-4 py-2.5 shadow-[0_8px_40px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+              <div data-controls className="flex flex-col gap-2 rounded-2xl border border-border/50 bg-sidebar/90 px-4 py-2.5 shadow-[0_8px_40px_rgba(0,0,0,0.35)] backdrop-blur-xl">
                 {/* seek bar */}
                 {isHost && fileLoaded && (
                   <div className="flex items-center gap-2">
@@ -666,6 +701,7 @@ export function WatchRoomView({ roomId, userId, username, fullname, avatarUrl, b
   return (
     <LiveKitRoom
       serverUrl={LIVEKIT_URL} token={token} connect={true} video={false} audio={false}
+      options={{ dynacast: false, videoCaptureDefaults: { resolution: { width: 1920, height: 1080, frameRate: 60 } } }}
       className="min-w-0 flex-1 flex overflow-hidden"
     >
       <WatchRoomInner

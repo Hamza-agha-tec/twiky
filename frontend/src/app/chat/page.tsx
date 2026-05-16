@@ -329,8 +329,14 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
         setWatchParticipantsByGroup(prev => ({ ...prev, [data.roomId!]: data.participants }))
         setWatchSessionStartByGroup(prev => ({ ...prev, [data.roomId!]: data.sessionStartedAt ?? null }))
       }
+      const endHandler = (data: { roomId?: string }) => {
+        if (!data?.roomId) return
+        setWatchParticipantsByGroup(prev => { const next = { ...prev }; delete next[data.roomId!]; return next })
+        setWatchSessionStartByGroup(prev => { const next = { ...prev }; delete next[data.roomId!]; return next })
+      }
       socket.on('watch:participants', handler)
-      cleanup = () => socket.off('watch:participants', handler)
+      socket.on('watch:end', endHandler)
+      cleanup = () => { socket.off('watch:participants', handler); socket.off('watch:end', endHandler) }
     })
     return () => { cleanup?.() }
   }, [profile?.id])
@@ -521,7 +527,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
   const isRealGroupId = /^[0-9a-f-]{36}$/i.test(activeGroupId)
   const { data: rawMessages } = useGroupMessages(isRealGroupId ? activeGroupId : undefined)
   useGroupMessageRealtime(isRealGroupId ? activeGroupId : undefined)
-  const toggleGroupReaction = useToggleGroupMessageReaction(activeGroupId)
+  const toggleGroupReaction = useToggleGroupMessageReaction(activeGroupId, profile?.id)
   const { data: activeGroupMembers = [] } = useGroupMembers(isRealGroupId ? activeGroupId : undefined)
   const isRealVoiceGroupId = /^[0-9a-f-]{36}$/i.test(activeVoiceGroupId ?? '')
   const { data: voiceGroupMembers = [] } = useGroupMembers(isRealVoiceGroupId ? (activeVoiceGroupId ?? undefined) : undefined)

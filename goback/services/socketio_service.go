@@ -1065,7 +1065,6 @@ func (s *SocketIOService) setupHandlers() {
 				"roomId": roomID,
 			})
 			s.watchMu.Lock()
-			// clear all socket index entries pointing at this room
 			for sid, entry := range s.watchSocketIndex {
 				if entry[0] == roomID {
 					delete(s.watchSocketIndex, sid)
@@ -1074,6 +1073,8 @@ func (s *SocketIOService) setupHandlers() {
 			delete(s.watchRooms, roomID)
 			delete(s.watchRoomMeta, roomID)
 			s.watchMu.Unlock()
+			// broadcast empty participants so all sidebars clear immediately
+			s.emitWatchParticipants(roomID)
 		})
 
 		client.On("watch:kick", func(datas ...any) {

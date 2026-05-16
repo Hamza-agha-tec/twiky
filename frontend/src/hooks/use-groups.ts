@@ -71,10 +71,83 @@ export function useSendGroupMessage(groupId: string) {
   });
 }
 
-export function useToggleGroupMessageReaction(_groupId: string) {
+function applyOwnGroupReaction(
+  reactions: GroupMessage['reactions'] = [],
+  userId: string,
+  emoji: string,
+): GroupMessage['reactions'] {
+  const current = Array.isArray(reactions) ? reactions : [];
+  const alreadyReacted = current.some((reaction) =>
+    reaction.emoji === emoji && Array.isArray(reaction.users) && reaction.users.includes(userId),
+  );
+
+  const withoutMine = current
+    .map((reaction) => ({
+      ...reaction,
+      users: Array.isArray(reaction.users)
+        ? reaction.users.filter((id) => id !== userId)
+        : [],
+    }))
+    .filter((reaction) => reaction.users.length > 0);
+
+  if (alreadyReacted) return withoutMine;
+
+  const existingIndex = withoutMine.findIndex((reaction) => reaction.emoji === emoji);
+  if (existingIndex > -1) {
+    return withoutMine.map((reaction, index) =>
+      index === existingIndex
+        ? { ...reaction, users: [...reaction.users, userId] }
+        : reaction,
+    );
+  }
+
+  return [...withoutMine, { emoji, users: [userId] }];
+}
+
+export function useToggleGroupMessageReaction(groupId: string, currentUserId?: string | null) {
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: (data: { messageId: string; emoji: string }) =>
       groupsApi.toggleGroupMessageReaction(data.messageId, data.emoji),
+    onMutate: async ({ messageId, emoji }) => {
+      if (!groupId || !currentUserId) {
+        return { previous: [] as Array<readonly [readonly unknown[], GroupMessage[] | undefined]> };
+      }
+
+      await queryClient.cancelQueries({ queryKey: GROUP_KEYS.messages(groupId) });
+      const previous = queryClient.getQueriesData<GroupMessage[]>({ queryKey: ['groups'] });
+
+      previous.forEach(([queryKey, messages]) => {
+        if (!messages?.some((message) => message.id === messageId)) return;
+        queryClient.setQueryData<GroupMessage[]>(queryKey, (old = []) =>
+          old.map((message) =>
+            message.id === messageId
+              ? { ...message, reactions: applyOwnGroupReaction(message.reactions, currentUserId, emoji) }
+              : message,
+          ),
+        );
+      });
+
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      context?.previous?.forEach(([queryKey, messages]) => {
+        queryClient.setQueryData(queryKey, messages);
+      });
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData<GroupMessage[]>(GROUP_KEYS.messages(updated.group_id), (old = []) =>
+        upsertGroupMessage(old, updated),
+      );
+    },
+    onSettled: (updated, _error, variables) => {
+      if (updated?.group_id) {
+        queryClient.invalidateQueries({ queryKey: GROUP_KEYS.messages(updated.group_id) });
+      } else if (variables?.messageId && groupId) {
+        queryClient.invalidateQueries({ queryKey: GROUP_KEYS.messages(groupId) });
+      }
+    },
   });
 }
 

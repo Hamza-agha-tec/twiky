@@ -2465,7 +2465,7 @@ export function ChannelFeed({
 
   function updatePosts(updater: (current: FeedPost[]) => FeedPost[]) {
     setPostsByGroup((prev) => {
-      const current = prev[group.id] ?? buildFallbackPosts(channel, group)
+      const current = prev[group.id] ?? postsOverride ?? buildFallbackPosts(channel, group)
       return { ...prev, [group.id]: updater(current) }
     })
   }

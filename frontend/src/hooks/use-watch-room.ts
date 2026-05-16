@@ -81,9 +81,11 @@ export function useWatchRoom({ roomId, userId, username, fullname, avatarUrl, ba
 
   const emitEnd = useCallback(async () => {
     if (!isHost) return
+    setParticipants([])
+    setSessionStartedAt(null)
     const socket = await getSocket()
     socket.emit('watch:end', { roomId })
-  }, [isHost, roomId])
+  }, [isHost, roomId, userId])
 
   const emitKick = useCallback(async (targetUserId: string) => {
     if (!isHost) return
@@ -125,10 +127,11 @@ export function useWatchRoom({ roomId, userId, username, fullname, avatarUrl, ba
     getSocket().then((socket) => {
       if (!mounted) return
 
-      const onPlay = (data: any) => applySync({ ...data, type: 'play' })
-      const onPause = (data: any) => applySync({ ...data, type: 'pause' })
+      const onPlay = (data: any) => { setSyncing(false); applySync({ ...data, type: 'play' }) }
+      const onPause = (data: any) => { setSyncing(false); applySync({ ...data, type: 'pause' }) }
       const onSeek = (data: any) => applySync({ ...data, type: 'seek' })
       const onSyncResponse = (data: any) => {
+        if (syncTimeoutId) { clearTimeout(syncTimeoutId); syncTimeoutId = null }
         setSyncing(false)
         applySync({ ...data, type: 'sync-response' })
       }
@@ -147,7 +150,11 @@ export function useWatchRoom({ roomId, userId, username, fullname, avatarUrl, ba
           serverNow: Date.now(),
         })
       }
-      const onEnd = () => { onEndedRef.current?.() }
+      const onEnd = () => {
+        setParticipants([])
+        setSessionStartedAt(null)
+        onEndedRef.current?.()
+      }
       const onKicked = () => { onKickedRef.current?.() }
 
       socket.on('watch:play', onPlay)
@@ -170,12 +177,16 @@ export function useWatchRoom({ roomId, userId, username, fullname, avatarUrl, ba
         isHost,
       })
 
+      let syncTimeoutId: ReturnType<typeof setTimeout> | null = null
       if (!isHost) {
         setSyncing(true)
         socket.emit('watch:sync-request', { roomId })
+        // fallback: clear syncing if no response within 3s
+        syncTimeoutId = setTimeout(() => setSyncing(false), 3000)
       }
 
       cleanup = () => {
+        if (syncTimeoutId) clearTimeout(syncTimeoutId)
         socket.off('watch:play', onPlay)
         socket.off('watch:pause', onPause)
         socket.off('watch:seek', onSeek)

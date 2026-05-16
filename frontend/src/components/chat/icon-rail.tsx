@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { Bell, Compass, Gamepad2, MessageSquareMore, Settings2, Store, UserPlus } from 'lucide-react'
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -38,8 +39,15 @@ export function IconRail({
   return (
     <TooltipProvider delayDuration={250}>
       <nav className="z-50 hidden w-[68px] flex-shrink-0 flex-col items-center border-r border-border bg-sidebar py-4 md:flex">
-        <div className="mb-6 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-base font-black text-primary-foreground shadow-sm">
-          T
+        <div className="mb-5 flex h-16 w-16 items-center justify-center overflow-hidden">
+          <Image
+            src="/Twiky-logo.png"
+            alt="Twiky"
+            width={120}
+            height={82}
+            className="max-w-none object-contain"
+            priority
+          />
         </div>
 
         <div className="flex flex-1 flex-col items-center gap-2">
