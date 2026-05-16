@@ -89,38 +89,6 @@ export function DmCallWindow({
   const remoteStream = remoteStreams.get(peerId)
   const remoteScreenStream = remoteScreenStreams.get(peerId)
 
-  // Track whether the remote camera track is actually live (not muted by remote sender).
-  // When peer toggles cam off, sender does replaceTrack(null) → receiver's track fires `mute`.
-  const [remoteCamLive, setRemoteCamLive] = useState(false)
-  useEffect(() => {
-    if (!remoteStream) { setRemoteCamLive(false); return }
-    const tracks = remoteStream.getVideoTracks()
-    const update = () => {
-      setRemoteCamLive(remoteStream.getVideoTracks().some(t => t.readyState === 'live' && !t.muted))
-    }
-    update()
-    const cleanups: (() => void)[] = []
-    for (const t of tracks) {
-      const onChange = () => update()
-      t.addEventListener('mute', onChange)
-      t.addEventListener('unmute', onChange)
-      t.addEventListener('ended', onChange)
-      cleanups.push(() => {
-        t.removeEventListener('mute', onChange)
-        t.removeEventListener('unmute', onChange)
-        t.removeEventListener('ended', onChange)
-      })
-    }
-    const onAdd = () => update()
-    const onRemove = () => update()
-    remoteStream.addEventListener('addtrack', onAdd)
-    remoteStream.addEventListener('removetrack', onRemove)
-    cleanups.push(() => {
-      remoteStream.removeEventListener('addtrack', onAdd)
-      remoteStream.removeEventListener('removetrack', onRemove)
-    })
-    return () => cleanups.forEach(fn => fn())
-  }, [remoteStream])
 
   // Sync remote video element
   useEffect(() => {
@@ -195,7 +163,7 @@ export function DmCallWindow({
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
   const initials = peerName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
   const peerSpeaking = remoteSpeakingUserIds.has(peerId)
-  const hasRemoteVideo = Boolean(remoteScreenStream ?? (remoteStream && remoteCamLive))
+  const hasRemoteVideo = Boolean(remoteScreenStream ?? (remoteStream && remoteStream.getVideoTracks().length > 0))
 
   // ── Conversation content (portaled into #dm-call-portal-target) ──────────
   const conversationContent = (
@@ -227,45 +195,50 @@ export function DmCallWindow({
 
       {/* Video / avatar */}
       <div className="relative flex-1 flex items-center justify-center overflow-hidden bg-background">
-        {hasRemoteVideo
-          ? (
-            <>
-              <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-contain" />
-              <span className="absolute bottom-3 left-3 z-10 rounded-md bg-black/55 px-2 py-1 text-[11px] font-semibold text-white shadow">
-                {peerName}
-              </span>
-            </>
-          )
-          : type === 'audio'
-          ? (
-            <div className="flex flex-col items-center gap-4 w-full max-w-[260px] px-4">
-              <div className={cn('rounded-full transition-all duration-300', peerSpeaking ? 'ring-2 ring-primary ring-offset-4 ring-offset-background' : '')}>
-                <Avatar className="h-20 w-20">
-                  {peerAvatar && <AvatarImage src={peerAvatar} alt={peerName} />}
-                  <AvatarFallback className="bg-primary text-primary-foreground text-2xl">{initials}</AvatarFallback>
-                </Avatar>
+        {/* Remote video — always mounted so srcObject updates land reliably */}
+        <video
+          ref={remoteVideoRef}
+          autoPlay
+          playsInline
+          className={cn('h-full w-full object-contain', !hasRemoteVideo && 'hidden')}
+        />
+        {hasRemoteVideo && (
+          <span className="absolute bottom-3 left-3 z-10 rounded-md bg-black/55 px-2 py-1 text-[11px] font-semibold text-white shadow">
+            {peerName}
+          </span>
+        )}
+        {/* Avatar — shown when no remote video */}
+        {!hasRemoteVideo && (
+          type === 'audio'
+            ? (
+              <div className="flex flex-col items-center gap-4 w-full max-w-[260px] px-4">
+                <div className={cn('rounded-full transition-all duration-300', peerSpeaking ? 'ring-2 ring-primary ring-offset-4 ring-offset-background' : '')}>
+                  <Avatar className="h-20 w-20">
+                    {peerAvatar && <AvatarImage src={peerAvatar} alt={peerName} />}
+                    <AvatarFallback className="bg-primary text-primary-foreground text-2xl">{initials}</AvatarFallback>
+                  </Avatar>
+                </div>
+                <div className="text-center">
+                  <p className="text-base font-semibold text-foreground">{peerName}</p>
+                  <p className="text-xs text-muted-foreground font-mono mt-0.5">{fmt(elapsed)}</p>
+                </div>
+                <div className="w-full rounded-2xl border border-border bg-sidebar px-4 py-3">
+                  <CallWaveform active={peerSpeaking} />
+                </div>
               </div>
-              <div className="text-center">
+            )
+            : (
+              <div className="flex flex-col items-center gap-3">
+                <div className={cn('rounded-full p-1.5 transition-all', peerSpeaking ? 'ring-2 ring-primary ring-offset-4 ring-offset-background' : '')}>
+                  <Avatar className="h-20 w-20">
+                    {peerAvatar && <AvatarImage src={peerAvatar} alt={peerName} />}
+                    <AvatarFallback className="bg-primary text-primary-foreground text-2xl">{initials}</AvatarFallback>
+                  </Avatar>
+                </div>
                 <p className="text-base font-semibold text-foreground">{peerName}</p>
-                <p className="text-xs text-muted-foreground font-mono mt-0.5">{fmt(elapsed)}</p>
               </div>
-              <div className="w-full rounded-2xl border border-border bg-sidebar px-4 py-3">
-                <CallWaveform active={peerSpeaking} />
-              </div>
-            </div>
-          )
-          : (
-            <div className="flex flex-col items-center gap-3">
-              <div className={cn('rounded-full p-1.5 transition-all', peerSpeaking ? 'ring-2 ring-primary ring-offset-4 ring-offset-background' : '')}>
-                <Avatar className="h-20 w-20">
-                  {peerAvatar && <AvatarImage src={peerAvatar} alt={peerName} />}
-                  <AvatarFallback className="bg-primary text-primary-foreground text-2xl">{initials}</AvatarFallback>
-                </Avatar>
-              </div>
-              <p className="text-base font-semibold text-foreground">{peerName}</p>
-            </div>
-          )
-        }
+            )
+        )}
         {isCameraOn && (
           <div className="absolute bottom-3 right-3 h-28 w-[100px] rounded-lg overflow-hidden border border-border shadow-lg">
             <video ref={localVideoRef} autoPlay playsInline muted
@@ -311,43 +284,47 @@ export function DmCallWindow({
       className="fixed bottom-6 right-6 z-50 w-64 rounded-xl overflow-hidden shadow-xl border border-border bg-sidebar"
     >
       <div className="relative bg-background flex items-center justify-center" style={{ aspectRatio: type === 'audio' ? 'unset' : '16/9' }}>
-        {hasRemoteVideo
-          ? (
-            <>
-              <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
-              <span className="absolute bottom-1.5 left-1.5 z-10 rounded bg-black/55 px-1.5 py-0.5 text-[9px] font-semibold text-white">
-                {peerName}
-              </span>
-            </>
-          )
-          : type === 'audio'
-          ? (
-            <div className="flex items-center gap-3 px-4 py-3 w-full">
-              <div className={cn('rounded-full shrink-0 transition-all duration-300', peerSpeaking ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : '')}>
-                <Avatar className="h-9 w-9">
-                  {peerAvatar && <AvatarImage src={peerAvatar} alt={peerName} />}
-                  <AvatarFallback className="bg-primary text-primary-foreground text-xs">{initials}</AvatarFallback>
-                </Avatar>
+        {/* Remote video — always mounted */}
+        <video
+          ref={remoteVideoRef}
+          autoPlay
+          playsInline
+          className={cn('h-full w-full object-cover', !hasRemoteVideo && 'hidden')}
+        />
+        {hasRemoteVideo && (
+          <span className="absolute bottom-1.5 left-1.5 z-10 rounded bg-black/55 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+            {peerName}
+          </span>
+        )}
+        {!hasRemoteVideo && (
+          type === 'audio'
+            ? (
+              <div className="flex items-center gap-3 px-4 py-3 w-full">
+                <div className={cn('rounded-full shrink-0 transition-all duration-300', peerSpeaking ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : '')}>
+                  <Avatar className="h-9 w-9">
+                    {peerAvatar && <AvatarImage src={peerAvatar} alt={peerName} />}
+                    <AvatarFallback className="bg-primary text-primary-foreground text-xs">{initials}</AvatarFallback>
+                  </Avatar>
+                </div>
+                <div className="flex-1 min-w-0 flex flex-col gap-1">
+                  <p className="text-xs font-semibold text-foreground truncate">{peerName}</p>
+                  <CallWaveform active={peerSpeaking} compact />
+                  <p className="text-[9px] font-mono text-muted-foreground">{fmt(elapsed)}</p>
+                </div>
               </div>
-              <div className="flex-1 min-w-0 flex flex-col gap-1">
-                <p className="text-xs font-semibold text-foreground truncate">{peerName}</p>
-                <CallWaveform active={peerSpeaking} compact />
-                <p className="text-[9px] font-mono text-muted-foreground">{fmt(elapsed)}</p>
+            )
+            : (
+              <div className="flex flex-col items-center gap-1.5 py-4">
+                <div className={cn('rounded-full', peerSpeaking ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : '')}>
+                  <Avatar className="h-10 w-10">
+                    {peerAvatar && <AvatarImage src={peerAvatar} alt={peerName} />}
+                    <AvatarFallback className="bg-primary text-primary-foreground text-xs">{initials}</AvatarFallback>
+                  </Avatar>
+                </div>
+                <p className="text-xs font-medium text-foreground">{peerName}</p>
               </div>
-            </div>
-          )
-          : (
-            <div className="flex flex-col items-center gap-1.5 py-4">
-              <div className={cn('rounded-full', peerSpeaking ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : '')}>
-                <Avatar className="h-10 w-10">
-                  {peerAvatar && <AvatarImage src={peerAvatar} alt={peerName} />}
-                  <AvatarFallback className="bg-primary text-primary-foreground text-xs">{initials}</AvatarFallback>
-                </Avatar>
-              </div>
-              <p className="text-xs font-medium text-foreground">{peerName}</p>
-            </div>
-          )
-        }
+            )
+        )}
         {isCameraOn && (
           <div className="absolute bottom-1.5 right-1.5 h-12 w-[44px] rounded overflow-hidden border border-border">
             <video ref={localVideoRef} autoPlay playsInline muted

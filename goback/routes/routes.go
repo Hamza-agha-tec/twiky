@@ -55,7 +55,7 @@ func SetupRoutes(e *echo.Echo) {
 	invitationService := services.NewInvitationService(os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 
 	// Add user routes with new code style
-	userRoutes(e, userService, contentService)
+	userRoutes(e, userService, contentService, socketIOService)
 
 	// Add Socket.IO middleware
 	e.Use(socketIOService.EchoMiddleware())
@@ -73,7 +73,7 @@ func SetupRoutes(e *echo.Echo) {
 
 	collaborationHandler := collaboration.NewCollaborationHandler(collaborationService)
 	messagingHandler := messaging.NewMessagingHandler(messagingService, socketIOService)
-	contentHandler := content.NewContentHandler(contentService)
+	contentHandler := content.NewContentHandler(contentService, socketIOService)
 	fileHandler := files.NewFileHandler(fileService)
 	spotifyHandler := spotify.NewSpotifyHandler(spotifyService)
 	invitationHandler := invitations.NewInvitationHandler(invitationService)

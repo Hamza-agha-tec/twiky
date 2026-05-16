@@ -10,6 +10,8 @@ import {
   createLocalTracks,
   type RemoteTrack,
   type RemoteParticipant,
+  type TrackPublication,
+  type LocalTrack,
 } from 'livekit-client'
 import { fetchLiveKitToken } from './use-livekit-token'
 import { getSocket } from '@/lib/socket'
@@ -43,6 +45,21 @@ function removeTrackFromMap(
   const existing = next.get(participantId)
   if (!existing) return next
   const tracks = existing.getTracks().filter((t) => t !== track && t.readyState === 'live')
+  if (tracks.length > 0) next.set(participantId, new MediaStream(tracks))
+  else next.delete(participantId)
+  return next
+}
+
+// Remove all tracks of a given kind (video/audio) — reliable when object identity is unavailable
+function removeKindFromMap(
+  map: Map<string, MediaStream>,
+  participantId: string,
+  kind: 'video' | 'audio',
+): Map<string, MediaStream> {
+  const next = new Map(map)
+  const existing = next.get(participantId)
+  if (!existing) return next
+  const tracks = existing.getTracks().filter((t) => t.kind !== kind && t.readyState === 'live')
   if (tracks.length > 0) next.set(participantId, new MediaStream(tracks))
   else next.delete(participantId)
   return next
@@ -117,12 +134,12 @@ export function useLiveKitVoice(
       participant: RemoteParticipant,
     ) => {
       if (!mounted) return
-      const mediaTrack = track.mediaStreamTrack
       const isScreen = track.source === Track.Source.ScreenShare
+      const kind = track.kind === Track.Kind.Video ? 'video' : 'audio'
       if (isScreen) {
-        setRemoteScreenStreams((prev) => removeTrackFromMap(prev, participant.identity, mediaTrack))
+        setRemoteScreenStreams((prev) => removeKindFromMap(prev, participant.identity, kind))
       } else {
-        setRemoteStreams((prev) => removeTrackFromMap(prev, participant.identity, mediaTrack))
+        setRemoteStreams((prev) => removeKindFromMap(prev, participant.identity, kind))
       }
     }
 
@@ -142,8 +159,41 @@ export function useLiveKitVoice(
       setRemoteSpeakingUserIds(speakingIds)
     }
 
+    // ── remote track muted (cam disabled by sender) ────────────────────
+    // pub.track may be null when muted — use kind-based removal, not identity
+    const onTrackMuted = (
+      pub: TrackPublication,
+      participant: RemoteParticipant,
+    ) => {
+      if (!mounted || pub.kind !== Track.Kind.Video) return
+      const isScreen = pub.source === Track.Source.ScreenShare
+      if (isScreen) {
+        setRemoteScreenStreams((prev) => removeKindFromMap(prev, participant.identity, 'video'))
+      } else {
+        setRemoteStreams((prev) => removeKindFromMap(prev, participant.identity, 'video'))
+      }
+    }
+
+    // ── remote track unmuted (cam re-enabled by sender) ────────────────
+    const onTrackUnmuted = (
+      pub: TrackPublication,
+      participant: RemoteParticipant,
+    ) => {
+      if (!mounted || pub.kind !== Track.Kind.Video) return
+      const mediaTrack = pub.track?.mediaStreamTrack
+      if (!mediaTrack) return
+      const isScreen = pub.source === Track.Source.ScreenShare
+      if (isScreen) {
+        setRemoteScreenStreams((prev) => addTrackToMap(prev, participant.identity, mediaTrack))
+      } else {
+        setRemoteStreams((prev) => addTrackToMap(prev, participant.identity, mediaTrack))
+      }
+    }
+
     room.on(RoomEvent.TrackSubscribed, onTrackSubscribed)
     room.on(RoomEvent.TrackUnsubscribed, onTrackUnsubscribed)
+    room.on(RoomEvent.TrackMuted, onTrackMuted)
+    room.on(RoomEvent.TrackUnmuted, onTrackUnmuted)
     room.on(RoomEvent.ParticipantDisconnected, onParticipantDisconnected)
     room.on(RoomEvent.ActiveSpeakersChanged, onActiveSpeakersChanged)
 
@@ -180,6 +230,8 @@ export function useLiveKitVoice(
       mounted = false
       room.off(RoomEvent.TrackSubscribed, onTrackSubscribed)
       room.off(RoomEvent.TrackUnsubscribed, onTrackUnsubscribed)
+      room.off(RoomEvent.TrackMuted, onTrackMuted)
+      room.off(RoomEvent.TrackUnmuted, onTrackUnmuted)
       room.off(RoomEvent.ParticipantDisconnected, onParticipantDisconnected)
       room.off(RoomEvent.ActiveSpeakersChanged, onActiveSpeakersChanged)
       room.disconnect()
@@ -225,7 +277,10 @@ export function useLiveKitVoice(
       const gId = groupId
       if (!room || !gId) return
 
-      await room.localParticipant.setCameraEnabled(false)
+      const camPub = room.localParticipant.getTrackPublication(Track.Source.Camera)
+      if (camPub?.track) {
+        await room.localParticipant.unpublishTrack(camPub.track as LocalTrack)
+      }
       const socket = await getSocket()
       socket.emit('voice-room-video-toggle', { roomId: gId, enabled: false })
     },

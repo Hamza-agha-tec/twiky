@@ -94,7 +94,7 @@ export function useStoryViewEvents() {
             ...g,
             stories: g.stories.map((s) =>
               s.id === storyId
-                ? { ...s, views_count: [{ count: viewsCount }] }
+                ? { ...s, views_count: viewsCount }
                 : s
             ),
           }));

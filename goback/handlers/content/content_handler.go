@@ -11,12 +11,14 @@ import (
 )
 
 type ContentHandler struct {
-	contentService *services.ContentService
+	contentService  *services.ContentService
+	socketIOService *services.SocketIOService
 }
 
-func NewContentHandler(contentService *services.ContentService) *ContentHandler {
+func NewContentHandler(contentService *services.ContentService, socketIOService *services.SocketIOService) *ContentHandler {
 	return &ContentHandler{
-		contentService: contentService,
+		contentService:  contentService,
+		socketIOService: socketIOService,
 	}
 }
 
@@ -162,6 +164,11 @@ func (h *ContentHandler) RecordView(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+
+	h.socketIOService.BroadcastToUser(result.OwnerID, "storyViewed", map[string]interface{}{
+		"storyId":    result.StoryID,
+		"viewsCount": result.ViewsCount,
+	})
 
 	return c.JSON(http.StatusOK, result)
 }

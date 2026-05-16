@@ -32,6 +32,7 @@ type Story struct {
 	MusicCoverURL   string    `json:"music_cover_url,omitempty" db:"music_cover_url"`
 	CreatedAt       time.Time `json:"created_at" db:"created_at"`
 	ExpiresAt       time.Time `json:"expires_at" db:"expires_at"`
+	ViewsCount      int       `json:"views_count"`
 }
 
 type StoryView struct {

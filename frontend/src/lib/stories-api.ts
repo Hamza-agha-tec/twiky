@@ -33,7 +33,7 @@ export interface StoryRaw {
   caption?: string | null;
   created_at: string;
   expires_at: string;
-  views_count?: Array<{ count: number }>;
+  views_count?: number;
   music_preview_url?: string | null;
   music_title?: string | null;
   music_artist?: string | null;
