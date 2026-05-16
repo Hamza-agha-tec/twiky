@@ -12,14 +12,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Play, Pause, SkipBack, SkipForward, Volume2, VolumeX,
   Scan, FolderOpen, Users, Crown, Loader2, WifiOff, Tv2,
-  RefreshCw, X, UserMinus, ChevronDown,
+  RefreshCw, X, UserMinus,
 } from 'lucide-react'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { useLiveKitToken } from '@/hooks/use-livekit-token'
 import { useWatchRoom, type WatchParticipant } from '@/hooks/use-watch-room'
 import { UserAvatar } from '@/components/chat/user-avatar'
@@ -143,25 +137,59 @@ function HostPublisher({ videoRef }: { videoRef: React.RefObject<HTMLVideoElemen
 }
 
 // ── Member row with per-member timer ─────────────────────────────────────
-function MemberRow({ p }: { p: WatchParticipant }) {
+function MemberRow({ p, canKick, onKick }: { p: WatchParticipant; canKick?: boolean; onKick?: (id: string) => void }) {
   const elapsed = useElapsed(p.joinedAt)
+  const hasGeekBanner = p.subPlan === 'GEEK' && Boolean(p.bannerUrl)
   return (
-    <div className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-muted/50 transition-colors">
-      <div className="relative shrink-0">
-        <UserAvatar src={p.avatarUrl} alt={p.username} className="h-8 w-8 rounded-full" />
+    <div className={cn(
+      'group/watch-participant relative flex min-h-7 items-center gap-2 overflow-hidden rounded-lg px-2 py-0.5',
+      hasGeekBanner && 'transition-shadow duration-300 ease-out hover:shadow-[0_10px_22px_rgba(0,0,0,0.22)]',
+      'hover:bg-accent/40 transition-colors',
+    )}>
+      {hasGeekBanner && (
+        <>
+          <motion.img
+            src={p.bannerUrl ?? ''}
+            alt=""
+            aria-hidden="true"
+            draggable={false}
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-300 group-hover/watch-participant:opacity-100"
+            initial={false}
+            whileHover={{ scale: 1.05 }}
+            transition={{ duration: 0.35, ease: 'easeOut' }}
+          />
+          <span className="pointer-events-none absolute inset-0 bg-gradient-to-r from-sidebar/95 via-sidebar/58 to-sidebar/18 opacity-0 transition-opacity duration-300 group-hover/watch-participant:opacity-100" />
+          <span className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-[linear-gradient(90deg,rgba(0,0,0,0.92)_0%,rgba(0,0,0,0.72)_34%,rgba(0,0,0,0.34)_68%,rgba(0,0,0,0)_100%)] opacity-0 shadow-[inset_18px_0_22px_rgba(0,0,0,0.86)] transition-opacity duration-300 group-hover/watch-participant:opacity-100" />
+        </>
+      )}
+      <div className="relative z-10 shrink-0">
+        <UserAvatar src={p.avatarUrl} alt={p.username} className="h-5 w-5 rounded-full" />
         {p.isHost && (
-          <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 ring-2 ring-background">
-            <Crown className="h-2 w-2 text-white" />
+          <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-amber-500 ring-1 ring-sidebar">
+            <Crown className="h-1.5 w-1.5 text-white" />
           </span>
         )}
       </div>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[12px] font-semibold text-foreground">{p.username}</p>
-        {p.isHost
-          ? <p className="text-[10px] text-amber-500">Host</p>
-          : <p className="text-[10px] text-muted-foreground">{elapsed}</p>
-        }
-      </div>
+      <span className={cn(
+        'relative z-10 min-w-0 flex-1 truncate text-[11px] font-medium transition-colors duration-300 text-muted-foreground',
+        hasGeekBanner && 'group-hover/watch-participant:text-white',
+      )}>
+        {p.username}
+      </span>
+      {p.isHost && (
+        <span className="relative z-10 shrink-0 text-[9px] font-bold text-amber-500">HOST</span>
+      )}
+      {canKick && !p.isHost && (
+        <motion.button
+          whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.88 }}
+          transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+          onClick={() => onKick?.(p.userId)}
+          className="relative z-10 shrink-0 flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity group-hover/watch-participant:opacity-100 hover:text-destructive"
+          title={`Kick ${p.username}`}
+        >
+          <UserMinus className="h-3 w-3" />
+        </motion.button>
+      )}
     </div>
   )
 }
@@ -201,17 +229,11 @@ function WatchRoomInner({
   const [dragging, setDragging] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(false)
   const [flashIcon, setFlashIcon] = useState<'play' | 'pause' | null>(null)
+  const [flashSeek, setFlashSeek] = useState<'back' | 'forward' | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [watchersOpen, setWatchersOpen] = useState(false)
 
   const sessionTimer = useElapsed(sessionStartedAt ?? 0)
-
-  useEffect(() => {
-    if (!isFullscreen) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsFullscreen(false) }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [isFullscreen])
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -247,7 +269,20 @@ function WatchRoomInner({
     video.currentTime = t
     setProgress(t)
     emitSeek(t)
+    setFlashSeek(sec < 0 ? 'back' : 'forward')
+    setTimeout(() => setFlashSeek(null), 600)
   }, [videoRef, emitSeek])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsFullscreen(false)
+      if (!isHost || !fileLoaded) return
+      if (e.key === 'ArrowLeft') { e.preventDefault(); skip(-10) }
+      if (e.key === 'ArrowRight') { e.preventDefault(); skip(10) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isFullscreen, isHost, fileLoaded, skip])
 
   const handleVolumeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const v = Number(e.target.value)
@@ -323,6 +358,39 @@ function WatchRoomInner({
           onPause={() => setPlaying(false)}
           playsInline
         />
+        {/* Seek flash */}
+        <AnimatePresence>
+          {flashSeek && (
+            <motion.div
+              key={flashSeek}
+              className={cn(
+                'pointer-events-none absolute inset-y-0 z-30 flex w-1/3 items-center',
+                flashSeek === 'back' ? 'left-0 justify-start pl-6' : 'right-0 justify-end pr-6',
+              )}
+              initial={{ opacity: 1 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.35 }}
+            >
+              <motion.div
+                className="flex flex-col items-center gap-1"
+                initial={{ scale: 0.7, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 1.2, opacity: 0 }}
+                transition={{ duration: 0.25, ease: 'easeOut' }}
+              >
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black/50 backdrop-blur-sm">
+                  {flashSeek === 'back'
+                    ? <SkipBack className="h-7 w-7 fill-white text-white" />
+                    : <SkipForward className="h-7 w-7 fill-white text-white" />
+                  }
+                </div>
+                <span className="text-[11px] font-semibold text-white drop-shadow">10s</span>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Center play/pause flash */}
         <AnimatePresence>
           {flashIcon && (
@@ -356,11 +424,6 @@ function WatchRoomInner({
             >
               <Tv2 className="h-4 w-4 shrink-0 text-primary" />
               <span className="text-[13px] font-semibold text-foreground">Watch Together</span>
-              {isHost && (
-                <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-500 ring-1 ring-amber-500/30">
-                  Host
-                </span>
-              )}
               <span className="ml-auto text-[11px] text-muted-foreground">
                 {participants.length} watching
               </span>
@@ -523,34 +586,6 @@ function WatchRoomInner({
                     {/* Leave / End */}
                     {isHost ? (
                       <div className="flex items-center gap-1">
-                        {/* Kick individual — dropdown of non-host participants */}
-                        {participants.filter(p => !p.isHost).length > 0 && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <motion.button
-                                title="Kick viewer"
-                                whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.9 }}
-                                transition={{ type: 'spring', stiffness: 400, damping: 17 }}
-                                className="flex h-9 items-center gap-1 rounded-xl bg-amber-500/10 px-2 text-amber-500 transition-colors hover:bg-amber-500/20"
-                              >
-                                <UserMinus className="h-4 w-4" />
-                                <ChevronDown className="h-3 w-3" />
-                              </motion.button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-44 bg-sidebar border-border">
-                              {participants.filter(p => !p.isHost).map(p => (
-                                <DropdownMenuItem
-                                  key={p.userId}
-                                  className="text-destructive focus:text-destructive"
-                                  onClick={() => onKick(p.userId)}
-                                >
-                                  <UserMinus className="mr-2 h-3.5 w-3.5" />
-                                  {p.username}
-                                </DropdownMenuItem>
-                              ))}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
                         <motion.button
                           title="End watch party (kicks all)"
                           whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.9 }}
@@ -617,7 +652,7 @@ function WatchRoomInner({
                   <p className="text-[12px] font-semibold text-foreground">Nobody here yet</p>
                 </div>
               ) : (
-                participants.map((p) => <MemberRow key={p.userId} p={p} />)
+                participants.map((p) => <MemberRow key={p.userId} p={p} canKick={isHost} onKick={onKick} />)
               )}
             </div>
           </motion.div>
