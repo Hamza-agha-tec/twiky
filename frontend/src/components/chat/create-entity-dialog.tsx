@@ -2,18 +2,9 @@
 
 import { type ChangeEvent, FormEvent, useRef, useState } from 'react'
 import { Globe, Hash, ImagePlus, Lock, MessagesSquare, Tv, UserCircle2, Volume2 } from 'lucide-react'
-
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
@@ -23,7 +14,7 @@ export interface CreateEntityValues {
   avatarFile?: File | null
   bannerFile?: File | null
   access_type?: 'PUBLIC' | 'PRIVATE'
-  group_type?: 'text' | 'board' | 'voice' | 'watch',
+  group_type?: 'text' | 'board' | 'voice' | 'watch'
   type?: 'NORMAL' | 'WORKSPACE'
 }
 
@@ -43,6 +34,45 @@ interface CreateEntityDialogProps {
   submitLabel: string
   title: string
 }
+
+const GROUP_TYPES = [
+  {
+    value: 'text' as const,
+    icon: Hash,
+    label: 'Text',
+    desc: 'Messages & threads',
+    gradient: 'from-violet-500/20 to-purple-500/10',
+    color: 'text-violet-400',
+    border: 'border-violet-500/30',
+  },
+  {
+    value: 'board' as const,
+    icon: MessagesSquare,
+    label: 'Board',
+    desc: 'Forum-style posts',
+    gradient: 'from-blue-500/20 to-cyan-500/10',
+    color: 'text-blue-400',
+    border: 'border-blue-500/30',
+  },
+  {
+    value: 'voice' as const,
+    icon: Volume2,
+    label: 'Voice',
+    desc: 'Live audio rooms',
+    gradient: 'from-emerald-500/20 to-green-500/10',
+    color: 'text-emerald-400',
+    border: 'border-emerald-500/30',
+  },
+  {
+    value: 'watch' as const,
+    icon: Tv,
+    label: 'Watch',
+    desc: 'Watch together',
+    gradient: 'from-amber-500/20 to-orange-500/10',
+    color: 'text-amber-400',
+    border: 'border-amber-500/30',
+  },
+] as const
 
 export function CreateEntityDialog({
   contextLabel,
@@ -76,19 +106,13 @@ export function CreateEntityDialog({
   const avatarRef = useRef<HTMLInputElement>(null)
 
   const previewName = name.trim() || (entityKind === 'channel' ? 'Creator Hub' : 'showroom-updates')
+  const activeType = GROUP_TYPES.find((t) => t.value === groupType) ?? GROUP_TYPES[0]
 
   function handleOpenChange(nextOpen: boolean) {
-    setName(defaultName)
-    setDetails(defaultDescription)
-    setAccessType('PUBLIC')
-    setGroupType('text')
-    setGroupAccess('PUBLIC')
-    setBannerUrl(null)
-    setAvatarUrl(null)
-    setBannerFile(null)
-    setAvatarFile(null)
-    setSubmitError(null)
-    setIsSubmitting(false)
+    setName(defaultName); setDetails(defaultDescription)
+    setAccessType('PUBLIC'); setGroupType('text'); setGroupAccess('PUBLIC')
+    setBannerUrl(null); setAvatarUrl(null); setBannerFile(null); setAvatarFile(null)
+    setSubmitError(null); setIsSubmitting(false)
     onOpenChange(nextOpen)
   }
 
@@ -96,8 +120,7 @@ export function CreateEntityDialog({
     event.preventDefault()
     const nextName = name.trim()
     if (!nextName) return
-    setSubmitError(null)
-    setIsSubmitting(true)
+    setSubmitError(null); setIsSubmitting(true)
     try {
       await onSubmit({
         name: nextName,
@@ -115,245 +138,269 @@ export function CreateEntityDialog({
   }
 
   function handleBannerChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setBannerFile(file)
-    setBannerUrl(URL.createObjectURL(file))
+    const file = e.target.files?.[0]; if (!file) return
+    setBannerFile(file); setBannerUrl(URL.createObjectURL(file))
   }
 
   function handleAvatarChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setAvatarFile(file)
-    setAvatarUrl(URL.createObjectURL(file))
+    const file = e.target.files?.[0]; if (!file) return
+    setAvatarFile(file); setAvatarUrl(URL.createObjectURL(file))
   }
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent
-        className={cn(
-          'overflow-hidden border-border p-0 shadow-2xl',
-          entityKind === 'channel' ? 'sm:max-w-[400px]' : 'sm:max-w-[320px]',
-        )}
-      >
-        <DialogHeader className="border-b border-border bg-sidebar/80 px-3 py-3">
-          <div className="inline-flex w-fit items-center rounded-full border border-border bg-background px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+      <DialogContent className={cn(
+        '!w-[min(calc(100%-1.5rem),52rem)] !max-w-[52rem] p-0 gap-0 overflow-hidden',
+      )}>
+        {/* Header */}
+        <div className="px-7 pt-6 pb-5 border-b border-border/40">
+          <span className="inline-flex items-center rounded-full bg-muted/80 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">
             {entityKind === 'channel' ? 'New channel' : 'New group'}
-          </div>
-          <DialogTitle className="pt-1 text-[14px]">{title}</DialogTitle>
-          <DialogDescription className="text-[11px] leading-5">{description}</DialogDescription>
-        </DialogHeader>
+          </span>
+          <h2 className="text-lg font-bold text-foreground">{title}</h2>
+          <p className="mt-0.5 text-[13px] text-muted-foreground">{description}</p>
+        </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3 px-3 py-3">
-          {entityKind === 'channel' ? (
-            <div className="flex gap-2">
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-[10px] text-muted-foreground">Avatar</span>
-                <button
-                  type="button"
-                  onClick={() => avatarRef.current?.click()}
-                  className="group relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl border border-dashed border-border bg-muted/40 transition-colors hover:bg-muted/70"
-                >
-                  {avatarUrl ? (
-                    <img src={avatarUrl} alt="Avatar" className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex flex-col items-center gap-1 text-muted-foreground">
-                      <UserCircle2 className="h-5 w-5" />
-                      <span className="text-[9px]">Upload</span>
+        <form onSubmit={handleSubmit}>
+          <div className="px-7 py-6">
+            {entityKind === 'group' ? (
+              <div className="grid grid-cols-[1fr_1.1fr] gap-8">
+                {/* Left: type + access */}
+                <div className="space-y-5">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70 mb-3">Group type</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {GROUP_TYPES.map(({ value, icon: Icon, label, desc, gradient, color, border }) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setGroupType(value)}
+                          className={cn(
+                            'relative flex flex-col items-start gap-2 rounded-xl border p-3.5 text-left transition-all duration-200',
+                            groupType === value
+                              ? `bg-gradient-to-br ${gradient} ${border} border shadow-sm`
+                              : 'border-border/50 hover:border-border hover:bg-muted/40',
+                          )}
+                        >
+                          <div className={cn(
+                            'flex h-8 w-8 items-center justify-center rounded-lg',
+                            groupType === value ? `bg-gradient-to-br ${gradient} border ${border}` : 'bg-muted',
+                          )}>
+                            <Icon className={cn('h-4 w-4', groupType === value ? color : 'text-muted-foreground')} />
+                          </div>
+                          <div>
+                            <p className={cn('text-[12px] font-semibold', groupType === value ? 'text-foreground' : 'text-foreground/80')}>{label}</p>
+                            <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">{desc}</p>
+                          </div>
+                          {groupType === value && (
+                            <div className={cn('absolute top-2.5 right-2.5 h-1.5 w-1.5 rounded-full', color.replace('text-', 'bg-'))} />
+                          )}
+                        </button>
+                      ))}
                     </div>
-                  )}
-                  {avatarUrl && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-                      <UserCircle2 className="h-4 w-4 text-white" />
-                    </div>
-                  )}
-                </button>
-                <input ref={avatarRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
-              </div>
-
-              <div className="flex flex-1 flex-col gap-1">
-                <span className="text-[10px] text-muted-foreground">Banner</span>
-                <button
-                  type="button"
-                  onClick={() => bannerRef.current?.click()}
-                  className="group relative flex h-16 w-full items-center justify-center overflow-hidden rounded-xl border border-dashed border-border bg-muted/40 transition-colors hover:bg-muted/70"
-                >
-                  {bannerUrl ? (
-                    <img src={bannerUrl} alt="Banner" className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex flex-col items-center gap-1 text-muted-foreground">
-                      <ImagePlus className="h-5 w-5" />
-                      <span className="text-[9px]">Upload</span>
-                    </div>
-                  )}
-                  {bannerUrl && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-                      <ImagePlus className="h-4 w-4 text-white" />
-                    </div>
-                  )}
-                </button>
-                <input ref={bannerRef} type="file" accept="image/*" className="hidden" onChange={handleBannerChange} />
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2.5">
-              {/* Preview */}
-              <div className="rounded-2xl border border-border bg-sidebar/50 p-2.5">
-                <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Preview</p>
-                <div className="mt-2 flex items-center gap-2.5">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-white">
-                    {groupType === 'voice' ? <Volume2 className="h-4 w-4" /> : groupType === 'watch' ? <Tv className="h-4 w-4" /> : groupType === 'board' ? <MessagesSquare className="h-4 w-4" /> : <Hash className="h-4 w-4" />}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <p className="truncate text-[12px] font-semibold text-foreground">
-                        {groupType === 'board' ? 'Board: ' : groupType === 'voice' || groupType === 'watch' ? '' : '#'}{previewName}
-                      </p>
-                      {groupAccess === 'PRIVATE' && (
-                        <Lock className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
-                      )}
+
+                  {/* Access */}
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70 mb-3">Access</p>
+                    <div className="flex rounded-xl border border-border/50 overflow-hidden">
+                      {(['PUBLIC', 'PRIVATE'] as const).map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => setGroupAccess(v)}
+                          className={cn(
+                            'flex flex-1 items-center justify-center gap-2 py-2.5 text-[12px] font-medium transition-all',
+                            groupAccess === v ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
+                          )}
+                        >
+                          {v === 'PRIVATE' ? <Lock className="h-3.5 w-3.5" /> : <Globe className="h-3.5 w-3.5" />}
+                          {v === 'PRIVATE' ? 'Private' : 'Public'}
+                        </button>
+                      ))}
                     </div>
-                    <p className="mt-0.5 text-[10px] leading-4 text-muted-foreground">
-                      {contextLabel ? `Inside ${contextLabel}` : 'Added to current channel'}
-                      {' · '}{groupAccess === 'PRIVATE' ? 'Private' : 'Public'}
+                    <p className="mt-2 text-[11px] text-muted-foreground/70">
+                      {groupAccess === 'PRIVATE' ? 'Members must request to join.' : 'All channel members can access.'}
                     </p>
                   </div>
                 </div>
-              </div>
 
-              {/* Type selector */}
-              <div className="grid grid-cols-2 gap-1.5">
-                {([
-                  { value: 'text', icon: Hash, label: 'Text', desc: 'Messages & threads' },
-                  { value: 'board', icon: MessagesSquare, label: 'Board', desc: 'Forum-style topics' },
-                  { value: 'voice', icon: Volume2, label: 'Voice', desc: 'Audio conversations' },
-                  { value: 'watch', icon: Tv, label: 'Watch', desc: 'Watch together room' },
-                ] as const).map(({ value, icon: Icon, label, desc }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setGroupType(value)}
-                    className={cn(
-                      'flex flex-col items-start gap-1 rounded-xl border p-2.5 text-left transition-colors',
-                      groupType === value ? 'border-primary bg-primary/5' : 'border-border hover:bg-accent',
-                    )}
-                  >
-                    <Icon className={cn('h-3.5 w-3.5', groupType === value ? 'text-primary' : 'text-muted-foreground')} />
-                    <span className="text-[11px] font-semibold text-foreground">{label}</span>
-                    <span className="text-[9px] leading-3 text-muted-foreground">{desc}</span>
-                  </button>
-                ))}
-              </div>
+                {/* Right: preview + fields */}
+                <div className="space-y-5">
+                  {/* Preview */}
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70 mb-3">Preview</p>
+                    <div className={cn('rounded-xl border p-4 bg-gradient-to-br', activeType.gradient, activeType.border)}>
+                      <div className="flex items-center gap-3">
+                        <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-background/60', activeType.border)}>
+                          <activeType.icon className={cn('h-5 w-5', activeType.color)} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <p className="truncate text-[13px] font-bold text-foreground">
+                              {groupType === 'board' ? 'Board: ' : groupType !== 'voice' && groupType !== 'watch' ? '#' : ''}{previewName}
+                            </p>
+                            {groupAccess === 'PRIVATE' && <Lock className="h-3 w-3 text-muted-foreground shrink-0" />}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            {contextLabel ? `Inside ${contextLabel}` : 'Added to channel'} · {groupAccess === 'PRIVATE' ? 'Private' : 'Public'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
-              {/* Access toggle */}
-              <div className="flex items-center gap-2 rounded-xl border border-border bg-background px-2.5 py-2">
-                {groupAccess === 'PRIVATE' ? (
-                  <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                ) : (
-                  <Globe className="h-3.5 w-3.5 text-muted-foreground" />
-                )}
-                <span className="flex-1 text-[11px] font-medium text-foreground">
-                  {groupAccess === 'PRIVATE' ? 'Private' : 'Public'}
-                </span>
-                <span className="text-[10px] text-muted-foreground">
-                  {groupAccess === 'PRIVATE' ? 'Request to join' : 'Open to members'}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setGroupAccess((v) => (v === 'PUBLIC' ? 'PRIVATE' : 'PUBLIC'))}
-                  className={cn(
-                    'relative ml-1 inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none',
-                    groupAccess === 'PRIVATE' ? 'bg-primary' : 'bg-muted',
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
-                      groupAccess === 'PRIVATE' ? 'translate-x-4' : 'translate-x-0',
-                    )}
+                  {/* Name */}
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70">{nameLabel}</label>
+                    <Input
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder={namePlaceholder}
+                      className="h-10 rounded-xl border-border/60 bg-muted/30 text-[13px] focus:border-border"
+                      autoFocus
+                    />
+                  </div>
+
+                  {/* Description */}
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70">{descriptionLabel}</label>
+                    <Textarea
+                      value={details}
+                      onChange={(e) => setDetails(e.target.value)}
+                      placeholder={descriptionPlaceholder}
+                      className="min-h-[80px] rounded-xl border-border/60 bg-muted/30 text-[13px] leading-relaxed resize-none focus:border-border"
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Channel form */
+              <div className="space-y-5">
+                {/* Avatar + Banner */}
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70 mb-3">Media</p>
+                  <div className="flex gap-3">
+                    <div className="flex flex-col items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => avatarRef.current?.click()}
+                        className="group relative flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-border/60 bg-muted/40 transition-all hover:border-border hover:bg-muted/70"
+                      >
+                        {avatarUrl ? (
+                          <img src={avatarUrl} alt="Avatar" className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex flex-col items-center gap-1.5 text-muted-foreground/60">
+                            <UserCircle2 className="h-6 w-6" />
+                            <span className="text-[9px] font-medium">Avatar</span>
+                          </div>
+                        )}
+                        {avatarUrl && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+                            <UserCircle2 className="h-5 w-5 text-white" />
+                          </div>
+                        )}
+                      </button>
+                      <input ref={avatarRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+                    </div>
+
+                    <div className="flex-1 flex flex-col gap-2">
+                      <button
+                        type="button"
+                        onClick={() => bannerRef.current?.click()}
+                        className="group relative flex h-20 w-full items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-border/60 bg-muted/40 transition-all hover:border-border hover:bg-muted/70"
+                      >
+                        {bannerUrl ? (
+                          <img src={bannerUrl} alt="Banner" className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex flex-col items-center gap-1.5 text-muted-foreground/60">
+                            <ImagePlus className="h-6 w-6" />
+                            <span className="text-[9px] font-medium">Banner image</span>
+                          </div>
+                        )}
+                        {bannerUrl && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+                            <ImagePlus className="h-5 w-5 text-white" />
+                          </div>
+                        )}
+                      </button>
+                      <input ref={bannerRef} type="file" accept="image/*" className="hidden" onChange={handleBannerChange} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70">{nameLabel}</label>
+                    <Input
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder={namePlaceholder}
+                      className="h-10 rounded-xl border-border/60 bg-muted/30 text-[13px]"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70">Access</label>
+                    <div className="flex h-10 rounded-xl border border-border/50 overflow-hidden">
+                      {(['PUBLIC', 'PRIVATE'] as const).map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => setAccessType(v)}
+                          className={cn(
+                            'flex flex-1 items-center justify-center gap-1.5 text-[11px] font-medium transition-all',
+                            accessType === v ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
+                          )}
+                        >
+                          {v === 'PRIVATE' ? <Lock className="h-3 w-3" /> : <Globe className="h-3 w-3" />}
+                          {v === 'PRIVATE' ? 'Private' : 'Public'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70">{descriptionLabel}</label>
+                  <Textarea
+                    value={details}
+                    onChange={(e) => setDetails(e.target.value)}
+                    placeholder={descriptionPlaceholder}
+                    className="min-h-[80px] rounded-xl border-border/60 bg-muted/30 text-[13px] leading-relaxed resize-none"
                   />
-                </button>
+                </div>
               </div>
-            </div>
-          )}
-
-          {entityKind === 'channel' ? (
-            <>
-              <div className="flex items-center gap-2 rounded-xl border border-border bg-background px-2 py-1.5">
-                <MessagesSquare className="h-3.5 w-3.5 text-primary" />
-                <span className="text-[10px] text-muted-foreground">
-                  #general is ready from the start
-                </span>
-              </div>
-              <div className="flex items-center gap-2 rounded-xl border border-border bg-background px-2.5 py-2">
-                {accessType === 'PRIVATE' ? (
-                  <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                ) : (
-                  <Globe className="h-3.5 w-3.5 text-muted-foreground" />
-                )}
-                <span className="flex-1 text-[11px] font-medium text-foreground">
-                  {accessType === 'PRIVATE' ? 'Private' : 'Public'}
-                </span>
-                <span className="text-[10px] text-muted-foreground">
-                  {accessType === 'PRIVATE' ? 'Invite only' : 'Anyone can join'}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setAccessType((v) => (v === 'PUBLIC' ? 'PRIVATE' : 'PUBLIC'))}
-                  className={cn(
-                    'relative ml-1 inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none',
-                    accessType === 'PRIVATE' ? 'bg-primary' : 'bg-muted',
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
-                      accessType === 'PRIVATE' ? 'translate-x-4' : 'translate-x-0',
-                    )}
-                  />
-                </button>
-              </div>
-            </>
-          ) : null}
-
-          <div className="space-y-1.5">
-            <Label htmlFor="entity-name" className="text-[11px]">
-              {nameLabel}
-            </Label>
-            <Input
-              id="entity-name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder={namePlaceholder}
-              className="h-10 rounded-xl border-border bg-background text-[12px]"
-              autoFocus
-            />
+            )}
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="entity-description" className="text-[11px]">
-              {descriptionLabel}
-            </Label>
-            <Textarea
-              id="entity-description"
-              value={details}
-              onChange={(event) => setDetails(event.target.value)}
-              placeholder={descriptionPlaceholder}
-              className="min-h-14 rounded-xl border-border bg-background text-[12px] leading-5"
-            />
-          </div>
-
-          <DialogFooter className="border-t border-border px-0 pt-3">
+          {/* Footer */}
+          <div className="flex items-center justify-between border-t border-border/40 px-7 py-4">
             {submitError ? (
-              <p className="mr-auto self-center text-[11px] text-destructive">{submitError}</p>
-            ) : null}
-            <Button type="button" variant="ghost" onClick={() => handleOpenChange(false)} disabled={isSubmitting}>
-              Cancel
-            </Button>
-            <Button type="submit" className="rounded-xl px-4" disabled={isSubmitting}>
-              {isSubmitting ? 'Creating...' : submitLabel}
-            </Button>
-          </DialogFooter>
+              <p className="text-[12px] text-destructive">{submitError}</p>
+            ) : (
+              <p className="text-[11px] text-muted-foreground/50">
+                {entityKind === 'group' ? `${activeType.label} group · ${groupAccess === 'PRIVATE' ? 'Private' : 'Public'}` : '#general added automatically'}
+              </p>
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleOpenChange(false)}
+                disabled={isSubmitting}
+                className="rounded-xl px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting || !name.trim()}
+                className="rounded-xl bg-white text-black px-5 py-2 text-sm font-semibold hover:bg-white/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                {isSubmitting ? 'Creating…' : submitLabel}
+              </button>
+            </div>
+          </div>
         </form>
       </DialogContent>
     </Dialog>

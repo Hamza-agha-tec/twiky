@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import {
   Heart,
   MessageCircle,
@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { UserAvatar } from '@/components/chat/user-avatar'
+import { HoverProfileCard } from '@/components/chat/hover-profile-card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -647,13 +648,20 @@ function PostDetail({
   myId,
   isAdmin,
   onBack,
+  onMessage,
+  onViewProfile,
+  scrollToComments: shouldScroll,
 }: {
   post: BoardPost
   groupId: string
   myId?: string
   isAdmin: boolean
   onBack: () => void
+  onMessage?: (userId: string) => void
+  onViewProfile?: (userId: string, userData?: { name: string; avatarUrl: string | null }) => void
+  scrollToComments?: boolean
 }) {
+  const commentsRef = useRef<HTMLDivElement>(null)
   const { data: comments = [] } = useBoardComments(post.id)
   const addComment = useAddBoardComment(post.id, groupId)
   const deletePost = useDeleteBoardPost(groupId)
@@ -664,6 +672,12 @@ function PostDetail({
   const [mediaUrls, setMediaUrls] = useState<string[]>([])
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (shouldScroll) {
+      setTimeout(() => commentsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150)
+    }
+  }, [shouldScroll])
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -689,7 +703,6 @@ function PostDetail({
       <div className="flex items-center gap-3 border-b border-border/40 px-4 py-3 shrink-0">
         <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-muted px-2 py-1.5 -ml-2">
           <ArrowLeft className="h-4 w-4" />
-          <span className="hidden sm:inline text-xs font-medium">Board</span>
         </button>
         <div className="h-4 w-px bg-border/50" />
         <span className="text-sm font-medium truncate flex-1 text-muted-foreground">{post.title}</span>
@@ -724,7 +737,14 @@ function PostDetail({
           {/* Author row */}
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2.5">
-              <UserAvatar src={post.author.avatar_url} alt={post.author.username} className="h-9 w-9 shrink-0 rounded-full object-cover ring-2 ring-border/40" />
+              <HoverProfileCard
+                userId={post.author_id}
+                onMessage={myId !== post.author_id ? onMessage : undefined}
+                onViewProfile={onViewProfile ? (uid) => onViewProfile(uid, { name: post.author.username, avatarUrl: post.author.avatar_url }) : undefined}
+                side="right"
+              >
+                <UserAvatar src={post.author.avatar_url} alt={post.author.username} className="h-9 w-9 shrink-0 rounded-full object-cover ring-2 ring-border/40 cursor-pointer" />
+              </HoverProfileCard>
               <div>
                 <div className="flex items-center gap-1.5">
                   <span className={cn('text-sm font-semibold', nameClass(post.author.sub_plan))}>{post.author.username}</span>
@@ -777,7 +797,7 @@ function PostDetail({
           </div>
         </div>
 
-        <div className="px-5 py-4 space-y-4">
+        <div ref={commentsRef} className="px-5 py-4 space-y-4">
           {comments.length === 0 && (
             <p className="text-center text-sm text-muted-foreground py-6">No comments yet. Be the first!</p>
           )}
@@ -839,6 +859,9 @@ function PostCard({
   isAdmin,
   onClick,
   index = 0,
+  onMessage,
+  onViewProfile,
+  onCommentClick,
 }: {
   post: BoardPost
   groupId: string
@@ -846,6 +869,9 @@ function PostCard({
   isAdmin: boolean
   onClick: () => void
   index?: number
+  onMessage?: (userId: string) => void
+  onViewProfile?: (userId: string, userData?: { name: string; avatarUrl: string | null }) => void
+  onCommentClick?: () => void
 }) {
   const likePost = useLikeBoardPost(groupId)
   const deletePost = useDeleteBoardPost(groupId)
@@ -868,11 +894,20 @@ function PostCard({
     >
       {/* Author row */}
       <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
-        <UserAvatar
-          src={post.author.avatar_url}
-          alt={post.author.username}
-          className="h-8 w-8 rounded-full object-cover shrink-0 ring-2 ring-border/30"
-        />
+        <HoverProfileCard
+          userId={post.author_id}
+          onMessage={myId !== post.author_id ? onMessage : undefined}
+          onViewProfile={onViewProfile ? (uid) => onViewProfile(uid, { name: post.author.username, avatarUrl: post.author.avatar_url }) : undefined}
+          side="right"
+        >
+          <div onClick={(e) => e.stopPropagation()}>
+            <UserAvatar
+              src={post.author.avatar_url}
+              alt={post.author.username}
+              className="h-8 w-8 rounded-full object-cover shrink-0 ring-2 ring-border/30 cursor-pointer"
+            />
+          </div>
+        </HoverProfileCard>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <span className={cn('text-[13px] font-semibold leading-none', nameClass(post.author.sub_plan))}>
@@ -965,10 +1000,13 @@ function PostCard({
           {post.like_count > 0 && <span>{formatCount(post.like_count)}</span>}
         </button>
 
-        <span className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
+        <button
+          onClick={(e) => { e.stopPropagation(); onCommentClick?.() }}
+          className="flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+        >
           <MessageCircle className="h-4 w-4" />
           {post.comment_count > 0 && <span>{post.comment_count}</span>}
-        </span>
+        </button>
 
         <button
           onClick={(e) => e.stopPropagation()}
@@ -1009,6 +1047,8 @@ export function BoardView({
   channelAvatar,
   myId,
   isAdmin,
+  onMessage,
+  onViewProfile,
 }: {
   groupId: string
   groupName: string
@@ -1016,17 +1056,20 @@ export function BoardView({
   channelAvatar?: string
   myId?: string
   isAdmin: boolean
+  onMessage?: (userId: string) => void
+  onViewProfile?: (userId: string, userData?: { name: string; avatarUrl: string | null }) => void
 }) {
   const { data: posts = [], isLoading } = useBoardPosts(groupId)
   useBoardRealtime(groupId)
 
   const [createOpen, setCreateOpen] = useState(false)
   const [activePost, setActivePost] = useState<BoardPost | null>(null)
+  const [scrollToComments, setScrollToComments] = useState(false)
 
   if (activePost) {
     const live = posts.find((p) => p.id === activePost.id) ?? activePost
     return (
-      <PostDetail post={live} groupId={groupId} myId={myId} isAdmin={isAdmin} onBack={() => setActivePost(null)} />
+      <PostDetail post={live} groupId={groupId} myId={myId} isAdmin={isAdmin} onBack={() => { setActivePost(null); setScrollToComments(false) }} onMessage={onMessage} onViewProfile={onViewProfile} scrollToComments={scrollToComments} />
     )
   }
 
@@ -1061,10 +1104,9 @@ export function BoardView({
         <div className="ml-auto">
           <button
             onClick={() => setCreateOpen(true)}
-            className="flex items-center gap-1.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 hover:border-white/20 px-3 h-8 text-xs font-semibold text-white/90 transition-all duration-200 backdrop-blur-sm"
+            className="flex items-center justify-center h-7 w-7 text-muted-foreground hover:text-foreground transition-colors"
           >
-            <Plus className="h-3.5 w-3.5" />
-            New Post
+            <Plus className="h-5 w-5" />
           </button>
         </div>
       </div>
@@ -1115,7 +1157,7 @@ export function BoardView({
 
           {/* Pinned */}
           {pinnedPosts.map((post, i) => (
-            <PostCard key={post.id} post={post} groupId={groupId} myId={myId} isAdmin={isAdmin} onClick={() => setActivePost(post)} index={i} />
+            <PostCard key={post.id} post={post} groupId={groupId} myId={myId} isAdmin={isAdmin} onClick={() => setActivePost(post)} index={i} onMessage={onMessage} onViewProfile={onViewProfile} onCommentClick={() => { setScrollToComments(true); setActivePost(post) }} />
           ))}
 
           {pinnedPosts.length > 0 && regularPosts.length > 0 && (
@@ -1126,7 +1168,7 @@ export function BoardView({
 
           {/* Regular */}
           {regularPosts.map((post, i) => (
-            <PostCard key={post.id} post={post} groupId={groupId} myId={myId} isAdmin={isAdmin} onClick={() => setActivePost(post)} index={pinnedPosts.length + i} />
+            <PostCard key={post.id} post={post} groupId={groupId} myId={myId} isAdmin={isAdmin} onClick={() => setActivePost(post)} index={pinnedPosts.length + i} onMessage={onMessage} onViewProfile={onViewProfile} onCommentClick={() => { setScrollToComments(true); setActivePost(post) }} />
           ))}
 
           </div>
