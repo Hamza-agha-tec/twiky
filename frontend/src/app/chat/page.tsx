@@ -24,6 +24,7 @@ import {
 import { ChatWindow } from '@/components/chat/chat-window'
 import { VoiceGroupView } from '@/components/chat/voice-group-view'
 import { WatchRoomView } from '@/components/watch/watch-room-view'
+import { BoardView } from '@/components/chat/board-view'
 import { useVoicePresence, type VoicePresenceUser } from '@/hooks/use-voice-presence'
 import { useLiveKitVoice } from '@/hooks/use-livekit-voice'
 import { DirectProfileSidebar } from '@/components/chat/direct-profile-sidebar'
@@ -1923,6 +1924,16 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
             )}
           </FeedProfileSidebarDock>
         </div>
+      ) : activeGroup.kind === 'board' ? (
+        <BoardView
+          key={activeGroup.id}
+          groupId={activeGroup.id}
+          groupName={activeGroup.label}
+          channelName={activeChannel.label}
+          channelAvatar={activeChannel.avatarUrl}
+          myId={profile?.id}
+          isAdmin={activeChannel.role === 'OWNER' || activeChannel.role === 'ADMIN'}
+        />
       ) : channelFeedClosed ? (
         <WorkspaceEmptyState
           title="Group feed closed"

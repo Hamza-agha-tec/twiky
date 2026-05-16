@@ -59,7 +59,8 @@ func (s *FileService) UploadToSupabase(bucket, path string, file *multipart.File
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		return "", fmt.Errorf("supabase storage error: %s", resp.Status)
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("supabase storage error: %s: %s", resp.Status, string(body))
 	}
 
 	// Return public URL
