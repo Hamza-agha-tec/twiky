@@ -8,7 +8,7 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func userRoutes(e *echo.Echo, userService *services.UserService, contentService *services.ContentService) {
+func userRoutes(e *echo.Echo, userService *services.UserService, contentService *services.ContentService, socketIOService *services.SocketIOService) {
 
 	e.GET("/health", func(c echo.Context) error {
 		return c.JSON(200, map[string]string{"status": "ok"})
@@ -18,7 +18,7 @@ func userRoutes(e *echo.Echo, userService *services.UserService, contentService 
 	public := e.Group("/api")
 	public.GET("/users", handlers.GetAllUsers(userService))
 	public.GET("/users/:id", handlers.GetUserByID(userService))
-	public.GET("/posts/users/:id", content.NewContentHandler(contentService).GetUserPosts)
+	public.GET("/posts/users/:id", content.NewContentHandler(contentService, socketIOService).GetUserPosts)
 
 	// Protected routes — with middleware
 	protected := e.Group("/api")

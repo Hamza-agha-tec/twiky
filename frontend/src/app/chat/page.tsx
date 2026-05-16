@@ -431,7 +431,7 @@ export function ChatPageContent({ lockedView, hideRail = false }: ChatPageProps 
       created_at: s.created_at,
       user: g.user,
       isOwn: g.user.id === profile?.id,
-      viewsCount: s.views_count?.[0]?.count ?? 0,
+      viewsCount: s.views_count ?? 0,
       music_preview_url: s.music_preview_url,
       music_title: s.music_title,
       music_artist: s.music_artist,

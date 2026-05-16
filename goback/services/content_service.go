@@ -200,11 +200,13 @@ func (s *ContentService) CreateStory(userID string, req models.CreateStoryReques
 func (s *ContentService) GetFeed(userID string) ([]*models.FeedGroup, error) {
 	// Get stories from mutual followers and self with user information
 	query := `
-		SELECT 
+		SELECT
 			s.id, s.user_id, s.media_url, s.type, s.caption, s.music_preview_url, s.music_title, s.music_artist, s.music_cover_url, s.created_at, s.expires_at,
-			u.id, u.username, u.avatar_url, u.sub_plan
+			u.id, u.username, u.avatar_url, u.sub_plan,
+			COUNT(sv.story_id) AS views_count
 		FROM stories s
 		LEFT JOIN users u ON s.user_id = u.id
+		LEFT JOIN story_views sv ON sv.story_id = s.id
 		WHERE s.expires_at > CURRENT_TIMESTAMP
 		AND (
 			s.user_id = $1
@@ -219,6 +221,7 @@ func (s *ContentService) GetFeed(userID string) ([]*models.FeedGroup, error) {
 					)
 			)
 		)
+		GROUP BY s.id, s.user_id, s.media_url, s.type, s.caption, s.music_preview_url, s.music_title, s.music_artist, s.music_cover_url, s.created_at, s.expires_at, u.id, u.username, u.avatar_url, u.sub_plan
 		ORDER BY s.user_id, s.created_at DESC
 	`
 
@@ -237,6 +240,7 @@ func (s *ContentService) GetFeed(userID string) ([]*models.FeedGroup, error) {
 		err := rows.Scan(
 			&story.ID, &story.UserID, &story.MediaURL, &story.Type, &story.Caption, &story.MusicPreviewURL, &story.MusicTitle, &story.MusicArtist, &story.MusicCoverURL, &story.CreatedAt, &story.ExpiresAt,
 			&user.ID, &user.Username, &user.AvatarURL, &user.SubPlan,
+			&story.ViewsCount,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan story feed: %w", err)

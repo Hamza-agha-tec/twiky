@@ -1262,6 +1262,10 @@ func (s *SocketIOService) BroadcastToAll(event string, data interface{}) {
 	s.server.Emit(event, data)
 }
 
+func (s *SocketIOService) BroadcastToUser(userID, event string, data interface{}) {
+	s.server.To(socketio.Room("user_" + userID)).Emit(event, data)
+}
+
 func (s *SocketIOService) GetConnectedClientsCount() int {
 	s.presenceMu.RLock()
 	defer s.presenceMu.RUnlock()
