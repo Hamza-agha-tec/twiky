@@ -825,15 +825,13 @@ func (s *SocketIOService) setupHandlers() {
 			}
 			payload := asMap(datas[0])
 			callerID := mapStr(payload, "callerId")
-			calleeID := senderID()
-			if callerID == "" || calleeID == "" {
+			if callerID == "" {
 				return
 			}
 			server.To(socketio.Room("user_" + callerID)).Emit("dm-call-rejected", map[string]interface{}{
 				"conversationId": payload["conversationId"],
 				"reason":         payload["reason"],
 			})
-			go s.saveDirectCallLog(mapStr(payload, "conversationId"), calleeID, "declined", mapStr(payload, "callType"), 0)
 		})
 		client.On("dm-call-cancelled", func(datas ...any) {
 			if len(datas) == 0 {
@@ -841,14 +839,12 @@ func (s *SocketIOService) setupHandlers() {
 			}
 			payload := asMap(datas[0])
 			calleeID := mapStr(payload, "calleeId")
-			callerID := senderID()
-			if calleeID == "" || callerID == "" {
+			if calleeID == "" {
 				return
 			}
 			server.To(socketio.Room("user_" + calleeID)).Emit("dm-call-cancelled", map[string]interface{}{
 				"conversationId": payload["conversationId"],
 			})
-			go s.saveDirectCallLog(mapStr(payload, "conversationId"), callerID, "cancelled", mapStr(payload, "callType"), 0)
 		})
 		client.On("dm-call-ended", func(datas ...any) {
 			if len(datas) == 0 {
@@ -856,23 +852,12 @@ func (s *SocketIOService) setupHandlers() {
 			}
 			payload := asMap(datas[0])
 			peerID := mapStr(payload, "peerId")
-			sID := senderID()
-			if peerID == "" || sID == "" {
+			if peerID == "" {
 				return
-			}
-			durationSecs := 0
-			if d, ok := payload["durationSecs"]; ok {
-				switch v := d.(type) {
-				case float64:
-					durationSecs = int(v)
-				case int:
-					durationSecs = v
-				}
 			}
 			server.To(socketio.Room("user_" + peerID)).Emit("dm-call-ended", map[string]interface{}{
 				"conversationId": payload["conversationId"],
 			})
-			go s.saveDirectCallLog(mapStr(payload, "conversationId"), sID, "ended", mapStr(payload, "callType"), durationSecs)
 		})
 
 		// ── Watch party ──────────────────────────────────────────────────────
@@ -1253,60 +1238,6 @@ func (s *SocketIOService) setupHandlers() {
 			s.trackOffline(socketID)
 		})
 	})
-}
-
-// ── call log helper ───────────────────────────────────────────────────────────
-
-func (s *SocketIOService) saveDirectCallLog(conversationID, senderID, outcome, callType string, durationSecs int) {
-	if conversationID == "" || senderID == "" {
-		return
-	}
-	// Encode duration into content: "ended:120" or just "ended"
-	content := outcome
-	if durationSecs > 0 {
-		content = fmt.Sprintf("%s:%d", outcome, durationSecs)
-	}
-	var msgID string
-	var createdAt time.Time
-	err := s.db.QueryRow(`
-		INSERT INTO direct_messages (conversation_id, sender_id, content, type, mime, status)
-		VALUES ($1, $2, $3, 'call', $4, 'sent')
-		RETURNING id, created_at
-	`, conversationID, senderID, content, callType).Scan(&msgID, &createdAt)
-	if err != nil {
-		log.Printf("[call-log] insert failed: %v", err)
-		return
-	}
-
-	var username, fullname, avatarURL sql.NullString
-	var isVerified sql.NullBool
-	var subPlan sql.NullString
-	_ = s.db.QueryRow(`
-		SELECT username, fullname, avatar_url, is_verified, sub_plan FROM users WHERE id = $1
-	`, senderID).Scan(&username, &fullname, &avatarURL, &isVerified, &subPlan)
-
-	sender := map[string]interface{}{
-		"id":          senderID,
-		"username":    username.String,
-		"fullname":    fullname.String,
-		"avatar_url":  avatarURL.String,
-		"is_verified": isVerified.Bool,
-		"sub_plan":    subPlan.String,
-	}
-
-	payload := map[string]interface{}{
-		"id":              msgID,
-		"conversation_id": conversationID,
-		"sender_id":       senderID,
-		"content":         content,
-		"type":            "call",
-		"mime":            callType,
-		"status":          "sent",
-		"created_at":      createdAt.UTC().Format(time.RFC3339),
-		"sender":          sender,
-	}
-
-	s.server.To(socketio.Room("conversation_" + conversationID)).Emit("newDirectMessage", payload)
 }
 
 // ── public API ────────────────────────────────────────────────────────────────
