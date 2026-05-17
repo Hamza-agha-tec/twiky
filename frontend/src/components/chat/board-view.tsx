@@ -610,6 +610,72 @@ function EmojiText({ text, className }: { text: string; className?: string }) {
   return <span className={className}>{nodes}</span>
 }
 
+interface LinkMeta { title?: string; description?: string; image?: string; logo?: string }
+const linkMetaCache = new Map<string, LinkMeta>()
+
+function LinkPreview({ url }: { url: string }) {
+  const [meta, setMeta] = useState<LinkMeta | null>(() => linkMetaCache.get(url) ?? null)
+  const [visible, setVisible] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (linkMetaCache.has(url)) { setMeta(linkMetaCache.get(url)!); return }
+    fetch(`https://api.microlink.io?url=${encodeURIComponent(url)}`)
+      .then(r => r.json())
+      .then(json => {
+        if (json.status === 'success') {
+          const m: LinkMeta = {
+            title: json.data.title,
+            description: json.data.description,
+            image: json.data.image?.url,
+            logo: json.data.logo?.url,
+          }
+          linkMetaCache.set(url, m)
+          setMeta(m)
+        }
+      })
+      .catch(() => {})
+  }, [url])
+
+  function handleEnter() {
+    timerRef.current = setTimeout(() => setVisible(true), 120)
+  }
+
+  function handleLeave() {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
+    setVisible(false)
+  }
+
+  return (
+    <span className="relative inline-block" onMouseEnter={handleEnter} onMouseLeave={handleLeave}>
+      <a href={url} target="_blank" rel="noopener noreferrer"
+        className="text-blue-400 hover:text-blue-300 underline underline-offset-2 break-all"
+        onClick={e => e.stopPropagation()}
+      >{url}</a>
+
+      {visible && (
+        <span className="absolute bottom-full left-0 mb-2 z-50 block w-72 rounded-xl border border-border/60 bg-card shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-150">
+          {meta ? (
+            <>
+              {meta.image && (
+                <img src={meta.image} alt="" className="w-full h-36 object-cover" />
+              )}
+              <span className="block px-3 py-2.5">
+                <span className="flex items-center gap-2 mb-1">
+                  {meta.logo && <img src={meta.logo} alt="" className="h-4 w-4 rounded object-contain shrink-0" />}
+                  <span className="text-[11px] text-muted-foreground truncate">{new URL(url).hostname}</span>
+                </span>
+                {meta.title && <span className="block text-sm font-semibold leading-snug line-clamp-2">{meta.title}</span>}
+                {meta.description && <span className="block text-xs text-muted-foreground mt-1 line-clamp-2">{meta.description}</span>}
+              </span>
+            </>
+          ) : null}
+        </span>
+      )}
+    </span>
+  )
+}
+
 function RichText({ text, className }: { text: string; className?: string }) {
   const URL_RE = /https?:\/\/[^\s<>"]+/g
   const segments: React.ReactNode[] = []
@@ -618,12 +684,7 @@ function RichText({ text, className }: { text: string; className?: string }) {
   URL_RE.lastIndex = 0
   while ((m = URL_RE.exec(text)) !== null) {
     if (m.index > last) segments.push(<EmojiText key={`t${last}`} text={text.slice(last, m.index)} />)
-    segments.push(
-      <a key={`l${m.index}`} href={m[0]} target="_blank" rel="noopener noreferrer"
-        className="text-blue-400 hover:text-blue-300 underline underline-offset-2 break-all"
-        onClick={e => e.stopPropagation()}
-      >{m[0]}</a>
-    )
+    segments.push(<LinkPreview key={`l${m.index}`} url={m[0]} />)
     last = m.index + m[0].length
   }
   if (last < text.length) segments.push(<EmojiText key={`t${last}`} text={text.slice(last)} />)
@@ -794,7 +855,7 @@ function CommentNode({
                 {replyEmojiOpen && (
                   <div className="absolute bottom-10 right-full mr-2 z-50 overflow-hidden rounded-2xl border border-border bg-sidebar" style={{ boxShadow: '0 8px 40px 0 rgba(0,0,0,0.45)' }}>
                     <EmojiPicker
-                      onEmojiClick={(d: EmojiClickData) => { if (replyInputRef.current) insertEmojiAtCursor(replyInputRef.current, d.emoji); setReplyEmojiOpen(false) }}
+                      onEmojiClick={(d: EmojiClickData) => { if (replyInputRef.current) insertEmojiAtCursor(replyInputRef.current, d.emoji) }}
                       theme={isDark ? Theme.DARK : Theme.LIGHT}
                       emojiStyle={EmojiStyle.APPLE}
                       skinTonesDisabled
@@ -1085,7 +1146,7 @@ function PostDetail({
                   {commentEmojiOpen && (
                     <div className="absolute bottom-11 right-full mr-2 z-50 overflow-hidden rounded-2xl border border-border bg-sidebar" style={{ boxShadow: '0 8px 40px 0 rgba(0,0,0,0.45)' }}>
                       <EmojiPicker
-                        onEmojiClick={(d: EmojiClickData) => { if (commentInputRef.current) insertEmojiAtCursor(commentInputRef.current, d.emoji); setCommentEmojiOpen(false) }}
+                        onEmojiClick={(d: EmojiClickData) => { if (commentInputRef.current) insertEmojiAtCursor(commentInputRef.current, d.emoji) }}
                         theme={isDark ? Theme.DARK : Theme.LIGHT}
                         emojiStyle={EmojiStyle.APPLE}
                         skinTonesDisabled
