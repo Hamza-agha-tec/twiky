@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { UserAvatar } from '@/components/chat/user-avatar';
 import { Button } from '@/components/ui/button';
-import { Search, Phone, Video, MoreVertical, X, ChevronUp, ChevronDown, User, BellOff, Archive, ShieldOff, Pin, Star, Trash2 } from 'lucide-react';
+import { Search, Phone, Video, MoreVertical, X, ChevronUp, ChevronDown, User, BellOff, Archive, ShieldOff, Pin, Star, Trash2, Users } from 'lucide-react';
 import type { Message } from '@/lib/mock-data';
 import { MessageBubble } from './message-bubble';
 import { CallLogBubble } from './call-log-bubble';
@@ -59,6 +59,7 @@ interface ChatWindowProps {
   onForwardMessage?: (messageId: string, content: string, toConversationId: string, fileUrl?: string, type?: string) => void;
   onViewMessageProfile?: (userId: string) => void;
   onStartDirectMessage?: (userId: string) => void;
+  onToggleMembers?: () => void;
 }
 
 interface ReplyTo {
@@ -160,7 +161,7 @@ function toUiMessage(
   };
 }
 
-export function ChatWindow({ activeChat, chatOverride, messages: providedMessages = [], onSendMessage, onTyping, otherIsTyping = false, onReact, onDelete, onPin, onProfileClick, onMessageAvatarClick, onVoiceCall, onVideoCall, onMute, onPinConversation, onFavorite, onArchive, onDeleteChat, onBlock, conversations = [], onForwardMessage, onViewMessageProfile, onStartDirectMessage }: ChatWindowProps) {
+export function ChatWindow({ activeChat, chatOverride, messages: providedMessages = [], onSendMessage, onTyping, otherIsTyping = false, onReact, onDelete, onPin, onProfileClick, onMessageAvatarClick, onVoiceCall, onVideoCall, onMute, onPinConversation, onFavorite, onArchive, onDeleteChat, onBlock, conversations = [], onForwardMessage, onViewMessageProfile, onStartDirectMessage, onToggleMembers }: ChatWindowProps) {
   const { user } = useAuth();
   const { data: profile } = useProfile();
   const { resolved: chatTheme } = useChatThemeContext();
@@ -389,11 +390,21 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
                   <p className="text-xs text-muted-foreground">
                     Channel · {conv.participants.length} members
                   </p>
-                ) : visibleChatSubtitle ? (
-                  <p className="text-xs text-muted-foreground">
-                    {visibleChatSubtitle}
+                ) : (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1.5 leading-tight">
+                    {isOnline ? (
+                      <>
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                        <span className="text-emerald-500 font-semibold text-[10px] tracking-wider uppercase">Online</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/45 shrink-0" />
+                        <span className="text-muted-foreground text-[10px] tracking-wider uppercase">Offline</span>
+                      </>
+                    )}
                   </p>
-                ) : null}
+                )}
               </div>
             </div>
           )}
@@ -403,12 +414,21 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
             <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setSearchOpen(true)}>
               <Search className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={onVoiceCall} disabled={!onVoiceCall}>
-              <Phone className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={onVideoCall} disabled={!onVideoCall}>
-              <Video className="h-4 w-4" />
-            </Button>
+            {onVoiceCall && (
+              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={onVoiceCall}>
+                <Phone className="h-4 w-4" />
+              </Button>
+            )}
+            {onVideoCall && (
+              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={onVideoCall}>
+                <Video className="h-4 w-4" />
+              </Button>
+            )}
+            {onToggleMembers && (
+              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={onToggleMembers} title="Toggle members sidebar">
+                <Users className="h-4 w-4" />
+              </Button>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">

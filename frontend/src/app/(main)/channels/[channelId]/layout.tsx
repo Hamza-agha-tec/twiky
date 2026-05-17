@@ -8,6 +8,8 @@ import { WorkspaceEmptyState } from '@/components/chat/workspace-empty-state'
 import { useVoice } from '@/context/VoiceContext'
 import { useProfile } from '@/hooks/use-user'
 import { useEffect, useState } from 'react'
+import { useOnlineUsers } from '@/hooks/use-socket'
+import { getSocket } from '@/lib/socket'
 
 export default function ChannelLayout({ children }: { children: React.ReactNode }) {
   const { channelId, groupId } = useParams()
@@ -22,7 +24,63 @@ export default function ChannelLayout({ children }: { children: React.ReactNode 
   const { mutateAsync: createGroupAsync } = useCreateGroup(channelId as string)
   
   const voice = useVoice()
+  const onlineUsers = useOnlineUsers()
   const [voiceTimer, setVoiceTimer] = useState<string>('00:00')
+
+  const [watchParticipants, setWatchParticipants] = useState<Record<string, any[]>>({})
+  const [watchSessionStarts, setWatchSessionStarts] = useState<Record<string, number>>({})
+
+  // Watch room real-time participants synchronization
+  useEffect(() => {
+    let mounted = true
+    let socketInstance: any = null
+
+    getSocket().then((socket) => {
+      if (!mounted) return
+      socketInstance = socket
+
+      const onWatchParticipants = (data: any) => {
+        if (!mounted) return
+        const { roomId, participants, sessionStartedAt } = data
+        setWatchParticipants(prev => ({
+          ...prev,
+          [roomId]: participants
+        }))
+        if (sessionStartedAt) {
+          setWatchSessionStarts(prev => ({
+            ...prev,
+            [roomId]: sessionStartedAt
+          }))
+        } else {
+          setWatchSessionStarts(prev => {
+            const next = { ...prev }
+            delete next[roomId]
+            return next
+          })
+        }
+      }
+
+      socket.on('watch:participants', onWatchParticipants)
+      
+      // Request active watch rooms on mount
+      socket.emit('getWatchPresence')
+
+      // Listen for socket reconnection to request presence again
+      const onConnect = () => {
+        socket.emit('getWatchPresence')
+      }
+      socket.on('connect', onConnect)
+
+      return () => {
+        socket.off('watch:participants', onWatchParticipants)
+        socket.off('connect', onConnect)
+      }
+    })
+
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   // Voice call duration timer
   useEffect(() => {
@@ -77,6 +135,7 @@ export default function ChannelLayout({ children }: { children: React.ReactNode 
           activeGroup={gId}
           visible={true}
           myId={profile?.id}
+          onlineUsers={onlineUsers}
           // Voice props
           voiceParticipants={voice.participantsByGroup}
           activeVoiceGroupId={voice.joinedGroupId}
@@ -88,6 +147,9 @@ export default function ChannelLayout({ children }: { children: React.ReactNode 
           onKickVoiceParticipant={(targetId) => voice.kick(targetId)}
           soundboardUserId={voice.soundboardUserId}
           soundboardIntensity={voice.soundboardIntensity}
+          // Watch props
+          watchParticipants={watchParticipants}
+          watchSessionStarts={watchSessionStarts}
           onCreateGroup={async (values) => {
             await createGroupAsync({
               name: values.name,

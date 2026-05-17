@@ -1125,6 +1125,18 @@ func (s *SocketIOService) setupHandlers() {
 			}
 		})
 
+		client.On("getWatchPresence", func(_ ...any) {
+			s.watchMu.RLock()
+			rooms := make([]string, 0, len(s.watchRooms))
+			for rID := range s.watchRooms {
+				rooms = append(rooms, rID)
+			}
+			s.watchMu.RUnlock()
+			for _, rID := range rooms {
+				s.emitWatchParticipants(rID)
+			}
+		})
+
 		client.On("watch:play", func(datas ...any) {
 			if len(datas) == 0 {
 				return

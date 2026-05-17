@@ -8,6 +8,7 @@ import { useProfile } from '@/hooks/use-user'
 import { useDmCallContext } from '@/context/DmCallContext'
 import { DirectProfileSidebar } from '@/components/chat/direct-profile-sidebar'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useOnlineUsers } from '@/hooks/use-socket'
 
 export default function DirectMessagePage() {
   const { conversationId } = useParams()
@@ -40,6 +41,9 @@ export default function DirectMessagePage() {
   const conversation = conversations.find(c => c.id === cId)
   const { mutate: sendMessage } = useSendDirectMessage(cId)
   const otherUser = conversation?.user_one?.id === profile?.id ? conversation?.user_two : conversation?.user_one
+  
+  const onlineUsers = useOnlineUsers()
+  const isOnline = otherUser?.id ? onlineUsers.has(otherUser.id) : false
 
   return (
     <div className="flex h-full w-full overflow-hidden relative bg-background">
@@ -49,7 +53,7 @@ export default function DirectMessagePage() {
           chatOverride={{
             name: otherUser?.username || 'Direct Message',
             avatarUrl: otherUser?.avatar_url,
-            isOnline: false, // We can sync this later
+            isOnline: isOnline,
             isVerified: otherUser?.is_verified ?? undefined,
             subPlan: otherUser?.sub_plan,
           }}

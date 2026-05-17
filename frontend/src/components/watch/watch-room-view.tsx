@@ -581,16 +581,6 @@ function WatchRoomInner({
                       </div>
                     )}
 
-                    <WatchCtrlBtn active={watchersOpen} title="Watchers" onClick={() => setWatchersOpen((v) => !v)}>
-                      <span className="relative">
-                        <Users className="h-4 w-4" />
-                        {participants.length > 0 && (
-                          <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary text-[8px] font-bold text-primary-foreground">
-                            {participants.length}
-                          </span>
-                        )}
-                      </span>
-                    </WatchCtrlBtn>
                   </div>
 
                   <div className="flex shrink-0 items-center gap-1.5 pl-3 border-l border-border/40">
@@ -636,48 +626,7 @@ function WatchRoomInner({
         </AnimatePresence>
       </div>
 
-      {/* Watchers sidebar */}
-      <AnimatePresence>
-        {watchersOpen && (
-          <motion.div
-            key="watchers-sidebar"
-            className="flex w-64 shrink-0 flex-col border-l border-border bg-background"
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 256, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={{ duration: 0.22, ease: 'easeInOut' }}
-          >
-            <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <Users className="h-4 w-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] font-semibold text-foreground">Watching</p>
-                <p className="truncate text-[11px] text-muted-foreground">
-                  {participants.length} {participants.length === 1 ? 'person' : 'people'}
-                </p>
-              </div>
-              <button
-                onClick={() => setWatchersOpen(false)}
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
 
-            <div className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-3">
-              {participants.length === 0 ? (
-                <div className="flex flex-1 flex-col items-center justify-center gap-2 py-8 text-center">
-                  <Users className="h-8 w-8 text-muted-foreground/40" />
-                  <p className="text-[12px] font-semibold text-foreground">Nobody here yet</p>
-                </div>
-              ) : (
-                participants.map((p) => <MemberRow key={p.userId} p={p} canKick={isHost} onKick={onKick} />)
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </motion.div>
   )
 }
