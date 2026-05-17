@@ -16,6 +16,8 @@ import { WatchRoomView } from '@/components/watch/watch-room-view'
 import { DirectProfileSidebar } from '@/components/chat/direct-profile-sidebar'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useDmCallContext } from '@/context/DmCallContext'
+import { useChannels } from '@/hooks/use-channels'
+import { BoardView } from '@/components/chat/board-view'
 
 function ActiveCallBlockedView({ onHangUp, type }: { onHangUp: () => void; type: 'voice' | 'watch' }) {
   return (
@@ -65,6 +67,8 @@ export default function GroupPage() {
 
   const { mutate: sendMessage } = useSendGroupMessage(gId)
   const { data: channelGroups = [], isLoading: groupsLoading } = useChannelGroups(channelId as string)
+  const { data: channels = [] } = useChannels()
+  const activeChannel = channels.find(c => c.id === channelId)
   
   const backendGroup = channelGroups.find(g => g.id === gId)
   
@@ -162,6 +166,32 @@ export default function GroupPage() {
           isVerified={profile?.is_verified}
           isHost={isHost}
           onLeave={() => router.push(`/channels/${channelId}`)}
+        />
+      </div>
+    )
+  }
+
+  if (group.kind === 'board') {
+    return (
+      <div className="flex h-full w-full overflow-hidden bg-background">
+        <BoardView
+          key={group.id}
+          groupId={group.id}
+          groupName={group.label}
+          channelName={activeChannel?.name || ''}
+          channelAvatar={activeChannel?.avatar_url || undefined}
+          myId={profile?.id}
+          isAdmin={activeChannel?.role === 'OWNER' || activeChannel?.role === 'ADMIN'}
+          onMessage={async (userId) => {
+            createDm(userId, {
+              onSuccess: (data) => {
+                if (data?.id) {
+                  router.push(`/dm/${data.id}`)
+                }
+              }
+            })
+          }}
+          onViewProfile={(userId) => setSelectedProfileId(userId)}
         />
       </div>
     )
