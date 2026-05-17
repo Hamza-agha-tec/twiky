@@ -4,6 +4,9 @@ import { AuthProvider } from '@/context/AuthContext';
 import QueryProvider from '@/context/QueryProvider';
 import ToastProvider from '@/context/ToastProvider';
 import { ChatThemeProvider } from '@/context/ChatThemeContext';
+import { ChatProvider } from '@/context/ChatContext';
+import { VoiceProvider } from '@/context/VoiceContext';
+import { DmCallProvider } from '@/context/DmCallContext';
 import { DynamicIslandProvider } from '@/context/DynamicIslandContext';
 import { DynamicIsland } from '@/components/dynamic-island/DynamicIsland';
 import { GlobalNotificationBridge } from '@/components/dynamic-island/GlobalNotificationBridge';
@@ -26,7 +29,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
           <DynamicIsland />
           <ToastProvider>
             <ChatThemeProvider>
-              {children}
+              <ChatProvider>
+                <VoiceProvider>
+                  <DmCallProvider>
+                    {children}
+                  </DmCallProvider>
+                </VoiceProvider>
+              </ChatProvider>
             </ChatThemeProvider>
           </ToastProvider>
         </DynamicIslandProvider>

@@ -57,6 +57,8 @@ interface ChatWindowProps {
   onPin?: (messageId: string) => void;
   conversations?: { id: string; name: string; avatarUrl?: string | null }[];
   onForwardMessage?: (messageId: string, content: string, toConversationId: string, fileUrl?: string, type?: string) => void;
+  onViewMessageProfile?: (userId: string) => void;
+  onStartDirectMessage?: (userId: string) => void;
 }
 
 interface ReplyTo {
@@ -158,7 +160,7 @@ function toUiMessage(
   };
 }
 
-export function ChatWindow({ activeChat, chatOverride, messages: providedMessages = [], onSendMessage, onTyping, otherIsTyping = false, onReact, onDelete, onPin, onProfileClick, onMessageAvatarClick, onVoiceCall, onVideoCall, onMute, onPinConversation, onFavorite, onArchive, onDeleteChat, onBlock, conversations = [], onForwardMessage }: ChatWindowProps) {
+export function ChatWindow({ activeChat, chatOverride, messages: providedMessages = [], onSendMessage, onTyping, otherIsTyping = false, onReact, onDelete, onPin, onProfileClick, onMessageAvatarClick, onVoiceCall, onVideoCall, onMute, onPinConversation, onFavorite, onArchive, onDeleteChat, onBlock, conversations = [], onForwardMessage, onViewMessageProfile, onStartDirectMessage }: ChatWindowProps) {
   const { user } = useAuth();
   const { data: profile } = useProfile();
   const { resolved: chatTheme } = useChatThemeContext();
@@ -327,19 +329,11 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-sidebar h-full min-w-0">
+    <div className="flex-1 flex flex-col bg-background h-full min-w-0">
       {/* Header */}
-      <div className="h-14 border-b border-border px-4 flex items-center justify-between bg-sidebar shrink-0">
-        <AnimatePresence mode="wait" initial={false}>
+      <div className="h-14 border-b border-border px-4 flex items-center justify-between bg-background shrink-0">
           {searchOpen ? (
-            <motion.div
-              key="search-bar"
-              initial={{ opacity: 0, x: 16 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 16 }}
-              transition={{ duration: 0.15 }}
-              className="flex flex-1 items-center gap-2 min-w-0"
-            >
+            <div className="flex flex-1 items-center gap-2 min-w-0">
               <Search className="h-4 w-4 text-muted-foreground shrink-0" />
               <input
                 ref={searchInputRef}
@@ -365,19 +359,10 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
                   <X className="h-3.5 w-3.5" />
                 </Button>
               </div>
-            </motion.div>
+            </div>
           ) : (
-            <motion.div
-              key="header-info"
-              initial={{ opacity: 0, x: -16 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -16 }}
-              transition={{ duration: 0.15 }}
-              className="flex items-center gap-3 flex-1 min-w-0"
-            >
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <button
                 onClick={onProfileClick}
                 disabled={!onProfileClick}
                 className="relative rounded-full hover:ring-2 ring-primary/40 transition-all shrink-0 disabled:cursor-default disabled:hover:ring-0"
@@ -393,7 +378,7 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
                     isOnline ? 'bg-green-500' : 'bg-muted-foreground/55'
                   }`}
                 />
-              </motion.button>
+              </button>
 
               <div className="flex-1 min-w-0">
                 <div className="flex min-w-0 items-center gap-1.5">
@@ -410,9 +395,8 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
                   </p>
                 ) : null}
               </div>
-            </motion.div>
+            </div>
           )}
-        </AnimatePresence>
 
         {!searchOpen && (
           <div className="flex gap-1 shrink-0">
@@ -486,13 +470,9 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
       </div>
 
       {/* Pinned message banner */}
-      <AnimatePresence>
         {pinnedMessage && (
-          <motion.button
+          <button
             key={pinnedMessage.id}
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
             onClick={() => {
               spotlightPinnedMessage(pinnedMessage.id);
               // Scroll to current pinned message
@@ -524,14 +504,13 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
                 {(pinnedIndex % pinnedMessages.length) + 1}/{pinnedMessages.length}
               </span>
             )}
-          </motion.button>
+          </button>
         )}
-      </AnimatePresence>
 
       {/* Messages Area */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4"
+        className="flex-1 min-h-0 overflow-y-auto px-2 py-2 space-y-2"
         style={conversationBackgroundStyle}
       >
         {Object.entries(groupedMessages).map(([date, dayMessages]) => (
@@ -573,8 +552,9 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
                         onForward={() => setForwardingMessage(message)}
                         onDelete={() => onDelete?.(message.id)}
                         onReact={(emoji) => onReact?.(message.id, emoji)}
-                        hideMessage={true}
-                        onViewProfile={onProfileClick ? (userId) => onProfileClick() : undefined}
+                        hideMessage={!onStartDirectMessage}
+                        onMessage={onStartDirectMessage}
+                        onViewProfile={onViewMessageProfile}
                         isReceiverOnline={isOnline}
                       />
                     )}
@@ -586,33 +566,25 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
         ))}
 
         {/* Typing Indicator */}
-        <AnimatePresence>
-          {otherIsTyping && (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 8 }}
-              className="flex gap-2 items-end"
-            >
-              <Avatar className="h-7 w-7 shrink-0">
-                <AvatarImage src={resolvedChatAvatar} alt={chatName} />
-                <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                  {chatName[0]}
-                </AvatarFallback>
-              </Avatar>
-              <div className="bg-muted rounded-2xl rounded-bl-sm px-4 py-3 flex gap-1 items-center">
-                {[0, 0.15, 0.3].map((delay, i) => (
-                  <motion.div
-                    key={i}
-                    className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50"
-                    animate={{ y: [0, -5, 0] }}
-                    transition={{ duration: 0.5, repeat: Infinity, delay }}
-                  />
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {otherIsTyping && (
+          <div className="flex gap-2 items-end">
+            <Avatar className="h-7 w-7 shrink-0">
+              <AvatarImage src={resolvedChatAvatar} alt={chatName} />
+              <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                {chatName[0]}
+              </AvatarFallback>
+            </Avatar>
+            <div className="bg-muted rounded-2xl rounded-bl-sm px-4 py-3 flex gap-1 items-center">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce"
+                  style={{ animationDelay: `${i * 0.15}s` }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
         <div ref={messagesEndRef} />
       </div>
@@ -638,6 +610,8 @@ export function ChatWindow({ activeChat, chatOverride, messages: providedMessage
           payload={{ content: forwardingMessage.content, isForwarded: true }}
         />
       )}
+      {/* Call Portal Target */}
+      <div id="dm-call-portal-target" className="absolute inset-0 z-20 empty:hidden bg-background" />
     </div>
   );
 }
