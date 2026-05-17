@@ -6,9 +6,13 @@ import { Command, Search, Terminal } from 'lucide-react'
 export function WorkspaceEmptyState({
   title = 'No group open',
   subtitle = 'Pick a group on left, or press Escape again to return.',
+  action,
+  showShortcuts = true,
 }: {
   title?: string
   subtitle?: string
+  action?: ReactNode
+  showShortcuts?: boolean
 }) {
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center bg-background px-6">
@@ -19,11 +23,19 @@ export function WorkspaceEmptyState({
         <p className="mt-5 text-[15px] font-semibold text-foreground">{title}</p>
         <p className="mt-2 text-[12px] leading-6 text-muted-foreground">{subtitle}</p>
 
-        <div className="mt-6 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card text-left">
-          <ShortcutRow label="Close group feed" keys={['Esc']} />
-          <ShortcutRow label="Search channels/groups" keys={['Ctrl', 'K']} icon={<Search className="h-4 w-4" />} />
-          <ShortcutRow label="Open terminal" keys={['Ctrl', '`']} icon={<Terminal className="h-4 w-4" />} />
-        </div>
+        {action && (
+          <div className="mt-6 flex justify-center">
+            {action}
+          </div>
+        )}
+
+        {showShortcuts && (
+          <div className="mt-6 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card text-left">
+            <ShortcutRow label="Close group feed" keys={['Esc']} />
+            <ShortcutRow label="Search channels/groups" keys={['Ctrl', 'K']} icon={<Search className="h-4 w-4" />} />
+            <ShortcutRow label="Open terminal" keys={['Ctrl', '`']} icon={<Terminal className="h-4 w-4" />} />
+          </div>
+        )}
       </div>
     </div>
   )

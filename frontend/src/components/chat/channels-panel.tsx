@@ -1423,11 +1423,8 @@ export function ChannelsPanel({
 
   return (
     <>
-      <motion.div
+      <div
         className="flex h-full w-[216px] flex-shrink-0 flex-col border-r border-border bg-sidebar"
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.28, ease: 'easeOut' }}
       >
         {/* Header */}
         <div className="relative h-[94px] overflow-hidden border-b border-border px-3">
@@ -1562,11 +1559,8 @@ export function ChannelsPanel({
                     <div className="flex-1 border-t border-border/50" />
                   </div>
                 )}
-                <motion.div
+                <div
                   className=""
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: idx * 0.05, duration: 0.2, ease: 'easeOut' }}
                   onDragOver={(event) => {
                     if (!canManage || group.kind !== 'voice') return
                     event.preventDefault()
@@ -1772,15 +1766,12 @@ export function ChannelsPanel({
                               >
                                 {hasGeekBanner ? (
                                   <>
-                                    <motion.img
+                                    <img
                                       src={p.bannerUrl ?? ''}
                                       alt=""
                                       aria-hidden="true"
                                       draggable={false}
                                       className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-300 group-hover/watch-participant:opacity-100"
-                                      initial={false}
-                                      whileHover={{ scale: 1.05 }}
-                                      transition={{ duration: 0.35, ease: 'easeOut' }}
                                     />
                                     <span className="pointer-events-none absolute inset-0 bg-gradient-to-r from-sidebar/95 via-sidebar/58 to-sidebar/18 opacity-0 transition-opacity duration-300 group-hover/watch-participant:opacity-100" />
                                     <span className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-[linear-gradient(90deg,rgba(0,0,0,0.92)_0%,rgba(0,0,0,0.72)_34%,rgba(0,0,0,0.34)_68%,rgba(0,0,0,0)_100%)] opacity-0 shadow-[inset_18px_0_22px_rgba(0,0,0,0.86)] transition-opacity duration-300 group-hover/watch-participant:opacity-100" />
@@ -1866,15 +1857,12 @@ export function ChannelsPanel({
                               >
                                 {hasGeekBanner ? (
                                   <>
-                                    <motion.img
+                                    <img
                                       src={p.bannerUrl ?? ''}
                                       alt=""
                                       aria-hidden="true"
                                       draggable={false}
                                       className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-300 group-hover/voice-participant:opacity-100"
-                                      initial={false}
-                                      whileHover={{ scale: 1.05 }}
-                                      transition={{ duration: 0.35, ease: 'easeOut' }}
                                     />
                                     <span className="pointer-events-none absolute inset-0 bg-gradient-to-r from-sidebar/95 via-sidebar/58 to-sidebar/18 opacity-0 transition-opacity duration-300 group-hover/voice-participant:opacity-100" />
                                     <span className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-[linear-gradient(90deg,rgba(0,0,0,0.92)_0%,rgba(0,0,0,0.72)_34%,rgba(0,0,0,0.34)_68%,rgba(0,0,0,0)_100%)] opacity-0 shadow-[inset_18px_0_22px_rgba(0,0,0,0.86)] transition-opacity duration-300 group-hover/voice-participant:opacity-100" />
@@ -1931,7 +1919,7 @@ export function ChannelsPanel({
                       })}
                     </div>
                   )}
-                </motion.div>
+                </div>
                 </div>
               )
               })
@@ -1939,7 +1927,62 @@ export function ChannelsPanel({
           </div>
         </div>
 
-      </motion.div>
+        {/* Active Voice/Watch Connection Panel */}
+        {activeVoiceGroupId && (
+          <div className="flex-shrink-0 border-t border-border bg-sidebar p-2 shadow-sm">
+            <div className="flex items-center gap-2 mb-2 px-1">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-green-500/15">
+                  <Volume2 className="h-3.5 w-3.5 text-green-500" />
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[10px] font-bold text-green-500 uppercase tracking-wide">Voice Connected</span>
+                  <span className="text-[11px] text-muted-foreground truncate font-medium">
+                    {channel.groups.find(g => g.id === activeVoiceGroupId)?.label || 'Voice Channel'}
+                  </span>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 rounded-lg hover:bg-destructive hover:text-white"
+                onClick={() => onVoiceLeave?.()}
+                title="Disconnect"
+              >
+                <PhoneOff className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {activeWatchGroupId && (
+          <div className="flex-shrink-0 border-t border-border bg-sidebar p-2 shadow-sm">
+            <div className="flex items-center gap-2 mb-2 px-1">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-500/15">
+                  <Tv className="h-3.5 w-3.5 text-blue-500" />
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wide">Watch Connected</span>
+                  <span className="text-[11px] text-muted-foreground truncate font-medium">
+                    {channel.groups.find(g => g.id === activeWatchGroupId)?.label || 'Watch Room'}
+                  </span>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 rounded-lg hover:bg-destructive hover:text-white"
+                onClick={() => onWatchLeave?.()}
+                title="Disconnect from Watch"
+              >
+                <PhoneOff className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        )}
+
+      </div>
 
       <CreateEntityDialog
         open={showCreateGroup}

@@ -10,7 +10,7 @@ export type DmCallStatus =
   | { state: 'outgoing'; conversationId: string; calleeId: string; calleeName: string; calleeAvatar: string | null; type: DmCallType }
   | { state: 'no-answer'; calleeName: string; calleeAvatar: string | null; type: DmCallType }
   | { state: 'incoming'; conversationId: string; callerId: string; callerName: string; callerAvatar: string | null; type: DmCallType }
-  | { state: 'active'; conversationId: string; peerId: string; peerName: string; peerAvatar: string | null; type: DmCallType; roomId: string }
+  | { state: 'active'; conversationId: string; peerId: string; peerName: string; peerAvatar: string | null; type: DmCallType; roomId: string; startedAt?: number }
 
 interface UseDmCallOptions {
   myId: string | undefined
@@ -21,7 +21,26 @@ interface UseDmCallOptions {
 }
 
 export function useDmCall({ myId, isInGroupVoiceCall, onCallStarted, onCallEnded, onCallRejected }: UseDmCallOptions) {
-  const [status, setStatus] = useState<DmCallStatus>({ state: 'idle' })
+  const callStartedAtRef = useRef<number | null>(null)
+  
+  const [status, setStatus] = useState<DmCallStatus>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('twiky-active-call')
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          if (parsed.state === 'active' && parsed.startedAt) {
+            callStartedAtRef.current = parsed.startedAt
+          }
+          return parsed
+        } catch (e) {
+          return { state: 'idle' }
+        }
+      }
+    }
+    return { state: 'idle' }
+  })
+
   const socketRef = useRef<Awaited<ReturnType<typeof getSocket>> | null>(null)
   const myIdRef = useRef(myId)
   const statusRef = useRef(status)
@@ -31,7 +50,6 @@ export function useDmCall({ myId, isInGroupVoiceCall, onCallStarted, onCallEnded
   const isInGroupVoiceCallRef = useRef(isInGroupVoiceCall)
   const noAnswerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const incomingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const callStartedAtRef = useRef<number | null>(null)
 
   useEffect(() => { myIdRef.current = myId }, [myId])
   useEffect(() => { statusRef.current = status }, [status])
@@ -39,6 +57,15 @@ export function useDmCall({ myId, isInGroupVoiceCall, onCallStarted, onCallEnded
   useEffect(() => { onCallEndedRef.current = onCallEnded }, [onCallEnded])
   useEffect(() => { onCallRejectedRef.current = onCallRejected }, [onCallRejected])
   useEffect(() => { isInGroupVoiceCallRef.current = isInGroupVoiceCall }, [isInGroupVoiceCall])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (status.state === 'active') {
+      localStorage.setItem('twiky-active-call', JSON.stringify(status))
+    } else {
+      localStorage.removeItem('twiky-active-call')
+    }
+  }, [status])
 
   const endActiveCall = useCallback((conversationId: string, peerId: string, callType: DmCallType) => {
     const durationSecs = callStartedAtRef.current
@@ -94,13 +121,14 @@ export function useDmCall({ myId, isInGroupVoiceCall, onCallStarted, onCallEnded
   const acceptCall = useCallback((conversationId: string, callerId: string, type: DmCallType, callerName: string, callerAvatar: string | null) => {
     if (!socketRef.current) return
     clearIncomingTimer()
-    callStartedAtRef.current = Date.now()
+    const now = Date.now()
+    callStartedAtRef.current = now
     socketRef.current.emit('dm-call-accepted', { conversationId, callerId })
 
     const roomId = `dm-${conversationId}`
     socketRef.current.emit('join-voice-room', { roomId })
 
-    setStatus({ state: 'active', conversationId, peerId: callerId, peerName: callerName, peerAvatar: callerAvatar, type, roomId })
+    setStatus({ state: 'active', conversationId, peerId: callerId, peerName: callerName, peerAvatar: callerAvatar, type, roomId, startedAt: now })
     onCallStartedRef.current?.(roomId, type)
   }, [clearIncomingTimer])
 
@@ -139,6 +167,12 @@ export function useDmCall({ myId, isInGroupVoiceCall, onCallStarted, onCallEnded
       if (!mounted) return
       socketRef.current = socket
 
+      // Rejoin active voice room if restored on page refresh
+      const s = statusRef.current
+      if (s.state === 'active') {
+        socket.emit('join-voice-room', { roomId: s.roomId })
+      }
+
       const onInvite = (data: { conversationId: string; callerId: string; type: DmCallType }) => {
         if (!mounted) return
         if (statusRef.current.state === 'active' || isInGroupVoiceCallRef.current) {
@@ -167,7 +201,8 @@ export function useDmCall({ myId, isInGroupVoiceCall, onCallStarted, onCallEnded
         const s = statusRef.current
         if (s.state !== 'outgoing' || s.conversationId !== data.conversationId) return
         clearNoAnswerTimer()
-        callStartedAtRef.current = Date.now()
+        const now = Date.now()
+        callStartedAtRef.current = now
 
         const roomId = `dm-${data.conversationId}`
         socket.emit('join-voice-room', { roomId })
@@ -180,6 +215,7 @@ export function useDmCall({ myId, isInGroupVoiceCall, onCallStarted, onCallEnded
           peerAvatar: s.calleeAvatar,
           type: s.type,
           roomId,
+          startedAt: now,
         })
         onCallStartedRef.current?.(roomId, s.type)
       }

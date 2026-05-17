@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { motion } from 'framer-motion'
+import { motion, useMotionValue, animate } from 'framer-motion'
 import { Mic, MicOff, PhoneOff, Video, VideoOff, Monitor, MonitorOff, Minimize2, Maximize2, Maximize, Minimize } from 'lucide-react'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -52,17 +52,66 @@ interface DmCallWindowProps {
   onHangUp: () => void
   onMinimize: () => void
   onExpand: () => void
+  startedAt?: number
 }
 
 export function DmCallWindow({
   roomId, myId, myName, peerId, peerName, peerAvatar, type,
-  inConversation, onHangUp, onMinimize, onExpand,
+  inConversation, onHangUp, onMinimize, onExpand, startedAt,
 }: DmCallWindowProps) {
   const [isMuted, setIsMuted] = useState(false)
   const [isCameraOn, setIsCameraOn] = useState(type === 'video')
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [elapsed, setElapsed] = useState(0)
+  const [elapsed, setElapsed] = useState(() => {
+    if (startedAt) {
+      return Math.floor((Date.now() - startedAt) / 1000)
+    }
+    return 0
+  })
   const [portalTarget, setPortalTarget] = useState<Element | null>(null)
+  const pipRef = useRef<HTMLDivElement>(null)
+  const pipX = useMotionValue(0)
+  const pipY = useMotionValue(0)
+
+  useEffect(() => {
+    if (inConversation) {
+      pipX.set(0)
+      pipY.set(0)
+    }
+  }, [inConversation, pipX, pipY])
+
+  const handleDragEnd = () => {
+    const element = pipRef.current
+    if (!element) return
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    const centerX = vw / 2
+    const centerY = vh / 2
+    const rect = element.getBoundingClientRect()
+    const elementCenterX = rect.left + rect.width / 2
+    const elementCenterY = rect.top + rect.height / 2
+
+    const isLeft = elementCenterX < centerX
+    const isTop = elementCenterY < centerY
+
+    let targetX = 0
+    let targetY = 0
+
+    if (isLeft) {
+      targetX = -vw + rect.width + 48
+    } else {
+      targetX = 0
+    }
+
+    if (isTop) {
+      targetY = -vh + rect.height + 48
+    } else {
+      targetY = 0
+    }
+
+    animate(pipX, targetX, { type: 'spring', stiffness: 300, damping: 25 })
+    animate(pipY, targetY, { type: 'spring', stiffness: 300, damping: 25 })
+  }
 
   const {
     remoteStreams, remoteScreenStreams,
@@ -111,9 +160,15 @@ export function DmCallWindow({
 
   // Elapsed timer
   useEffect(() => {
-    const id = setInterval(() => setElapsed(s => s + 1), 1000)
+    const id = setInterval(() => {
+      if (startedAt) {
+        setElapsed(Math.floor((Date.now() - startedAt) / 1000))
+      } else {
+        setElapsed(s => s + 1)
+      }
+    }, 1000)
     return () => clearInterval(id)
-  }, [])
+  }, [startedAt])
 
   // Portal target
   useEffect(() => {
@@ -334,11 +389,16 @@ export function DmCallWindow({
   // ── PiP content ───────────────────────────────────────────────────────────
   const pipContent = (
     <motion.div
+      ref={pipRef}
       initial={{ opacity: 0, y: 8, scale: 0.96 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
+      animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, y: 8, scale: 0.96 }}
       transition={{ duration: 0.15 }}
-      className="fixed bottom-6 right-6 z-50 w-64 rounded-xl overflow-hidden shadow-xl border border-white/10 bg-black"
+      style={{ x: pipX, y: pipY }}
+      drag
+      dragMomentum={false}
+      onDragEnd={handleDragEnd}
+      className="fixed bottom-6 right-6 z-50 w-64 rounded-xl overflow-hidden shadow-xl border border-white/10 bg-black cursor-grab active:cursor-grabbing select-none"
     >
       <div className="relative bg-black flex items-center justify-center" style={{ aspectRatio: type === 'audio' ? 'unset' : '16/9' }}>
         <video
