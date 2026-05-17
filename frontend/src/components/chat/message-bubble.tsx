@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Check, CheckCheck, Forward, FileText, Download, X, Pin } from 'lucide-react';
@@ -31,12 +32,52 @@ interface MessageBubbleProps {
 
 interface ProfilePayload { __twiky_type: 'profile'; username: string; name: string; avatarUrl: string | null; url: string }
 
+export interface ForumPostPayload { __twiky_type: 'forum_post'; title: string; content: string; imageUrl: string | null; groupName: string; url: string | null }
+
 function tryParseProfile(content: string): ProfilePayload | null {
   try {
     const p = JSON.parse(content)
     if (p?.__twiky_type === 'profile') return p as ProfilePayload
   } catch { /* not JSON */ }
   return null
+}
+
+export function tryParseForumPost(content: string): ForumPostPayload | null {
+  try {
+    const p = JSON.parse(content)
+    if (p?.__twiky_type === 'forum_post') return p as ForumPostPayload
+  } catch { /* not JSON */ }
+  return null
+}
+
+export function ForumPostCard({ data }: { data: ForumPostPayload }) {
+  const router = useRouter()
+  function handleClick(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (data.url) router.push(data.url)
+  }
+  return (
+    <div
+      onClick={data.url ? handleClick : undefined}
+      className={`mt-1 w-[260px] overflow-hidden rounded-xl border border-border/60 bg-muted/30 transition-colors hover:bg-muted/50${data.url ? ' cursor-pointer' : ''}`}
+    >
+      {data.imageUrl && (
+        <img src={data.imageUrl} alt="" className="h-[120px] w-full object-cover" />
+      )}
+      <div className="px-3 py-2.5 space-y-1.5">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-widest text-primary/70 mb-1">#{data.groupName}</p>
+          <p className="text-[13px] font-bold text-foreground leading-snug line-clamp-2">{data.title}</p>
+          {data.content && (
+            <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed line-clamp-2">{data.content}</p>
+          )}
+        </div>
+        <div className="pt-1 border-t border-border/40">
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary">See post →</span>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function ProfileCard({ data }: { data: ProfilePayload }) {
@@ -205,6 +246,8 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
           {message.type === 'text' && (() => {
             const profileData = tryParseProfile(message.content)
             if (profileData) return <ProfileCard data={profileData} />
+            const forumPost = tryParseForumPost(message.content)
+            if (forumPost) return <ForumPostCard data={forumPost} />
             return (
               <p className="text-sm text-foreground/90 wrap-break-word whitespace-pre-wrap leading-relaxed">
                 {searchHighlight ? <HighlightedText text={message.content} query={searchHighlight} /> : <AppleText text={message.content} />}

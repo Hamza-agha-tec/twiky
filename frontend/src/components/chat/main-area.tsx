@@ -215,7 +215,7 @@ export function MainArea({
   const inputRef = useRef<HTMLInputElement>(null)
 
   const GroupIcon = activeGroup.kind === 'voice' ? Volume2 : activeGroup.kind === 'watch' ? Tv : activeGroup.kind === 'board' ? MessagesSquare : Hash
-  const groupScopeLabel = activeGroup.kind === 'board' ? `Board: ${activeGroup.label}` : activeGroup.label
+  const groupScopeLabel = activeGroup.kind === 'board' ? `Forum: ${activeGroup.label}` : activeGroup.label
   const feedChild = isValidElement(children)
     ? cloneElement(children as any, {
       onProfilePanelWidthChange: setFeedProfilePanelWidth,

@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
+import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import EmojiPicker, { Theme, EmojiClickData, EmojiStyle } from 'emoji-picker-react'
 import { useTheme } from 'next-themes'
 import {
@@ -23,6 +24,10 @@ import {
   Smile,
   Globe,
   Users,
+  Search,
+  Flame,
+  TrendingUp,
+  Clock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { UserAvatar } from '@/components/chat/user-avatar'
@@ -57,6 +62,7 @@ import {
   useDeleteBoardTag,
 } from '@/hooks/use-boards'
 import type { BoardPost, BoardComment, BoardTag } from '@/lib/boards-api'
+import { ShareModal } from '@/components/chat/share-modal'
 import { filesApi } from '@/lib/files-api'
 import {
   VerifiedBadge,
@@ -121,23 +127,42 @@ function ChannelAvatarIcon({ src, name, size = 'md' }: { src?: string; name: str
 
 // ─── Image Slider ─────────────────────────────────────────────────────────────
 
-function ImageSlider({ urls, className, maxHeight, noClick }: { urls: string[]; className?: string; maxHeight?: number; noClick?: boolean }) {
+function ImageSlider({ urls, className, maxHeight, noClick, autoPlayOnHover }: { urls: string[]; className?: string; maxHeight?: number; noClick?: boolean; autoPlayOnHover?: boolean }) {
   const [index, setIndex] = useState(0)
   const [fullscreen, setFullscreen] = useState(false)
+  const [isHovered, setIsHovered] = useState(false)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    if (!autoPlayOnHover || !isHovered || urls.length <= 1) return
+    intervalRef.current = setInterval(() => setIndex(i => (i + 1) % urls.length), 1200)
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
+  }, [autoPlayOnHover, isHovered, urls.length])
+
   if (urls.length === 0) return null
+
+  function stopAutoPlay() {
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null }
+  }
 
   function prev(e: React.MouseEvent) {
     e.stopPropagation()
+    stopAutoPlay()
     setIndex((i) => (i - 1 + urls.length) % urls.length)
   }
   function next(e: React.MouseEvent) {
     e.stopPropagation()
+    stopAutoPlay()
     setIndex((i) => (i + 1) % urls.length)
   }
 
   return (
     <>
-      <div className={cn('relative flex justify-center', className)}>
+      <div
+        className={cn('relative flex justify-center', className)}
+        onMouseEnter={() => { if (autoPlayOnHover && urls.length > 1) setIsHovered(true) }}
+        onMouseLeave={() => { stopAutoPlay(); setIsHovered(false); setIndex(0) }}
+      >
       <div className="relative overflow-hidden rounded-xl w-fit" style={noClick ? undefined : { cursor: 'pointer' }}>
         <img
           key={index}
@@ -147,24 +172,6 @@ function ImageSlider({ urls, className, maxHeight, noClick }: { urls: string[]; 
           style={maxHeight ? { maxHeight, width: 'auto', objectFit: 'contain' } : { width: '100%', height: 'auto' }}
           onClick={noClick ? undefined : (e) => { e.stopPropagation(); setFullscreen(true) }}
         />
-
-        {/* Arrows */}
-        {urls.length > 1 && (
-          <>
-            <button
-              onClick={prev}
-              className="absolute left-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm hover:bg-black/70 transition-colors"
-            >
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
-            </button>
-            <button
-              onClick={next}
-              className="absolute right-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm hover:bg-black/70 transition-colors"
-            >
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-            </button>
-          </>
-        )}
 
         {/* Dots */}
         {urls.length > 1 && (
@@ -1077,7 +1084,7 @@ function PostDetail({
           {post.content && (
             <p className="text-sm text-foreground/85 leading-relaxed whitespace-pre-wrap mb-4"><RichText text={post.content} /></p>
           )}
-          {post.media_urls?.length > 0 && <ImageSlider urls={post.media_urls} className="mb-4" maxHeight={380} noClick />}
+          {post.media_urls?.length > 0 && <ImageSlider urls={post.media_urls} className="mb-4" maxHeight={380} noClick autoPlayOnHover />}
 
           <div className="flex items-center gap-5 pt-3 border-t border-border/40">
             <button
@@ -1204,6 +1211,7 @@ function PostCard({
   onMessage,
   onViewProfile,
   onCommentClick,
+  onShare,
 }: {
   post: BoardPost
   groupId: string
@@ -1214,6 +1222,7 @@ function PostCard({
   onMessage?: (userId: string) => void
   onViewProfile?: (userId: string, userData?: { name: string; avatarUrl: string | null }) => void
   onCommentClick?: () => void
+  onShare?: (post: BoardPost) => void
 }) {
   const likePost = useLikeBoardPost(groupId)
   const deletePost = useDeleteBoardPost(groupId)
@@ -1319,7 +1328,7 @@ function PostCard({
 
       {/* Image slider */}
       {hasImage && (
-        <ImageSlider urls={post.media_urls} className="mx-4 mb-3" maxHeight={200} noClick />
+        <ImageSlider urls={post.media_urls} className="mx-4 mb-3" maxHeight={200} noClick autoPlayOnHover />
       )}
 
       {/* Extra tags (beyond first shown in header) */}
@@ -1351,7 +1360,7 @@ function PostCard({
         </button>
 
         <button
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); onShare?.(post) }}
           className="flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground transition-colors"
         >
           <Share2 className="h-4 w-4" />
@@ -1382,6 +1391,13 @@ function SectionDivider({ label }: { label: string }) {
 
 // ─── Board View ───────────────────────────────────────────────────────────────
 
+type SortMode = 'new' | 'hot' | 'top'
+
+function hotScore(post: BoardPost) {
+  const hours = (Date.now() - new Date(post.created_at).getTime()) / 3_600_000
+  return (post.like_count + post.comment_count * 1.5) / Math.pow(hours + 2, 0.8)
+}
+
 export function BoardView({
   groupId,
   groupName,
@@ -1401,28 +1417,86 @@ export function BoardView({
   onMessage?: (userId: string) => void
   onViewProfile?: (userId: string, userData?: { name: string; avatarUrl: string | null }) => void
 }) {
+  const params = useParams()
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const channelId = params?.channelId as string | undefined
+
   const { data: posts = [], isLoading } = useBoardPosts(groupId)
+  const { data: allTags = [] } = useBoardTags(groupId)
   useBoardRealtime(groupId)
 
   const [createOpen, setCreateOpen] = useState(false)
-  const [activePost, setActivePost] = useState<BoardPost | null>(null)
+  const [activePostId, setActivePostId] = useState<string | null>(null)
   const [scrollToComments, setScrollToComments] = useState(false)
+
+  // Resolve active post: URL param takes priority, then local state
+  const postIdParam = searchParams?.get('postId') ?? null
+  const resolvedPostId = postIdParam ?? activePostId
+  const activePost = resolvedPostId ? (posts.find(p => p.id === resolvedPostId) ?? null) : null
+
+  function openPost(post: BoardPost) {
+    setActivePostId(post.id)
+  }
+
+  function closePost() {
+    setActivePostId(null)
+    if (postIdParam) {
+      const url = new URL(window.location.href)
+      url.searchParams.delete('postId')
+      router.replace(url.pathname + url.search, { scroll: false } as any)
+    }
+    setScrollToComments(false)
+  }
+  const [sortBy, setSortBy] = useState<SortMode>('new')
+  const [activeTagId, setActiveTagId] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [sharePost, setSharePost] = useState<BoardPost | null>(null)
+
+  const filteredPosts = useMemo(() => {
+    let result = posts.filter(p => !p.is_pinned)
+    if (activeTagId) result = result.filter(p => p.tags.some(t => t.id === activeTagId))
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase()
+      result = result.filter(p => p.title.toLowerCase().includes(q) || (p.content ?? '').toLowerCase().includes(q))
+    }
+    if (sortBy === 'top') result = [...result].sort((a, b) => b.like_count - a.like_count)
+    else if (sortBy === 'hot') result = [...result].sort((a, b) => hotScore(b) - hotScore(a))
+    else result = [...result].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    return result
+  }, [posts, activeTagId, searchQuery, sortBy])
+
+  const pinnedPosts = posts.filter(p => p.is_pinned)
+
+  const sharePayload = sharePost ? {
+    content: JSON.stringify({
+      __twiky_type: 'forum_post',
+      title: sharePost.title,
+      content: sharePost.content ? sharePost.content.slice(0, 120) + (sharePost.content.length > 120 ? '…' : '') : '',
+      imageUrl: sharePost.media_urls?.[0] ?? null,
+      groupName,
+      url: channelId ? `/channels/${channelId}/group/${groupId}?postId=${sharePost.id}` : null,
+    }),
+    isForwarded: false,
+  } : { content: '' }
 
   if (activePost) {
     const live = posts.find((p) => p.id === activePost.id) ?? activePost
     return (
-      <PostDetail post={live} groupId={groupId} myId={myId} isAdmin={isAdmin} onBack={() => { setActivePost(null); setScrollToComments(false) }} onMessage={onMessage} onViewProfile={onViewProfile} scrollToComments={scrollToComments} />
+      <PostDetail post={live} groupId={groupId} myId={myId} isAdmin={isAdmin} onBack={closePost} onMessage={onMessage} onViewProfile={onViewProfile} scrollToComments={scrollToComments} />
     )
   }
 
-  const pinnedPosts = posts.filter((p) => p.is_pinned)
-  const regularPosts = posts.filter((p) => !p.is_pinned)
+  const SORT_TABS: { mode: SortMode; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+    { mode: 'hot', label: 'Hot', icon: Flame },
+    { mode: 'new', label: 'New', icon: Clock },
+    { mode: 'top', label: 'Top', icon: TrendingUp },
+  ]
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* Top nav */}
       <div className="relative flex items-center border-b border-border/40 px-4 py-3 shrink-0">
-        {/* Left: post count */}
         <div className="w-24 flex items-start">
           {posts.length > 0 && (
             <span className="text-[11px] font-medium text-muted-foreground/60 bg-muted/60 rounded-full px-2 py-0.5">
@@ -1431,18 +1505,18 @@ export function BoardView({
           )}
         </div>
 
-        {/* Center: channel avatar + name */}
         <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2.5">
           <ChannelAvatarIcon src={channelAvatar} name={channelName ?? groupName} size="sm" />
           <div className="flex flex-col items-center leading-none">
-            <span className="text-[13px] font-bold text-foreground">{channelName ?? groupName}</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[13px] font-bold text-foreground">{channelName ?? groupName}</span>
+            </div>
             {channelName && (
               <span className="text-[10px] text-muted-foreground/60 font-medium mt-0.5">{groupName}</span>
             )}
           </div>
         </div>
 
-        {/* Right: new post */}
         <div className="ml-auto">
           <button
             onClick={() => setCreateOpen(true)}
@@ -1453,12 +1527,67 @@ export function BoardView({
         </div>
       </div>
 
+      {/* Filter / sort bar */}
+      <div className="flex items-center gap-2 border-b border-border/30 px-4 py-2 shrink-0 bg-muted/20">
+        {/* Sort tabs */}
+        <div className="flex items-center gap-0.5 rounded-lg bg-muted/60 p-0.5">
+          {SORT_TABS.map(({ mode, label, icon: Icon }) => (
+            <button
+              key={mode}
+              onClick={() => setSortBy(mode)}
+              className={cn(
+                'flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all',
+                sortBy === mode ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <Icon className="h-3 w-3" />{label}
+            </button>
+          ))}
+        </div>
+
+        {/* Tag filter pills */}
+        {allTags.length > 0 && (
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+            {allTags.map(tag => (
+              <button
+                key={tag.id}
+                onClick={() => setActiveTagId(prev => prev === tag.id ? null : tag.id)}
+                className="flex-shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-all"
+                style={{
+                  backgroundColor: activeTagId === tag.id ? tag.color + '28' : 'transparent',
+                  color: tag.color,
+                  border: `1px solid ${tag.color}${activeTagId === tag.id ? '60' : '30'}`,
+                  opacity: activeTagId && activeTagId !== tag.id ? 0.45 : 1,
+                }}
+              >
+                {tag.name}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Search */}
+        <div className="ml-auto flex items-center gap-1.5 rounded-lg bg-muted/60 px-2.5 py-1 min-w-0">
+          <Search className="h-3 w-3 shrink-0 text-muted-foreground/60" />
+          <input
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Search posts…"
+            className="w-28 bg-transparent text-[11px] focus:outline-none placeholder:text-muted-foreground/50 focus:w-44 transition-all duration-200"
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')} className="shrink-0 text-muted-foreground/50 hover:text-foreground transition-colors">
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Feed */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-4 py-4">
           <div className="grid grid-cols-2 gap-3 items-start">
 
-          {/* Skeleton */}
           {isLoading && (
             <>
               {[1, 2, 3, 4].map((i) => (
@@ -1483,7 +1612,6 @@ export function BoardView({
             </>
           )}
 
-          {/* Empty state */}
           {!isLoading && posts.length === 0 && (
             <div className="col-span-2 flex flex-col items-center justify-center py-24 text-center animate-in fade-in duration-500">
               <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border-2 border-dashed border-border/50">
@@ -1497,20 +1625,28 @@ export function BoardView({
             </div>
           )}
 
+          {!isLoading && posts.length > 0 && filteredPosts.length === 0 && (
+            <div className="col-span-2 flex flex-col items-center justify-center py-16 text-center animate-in fade-in duration-300">
+              <Search className="h-8 w-8 text-muted-foreground/30 mb-3" />
+              <p className="text-sm font-semibold text-foreground/70">No posts found</p>
+              <p className="mt-1 text-xs text-muted-foreground">Try a different search or tag filter</p>
+            </div>
+          )}
+
           {/* Pinned */}
           {pinnedPosts.map((post, i) => (
-            <PostCard key={post.id} post={post} groupId={groupId} myId={myId} isAdmin={isAdmin} onClick={() => setActivePost(post)} index={i} onMessage={onMessage} onViewProfile={onViewProfile} onCommentClick={() => { setScrollToComments(true); setActivePost(post) }} />
+            <PostCard key={post.id} post={post} groupId={groupId} myId={myId} isAdmin={isAdmin} onClick={() => openPost(post)} index={i} onMessage={onMessage} onViewProfile={onViewProfile} onCommentClick={() => { setScrollToComments(true); openPost(post) }} onShare={setSharePost} />
           ))}
 
-          {pinnedPosts.length > 0 && regularPosts.length > 0 && (
+          {pinnedPosts.length > 0 && filteredPosts.length > 0 && (
             <div className="col-span-2">
               <SectionDivider label="Recent Activity" />
             </div>
           )}
 
-          {/* Regular */}
-          {regularPosts.map((post, i) => (
-            <PostCard key={post.id} post={post} groupId={groupId} myId={myId} isAdmin={isAdmin} onClick={() => setActivePost(post)} index={pinnedPosts.length + i} onMessage={onMessage} onViewProfile={onViewProfile} onCommentClick={() => { setScrollToComments(true); setActivePost(post) }} />
+          {/* Sorted / filtered posts */}
+          {filteredPosts.map((post, i) => (
+            <PostCard key={post.id} post={post} groupId={groupId} myId={myId} isAdmin={isAdmin} onClick={() => openPost(post)} index={pinnedPosts.length + i} onMessage={onMessage} onViewProfile={onViewProfile} onCommentClick={() => { setScrollToComments(true); openPost(post) }} onShare={setSharePost} />
           ))}
 
           </div>
@@ -1526,6 +1662,15 @@ export function BoardView({
         onClose={() => setCreateOpen(false)}
         isAdmin={isAdmin}
       />
+
+      {sharePost && (
+        <ShareModal
+          open
+          onClose={() => setSharePost(null)}
+          payload={sharePayload}
+          title={`Share "${sharePost.title.slice(0, 40)}${sharePost.title.length > 40 ? '…' : ''}"`}
+        />
+      )}
     </div>
   )
 }

@@ -1135,7 +1135,7 @@ function GroupSettingsSheet({
             <div className="grid grid-cols-2 gap-2">
               {([
                 { value: 'text', icon: Hash, label: 'Text', desc: 'Messages and threads' },
-                { value: 'board', icon: MessagesSquare, label: 'Board', desc: 'Forum-style topics' },
+                { value: 'board', icon: MessagesSquare, label: 'Forum', desc: 'Forum-style topics' },
                 { value: 'voice', icon: Volume2, label: 'Voice', desc: 'Audio conversations' },
                 { value: 'watch', icon: Tv, label: 'Watch', desc: 'Watch together room' },
               ] as const).map(({ value, icon: Icon, label, desc }) => (
@@ -1543,7 +1543,7 @@ export function ChannelsPanel({
                 <div key={group.id}>
                 {isFirstBoard && (
                   <div className="flex items-center gap-2 px-1 pb-1 pt-2">
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50">Boards</span>
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50">Forums</span>
                     <div className="flex-1 border-t border-border/50" />
                   </div>
                 )}

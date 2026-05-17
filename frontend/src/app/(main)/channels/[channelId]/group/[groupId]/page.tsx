@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ChatWindow } from '@/components/chat/chat-window'
 import { WorkspaceEmptyState } from '@/components/chat/workspace-empty-state'
-import { useGroupMessageRealtime, useGroupMessages, useGroupMembers, useSendGroupMessage, useChannelGroups, backendGroupToMock } from '@/hooks/use-groups'
+import { useGroupMessageRealtime, useGroupMessages, useGroupMembers, useSendGroupMessage, useChannelGroups, useToggleGroupMessageReaction, backendGroupToMock } from '@/hooks/use-groups'
 import { useCreateDirectConversation } from '@/hooks/use-direct-conversations'
 import { useVoice } from '@/context/VoiceContext'
 import { Button } from '@/components/ui/button'
@@ -13,11 +12,12 @@ import { Volume2, PhoneOff } from 'lucide-react'
 import { useProfile } from '@/hooks/use-user'
 import { VoiceGroupView } from '@/components/chat/voice-group-view'
 import { WatchRoomView } from '@/components/watch/watch-room-view'
-import { DirectProfileSidebar } from '@/components/chat/direct-profile-sidebar'
-import { motion, AnimatePresence } from 'framer-motion'
 import { useDmCallContext } from '@/context/DmCallContext'
 import { useChannels } from '@/hooks/use-channels'
 import { BoardView } from '@/components/chat/board-view'
+import { ChannelFeed, type FeedPost } from '@/components/chat/channel-feed'
+import { MainArea, type MainAreaTab } from '@/components/chat/main-area'
+import type { GroupMessage } from '@/lib/groups-api'
 
 function ActiveCallBlockedView({ onHangUp, type }: { onHangUp: () => void; type: 'voice' | 'watch' }) {
   return (
@@ -52,6 +52,28 @@ function ActiveCallBlockedView({ onHangUp, type }: { onHangUp: () => void; type:
   )
 }
 
+function toFeedPosts(messages: GroupMessage[], myId?: string): FeedPost[] {
+  return messages.map(msg => ({
+    id: msg.id,
+    author: msg.sender?.username ?? 'Unknown',
+    authorId: msg.sender_id,
+    authorAvatarUrl: msg.sender?.avatar_url ?? null,
+    authorIsVerified: msg.sender?.is_verified ?? false,
+    authorSubPlan: (msg.sender?.sub_plan as FeedPost['authorSubPlan']) ?? null,
+    role: '',
+    time: msg.created_at,
+    body: msg.content ?? '',
+    isOwn: msg.sender_id === myId,
+    imageUrl: (msg.type === 'image' || msg.type === 'gif' || msg.type === 'sticker') ? (msg.file_url ?? undefined) : undefined,
+    attachmentType: msg.type ?? undefined,
+    attachmentMime: msg.mime ?? null,
+    attachmentDuration: msg.duration ?? null,
+    pinned: msg.is_pinned ?? false,
+    reactions: (msg.reactions ?? []).map(r => ({ emoji: r.emoji, count: r.users.length, mine: r.users.includes(myId ?? '') })),
+    replyCount: 0,
+  }))
+}
+
 export default function GroupPage() {
   const { channelId, groupId } = useParams()
   const router = useRouter()
@@ -65,7 +87,9 @@ export default function GroupPage() {
   const { data: profile } = useProfile()
   const { mutate: createDm } = useCreateDirectConversation()
 
-  const { mutate: sendMessage } = useSendGroupMessage(gId)
+  const { mutateAsync: sendMessage } = useSendGroupMessage(gId)
+  const { mutate: toggleReaction } = useToggleGroupMessageReaction(gId, profile?.id)
+  const [activeTab, setActiveTab] = useState<MainAreaTab>('feed')
   const { data: channelGroups = [], isLoading: groupsLoading } = useChannelGroups(channelId as string)
   const { data: channels = [] } = useChannels()
   const activeChannel = channels.find(c => c.id === channelId)
@@ -73,23 +97,14 @@ export default function GroupPage() {
   const backendGroup = channelGroups.find(g => g.id === gId)
   
   const voice = useVoice()
-  const [isJoining, setIsJoining] = useState(false)
-  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null)
-
-  // Handle Escape key to close sidebar or go back to channel home
+  // Handle Escape key to go back to channel home
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (selectedProfileId) {
-          setSelectedProfileId(null)
-        } else {
-          router.push(`/channels/${channelId}`)
-        }
-      }
+      if (e.key === 'Escape') router.push(`/channels/${channelId}`)
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [channelId, router, selectedProfileId])
+  }, [channelId, router])
 
   if (!backendGroup) {
     if (groupsLoading) {
@@ -191,61 +206,63 @@ export default function GroupPage() {
               }
             })
           }}
-          onViewProfile={(userId) => setSelectedProfileId(userId)}
+          onViewProfile={() => {}}
         />
       </div>
     )
   }
 
-  return (
-    <div className="flex h-full w-full overflow-hidden relative bg-background">
-      <div className="flex-1 min-w-0 h-full">
-        <ChatWindow
-          activeChat={gId}
-          chatOverride={{
-            name: group.label || 'Group Chat',
-          }}
-          messages={messages as any}
-          onSendMessage={(payload) => {
-            sendMessage({
-              content: payload.content || '',
-              fileUrl: payload.fileUrl || undefined,
-              replyToId: payload.replyToId
-            })
-          }} 
-          onStartDirectMessage={(userId) => {
-            createDm(userId, {
-              onSuccess: (data) => {
-                if (data?.id) {
-                  router.push(`/dm/${data.id}`)
-                }
-              }
-            })
-          }}
-          onViewMessageProfile={(userId) => {
-            setSelectedProfileId(userId)
-          }}
-        />
-      </div>
+  const workspaceChannel = {
+    id: activeChannel?.id ?? gId,
+    label: activeChannel?.name ?? '',
+    description: activeChannel?.description ?? '',
+    membersLabel: '',
+    groups: channelGroups.map(backendGroupToMock),
+    avatarUrl: activeChannel?.avatar_url ?? undefined,
+    bannerUrl: activeChannel?.banner_url ?? undefined,
+    access_type: activeChannel?.access_type as any,
+    role: activeChannel?.role as any,
+    owner_id: activeChannel?.owner_id,
+    type: (activeChannel?.type as any) ?? 'NORMAL',
+  }
 
-      <AnimatePresence>
-        {selectedProfileId && (
-          <motion.div
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 300, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="flex-shrink-0 border-l border-border bg-sidebar hidden lg:block h-full z-10 absolute right-0 top-0 bottom-0 shadow-2xl lg:relative lg:shadow-none overflow-hidden"
-          >
-            <div className="w-[300px] h-full">
-              <DirectProfileSidebar
-                userId={selectedProfileId}
-                onClose={() => setSelectedProfileId(null)}
-              />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+  return (
+    <MainArea
+      activeChannel={workspaceChannel}
+      activeGroup={group}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      members={members}
+      onMemberMessage={(userId) => createDm(userId, {
+        onSuccess: (data) => { if (data?.id) router.push(`/dm/${data.id}`) }
+      })}
+    >
+      <ChannelFeed
+        channel={workspaceChannel}
+        group={group}
+        members={members}
+        myAvatarUrl={profile?.avatar_url}
+        postsOverride={toFeedPosts(messages, profile?.id)}
+        onSendPost={async (payload) => {
+          await sendMessage({
+            content: payload.content,
+            fileUrl: payload.fileUrl,
+            replyToId: payload.replyToId,
+            type: payload.type,
+            mime: payload.mime,
+            duration: payload.duration,
+            size: payload.size,
+          })
+        }}
+        onOpenDirectConversation={(target) => {
+          const userId = typeof target === 'string' ? target : target.id
+          if (!userId) return
+          createDm(userId, {
+            onSuccess: (data) => { if (data?.id) router.push(`/dm/${data.id}`) }
+          })
+        }}
+        onToggleReaction={(postId, emoji) => toggleReaction({ messageId: postId, emoji })}
+      />
+    </MainArea>
   )
 }
