@@ -1,6 +1,7 @@
 'use client'
 
 import Image from 'next/image'
+import { useRouter as useNextRouter } from 'next/navigation'
 import {
   type ChangeEvent,
   KeyboardEvent,
@@ -678,6 +679,51 @@ function emojiToUnified(emoji: string): string {
   return [...emoji].map(c => c.codePointAt(0)!.toString(16).toLowerCase()).join('-')
 }
 
+// ─── Forum Post Card (inline — avoids circular dep with message-bubble) ──────
+
+interface ForumPostEmbedPayload { __twiky_type: 'forum_post'; title: string; content: string; imageUrl: string | null; groupName: string; url?: string | null }
+
+function tryParseForumPost(body: string): ForumPostEmbedPayload | null {
+  try {
+    const p = JSON.parse(body)
+    if (p?.__twiky_type === 'forum_post') return p as ForumPostEmbedPayload
+  } catch { /* not JSON */ }
+  return null
+}
+
+function ForumPostEmbed({ data }: { data: ForumPostEmbedPayload }) {
+  const router = useNextRouter()
+  function handleClick(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (data.url) router.push(data.url)
+  }
+  return (
+    <div
+      onClick={data.url ? handleClick : undefined}
+      className={cn(
+        'mt-1 w-[260px] overflow-hidden rounded-xl border border-border/60 bg-muted/30 transition-colors hover:bg-muted/50',
+        data.url && 'cursor-pointer',
+      )}
+    >
+      {data.imageUrl && (
+        <img src={data.imageUrl} alt="" className="h-[120px] w-full object-cover" />
+      )}
+      <div className="px-3 py-2.5 space-y-1.5">
+        <p className="text-[11px] font-bold uppercase tracking-widest text-primary/70">#{data.groupName}</p>
+        <p className="text-[13px] font-bold text-foreground leading-snug line-clamp-2">{data.title}</p>
+        {data.content && (
+          <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2">{data.content}</p>
+        )}
+        <div className="pt-1 border-t border-border/40">
+          <span className="text-[11px] font-semibold text-primary">See post →</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function ReactionsBar({
   reactions,
   onReact,
@@ -906,9 +952,11 @@ function MessageRow({
               </div>
             ) : null}
 
-            {post.body ? (
-              <AppleText text={post.body} className="text-[13.5px] leading-[1.55] text-foreground" />
-            ) : null}
+            {post.body ? (() => {
+              const forumPost = tryParseForumPost(post.body)
+              if (forumPost) return <ForumPostEmbed data={forumPost} />
+              return <AppleText text={post.body} className="text-[13.5px] leading-[1.55] text-foreground" />
+            })() : null}
 
             {post.poll ? (
               <FeedPollCard poll={post.poll} onVote={onPollVote} />
@@ -1939,9 +1987,11 @@ function FeedProfileRow({
           </div>
         ) : null}
 
-        {post.body ? (
-          <AppleText text={post.body} className="text-[13.5px] leading-[1.55] text-foreground" />
-        ) : null}
+        {post.body ? (() => {
+          const forumPost = tryParseForumPost(post.body)
+          if (forumPost) return <ForumPostEmbed data={forumPost} />
+          return <AppleText text={post.body} className="text-[13.5px] leading-[1.55] text-foreground" />
+        })() : null}
 
         {post.poll ? (
           <FeedPollCard poll={post.poll} onVote={onPollVote} />

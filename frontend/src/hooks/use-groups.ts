@@ -63,7 +63,7 @@ export function useGroupMessages(groupId: string | undefined) {
 export function useSendGroupMessage(groupId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { content: string; fileUrl?: string; replyToId?: string | null }) =>
+    mutationFn: (data: { content?: string; fileUrl?: string; replyToId?: string | null; type?: 'voice' | 'image' | 'file' | 'gif' | 'sticker'; mime?: string; duration?: number; size?: number }) =>
       groupsApi.sendGroupMessage(groupId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: GROUP_KEYS.messages(groupId) });

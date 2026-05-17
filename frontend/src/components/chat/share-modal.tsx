@@ -199,7 +199,7 @@ export function ShareModal({ open, onClose, payload, title = 'Share to…' }: Sh
                                 isSel && 'bg-primary/10'
                               )}
                             >
-                              <span className="text-[12px] text-muted-foreground">{group.group_type === 'board' ? 'Board' : '#'}</span>
+                              <span className="text-[12px] text-muted-foreground">{group.group_type === 'board' ? 'Forum' : '#'}</span>
                               <span className="flex-1 truncate text-[12px]">{group.name}</span>
                               {isSel && <Check className="h-3 w-3 text-primary shrink-0" />}
                             </button>

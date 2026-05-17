@@ -48,7 +48,7 @@ const GROUP_TYPES = [
   {
     value: 'board' as const,
     icon: MessagesSquare,
-    label: 'Board',
+    label: 'Forum',
     desc: 'Forum-style posts',
     gradient: 'from-blue-500/20 to-cyan-500/10',
     color: 'text-blue-400',
@@ -238,7 +238,7 @@ export function CreateEntityDialog({
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <p className="truncate text-[13px] font-bold text-foreground">
-                              {groupType === 'board' ? 'Board: ' : groupType !== 'voice' && groupType !== 'watch' ? '#' : ''}{previewName}
+                              {groupType === 'board' ? 'Forum: ' : groupType !== 'voice' && groupType !== 'watch' ? '#' : ''}{previewName}
                             </p>
                             {groupAccess === 'PRIVATE' && <Lock className="h-3 w-3 text-muted-foreground shrink-0" />}
                           </div>
