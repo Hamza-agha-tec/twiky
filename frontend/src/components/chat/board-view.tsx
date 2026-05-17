@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import EmojiPicker, { Theme, EmojiClickData, EmojiStyle } from 'emoji-picker-react'
+import { useTheme } from 'next-themes'
 import {
   Heart,
   MessageCircle,
@@ -119,8 +121,9 @@ function ChannelAvatarIcon({ src, name, size = 'md' }: { src?: string; name: str
 
 // ─── Image Slider ─────────────────────────────────────────────────────────────
 
-function ImageSlider({ urls, className, maxHeight }: { urls: string[]; className?: string; maxHeight?: number }) {
+function ImageSlider({ urls, className, maxHeight, noClick }: { urls: string[]; className?: string; maxHeight?: number; noClick?: boolean }) {
   const [index, setIndex] = useState(0)
+  const [fullscreen, setFullscreen] = useState(false)
   if (urls.length === 0) return null
 
   function prev(e: React.MouseEvent) {
@@ -133,49 +136,74 @@ function ImageSlider({ urls, className, maxHeight }: { urls: string[]; className
   }
 
   return (
-    <div className={cn('relative overflow-hidden rounded-xl flex justify-center bg-muted/20', className)}>
-      <img
-        key={index}
-        src={urls[index]}
-        alt=""
-        className="block rounded-xl animate-in fade-in duration-200"
-        style={maxHeight ? { maxHeight, width: 'auto', objectFit: 'contain' } : { width: '100%', height: 'auto' }}
-      />
+    <>
+      <div className={cn('relative flex justify-center', className)}>
+      <div className="relative overflow-hidden rounded-xl w-fit" style={noClick ? undefined : { cursor: 'pointer' }}>
+        <img
+          key={index}
+          src={urls[index]}
+          alt=""
+          className="block rounded-xl animate-in fade-in duration-200"
+          style={maxHeight ? { maxHeight, width: 'auto', objectFit: 'contain' } : { width: '100%', height: 'auto' }}
+          onClick={noClick ? undefined : (e) => { e.stopPropagation(); setFullscreen(true) }}
+        />
 
-      {/* Arrows */}
-      {urls.length > 1 && (
-        <>
-          <button
-            onClick={prev}
-            className="absolute left-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm hover:bg-black/70 transition-colors"
-          >
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
-          </button>
-          <button
-            onClick={next}
-            className="absolute right-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm hover:bg-black/70 transition-colors"
-          >
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-          </button>
-        </>
-      )}
-
-      {/* Dots */}
-      {urls.length > 1 && (
-        <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 flex items-center gap-1.5">
-          {urls.map((_, i) => (
+        {/* Arrows */}
+        {urls.length > 1 && (
+          <>
             <button
-              key={i}
-              onClick={(e) => { e.stopPropagation(); setIndex(i) }}
-              className={cn(
-                'rounded-full transition-all duration-200',
-                i === index ? 'bg-white w-4 h-1.5' : 'bg-white/50 w-1.5 h-1.5 hover:bg-white/80',
+              onClick={prev}
+              className="absolute left-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm hover:bg-black/70 transition-colors"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+            </button>
+            <button
+              onClick={next}
+              className="absolute right-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm hover:bg-black/70 transition-colors"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+            </button>
+          </>
+        )}
+
+        {/* Dots */}
+        {urls.length > 1 && (
+          <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 flex items-center gap-1.5">
+            {urls.map((_, i) => (
+              <button
+                key={i}
+                onClick={(e) => { e.stopPropagation(); setIndex(i) }}
+                className={cn(
+                  'rounded-full transition-all duration-200',
+                  i === index ? 'bg-white w-4 h-1.5' : 'bg-white/50 w-1.5 h-1.5 hover:bg-white/80',
+                )}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+      </div>
+
+      {fullscreen && (
+        <Dialog open onOpenChange={() => setFullscreen(false)}>
+          <DialogContent className="max-w-2xl p-2 bg-card border-border/60">
+            <div className="relative flex items-center justify-center">
+              {urls.length > 1 && (
+                <button onClick={() => setIndex(i => (i - 1 + urls.length) % urls.length)} className="absolute left-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors z-10">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                </button>
               )}
-            />
-          ))}
-        </div>
+              <img src={urls[index]} alt="" className="max-h-[75vh] max-w-full rounded-lg object-contain" />
+              {urls.length > 1 && (
+                <button onClick={() => setIndex(i => (i + 1) % urls.length)} className="absolute right-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors z-10">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                </button>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
-    </div>
+    </>
   )
 }
 
@@ -548,6 +576,186 @@ function CreatePostModal({
   )
 }
 
+// ─── Emoji helpers ────────────────────────────────────────────────────────────
+
+function countComments(comments: BoardComment[]): number {
+  return comments.reduce((sum, c) => sum + 1 + countComments(c.replies ?? []), 0)
+}
+
+function emojiToUnified(emoji: string): string {
+  return [...emoji]
+    .map(c => c.codePointAt(0)!)
+    .filter(cp => cp !== 0xFE0F)
+    .map(cp => cp.toString(16).padStart(4, '0'))
+    .join('-')
+}
+
+const APPLE_EMOJI_CDN = (unified: string) =>
+  `https://cdn.jsdelivr.net/npm/emoji-datasource-apple/img/apple/64/${unified}.png`
+
+function EmojiText({ text, className }: { text: string; className?: string }) {
+  const EMOJI_RE = /\p{Emoji_Presentation}|\p{Extended_Pictographic}/gu
+  const nodes: React.ReactNode[] = []
+  let last = 0
+  EMOJI_RE.lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = EMOJI_RE.exec(text)) !== null) {
+    if (m.index > last) nodes.push(text.slice(last, m.index))
+    nodes.push(
+      <img key={m.index} src={APPLE_EMOJI_CDN(emojiToUnified(m[0]))} alt={m[0]} className="inline-block h-[1.15em] w-[1.15em] align-[-0.2em]" />
+    )
+    last = m.index + m[0].length
+  }
+  if (last < text.length) nodes.push(text.slice(last))
+  return <span className={className}>{nodes}</span>
+}
+
+interface LinkMeta { title?: string; description?: string; image?: string; logo?: string }
+const linkMetaCache = new Map<string, LinkMeta>()
+
+function LinkPreview({ url }: { url: string }) {
+  const [meta, setMeta] = useState<LinkMeta | null>(() => linkMetaCache.get(url) ?? null)
+  const [visible, setVisible] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (linkMetaCache.has(url)) { setMeta(linkMetaCache.get(url)!); return }
+    fetch(`https://api.microlink.io?url=${encodeURIComponent(url)}`)
+      .then(r => r.json())
+      .then(json => {
+        if (json.status === 'success') {
+          const m: LinkMeta = {
+            title: json.data.title,
+            description: json.data.description,
+            image: json.data.image?.url,
+            logo: json.data.logo?.url,
+          }
+          linkMetaCache.set(url, m)
+          setMeta(m)
+        }
+      })
+      .catch(() => {})
+  }, [url])
+
+  function handleEnter() {
+    timerRef.current = setTimeout(() => setVisible(true), 120)
+  }
+
+  function handleLeave() {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
+    setVisible(false)
+  }
+
+  return (
+    <span className="relative inline-block" onMouseEnter={handleEnter} onMouseLeave={handleLeave}>
+      <a href={url} target="_blank" rel="noopener noreferrer"
+        className="text-blue-400 hover:text-blue-300 underline underline-offset-2 break-all"
+        onClick={e => e.stopPropagation()}
+      >{url}</a>
+
+      {visible && (
+        <span className="absolute bottom-full left-0 mb-2 z-50 block w-72 rounded-xl border border-border/60 bg-card shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-150">
+          {meta ? (
+            <>
+              {meta.image && (
+                <img src={meta.image} alt="" className="w-full h-36 object-cover" />
+              )}
+              <span className="block px-3 py-2.5">
+                <span className="flex items-center gap-2 mb-1">
+                  {meta.logo && <img src={meta.logo} alt="" className="h-4 w-4 rounded object-contain shrink-0" />}
+                  <span className="text-[11px] text-muted-foreground truncate">{new URL(url).hostname}</span>
+                </span>
+                {meta.title && <span className="block text-sm font-semibold leading-snug line-clamp-2">{meta.title}</span>}
+                {meta.description && <span className="block text-xs text-muted-foreground mt-1 line-clamp-2">{meta.description}</span>}
+              </span>
+            </>
+          ) : null}
+        </span>
+      )}
+    </span>
+  )
+}
+
+function RichText({ text, className }: { text: string; className?: string }) {
+  const URL_RE = /https?:\/\/[^\s<>"]+/g
+  const segments: React.ReactNode[] = []
+  let last = 0
+  let m: RegExpExecArray | null
+  URL_RE.lastIndex = 0
+  while ((m = URL_RE.exec(text)) !== null) {
+    if (m.index > last) segments.push(<EmojiText key={`t${last}`} text={text.slice(last, m.index)} />)
+    segments.push(<LinkPreview key={`l${m.index}`} url={m[0]} />)
+    last = m.index + m[0].length
+  }
+  if (last < text.length) segments.push(<EmojiText key={`t${last}`} text={text.slice(last)} />)
+  return <span className={className}>{segments}</span>
+}
+
+function insertEmojiAtCursor(el: HTMLDivElement, emoji: string) {
+  el.focus()
+  const img = document.createElement('img')
+  img.src = APPLE_EMOJI_CDN(emojiToUnified(emoji))
+  img.alt = emoji
+  img.dataset.emoji = emoji
+  img.className = 'inline-block h-[1.2em] w-[1.2em] align-[-0.25em] pointer-events-none select-none'
+  const sel = window.getSelection()
+  if (sel && sel.rangeCount > 0 && el.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+    const range = sel.getRangeAt(0)
+    range.deleteContents()
+    range.insertNode(img)
+    range.setStartAfter(img)
+    range.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(range)
+  } else {
+    el.appendChild(img)
+  }
+}
+
+function extractEditableText(el: HTMLDivElement): string {
+  let text = ''
+  el.childNodes.forEach(node => {
+    if (node.nodeType === Node.TEXT_NODE) text += node.textContent
+    else if (node.nodeName === 'IMG') text += (node as HTMLImageElement).dataset.emoji ?? (node as HTMLImageElement).alt
+    else if (node.nodeName === 'BR') text += '\n'
+  })
+  return text
+}
+
+function CommentThumbnails({ urls }: { urls: string[] }) {
+  const [viewIdx, setViewIdx] = useState<number | null>(null)
+  if (urls.length === 0) return null
+  return (
+    <>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {urls.map((url, i) => (
+          <img key={i} src={url} alt="" onClick={() => setViewIdx(i)}
+            className="h-16 w-16 rounded-lg object-cover cursor-pointer ring-1 ring-border/30 hover:ring-border transition-all" />
+        ))}
+      </div>
+      {viewIdx !== null && (
+        <Dialog open onOpenChange={() => setViewIdx(null)}>
+          <DialogContent className="max-w-lg p-2 bg-card border-border/60">
+            <div className="relative flex items-center justify-center">
+              {urls.length > 1 && (
+                <button onClick={() => setViewIdx(i => ((i ?? 0) - 1 + urls.length) % urls.length)} className="absolute left-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors z-10">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                </button>
+              )}
+              <img src={urls[viewIdx]} alt="" className="max-h-[70vh] max-w-full rounded-lg object-contain" />
+              {urls.length > 1 && (
+                <button onClick={() => setViewIdx(i => ((i ?? 0) + 1) % urls.length)} className="absolute right-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors z-10">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                </button>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
+  )
+}
+
 // ─── Comment Node ─────────────────────────────────────────────────────────────
 
 function CommentNode({
@@ -564,78 +772,151 @@ function CommentNode({
   depth?: number
 }) {
   const [replying, setReplying] = useState(false)
-  const [replyText, setReplyText] = useState('')
   const [showReplies, setShowReplies] = useState(true)
   const [liked, setLiked] = useState(false)
   const [likeCount, setLikeCount] = useState(0)
+  const [replyEmojiOpen, setReplyEmojiOpen] = useState(false)
+  const replyEmojiRef = useRef<HTMLDivElement>(null)
+  const replyInputRef = useRef<HTMLDivElement>(null)
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
+
+  useEffect(() => {
+    if (!replyEmojiOpen) return
+    function handleClick(e: MouseEvent) {
+      if (replyEmojiRef.current && !replyEmojiRef.current.contains(e.target as Node)) setReplyEmojiOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [replyEmojiOpen])
   const addComment = useAddBoardComment(postId, groupId)
   const deleteComment = useDeleteBoardComment(postId)
   const showBadge = Boolean(comment.author.is_verified || hasPremiumPlan(comment.author.sub_plan))
 
   async function submitReply() {
-    if (!replyText.trim()) return
-    await addComment.mutateAsync({ content: replyText.trim(), parent_comment_id: comment.id })
-    setReplyText(''); setReplying(false)
+    const text = replyInputRef.current ? extractEditableText(replyInputRef.current).trim() : ''
+    if (!text) return
+    await addComment.mutateAsync({ content: text, parent_comment_id: comment.id })
+    if (replyInputRef.current) replyInputRef.current.innerHTML = ''
+    setReplying(false)
   }
 
+  const hasVisibleReplies = showReplies && (comment.replies?.length ?? 0) > 0
+
   return (
-    <div className={cn('flex gap-2.5', depth > 0 && 'ml-8 border-l-2 border-border/40 pl-3')}>
-      <UserAvatar src={comment.author.avatar_url} alt={comment.author.username} className="h-7 w-7 shrink-0 rounded-full object-cover mt-0.5" />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className={cn('text-[13px] font-semibold leading-none', nameClass(comment.author.sub_plan))}>{comment.author.username}</span>
-          {showBadge && <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(comment.author.sub_plan)} />}
-          <span className="text-[11px] text-muted-foreground">{timeAgo(comment.created_at)}</span>
+    <div>
+      <div className="flex gap-2.5">
+        {/* Avatar + thread line below */}
+        <div className="flex shrink-0 flex-col items-center">
+          <UserAvatar src={comment.author.avatar_url} alt={comment.author.username} className="h-7 w-7 shrink-0 rounded-full object-cover" />
+          {hasVisibleReplies && <div className="mt-1 w-px flex-1 min-h-2 bg-border/40" />}
         </div>
-        <p className="mt-1 text-sm text-foreground/90 leading-relaxed">{comment.content}</p>
-        {comment.media_urls?.length > 0 && <div className="mt-2"><ImageSlider urls={comment.media_urls} /></div>}
-        <div className="mt-1 flex items-center gap-3">
-          <button
-            onClick={() => { setLiked(v => !v); setLikeCount(c => liked ? c - 1 : c + 1) }}
-            className={cn('flex items-center gap-0.5 text-[11px] transition-colors', liked ? 'text-rose-500' : 'text-muted-foreground hover:text-rose-500')}
-          >
-            <Heart className={cn('h-2.5 w-2.5', liked && 'fill-current')} />
-            {likeCount > 0 && <span>{likeCount}</span>}
-          </button>
-          {depth < 3 && (
-            <button onClick={() => setReplying((v) => !v)} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">Reply</button>
-          )}
-          {comment.replies?.length > 0 && (
-            <button onClick={() => setShowReplies((v) => !v)} className="flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
-              {showReplies ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              {comment.replies.length}
+        <div className="min-w-0 flex-1 pb-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className={cn('text-[13px] font-semibold leading-none', nameClass(comment.author.sub_plan))}>{comment.author.username}</span>
+            {showBadge && <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(comment.author.sub_plan)} />}
+            <span className="text-[11px] text-muted-foreground">{timeAgo(comment.created_at)}</span>
+          </div>
+          <p className="mt-1 text-sm text-foreground/90 leading-relaxed"><RichText text={comment.content} /></p>
+          {comment.media_urls?.length > 0 && <CommentThumbnails urls={comment.media_urls} />}
+          <div className="mt-1 flex items-center gap-3">
+            <button
+              onClick={() => { setLiked(v => !v); setLikeCount(c => liked ? c - 1 : c + 1) }}
+              className={cn('flex items-center gap-0.5 text-[11px] transition-colors', liked ? 'text-rose-500' : 'text-muted-foreground hover:text-rose-500')}
+            >
+              <Heart className={cn('h-2.5 w-2.5', liked && 'fill-current')} />
+              {likeCount > 0 && <span>{likeCount}</span>}
             </button>
-          )}
-          {myId === comment.author_id && (
-            <button onClick={() => deleteComment.mutate(comment.id)} className="text-[11px] text-muted-foreground hover:text-destructive transition-colors">
-              <Trash2 className="h-3 w-3" />
-            </button>
+            {depth < 3 && (
+              <button onClick={() => setReplying((v) => !v)} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">Reply</button>
+            )}
+            {comment.replies?.length > 0 && (
+              <button onClick={() => setShowReplies((v) => !v)} className="flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+                {showReplies ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                {comment.replies.length}
+              </button>
+            )}
+            {myId === comment.author_id && (
+              <button onClick={() => deleteComment.mutate(comment.id)} className="text-[11px] text-muted-foreground hover:text-destructive transition-colors">
+                <Trash2 className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+
+          {replying && (
+            <div className="relative mt-2 flex gap-2">
+              <div ref={replyEmojiRef} className="relative shrink-0">
+                <button
+                  onClick={() => setReplyEmojiOpen(v => !v)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                >
+                  <Smile className="h-4 w-4" />
+                </button>
+                {replyEmojiOpen && (
+                  <div className="absolute bottom-10 right-full mr-2 z-50 overflow-hidden rounded-2xl border border-border bg-sidebar" style={{ boxShadow: '0 8px 40px 0 rgba(0,0,0,0.45)' }}>
+                    <EmojiPicker
+                      onEmojiClick={(d: EmojiClickData) => { if (replyInputRef.current) insertEmojiAtCursor(replyInputRef.current, d.emoji) }}
+                      theme={isDark ? Theme.DARK : Theme.LIGHT}
+                      emojiStyle={EmojiStyle.APPLE}
+                      skinTonesDisabled
+                      previewConfig={{ showPreview: false }}
+                      style={{
+                        '--epr-bg-color': isDark ? 'var(--sidebar)' : 'var(--background)',
+                        '--epr-category-label-bg-color': isDark ? 'var(--sidebar)' : 'var(--muted)',
+                        '--epr-search-input-bg-color': isDark ? 'oklch(0.18 0.02 260)' : 'var(--muted)',
+                        '--epr-hover-bg-color': isDark ? 'oklch(0.22 0.02 260)' : 'var(--accent)',
+                        '--epr-focus-bg-color': isDark ? 'oklch(0.22 0.02 260)' : 'var(--accent)',
+                        '--epr-text-color': 'var(--foreground)',
+                        '--epr-search-border-color': 'var(--border)',
+                        '--epr-border-color': 'var(--border)',
+                        '--epr-highlight-color': 'var(--primary)',
+                        background: 'transparent',
+                        border: 'none',
+                      } as React.CSSProperties}
+                    />
+                  </div>
+                )}
+              </div>
+              <div
+                ref={replyInputRef}
+                contentEditable
+                suppressContentEditableWarning
+                data-placeholder={`Reply to ${comment.author.username}…`}
+                className="flex-1 min-h-[32px] max-h-[80px] overflow-y-auto rounded-md border border-input bg-transparent px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground/60 empty:before:pointer-events-none"
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitReply() } }}
+              />
+              <Button size="sm" className="h-8 px-2.5 shrink-0" onClick={submitReply} disabled={addComment.isPending}>
+                <Send className="h-3.5 w-3.5" />
+              </Button>
+            </div>
           )}
         </div>
-
-        {replying && (
-          <div className="mt-2 flex gap-2">
-            <Input
-              value={replyText}
-              onChange={(e) => setReplyText(e.target.value)}
-              placeholder={`Reply to ${comment.author.username}…`}
-              className="h-8 text-sm"
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitReply() } }}
-            />
-            <Button size="sm" className="h-8 px-2.5 shrink-0" onClick={submitReply} disabled={addComment.isPending}>
-              <Send className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        )}
-
-        {showReplies && comment.replies?.length > 0 && (
-          <div className="mt-3 space-y-3">
-            {comment.replies.map((reply) => (
-              <CommentNode key={reply.id} comment={reply} postId={postId} groupId={groupId} myId={myId} depth={depth + 1} />
-            ))}
-          </div>
-        )}
       </div>
+
+      {/* Replies: same column, curve connector */}
+      {hasVisibleReplies && (
+        <div className="space-y-1">
+          {comment.replies.map((reply, idx) => {
+            const isLast = idx === comment.replies.length - 1
+            return (
+              <div key={reply.id} className="flex gap-2.5">
+                {/* connector in avatar column */}
+                <div className="relative w-7 shrink-0">
+                  {!isLast && <div className="absolute left-1/2 -translate-x-px top-0 bottom-0 w-px bg-border/40" />}
+                  <div className={cn(
+                    'absolute left-1/2 -translate-x-px top-0 w-px bg-border/40',
+                    isLast ? 'h-3.5' : 'h-full'
+                  )} />
+                  <div className="absolute top-3 left-1/2 -translate-x-px h-2.5 w-2.5 rounded-bl-md border-b border-l border-border/40" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <CommentNode key={reply.id} comment={reply} postId={postId} groupId={groupId} myId={myId} depth={depth + 1} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -668,10 +949,23 @@ function PostDetail({
   const updatePost = useUpdateBoardPost(post.id, groupId)
   const likePost = useLikeBoardPost(groupId)
 
-  const [commentText, setCommentText] = useState('')
   const [mediaUrls, setMediaUrls] = useState<string[]>([])
   const [uploading, setUploading] = useState(false)
+  const [commentEmojiOpen, setCommentEmojiOpen] = useState(false)
+  const commentEmojiRef = useRef<HTMLDivElement>(null)
+  const commentInputRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
+
+  useEffect(() => {
+    if (!commentEmojiOpen) return
+    function handleClick(e: MouseEvent) {
+      if (commentEmojiRef.current && !commentEmojiRef.current.contains(e.target as Node)) setCommentEmojiOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [commentEmojiOpen])
 
   useEffect(() => {
     if (shouldScroll) {
@@ -690,9 +984,11 @@ function PostDetail({
   }
 
   async function submitComment() {
-    if (!commentText.trim() && mediaUrls.length === 0) return
-    await addComment.mutateAsync({ content: commentText.trim(), media_urls: mediaUrls })
-    setCommentText(''); setMediaUrls([])
+    const text = commentInputRef.current ? extractEditableText(commentInputRef.current).trim() : ''
+    if (!text && mediaUrls.length === 0) return
+    await addComment.mutateAsync({ content: text, media_urls: mediaUrls })
+    if (commentInputRef.current) commentInputRef.current.innerHTML = ''
+    setMediaUrls([])
   }
 
   const canManage = isAdmin || myId === post.author_id
@@ -732,8 +1028,10 @@ function PostDetail({
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="border-b border-border/40 px-5 py-5">
+      {/* Two-column body */}
+      <div className="min-h-0 flex-1 flex overflow-hidden">
+        {/* Left: post content */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
           {/* Author row */}
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2.5">
@@ -774,12 +1072,12 @@ function PostDetail({
           </div>
 
           {/* Title */}
-          <h1 className="text-xl font-bold leading-snug tracking-tight mb-4">{post.title}</h1>
+          <h1 className="text-xl font-bold leading-snug tracking-tight mb-4"><EmojiText text={post.title} /></h1>
 
           {post.content && (
-            <p className="text-sm text-foreground/85 leading-relaxed whitespace-pre-wrap mb-4">{post.content}</p>
+            <p className="text-sm text-foreground/85 leading-relaxed whitespace-pre-wrap mb-4"><RichText text={post.content} /></p>
           )}
-          {post.media_urls?.length > 0 && <ImageSlider urls={post.media_urls} className="mb-4" maxHeight={380} />}
+          {post.media_urls?.length > 0 && <ImageSlider urls={post.media_urls} className="mb-4" maxHeight={380} noClick />}
 
           <div className="flex items-center gap-5 pt-3 border-t border-border/40">
             <button
@@ -792,60 +1090,104 @@ function PostDetail({
             </button>
             <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
               <MessageCircle className="h-4 w-4" />
-              {comments.length} {comments.length === 1 ? 'comment' : 'comments'}
+              {countComments(comments)} {countComments(comments) === 1 ? 'comment' : 'comments'}
             </span>
           </div>
         </div>
 
-        <div ref={commentsRef} className="px-5 py-4 space-y-4">
-          {comments.length === 0 && (
-            <p className="text-center text-sm text-muted-foreground py-6">No comments yet. Be the first!</p>
-          )}
-          {comments.map((comment) => (
-            <CommentNode key={comment.id} comment={comment} postId={post.id} groupId={groupId} myId={myId} />
-          ))}
-        </div>
-      </div>
+        {/* Right: comments sidebar */}
+        <div className="flex w-80 shrink-0 flex-col border-l border-border/40">
+          <div className="flex items-center gap-2 border-b border-border/40 px-4 py-3 shrink-0">
+            <MessageCircle className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-semibold">Comments</span>
+            {comments.length > 0 && (
+              <span className="ml-auto text-xs text-muted-foreground">{countComments(comments)}</span>
+            )}
+          </div>
 
-      {!post.is_locked ? (
-        <div className="border-t border-border/40 px-4 py-3 shrink-0">
-          {mediaUrls.length > 0 && (
-            <div className="mb-2 flex flex-wrap gap-1.5">
-              {mediaUrls.map((url, i) => (
-                <div key={i} className="relative group">
-                  <img src={url} alt="" className="h-12 w-12 rounded-lg object-cover" />
-                  <button
-                    onClick={() => setMediaUrls((prev) => prev.filter((_, idx) => idx !== i))}
-                    className="absolute -right-1 -top-1 rounded-full bg-foreground/80 p-0.5 text-background opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <X className="h-2.5 w-2.5" />
-                  </button>
+          <div ref={commentsRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-3 space-y-3">
+            {comments.length === 0 && (
+              <p className="text-center text-sm text-muted-foreground py-6">No comments yet. Be the first!</p>
+            )}
+            {comments.map((comment) => (
+              <CommentNode key={comment.id} comment={comment} postId={post.id} groupId={groupId} myId={myId} />
+            ))}
+          </div>
+
+          {!post.is_locked ? (
+            <div className="border-t border-border/40 px-3 py-3 shrink-0">
+              {mediaUrls.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {mediaUrls.map((url, i) => (
+                    <div key={i} className="relative group">
+                      <img src={url} alt="" className="h-12 w-12 rounded-lg object-cover" />
+                      <button
+                        onClick={() => setMediaUrls((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="absolute -right-1 -top-1 rounded-full bg-foreground/80 p-0.5 text-background opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
+              <div className="flex gap-2">
+                <button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="text-muted-foreground hover:text-foreground disabled:opacity-50 shrink-0 transition-colors">
+                  <ImagePlus className="h-4 w-4" />
+                </button>
+                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleUpload} />
+                <div ref={commentEmojiRef} className="relative shrink-0 flex items-center">
+                  <button
+                    onClick={() => setCommentEmojiOpen(v => !v)}
+                    className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  >
+                    <Smile className="h-4 w-4" />
+                  </button>
+                  {commentEmojiOpen && (
+                    <div className="absolute bottom-11 right-full mr-2 z-50 overflow-hidden rounded-2xl border border-border bg-sidebar" style={{ boxShadow: '0 8px 40px 0 rgba(0,0,0,0.45)' }}>
+                      <EmojiPicker
+                        onEmojiClick={(d: EmojiClickData) => { if (commentInputRef.current) insertEmojiAtCursor(commentInputRef.current, d.emoji) }}
+                        theme={isDark ? Theme.DARK : Theme.LIGHT}
+                        emojiStyle={EmojiStyle.APPLE}
+                        skinTonesDisabled
+                        previewConfig={{ showPreview: false }}
+                        style={{
+                          '--epr-bg-color': isDark ? 'var(--sidebar)' : 'var(--background)',
+                          '--epr-category-label-bg-color': isDark ? 'var(--sidebar)' : 'var(--muted)',
+                          '--epr-search-input-bg-color': isDark ? 'oklch(0.18 0.02 260)' : 'var(--muted)',
+                          '--epr-hover-bg-color': isDark ? 'oklch(0.22 0.02 260)' : 'var(--accent)',
+                          '--epr-focus-bg-color': isDark ? 'oklch(0.22 0.02 260)' : 'var(--accent)',
+                          '--epr-text-color': 'var(--foreground)',
+                          '--epr-search-border-color': 'var(--border)',
+                          '--epr-border-color': 'var(--border)',
+                          '--epr-highlight-color': 'var(--primary)',
+                          background: 'transparent',
+                          border: 'none',
+                        } as React.CSSProperties}
+                      />
+                    </div>
+                  )}
+                </div>
+                <div
+                  ref={commentInputRef}
+                  contentEditable
+                  suppressContentEditableWarning
+                  data-placeholder="Write a comment…"
+                  className="flex-1 min-h-[36px] max-h-[100px] overflow-y-auto rounded-md border border-input bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground/60 empty:before:pointer-events-none"
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitComment() } }}
+                />
+                <Button size="sm" className="h-9 px-3 shrink-0" onClick={submitComment} disabled={addComment.isPending && mediaUrls.length === 0}>
+                  <Send className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center gap-1.5 border-t border-border/40 py-3 text-sm text-muted-foreground">
+              <Lock className="h-3.5 w-3.5" />Comments are locked
             </div>
           )}
-          <div className="flex gap-2">
-            <button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="text-muted-foreground hover:text-foreground disabled:opacity-50 shrink-0 transition-colors">
-              <ImagePlus className="h-4 w-4" />
-            </button>
-            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleUpload} />
-            <Input
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              placeholder="Write a comment…"
-              className="h-9 flex-1 text-sm border-border/50"
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitComment() } }}
-            />
-            <Button size="sm" className="h-9 px-3 shrink-0" onClick={submitComment} disabled={addComment.isPending || (!commentText.trim() && mediaUrls.length === 0)}>
-              <Send className="h-3.5 w-3.5" />
-            </Button>
-          </div>
         </div>
-      ) : (
-        <div className="flex items-center justify-center gap-1.5 border-t border-border/40 py-3 text-sm text-muted-foreground">
-          <Lock className="h-3.5 w-3.5" />Comments are locked
-        </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -977,7 +1319,7 @@ function PostCard({
 
       {/* Image slider */}
       {hasImage && (
-        <ImageSlider urls={post.media_urls} className="mx-4 mb-3" maxHeight={200} />
+        <ImageSlider urls={post.media_urls} className="mx-4 mb-3" maxHeight={200} noClick />
       )}
 
       {/* Extra tags (beyond first shown in header) */}
