@@ -53,6 +53,33 @@ function ActiveCallBlockedView({ onHangUp, type }: { onHangUp: () => void; type:
   )
 }
 
+function ActiveWatchBlockedView({ onLeave, roomName }: { onLeave: () => void; roomName: string }) {
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center bg-background relative overflow-hidden px-6">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.06)_0%,transparent_70%)]" />
+      <div className="absolute -top-40 -left-40 h-[400px] w-[400px] rounded-full bg-primary/5 blur-[128px]" />
+      <div className="relative z-10 max-w-md w-full bg-card/45 backdrop-blur-md border border-white/5 rounded-2xl p-8 text-center shadow-2xl flex flex-col items-center gap-6">
+        <div className="h-16 w-16 rounded-full bg-blue-500/10 flex items-center justify-center border border-blue-500/20 animate-pulse">
+          <Tv className="h-6 w-6 text-blue-400" />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-xl font-bold tracking-tight text-foreground">Watch Room Active</h2>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            You are currently watching <span className="font-semibold text-foreground">"{roomName}"</span>. Leave the watch room to join this voice channel.
+          </p>
+        </div>
+        <Button
+          onClick={onLeave}
+          variant="destructive"
+          className="w-full h-11 font-medium rounded-xl shadow-lg shadow-red-500/20 hover:shadow-red-500/35 transition-all duration-300 transform hover:scale-[1.02]"
+        >
+          Leave Watch Room
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function ActiveVoiceBlockedView({ onDisconnect, groupName }: { onDisconnect: () => void; groupName: string }) {
   return (
     <div className="flex h-full w-full flex-col items-center justify-center bg-background relative overflow-hidden px-6">
@@ -210,6 +237,25 @@ export default function GroupPage() {
     )
   }
 
+  if (group.kind === 'voice' && typeof window !== 'undefined') {
+    const rawWatch = localStorage.getItem('twiky-active-watch-room')
+    if (rawWatch) {
+      try {
+        const parsed = JSON.parse(rawWatch)
+        const watchRoomName = parsed.groupName || 'watch room'
+        return (
+          <ActiveWatchBlockedView
+            roomName={watchRoomName}
+            onLeave={() => {
+              localStorage.removeItem('twiky-active-watch-room')
+              window.dispatchEvent(new Event('twiky-watch-room-changed'))
+            }}
+          />
+        )
+      } catch {}
+    }
+  }
+
   if (group.kind === 'watch' && voice.joinedGroupId) {
     let activeVoiceName = 'active voice channel'
     if (typeof window !== 'undefined') {
@@ -257,6 +303,7 @@ export default function GroupPage() {
           onScreenShareToggle={voice.webrtc.signalScreenShare}
           onSwitchAudioInput={voice.webrtc.switchAudioInput}
           localScreenStream={voice.webrtc.localScreenStream}
+          localCameraStream={voice.webrtc.localCameraStream}
           isScreenSharing={voice.webrtc.isScreenSharing}
         />
       </div>

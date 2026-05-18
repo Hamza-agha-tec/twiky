@@ -1927,33 +1927,6 @@ export function ChannelsPanel({
           </div>
         </div>
 
-        {/* Active Voice/Watch Connection Panel */}
-        {activeVoiceGroupId && (
-          <div className="flex-shrink-0 border-t border-border bg-sidebar p-2 shadow-sm">
-            <div className="flex items-center gap-2 mb-2 px-1">
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-green-500/15">
-                  <Volume2 className="h-3.5 w-3.5 text-green-500" />
-                </div>
-                <div className="flex flex-col min-w-0">
-                  <span className="text-[10px] font-bold text-green-500 uppercase tracking-wide">Voice Connected</span>
-                  <span className="text-[11px] text-muted-foreground truncate font-medium">
-                    {channel.groups.find(g => g.id === activeVoiceGroupId)?.label || 'Voice Channel'}
-                  </span>
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 rounded-lg hover:bg-destructive hover:text-white"
-                onClick={() => onVoiceLeave?.()}
-                title="Disconnect"
-              >
-                <PhoneOff className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-        )}
 
         {activeWatchGroupId && (
           <div className="flex-shrink-0 border-t border-border bg-sidebar p-2 shadow-sm">

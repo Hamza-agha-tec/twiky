@@ -98,6 +98,7 @@ interface VoiceGroupViewProps {
   onCameraToggle?: (enabled: boolean) => void
   onSwitchAudioInput?: (deviceId: string) => void
   localScreenStream?: MediaStream | null
+  localCameraStream?: MediaStream | null
   isScreenSharing?: boolean
 }
 
@@ -144,9 +145,12 @@ export function VoiceGroupView({
   onCameraToggle,
   onSwitchAudioInput,
   localScreenStream,
+  localCameraStream,
   isScreenSharing,
 }: VoiceGroupViewProps) {
-  const [videoOn, setVideoOn] = useState(false)
+  const [videoOn, setVideoOn] = useState(
+    () => !!(localCameraStream?.getVideoTracks().some(t => t.readyState === 'live' && !t.muted))
+  )
   const [sharing, setSharing] = useState(false)
   const [outputVolume, setOutputVolume] = useState(100)
   const [exitReason, setExitReason] = useState<'left' | null>(null)
@@ -199,7 +203,7 @@ export function VoiceGroupView({
     return () => navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange)
   }, [isJoined]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const videoStreamRef = useRef<MediaStream | null>(null)
+  const videoStreamRef = useRef<MediaStream | null>(localCameraStream ?? null)
   const localVideoRef = useRef<HTMLVideoElement | null>(null)
   const screenVideoRef = useRef<HTMLVideoElement | null>(null)
 
@@ -223,11 +227,6 @@ export function VoiceGroupView({
     if (localScreenStream) v.play().catch(() => {})
   }, [localScreenStream])
 
-  useEffect(() => {
-    return () => {
-      videoStreamRef.current?.getTracks().forEach((t) => t.stop())
-    }
-  }, [])
 
   const handleToggleCamera = useCallback(async () => {
     if (videoOn) {

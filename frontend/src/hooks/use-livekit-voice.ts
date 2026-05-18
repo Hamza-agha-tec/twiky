@@ -76,9 +76,9 @@ export function useLiveKitVoice(
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [remoteSpeakingUserIds, setRemoteSpeakingUserIds] = useState<Set<string>>(new Set())
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
+  const [localCameraStream, setLocalCameraStream] = useState<MediaStream | null>(null)
   const [isScreenSharing, setIsScreenSharing] = useState(false)
   const [localScreenStream, setLocalScreenStream] = useState<MediaStream | null>(null)
-
   const roomRef = useRef<Room | null>(null)
   const isMutedRef = useRef(isMuted)
 
@@ -257,6 +257,7 @@ export function useLiveKitVoice(
       room.off(RoomEvent.LocalTrackUnpublished, onLocalUnpublished)
       setIsScreenSharing(false)
       setLocalScreenStream(null)
+      setLocalCameraStream((prev) => { prev?.getTracks().forEach((t) => t.stop()); return null })
       room.disconnect()
       roomRef.current = null
       setRemoteStreams(new Map())
@@ -282,6 +283,7 @@ export function useLiveKitVoice(
       }
 
       // camera: publish via LiveKit at highest quality
+      setLocalCameraStream(_stream)
       const livekitTrack = new LocalVideoTrack(track)
       await room.localParticipant.publishTrack(livekitTrack, {
         source: Track.Source.Camera,
@@ -297,6 +299,7 @@ export function useLiveKitVoice(
       const gId = groupId
       if (!room || !gId) return
 
+      setLocalCameraStream(null)
       const camPub = room.localParticipant.getTrackPublication(Track.Source.Camera)
       if (camPub?.track) {
         await room.localParticipant.unpublishTrack(camPub.track as LocalTrack)
@@ -338,6 +341,7 @@ export function useLiveKitVoice(
 
   return {
     localStream,
+    localCameraStream,
     localScreenStream,
     remoteStreams,
     remoteScreenStreams,

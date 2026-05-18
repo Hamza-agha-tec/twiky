@@ -93,8 +93,8 @@ export function FloatingVoicePiP({ groupName, channelUrl }: { groupName?: string
       activeVideoStream = allStreams.find(s => s.getVideoTracks().some(t => t.readyState === 'live' && !t.muted))
     }
     if (!activeVideoStream) {
-      if (voice.webrtc.localStream?.getVideoTracks().some(t => t.readyState === 'live' && !t.muted)) {
-        activeVideoStream = voice.webrtc.localStream
+      if (voice.webrtc.localCameraStream?.getVideoTracks().some(t => t.readyState === 'live' && !t.muted)) {
+        activeVideoStream = voice.webrtc.localCameraStream
       }
     }
   }
