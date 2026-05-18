@@ -7,12 +7,13 @@ import { Check, CheckCheck, Forward, FileText, Download, X, Pin } from 'lucide-r
 import { VoiceMessagePlayer } from './voice-message-player'
 import { VideoPlayer } from './video-player';
 import { AppleText, EmojiImg } from './apple-text';
-import { Message, LinkEmbed } from '@/lib/mock-data';
+import { Message } from '@/lib/mock-data';
 import { format } from 'date-fns';
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { MessageContextMenu } from './message-context-menu';
-import { HoverProfileCard } from '@/components/chat/hover-profile-card';
+import { HoverProfileCard } from '@/components/chat/hover-profile-card'
+import { LinkPreviewCard, extractFirstUrl } from '@/components/chat/link-preview-card';
 
 interface MessageBubbleProps {
   message: Message;
@@ -248,11 +249,15 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
             if (profileData) return <ProfileCard data={profileData} />
             const forumPost = tryParseForumPost(message.content)
             if (forumPost) return <ForumPostCard data={forumPost} />
+            const firstUrl = extractFirstUrl(message.content)
             return (
-              <p className="text-sm text-foreground/90 wrap-break-word whitespace-pre-wrap leading-relaxed">
-                {searchHighlight ? <HighlightedText text={message.content} query={searchHighlight} /> : <AppleText text={message.content} />}
-                {message.isEdited && <span className="text-[10px] text-muted-foreground ml-1.5">(edited)</span>}
-              </p>
+              <>
+                <p className="text-sm text-foreground/90 wrap-break-word whitespace-pre-wrap leading-relaxed">
+                  {searchHighlight ? <HighlightedText text={message.content} query={searchHighlight} /> : <AppleText text={message.content} />}
+                  {message.isEdited && <span className="text-[10px] text-muted-foreground ml-1.5">(edited)</span>}
+                </p>
+                {firstUrl && <LinkPreviewCard url={firstUrl} />}
+              </>
             )
           })()}
 
@@ -341,49 +346,9 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
             </div>
           )}
 
-          {message.embeds && message.embeds.length > 0 && (
-            <div className="mt-2 flex flex-col gap-2.5">
-              {message.embeds.map((emb, idx) => (
-                <a
-                  key={idx}
-                  href={emb.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-sidebar/55 hover:bg-sidebar/85 transition-all shadow-md group/embed"
-                >
-                  {emb.image_url && (
-                    <div className="relative aspect-video w-full border-b border-border/40 overflow-hidden bg-black/10">
-                      <img
-                        src={emb.image_url}
-                        alt={emb.title || 'Preview'}
-                        className="h-full w-full object-cover transition-transform duration-300 group-hover/embed:scale-[1.02]"
-                      />
-                    </div>
-                  )}
-                  <div className="p-3.5 space-y-2">
-                    <div className="flex items-center gap-2">
-                      {emb.favicon && (
-                        <img src={emb.favicon} alt="" className="h-4 w-4 rounded-sm object-contain" />
-                      )}
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                        {emb.site_name || new URL(emb.url).hostname.replace('www.', '')}
-                      </span>
-                    </div>
-                    {emb.title && (
-                      <h4 className="text-[13px] font-bold text-foreground leading-snug group-hover/embed:text-primary transition-colors">
-                        {emb.title}
-                      </h4>
-                    )}
-                    {emb.description && (
-                      <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-3">
-                        {emb.description}
-                      </p>
-                    )}
-                  </div>
-                </a>
-              ))}
-            </div>
-          )}
+          {message.embeds && message.embeds.length > 0 && message.embeds.map((emb, idx) => (
+            <LinkPreviewCard key={idx} url={emb.url} />
+          ))}
         </div>
 
         {/* Reactions */}

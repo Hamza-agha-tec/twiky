@@ -47,6 +47,7 @@ import { HoverProfileCard } from '@/components/chat/hover-profile-card'
 import { UserAvatar } from '@/components/chat/user-avatar'
 import { VoiceMessagePlayer } from '@/components/chat/voice-message-player'
 import { VideoPlayer } from '@/components/chat/video-player'
+import { LinkPreviewCard, extractFirstUrl } from '@/components/chat/link-preview-card'
 import { EmojiButton, GifButton, StickerButton, GiftButton } from '@/components/chat/media-picker'
 import { AppleText, EmojiImg } from '@/components/chat/apple-text'
 import { EmojiInput, type EmojiInputHandle } from '@/components/chat/emoji-input'
@@ -956,52 +957,18 @@ function MessageRow({
             {post.body ? (() => {
               const forumPost = tryParseForumPost(post.body)
               if (forumPost) return <ForumPostEmbed data={forumPost} />
-              return <AppleText text={post.body} className="text-[13.5px] leading-[1.55] text-foreground" />
+              const firstUrl = extractFirstUrl(post.body)
+              return (
+                <>
+                  <AppleText text={post.body} className="text-[13.5px] leading-[1.55] text-foreground" />
+                  {firstUrl && <LinkPreviewCard url={firstUrl} />}
+                </>
+              )
             })() : null}
 
-            {post.embeds && post.embeds.length > 0 ? (
-              <div className="mt-2 flex flex-col gap-2.5">
-                {post.embeds.map((emb, idx) => (
-                  <a
-                    key={idx}
-                    href={emb.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-sidebar/55 hover:bg-sidebar/85 transition-all shadow-md group/embed"
-                  >
-                    {emb.image_url && (
-                      <div className="relative aspect-video w-full border-b border-border/40 overflow-hidden bg-black/10">
-                        <img
-                          src={emb.image_url}
-                          alt={emb.title || 'Preview'}
-                          className="h-full w-full object-cover transition-transform duration-300 group-hover/embed:scale-[1.02]"
-                        />
-                      </div>
-                    )}
-                    <div className="p-3.5 space-y-2">
-                      <div className="flex items-center gap-2">
-                        {emb.favicon && (
-                          <img src={emb.favicon} alt="" className="h-4 w-4 rounded-sm object-contain" />
-                        )}
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                          {emb.site_name || new URL(emb.url).hostname.replace('www.', '')}
-                        </span>
-                      </div>
-                      {emb.title && (
-                        <h4 className="text-[13px] font-bold text-foreground leading-snug group-hover/embed:text-primary transition-colors">
-                          {emb.title}
-                        </h4>
-                      )}
-                      {emb.description && (
-                        <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-3">
-                          {emb.description}
-                        </p>
-                      )}
-                    </div>
-                  </a>
-                ))}
-              </div>
-            ) : null}
+            {post.embeds && post.embeds.length > 0
+              ? post.embeds.map((emb, idx) => <LinkPreviewCard key={idx} url={emb.url} />)
+              : null}
 
             {post.poll ? (
               <FeedPollCard poll={post.poll} onVote={onPollVote} />
@@ -2035,7 +2002,13 @@ function FeedProfileRow({
         {post.body ? (() => {
           const forumPost = tryParseForumPost(post.body)
           if (forumPost) return <ForumPostEmbed data={forumPost} />
-          return <AppleText text={post.body} className="text-[13.5px] leading-[1.55] text-foreground" />
+          const firstUrl = extractFirstUrl(post.body)
+          return (
+            <>
+              <AppleText text={post.body} className="text-[13.5px] leading-[1.55] text-foreground" />
+              {firstUrl && <LinkPreviewCard url={firstUrl} />}
+            </>
+          )
         })() : null}
 
         {post.poll ? (

@@ -25,3 +25,5 @@ benchmark.js
 # Pixel game generated/imported assets
 frontend/public/pixel/game/objects/
 frontend/public/pixel/game/avatars/
+
+goback/tmp/*
