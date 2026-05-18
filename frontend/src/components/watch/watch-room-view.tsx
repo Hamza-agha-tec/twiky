@@ -11,7 +11,7 @@ import { Track, LocalVideoTrack, VideoQuality } from 'livekit-client'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Play, Pause, SkipBack, SkipForward, Volume2, VolumeX,
-  Scan, FolderOpen, Users, Crown, Loader2, WifiOff, Tv2,
+  Scan, FolderOpen, Users, Crown, Loader2, WifiOff, Tv2, Popcorn,
   RefreshCw, X, UserMinus, Heart, ThumbsUp, Flame, Smile, Sparkles, Maximize2
 } from 'lucide-react'
 import { useLiveKitToken } from '@/hooks/use-livekit-token'
@@ -610,7 +610,7 @@ function WatchRoomInner({
               exit={{ opacity: 0, y: -40 }}
               transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.7 }}
             >
-              <Tv2 className="h-4 w-4 shrink-0 text-primary" />
+              <Popcorn className="h-4 w-4 shrink-0 text-primary" />
               <span className="text-[13px] font-semibold text-foreground">Watch Together</span>
               <span className="ml-auto text-[11px] text-muted-foreground">
                 {participants.length} watching

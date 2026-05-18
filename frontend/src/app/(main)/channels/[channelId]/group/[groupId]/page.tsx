@@ -8,7 +8,7 @@ import { useGroupMessageRealtime, useGroupMessages, useGroupMembers, useSendGrou
 import { useCreateDirectConversation } from '@/hooks/use-direct-conversations'
 import { useVoice } from '@/context/VoiceContext'
 import { Button } from '@/components/ui/button'
-import { AudioLines, PhoneOff, Tv } from 'lucide-react'
+import { AudioLines, PhoneOff, Popcorn } from 'lucide-react'
 
 import { useProfile } from '@/hooks/use-user'
 import { useOnlineUsers } from '@/hooks/use-socket'
@@ -223,7 +223,7 @@ export default function GroupPage() {
         <div className="relative flex h-full w-full overflow-hidden bg-background">
           {watchBlocked && (
             <BlockedOverlay
-              icon={<Tv className="h-6 w-6 text-muted-foreground" />}
+              icon={<Popcorn className="h-6 w-6 text-muted-foreground" />}
               title="Watch Room Active"
               description={<>You're watching <span className="font-medium text-foreground">"{watchRoomName}"</span>. Leave to join this voice channel.</>}
               btnText="Leave Watch Room"
@@ -287,7 +287,7 @@ export default function GroupPage() {
     return (
       <div className="relative flex h-full w-full items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
-          <Tv className="h-10 w-10 text-muted-foreground animate-pulse" />
+          <Popcorn className="h-10 w-10 text-muted-foreground animate-pulse" />
           <p className="text-sm font-semibold text-foreground">Joining Watch Party...</p>
         </div>
         {voiceBlocked && (

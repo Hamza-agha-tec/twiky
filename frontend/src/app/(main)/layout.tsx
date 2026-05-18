@@ -17,7 +17,7 @@ import { useVoice } from '@/context/VoiceContext'
 import { VoiceGroupView } from '@/components/chat/voice-group-view'
 import { FloatingVoicePiP } from '@/components/chat/floating-voice-pip'
 import { WatchRoomView } from '@/components/watch/watch-room-view'
-import { Tv, Maximize2, Minimize2, PhoneOff, X, Users, Settings } from 'lucide-react'
+import { Popcorn, Maximize2, Minimize2, PhoneOff, X, Users, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 

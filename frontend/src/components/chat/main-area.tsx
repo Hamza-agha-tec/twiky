@@ -9,7 +9,7 @@ import {
   NotebookPen,
   Search,
   Target,
-  Tv,
+  Popcorn,
   Users,
   AudioLines,
   X,
@@ -220,7 +220,7 @@ export function MainArea({
   const [membersOpen, setMembersOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const GroupIcon = activeGroup.kind === 'voice' ? AudioLines : activeGroup.kind === 'watch' ? Tv : activeGroup.kind === 'board' ? Bird  : Hash
+  const GroupIcon = activeGroup.kind === 'voice' ? AudioLines : activeGroup.kind === 'watch' ? Popcorn : activeGroup.kind === 'board' ? Bird  : Hash
   const groupScopeLabel = activeGroup.kind === 'board' ? `Forum: ${activeGroup.label}` : activeGroup.label
   const feedChild = isValidElement(children)
     ? cloneElement(children as any, {

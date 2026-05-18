@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence, useMotionValue, animate } from 'framer-motion'
-import { AudioLines, Maximize2, X, Mic, MicOff, Tv } from 'lucide-react'
+import { AudioLines, Maximize2, X, Mic, MicOff, Popcorn } from 'lucide-react'
 import { useVoice } from '@/context/VoiceContext'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'

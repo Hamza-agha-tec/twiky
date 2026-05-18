@@ -1,7 +1,7 @@
 'use client'
 
 import { type ChangeEvent, FormEvent, useRef, useState } from 'react'
-import { AudioLines, Globe, Hash, ImagePlus, Lock, Bird , Tv, UserCircle2 } from 'lucide-react'
+import { AudioLines, Globe, Hash, ImagePlus, Lock, Bird , Popcorn, UserCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -65,7 +65,7 @@ const GROUP_TYPES = [
   },
   {
     value: 'watch' as const,
-    icon: Tv,
+    icon: Popcorn,
     label: 'Watch',
     desc: 'Watch together',
     gradient: 'from-amber-500/20 to-orange-500/10',
