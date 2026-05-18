@@ -82,6 +82,33 @@ export default function ChannelLayout({ children }: { children: React.ReactNode 
     }
   }, [])
 
+  // Subscribe to voice room presence for this channel's voice groups
+  useEffect(() => {
+    const voiceGroupIds = channelGroups
+      .filter(g => g.group_type === 'voice')
+      .map(g => g.id)
+    if (!voiceGroupIds.length) return
+
+    let socket: Awaited<ReturnType<typeof getSocket>> | null = null
+    let cancelled = false
+
+    const subscribe = (s: Awaited<ReturnType<typeof getSocket>>) => {
+      s.emit('subscribe-voice-rooms', { roomIds: voiceGroupIds })
+    }
+
+    getSocket().then(s => {
+      if (cancelled) return
+      socket = s
+      subscribe(s)
+      s.on('connect', () => subscribe(s))
+    })
+
+    return () => {
+      cancelled = true
+      socket?.emit('unsubscribe-voice-rooms', { roomIds: voiceGroupIds })
+    }
+  }, [channelGroups])
+
   // Voice call duration timer
   useEffect(() => {
     if (!voice.isJoined || !voice.joinedAt) {

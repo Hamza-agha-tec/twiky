@@ -3,7 +3,6 @@
 import React, { createContext, useContext, useMemo } from 'react'
 import { useVoicePresence, VoicePresenceUser, VoiceInvitePayload } from '@/hooks/use-voice-presence'
 import { useProfile } from '@/hooks/use-user'
-import { useChannels } from '@/hooks/use-channels'
 import { useLiveKitVoice } from '@/hooks/use-livekit-voice'
 import { toast } from 'sonner'
 
@@ -34,7 +33,6 @@ const VoiceContext = createContext<VoiceContextType | undefined>(undefined)
 
 export function VoiceProvider({ children }: { children: React.ReactNode }) {
   const { data: profile } = useProfile()
-  const { data: channels = [] } = useChannels()
 
   const voiceMyInfo = useMemo(() => profile ? {
     id: profile.id,
@@ -46,10 +44,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
     enterSoundUrl: profile.enter_sound_url ?? null,
   } : null, [profile])
 
-  const voiceGroupIds = useMemo(() => {
-    // This is a bit expensive, might want to optimize
-    return [] // In a real app, you'd get all voice group IDs
-  }, [])
+  const voiceGroupIds = useMemo(() => [], [])
 
   const voice = useVoicePresence(voiceMyInfo, voiceGroupIds, (payload) => {
     const { groupId, groupName, inviterName, inviterAvatar } = payload

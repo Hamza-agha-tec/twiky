@@ -189,7 +189,7 @@ export default function GroupPage() {
 
   // Sync active watch room for watch groups
   useEffect(() => {
-    if (backendGroup?.group_type === 'watch') {
+    if (backendGroup?.group_type === 'watch' && !voice.joinedGroupId) {
       const activeWatch = localStorage.getItem('twiky-active-watch-room')
       let shouldUpdate = true
       if (activeWatch) {
@@ -211,7 +211,7 @@ export default function GroupPage() {
         window.dispatchEvent(new Event('twiky-watch-room-changed'))
       }
     }
-  }, [gId, channelId, backendGroup])
+  }, [gId, channelId, backendGroup, voice.joinedGroupId])
 
   if (!backendGroup) {
     if (groupsLoading) {
