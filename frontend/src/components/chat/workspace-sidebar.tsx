@@ -1,15 +1,19 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useRef, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
+  BellOff,
   ChevronLeft,
   ChevronRight,
   Globe,
   Hash,
   Lock,
   MessageSquare,
+  AudioLines,
+  Monitor,
   Bird ,
+  Popcorn,
   Plus,
   Search,
 } from 'lucide-react'
@@ -17,7 +21,12 @@ import {
 import { CreateEntityDialog, type CreateEntityValues } from '@/components/chat/create-entity-dialog'
 import { type WorkspaceChannel } from '@/components/chat/channels-panel'
 import { ConversationContextMenu } from '@/components/chat/conversation-context-menu'
+import { useVoice } from '@/context/VoiceContext'
+import { useWatchPresence } from '@/context/WatchPresenceContext'
+import { useChannelGroups, backendGroupToMock } from '@/hooks/use-groups'
+import { getSocket } from '@/lib/socket'
 import { Button } from '@/components/ui/button'
+import { HoverCard, HoverCardArrow, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Chat } from '@/lib/mock-data'
 import { cn } from '@/lib/utils'
@@ -103,6 +112,187 @@ function resolveConversationAvatar(_name: string, avatar?: string | null) {
 function formatUnreadCount(count: number) {
   if (count > 99) return '99+'
   return String(count)
+}
+
+function ParticipantAvatars({ participants, max = 5 }: { participants: { id: string; name: string; avatarUrl?: string | null; isScreenSharing?: boolean }[]; max?: number }) {
+  const shown = participants.slice(0, max)
+  const overflow = participants.length - shown.length
+  return (
+    <div className="flex items-center">
+      {shown.map((p, i) => (
+        <div
+          key={p.id}
+          className="relative shrink-0"
+          style={{ marginLeft: i === 0 ? 0 : -6, zIndex: shown.length - i }}
+          title={p.name}
+        >
+          <div className="flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted ring-2 ring-popover text-[8px] font-semibold text-foreground">
+            {p.avatarUrl ? (
+              <img src={p.avatarUrl} alt={p.name} className="block h-full w-full object-cover" />
+            ) : (
+              p.name[0]?.toUpperCase() ?? '?'
+            )}
+          </div>
+          {p.isScreenSharing ? (
+            <span className="absolute -bottom-px -right-px flex h-2.5 w-2.5 items-center justify-center rounded-full bg-sky-500 ring-1 ring-popover">
+              <Monitor className="h-1.5 w-1.5 text-white" />
+            </span>
+          ) : null}
+        </div>
+      ))}
+      {overflow > 0 ? (
+        <span className="ml-1 text-[10px] font-semibold text-muted-foreground">+{overflow}</span>
+      ) : null}
+    </div>
+  )
+}
+
+function ChannelHoverCard({ channel, children }: { channel: WorkspaceChannel; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false)
+  const { participantsByGroup } = useVoice()
+  const { watchParticipants } = useWatchPresence()
+  const socketRef = useRef<Awaited<ReturnType<typeof getSocket>> | null>(null)
+
+  // Fetch real groups for this channel (cached after first fetch)
+  const { data: backendGroups = [] } = useChannelGroups(channel.id)
+  const groups = useMemo(() => backendGroups.map(backendGroupToMock), [backendGroups])
+
+  const voiceGroupIds = useMemo(() => groups.filter(g => g.kind === 'voice').map(g => g.id), [groups])
+  const watchGroupIds = useMemo(() => groups.filter(g => g.kind === 'watch').map(g => g.id), [groups])
+
+  // Subscribe to voice rooms when card opens so participantsByGroup gets populated
+  useEffect(() => {
+    if (!open || voiceGroupIds.length === 0) return
+    let cancelled = false
+
+    getSocket().then(s => {
+      if (cancelled) return
+      socketRef.current = s
+      s.emit('subscribe-voice-rooms', { roomIds: voiceGroupIds })
+    })
+
+    return () => {
+      cancelled = true
+      socketRef.current?.emit('unsubscribe-voice-rooms', { roomIds: voiceGroupIds })
+    }
+  }, [open, voiceGroupIds.join(',')])
+
+  const voiceRows = useMemo(() =>
+    voiceGroupIds
+      .map(id => ({ groupId: id, participants: participantsByGroup[id] ?? [] }))
+      .filter(r => r.participants.length > 0),
+    [voiceGroupIds, participantsByGroup],
+  )
+
+  const watchRows = useMemo(() =>
+    watchGroupIds
+      .map(id => ({ groupId: id, participants: watchParticipants[id] ?? [] }))
+      .filter(r => r.participants.length > 0),
+    [watchGroupIds, watchParticipants],
+  )
+
+  const hasActivity = voiceRows.length > 0 || watchRows.length > 0
+
+  return (
+    <HoverCard open={open} onOpenChange={setOpen} openDelay={400} closeDelay={150}>
+      <HoverCardTrigger asChild>{children}</HoverCardTrigger>
+      <HoverCardContent
+        side="right"
+        sideOffset={8}
+        className="w-64 p-0 overflow-hidden rounded-xl border border-border shadow-xl"
+      >
+        <HoverCardArrow width={12} height={6} />
+        <div className="flex flex-col">
+          {/* Channel name header */}
+          <div className="px-3 py-3">
+            <p className="truncate text-[13px] font-semibold text-foreground leading-tight">{channel.label}</p>
+          </div>
+
+          {/* Activity rows */}
+          {hasActivity ? (
+            <div className="border-t border-border">
+              {voiceRows.map(({ groupId, participants }) => (
+                <div key={groupId} className="flex items-center gap-2.5 px-3 py-2">
+                  <AudioLines className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <ParticipantAvatars participants={participants} />
+                </div>
+              ))}
+
+              {watchRows.map(({ groupId, participants }) => (
+                <div key={groupId} className="flex items-center gap-2.5 px-3 py-2">
+                  <Popcorn className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <ParticipantAvatars participants={participants.map(p => ({ id: p.userId, name: p.fullname ?? p.username, avatarUrl: p.avatarUrl ?? null }))} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="border-t border-border px-3 py-2.5">
+              <p className="text-[11px] text-muted-foreground">No active sessions</p>
+            </div>
+          )}
+        </div>
+      </HoverCardContent>
+    </HoverCard>
+  )
+}
+
+function ChatHoverCard({ chat, isMuted, children }: { chat: SidebarChat; isMuted?: boolean; children: React.ReactNode }) {
+  return (
+    <HoverCard openDelay={500} closeDelay={150}>
+      <HoverCardTrigger asChild>{children}</HoverCardTrigger>
+      <HoverCardContent
+        side="right"
+        sideOffset={8}
+        className="w-60 p-0 overflow-hidden rounded-xl border border-border shadow-xl"
+      >
+        <HoverCardArrow width={12} height={6} />
+        <div className="flex flex-col">
+          {/* Header */}
+          <div className="flex items-center gap-3 px-4 pt-4 pb-3">
+            <div className="relative h-10 w-10 shrink-0">
+              <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-muted text-[12px] font-semibold text-foreground">
+                {chat.avatar ? (
+                  <img src={chat.avatar} alt={chat.name} className="block h-full w-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_PROFILE_IMAGE }} />
+                ) : (
+                  chat.name[0]?.toUpperCase() ?? '?'
+                )}
+              </div>
+              {chat.isOnline ? (
+                <span className="absolute -bottom-px -right-px h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-popover" />
+              ) : null}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-semibold text-foreground leading-tight">{chat.name}</p>
+              <p className={cn('text-[11px] mt-0.5', chat.isOnline ? 'text-emerald-500' : 'text-muted-foreground')}>
+                {chat.isOnline ? 'Online' : 'Offline'}
+              </p>
+            </div>
+            {isMuted ? (
+              <span className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[9px] font-semibold text-muted-foreground">
+                <BellOff className="h-2.5 w-2.5" />
+                Muted
+              </span>
+            ) : null}
+          </div>
+
+          {/* Last message */}
+          {chat.lastMessage ? (
+            <div className="border-t border-border px-4 py-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Last message</p>
+              <p className="text-[11px] leading-relaxed text-foreground/80 line-clamp-2">
+                {chat.lastMessage}
+              </p>
+              {chat.timestamp ? (
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  {new Date(chat.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </HoverCardContent>
+    </HoverCard>
+  )
 }
 
 export function WorkspaceSidebar({
@@ -294,8 +484,8 @@ export function WorkspaceSidebar({
                   const hasGeekBanner = chat.subPlan === 'GEEK' && Boolean(chat.bannerUrl)
 
                   return (
+                    <ChatHoverCard key={chat.id} chat={chat} isMuted={chatMeta[chat.id]?.isMuted ?? chat.isMuted}>
                     <motion.button
-                      key={chat.id}
                       initial={{ opacity: 0, x: -8 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: index * 0.02 }}
@@ -391,6 +581,7 @@ export function WorkspaceSidebar({
                         ) : null}
                       </div>
                     </motion.button>
+                    </ChatHoverCard>
                   )
                 })
               ) : (
@@ -425,36 +616,37 @@ export function WorkspaceSidebar({
                 const storedAvatar = channelAssets[channel.id]?.avatar ?? channel.avatarUrl ?? null
 
                 return (
-                  <button
-                    key={channel.id}
-                    onClick={() => onSelectChannel?.(channel.id)}
-                    className={cn(
-                      'flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left transition-colors',
-                      isActive
-                        ? 'bg-primary/10 text-foreground'
-                        : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                    )}
-                  >
-                    <div
+                  <ChannelHoverCard key={channel.id} channel={{ ...channel, avatarUrl: storedAvatar ?? channel.avatarUrl }}>
+                    <button
+                      onClick={() => onSelectChannel?.(channel.id)}
                       className={cn(
-                        'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-linear-to-br text-[10px] font-bold text-white shadow-sm overflow-hidden',
-                        getChannelTone(channel.id),
-                        isActive && 'ring-2 ring-primary/20 ring-offset-1 ring-offset-sidebar',
+                        'flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left transition-colors',
+                        isActive
+                          ? 'bg-primary/10 text-foreground'
+                          : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                       )}
                     >
-                      {storedAvatar ? (
-                        <img src={storedAvatar} alt={channel.label} className="block h-full w-full object-cover object-center" />
-                      ) : getChannelMonogram(channel.label)}
-                    </div>
-                    <span className="truncate text-[12px] font-medium text-foreground">
-                      {channel.label}
-                    </span>
-                    {channel.access_type === 'PRIVATE' ? (
-                      <Lock className="ml-auto h-3 w-3 shrink-0 text-muted-foreground/60" />
-                    ) : (
-                      <Globe className="ml-auto h-3 w-3 shrink-0 text-muted-foreground/40" />
-                    )}
-                  </button>
+                      <div
+                        className={cn(
+                          'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-linear-to-br text-[10px] font-bold text-white shadow-sm overflow-hidden',
+                          getChannelTone(channel.id),
+                          isActive && 'ring-2 ring-primary/20 ring-offset-1 ring-offset-sidebar',
+                        )}
+                      >
+                        {storedAvatar ? (
+                          <img src={storedAvatar} alt={channel.label} className="block h-full w-full object-cover object-center" />
+                        ) : getChannelMonogram(channel.label)}
+                      </div>
+                      <span className="truncate text-[12px] font-medium text-foreground">
+                        {channel.label}
+                      </span>
+                      {channel.access_type === 'PRIVATE' ? (
+                        <Lock className="ml-auto h-3 w-3 shrink-0 text-muted-foreground/60" />
+                      ) : (
+                        <Globe className="ml-auto h-3 w-3 shrink-0 text-muted-foreground/40" />
+                      )}
+                    </button>
+                  </ChannelHoverCard>
                 )
               })}
             </div>
@@ -467,36 +659,36 @@ export function WorkspaceSidebar({
                 const hasUnread = unread > 0
 
                 return (
-                  <button
-                    key={chat.id}
-                    onClick={() => onSelectChat(chat.id)}
-                    onContextMenu={(event) => handleContextMenu(event, chat)}
-                    className={cn(
-                      'relative flex h-8 w-8 items-center justify-center rounded-lg text-[10px] font-semibold transition-colors',
-                      activeChat === chat.id
-                        ? 'bg-primary/10 text-primary'
-                        : hasUnread
-                          ? 'bg-accent text-foreground'
-                          : 'bg-muted text-foreground hover:bg-accent',
-                    )}
-                    title={chat.name}
-                  >
-                    <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg">
-                      {chat.avatar ? (
-                        <img src={chat.avatar} alt={chat.name} className="block h-full w-full object-cover object-center" onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_PROFILE_IMAGE }} />
-                      ) : (
-                        chat.name[0]?.toUpperCase() ?? '?'
+                  <ChatHoverCard key={chat.id} chat={chat} isMuted={chatMeta[chat.id]?.isMuted ?? chat.isMuted}>
+                    <button
+                      onClick={() => onSelectChat(chat.id)}
+                      onContextMenu={(event) => handleContextMenu(event, chat)}
+                      className={cn(
+                        'relative flex h-8 w-8 items-center justify-center rounded-lg text-[10px] font-semibold transition-colors',
+                        activeChat === chat.id
+                          ? 'bg-primary/10 text-primary'
+                          : hasUnread
+                            ? 'bg-accent text-foreground'
+                            : 'bg-muted text-foreground hover:bg-accent',
                       )}
-                    </span>
-                    {chat.isOnline ? (
-                      <span className="absolute -bottom-px -right-px h-2 w-2 rounded-full bg-emerald-500 ring-1 ring-sidebar" />
-                    ) : null}
-                    {hasUnread ? (
-                      <span className="absolute -right-1.5 -top-1.5 min-w-4 rounded-full bg-primary px-1 py-0.5 text-center text-[9px] font-bold leading-none text-primary-foreground shadow-sm">
-                        {unread > 9 ? '9+' : unread}
+                    >
+                      <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg">
+                        {chat.avatar ? (
+                          <img src={chat.avatar} alt={chat.name} className="block h-full w-full object-cover object-center" onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_PROFILE_IMAGE }} />
+                        ) : (
+                          chat.name[0]?.toUpperCase() ?? '?'
+                        )}
                       </span>
-                    ) : null}
-                  </button>
+                      {chat.isOnline ? (
+                        <span className="absolute -bottom-px -right-px h-2 w-2 rounded-full bg-emerald-500 ring-1 ring-sidebar" />
+                      ) : null}
+                      {hasUnread ? (
+                        <span className="absolute -right-1.5 -top-1.5 min-w-4 rounded-full bg-primary px-1 py-0.5 text-center text-[9px] font-bold leading-none text-primary-foreground shadow-sm">
+                          {unread > 9 ? '9+' : unread}
+                        </span>
+                      ) : null}
+                    </button>
+                  </ChatHoverCard>
                 )
               })}
             </div>
@@ -509,20 +701,20 @@ export function WorkspaceSidebar({
                 const storedAvatar = channelAssets[channel.id]?.avatar ?? channel.avatarUrl ?? null
 
                 return (
-                  <button
-                    key={channel.id}
-                    onClick={() => onSelectChannel?.(channel.id)}
-                    className={cn(
-                      'flex h-8 w-8 items-center justify-center rounded-lg bg-linear-to-br text-[10px] font-bold text-white shadow-sm transition-transform hover:scale-[1.02] overflow-hidden',
-                      getChannelTone(channel.id),
-                      isActive && 'ring-2 ring-primary/30 ring-offset-2 ring-offset-sidebar',
-                    )}
-                    title={channel.label}
-                  >
-                    {storedAvatar ? (
-                      <img src={storedAvatar} alt={channel.label} className="block h-full w-full object-cover object-center" />
-                    ) : getChannelMonogram(channel.label)}
-                  </button>
+                  <ChannelHoverCard key={channel.id} channel={{ ...channel, avatarUrl: storedAvatar ?? channel.avatarUrl }}>
+                    <button
+                      onClick={() => onSelectChannel?.(channel.id)}
+                      className={cn(
+                        'flex h-8 w-8 items-center justify-center rounded-lg bg-linear-to-br text-[10px] font-bold text-white shadow-sm transition-transform hover:scale-[1.02] overflow-hidden',
+                        getChannelTone(channel.id),
+                        isActive && 'ring-2 ring-primary/30 ring-offset-2 ring-offset-sidebar',
+                      )}
+                    >
+                      {storedAvatar ? (
+                        <img src={storedAvatar} alt={channel.label} className="block h-full w-full object-cover object-center" />
+                      ) : getChannelMonogram(channel.label)}
+                    </button>
+                  </ChannelHoverCard>
                 )
               })}
 

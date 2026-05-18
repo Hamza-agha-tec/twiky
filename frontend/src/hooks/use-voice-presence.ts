@@ -169,26 +169,46 @@ export function useVoicePresence(
     const onRoomUsers = (payload: { roomId?: string; participants?: VoicePresenceUser[] }) => {
       if (!mounted || !payload?.roomId) return
       const users = Array.isArray(payload.participants) ? payload.participants : []
-      setParticipantsByGroup(prev => ({ ...prev, [payload.roomId!]: users }))
+      const incomingIds = new Set(users.map(u => u.id))
+      // Evict incoming users from all other rooms (they can only be in one)
+      setParticipantsByGroup(prev => {
+        const next: Record<string, VoicePresenceUser[]> = {}
+        Object.entries(prev).forEach(([gId, list]) => {
+          next[gId] = gId === payload.roomId! ? list : list.filter(u => !incomingIds.has(u.id))
+        })
+        next[payload.roomId!] = users
+        return next
+      })
     }
 
     const onRoomParticipants = (payload: { roomId?: string; users?: VoicePresenceUser[] }) => {
       if (!mounted || !payload?.roomId) return
       const users = Array.isArray(payload.users) ? payload.users : []
+      const incomingIds = new Set(users.map(u => u.id))
       setParticipantsByGroup(prev => {
-        const existing = prev[payload.roomId!] ?? []
+        const next: Record<string, VoicePresenceUser[]> = {}
+        Object.entries(prev).forEach(([gId, list]) => {
+          next[gId] = gId === payload.roomId! ? list : list.filter(u => !incomingIds.has(u.id))
+        })
+        const existing = next[payload.roomId!] ?? []
         const byId = new Map(existing.map(u => [u.id, u]))
         users.forEach(u => byId.set(u.id, u))
-        return { ...prev, [payload.roomId!]: Array.from(byId.values()) }
+        next[payload.roomId!] = Array.from(byId.values())
+        return next
       })
     }
 
     const onUserJoined = (payload: { roomId?: string; userId?: string; user?: VoicePresenceUser }) => {
       if (!mounted || !payload?.roomId || !payload.user?.id) return
-      setParticipantsByGroup(prev => ({
-        ...prev,
-        [payload.roomId!]: upsertUser(prev[payload.roomId!] ?? [], payload.user!),
-      }))
+      // A user can only be in one room — evict them from all other rooms on join
+      setParticipantsByGroup(prev => {
+        const next: Record<string, VoicePresenceUser[]> = {}
+        Object.entries(prev).forEach(([gId, users]) => {
+          next[gId] = gId === payload.roomId! ? users : removeUser(users, payload.user!.id)
+        })
+        next[payload.roomId!] = upsertUser(next[payload.roomId!] ?? [], payload.user!)
+        return next
+      })
       if (payload.user.id !== myInfoRef.current?.id) {
         playVoiceSound('join')
         if (payload.user.enterSoundUrl) {

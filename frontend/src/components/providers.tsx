@@ -6,6 +6,7 @@ import ToastProvider from '@/context/ToastProvider';
 import { ChatThemeProvider } from '@/context/ChatThemeContext';
 import { ChatProvider } from '@/context/ChatContext';
 import { VoiceProvider } from '@/context/VoiceContext';
+import { WatchPresenceProvider } from '@/context/WatchPresenceContext';
 import { DmCallProvider } from '@/context/DmCallContext';
 import { DynamicIslandProvider } from '@/context/DynamicIslandContext';
 import { DynamicIsland } from '@/components/dynamic-island/DynamicIsland';
@@ -31,9 +32,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
             <ChatThemeProvider>
               <ChatProvider>
                 <VoiceProvider>
+                  <WatchPresenceProvider>
                   <DmCallProvider>
                     {children}
                   </DmCallProvider>
+                  </WatchPresenceProvider>
                 </VoiceProvider>
               </ChatProvider>
             </ChatThemeProvider>
