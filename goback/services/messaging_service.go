@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Hamza-agha-tec/goback/models"
+	"github.com/Hamza-agha-tec/goback/utils"
 	"github.com/lib/pq"
 )
 
@@ -281,6 +282,7 @@ func (s *MessagingService) GetDirectMessages(userID string, conversationID strin
 			dm.content, dm.file_url, dm.reply_to_id,
 			dm.status, dm.type, dm.mime,
 			dm.is_pinned, dm.is_forwarded, dm.created_at,
+			COALESCE(dm.embeds, '[]'::jsonb),
 			u.id, u.username, u.fullname, u.avatar_url, u.is_verified, u.sub_plan
 		FROM direct_messages dm
 		LEFT JOIN users u ON u.id = dm.sender_id
@@ -300,6 +302,7 @@ func (s *MessagingService) GetDirectMessages(userID string, conversationID strin
 			status                                     string
 			isPinned, isForwarded                      sql.NullBool
 			createdAt                                  time.Time
+			embedsBytes                                []byte
 			sID                                        sql.NullString
 			sUsername, sFullName, sAvatarURL           sql.NullString
 			sIsVerified                                sql.NullBool
@@ -310,6 +313,7 @@ func (s *MessagingService) GetDirectMessages(userID string, conversationID strin
 			&content, &fileURL, &replyToID,
 			&status, &msgType, &mime,
 			&isPinned, &isForwarded, &createdAt,
+			&embedsBytes,
 			&sID, &sUsername, &sFullName, &sAvatarURL, &sIsVerified, &sSubPlan,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan message: %w", err)
@@ -363,6 +367,11 @@ func (s *MessagingService) GetDirectMessages(userID string, conversationID strin
 			}
 		}
 
+		var embeds []models.LinkEmbed
+		if len(embedsBytes) > 0 {
+			_ = json.Unmarshal(embedsBytes, &embeds)
+		}
+
 		result = append(result, &models.DirectMessageResponse{
 			ID:             id,
 			ConversationID: convID,
@@ -379,6 +388,7 @@ func (s *MessagingService) GetDirectMessages(userID string, conversationID strin
 			Reactions:      []map[string]interface{}{},
 			CreatedAt:      createdAt,
 			Sender:         sender,
+			Embeds:         embeds,
 		})
 	}
 
@@ -416,18 +426,39 @@ func (s *MessagingService) SendDirectMessage(userID string, conversationID strin
 		mime = &dto.Mime
 	}
 	var content *string
+	var embeds []models.LinkEmbed
 	if dto.Content != "" {
 		content = &dto.Content
+		urls := utils.ExtractURLs(dto.Content)
+		for _, u := range urls {
+			if emb := utils.UnfurlURL(u); emb != nil {
+				embeds = append(embeds, models.LinkEmbed{
+					URL:         emb.URL,
+					Title:       emb.Title,
+					Description: emb.Description,
+					ImageURL:    emb.ImageURL,
+					SiteName:    emb.SiteName,
+					Favicon:     emb.Favicon,
+				})
+			}
+		}
+	}
+
+	embedsJSON := "[]"
+	if len(embeds) > 0 {
+		if b, err := json.Marshal(embeds); err == nil {
+			embedsJSON = string(b)
+		}
 	}
 
 	var msgID string
 	var createdAt time.Time
 	err = s.db.QueryRow(`
 		INSERT INTO direct_messages
-			(conversation_id, sender_id, content, type, file_url, reply_to_id, mime, is_forwarded, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'sent')
+			(conversation_id, sender_id, content, type, file_url, reply_to_id, mime, is_forwarded, status, embeds)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'sent', $9::jsonb)
 		RETURNING id, created_at
-	`, conversationID, userID, content, msgType, fileURL, replyToID, mime, dto.IsForwarded).
+	`, conversationID, userID, content, msgType, fileURL, replyToID, mime, dto.IsForwarded, embedsJSON).
 		Scan(&msgID, &createdAt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send direct message: %w", err)
@@ -484,6 +515,7 @@ func (s *MessagingService) SendDirectMessage(userID string, conversationID strin
 		Reactions:      []map[string]interface{}{},
 		CreatedAt:      createdAt,
 		Sender:         sender,
+		Embeds:         embeds,
 	}, nil
 }
 
@@ -570,6 +602,7 @@ func (s *MessagingService) GetGroupMessages(userID string, groupID string) ([]*m
 			m.id, m.group_id, m.sender_id, m.content, m.type, m.file_url,
 			m.reply_to_id, m.mime, m.duration, m.size, m.is_pinned, m.created_at,
 			COALESCE(m.reactions, '[]'::jsonb),
+			COALESCE(m.embeds, '[]'::jsonb),
 			u.id, u.username, u.avatar_url, u.sub_plan, u.is_verified
 		FROM group_messages m
 		LEFT JOIN users u ON u.id = m.sender_id
@@ -592,18 +625,23 @@ func (s *MessagingService) GetGroupMessages(userID string, groupID string) ([]*m
 		var sender models.GroupMessageSender
 		var senderID, senderUsername, senderAvatar, senderSubPlan *string
 		var senderVerified *bool
-		var reactionsJSON []byte
+		var reactionsJSON, embedsJSON []byte
+		var nullableContent sql.NullString
 
 		err := rows.Scan(
-			&msg.ID, &msg.GroupID, &msg.SenderID, &msg.Content, &msg.Type, &msg.FileURL,
+			&msg.ID, &msg.GroupID, &msg.SenderID, &nullableContent, &msg.Type, &msg.FileURL,
 			&msg.ReplyToID, &msg.Mime, &msg.Duration, &msg.Size, &msg.IsPinned, &msg.CreatedAt,
-			&reactionsJSON,
+			&reactionsJSON, &embedsJSON,
 			&senderID, &senderUsername, &senderAvatar, &senderSubPlan, &senderVerified,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan message: %w", err)
 		}
+		msg.Content = nullableContent.String
 		msg.Reactions = reactionGroupsToMaps(parseGroupMessageReactions(reactionsJSON))
+		if len(embedsJSON) > 0 {
+			_ = json.Unmarshal(embedsJSON, &msg.Embeds)
+		}
 		if senderID != nil {
 			sender.ID = *senderID
 			sender.Username = senderUsername
@@ -651,11 +689,36 @@ func (s *MessagingService) SendGroupMessage(userID string, groupID string, dto m
 		}
 	}
 
-	var mentionsBytes []byte
+	// Unfurl URLs
+	var embeds []models.LinkEmbed
+	if dto.Content != "" {
+		urls := utils.ExtractURLs(dto.Content)
+		for _, u := range urls {
+			if emb := utils.UnfurlURL(u); emb != nil {
+				embeds = append(embeds, models.LinkEmbed{
+					URL:         emb.URL,
+					Title:       emb.Title,
+					Description: emb.Description,
+					ImageURL:    emb.ImageURL,
+					SiteName:    emb.SiteName,
+					Favicon:     emb.Favicon,
+				})
+			}
+		}
+	}
+
+	embedsJSON := "[]"
+	if len(embeds) > 0 {
+		if b, err := json.Marshal(embeds); err == nil {
+			embedsJSON = string(b)
+		}
+	}
+
+	var mentionsBytes, embedsBytes []byte
 	err = s.db.QueryRow(`
-		INSERT INTO group_messages (group_id, sender_id, content, type, file_url, reply_to_id, mime, duration, size, is_pinned, entity_mentions)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, $10)
-		RETURNING id, group_id, sender_id, content, type, file_url, reply_to_id, mime, duration, size, is_pinned, entity_mentions, created_at
+		INSERT INTO group_messages (group_id, sender_id, content, type, file_url, reply_to_id, mime, duration, size, is_pinned, entity_mentions, embeds)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, $10, $11::jsonb)
+		RETURNING id, group_id, sender_id, content, type, file_url, reply_to_id, mime, duration, size, is_pinned, entity_mentions, COALESCE(embeds, '[]'::jsonb), created_at
 	`,
 		groupID, userID,
 		nullableString(dto.Content),
@@ -666,11 +729,16 @@ func (s *MessagingService) SendGroupMessage(userID string, groupID string, dto m
 		dto.Duration,
 		dto.Size,
 		mentionsJSON,
+		embedsJSON,
 	).Scan(
 		&msg.ID, &msg.GroupID, &msg.SenderID, &msg.Content, &msg.Type,
 		&msg.FileURL, &msg.ReplyToID, &msg.Mime, &msg.Duration, &msg.Size,
-		&msg.IsPinned, &mentionsBytes, &msg.CreatedAt,
+		&msg.IsPinned, &mentionsBytes, &embedsBytes, &msg.CreatedAt,
 	)
+
+	if err == nil && len(embedsBytes) > 0 {
+		_ = json.Unmarshal(embedsBytes, &msg.Embeds)
+	}
 
 	if err == nil && len(mentionsBytes) > 0 {
 		_ = json.Unmarshal(mentionsBytes, &msg.EntityMentions)
@@ -791,26 +859,29 @@ func (s *MessagingService) getGroupMessageResponseByID(messageID string) (*model
 	var sender models.GroupMessageSender
 	var senderID, senderUsername, senderAvatar, senderSubPlan *string
 	var senderVerified *bool
-	var reactionsJSON []byte
+	var reactionsJSON, embedsJSON []byte
+	var nullableContent sql.NullString
 
 	err := s.db.QueryRow(`
 		SELECT
 			m.id, m.group_id, m.sender_id, m.content, m.type, m.file_url,
 			m.reply_to_id, m.mime, m.duration, m.size, m.is_pinned, m.created_at,
 			COALESCE(m.reactions, '[]'::jsonb),
+			COALESCE(m.embeds, '[]'::jsonb),
 			u.id, u.username, u.avatar_url, u.sub_plan, u.is_verified
 		FROM group_messages m
 		LEFT JOIN users u ON u.id = m.sender_id
 		WHERE m.id = $1
 	`, messageID).Scan(
-		&msg.ID, &msg.GroupID, &msg.SenderID, &msg.Content, &msg.Type, &msg.FileURL,
+		&msg.ID, &msg.GroupID, &msg.SenderID, &nullableContent, &msg.Type, &msg.FileURL,
 		&msg.ReplyToID, &msg.Mime, &msg.Duration, &msg.Size, &msg.IsPinned, &msg.CreatedAt,
-		&reactionsJSON,
+		&reactionsJSON, &embedsJSON,
 		&senderID, &senderUsername, &senderAvatar, &senderSubPlan, &senderVerified,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get updated message: %w", err)
 	}
+	msg.Content = nullableContent.String
 
 	if senderID != nil {
 		sender.ID = *senderID
@@ -824,6 +895,9 @@ func (s *MessagingService) getGroupMessageResponseByID(messageID string) (*model
 	}
 
 	msg.Reactions = reactionGroupsToMaps(parseGroupMessageReactions(reactionsJSON))
+	if len(embedsJSON) > 0 {
+		_ = json.Unmarshal(embedsJSON, &msg.Embeds)
+	}
 
 	return msg, nil
 }

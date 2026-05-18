@@ -7,9 +7,10 @@ import { useGroupMessageRealtime, useGroupMessages, useGroupMembers, useSendGrou
 import { useCreateDirectConversation } from '@/hooks/use-direct-conversations'
 import { useVoice } from '@/context/VoiceContext'
 import { Button } from '@/components/ui/button'
-import { Volume2, PhoneOff } from 'lucide-react'
+import { Volume2, PhoneOff, Tv } from 'lucide-react'
 
 import { useProfile } from '@/hooks/use-user'
+import { useOnlineUsers } from '@/hooks/use-socket'
 import { VoiceGroupView } from '@/components/chat/voice-group-view'
 import { WatchRoomView } from '@/components/watch/watch-room-view'
 import { useDmCallContext } from '@/context/DmCallContext'
@@ -52,6 +53,39 @@ function ActiveCallBlockedView({ onHangUp, type }: { onHangUp: () => void; type:
   )
 }
 
+function ActiveVoiceBlockedView({ onDisconnect, groupName }: { onDisconnect: () => void; groupName: string }) {
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center bg-background relative overflow-hidden px-6">
+      {/* Sleek radial backgrounds */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.06)_0%,transparent_70%)]" />
+      <div className="absolute -top-40 -left-40 h-[400px] w-[400px] rounded-full bg-primary/5 blur-[128px]" />
+      
+      <div className="relative z-10 max-w-md w-full bg-card/45 backdrop-blur-md border border-white/5 rounded-2xl p-8 text-center shadow-2xl flex flex-col items-center gap-6">
+        <div className="h-16 w-16 rounded-full bg-blue-500/10 flex items-center justify-center border border-blue-500/20 animate-pulse">
+          <Volume2 className="h-6 w-6 text-blue-400" />
+        </div>
+        
+        <div className="space-y-2">
+          <h2 className="text-xl font-bold tracking-tight text-foreground">
+            Voice Channel Active
+          </h2>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            You are currently connected to the voice channel <span className="font-semibold text-foreground">"{groupName}"</span>. Please disconnect from voice to join this watch room.
+          </p>
+        </div>
+
+        <Button 
+          onClick={onDisconnect}
+          variant="destructive"
+          className="w-full h-11 font-medium rounded-xl shadow-lg shadow-red-500/20 hover:shadow-red-500/35 transition-all duration-300 transform hover:scale-[1.02]"
+        >
+          Disconnect Voice
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function toFeedPosts(messages: GroupMessage[], myId?: string): FeedPost[] {
   return messages.map(msg => ({
     id: msg.id,
@@ -69,8 +103,16 @@ function toFeedPosts(messages: GroupMessage[], myId?: string): FeedPost[] {
     attachmentMime: msg.mime ?? null,
     attachmentDuration: msg.duration ?? null,
     pinned: msg.is_pinned ?? false,
-    reactions: (msg.reactions ?? []).map(r => ({ emoji: r.emoji, count: r.users.length, mine: r.users.includes(myId ?? '') })),
+    reactions: (msg.reactions ?? []).map(r => {
+      const users = Array.isArray(r.users) ? r.users : []
+      return {
+        emoji: r.emoji,
+        count: users.length,
+        mine: users.includes(myId ?? '')
+      }
+    }),
     replyCount: 0,
+    embeds: msg.embeds ?? [],
   }))
 }
 
@@ -97,14 +139,52 @@ export default function GroupPage() {
   const backendGroup = channelGroups.find(g => g.id === gId)
   
   const voice = useVoice()
-  // Handle Escape key to go back to channel home
+  const onlineUsers = useOnlineUsers()
+  const dmCall = useDmCallContext()
+
+  // Handle Escape key to go back to channel home for non-text groups
   useEffect(() => {
+    if (backendGroup?.group_type === 'text') return // Handled by MainArea which manages sidebars first
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') router.push(`/channels/${channelId}`)
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [channelId, router])
+  }, [channelId, router, backendGroup?.group_type])
+
+  // Sync voice meta for PiP
+  useEffect(() => {
+    if (voice.joinedGroupId === gId && backendGroup?.group_type === 'voice') {
+      localStorage.setItem('twiky-active-voice-meta', JSON.stringify({ channelId, groupName: backendGroup.name }))
+      window.dispatchEvent(new Event('twiky-voice-meta-changed'))
+    }
+  }, [voice.joinedGroupId, gId, channelId, backendGroup])
+
+  // Sync active watch room for watch groups
+  useEffect(() => {
+    if (backendGroup?.group_type === 'watch') {
+      const activeWatch = localStorage.getItem('twiky-active-watch-room')
+      let shouldUpdate = true
+      if (activeWatch) {
+        try {
+          const parsed = JSON.parse(activeWatch)
+          if (parsed.roomId === gId) {
+            shouldUpdate = false
+          }
+        } catch {
+          shouldUpdate = true
+        }
+      }
+      if (shouldUpdate) {
+        localStorage.setItem('twiky-active-watch-room', JSON.stringify({
+          roomId: gId,
+          channelId: channelId as string,
+          groupName: backendGroup.name
+        }))
+        window.dispatchEvent(new Event('twiky-watch-room-changed'))
+      }
+    }
+  }, [gId, channelId, backendGroup])
 
   if (!backendGroup) {
     if (groupsLoading) {
@@ -119,7 +199,6 @@ export default function GroupPage() {
 
   const group = backendGroupToMock(backendGroup)
 
-  const dmCall = useDmCallContext()
   const isInDmCall = dmCall.status.state === 'active'
 
   if (isInDmCall && (group.kind === 'voice' || group.kind === 'watch')) {
@@ -127,6 +206,26 @@ export default function GroupPage() {
       <ActiveCallBlockedView
         type={group.kind}
         onHangUp={() => dmCall.hangUp()}
+      />
+    )
+  }
+
+  if (group.kind === 'watch' && voice.joinedGroupId) {
+    let activeVoiceName = 'active voice channel'
+    if (typeof window !== 'undefined') {
+      const raw = localStorage.getItem('twiky-active-voice-meta')
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw)
+          if (parsed.groupName) activeVoiceName = parsed.groupName
+        } catch {}
+      }
+    }
+
+    return (
+      <ActiveVoiceBlockedView
+        groupName={activeVoiceName}
+        onDisconnect={() => voice.leave()}
       />
     )
   }
@@ -165,23 +264,12 @@ export default function GroupPage() {
   }
 
   if (group.kind === 'watch') {
-    const myMemberInfo = members.find(m => m.user?.id === profile?.id)
-    const isHost = myMemberInfo?.role === 'OWNER' || myMemberInfo?.role === 'ADMIN'
-
     return (
-      <div className="flex h-full w-full overflow-hidden bg-background">
-        <WatchRoomView
-          roomId={gId}
-          userId={profile?.id || ''}
-          username={profile?.username || ''}
-          fullname={profile?.fullname || profile?.full_name}
-          avatarUrl={profile?.avatar_url}
-          bannerUrl={profile?.banner}
-          subPlan={profile?.sub_plan}
-          isVerified={profile?.is_verified}
-          isHost={isHost}
-          onLeave={() => router.push(`/channels/${channelId}`)}
-        />
+      <div className="flex h-full w-full items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <Tv className="h-10 w-10 text-muted-foreground animate-pulse" />
+          <p className="text-sm font-semibold text-foreground">Joining Watch Party...</p>
+        </div>
       </div>
     )
   }
@@ -233,6 +321,8 @@ export default function GroupPage() {
       activeTab={activeTab}
       onTabChange={setActiveTab}
       members={members}
+      onlineUsers={onlineUsers}
+      onEscape={() => router.push(`/channels/${channelId}`)}
       onMemberMessage={(userId) => createDm(userId, {
         onSuccess: (data) => { if (data?.id) router.push(`/dm/${data.id}`) }
       })}

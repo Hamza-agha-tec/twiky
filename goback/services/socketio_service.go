@@ -1289,6 +1289,24 @@ func (s *SocketIOService) setupHandlers() {
 			s.emitWatchParticipants(roomID)
 		})
 
+		client.On("watch:reaction", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			roomID := mapStr(payload, "roomId")
+			reactionType := mapStr(payload, "reactionType")
+			userID := mapStr(payload, "userId")
+			if roomID == "" || reactionType == "" {
+				return
+			}
+			server.To(socketio.Room("watch_" + roomID)).Emit("watch:reaction", map[string]interface{}{
+				"roomId":       roomID,
+				"reactionType": reactionType,
+				"userId":       userID,
+			})
+		})
+
 		// ── Group & channel rooms ────────────────────────────────────────────
 
 		client.On("joinGroupRoom", func(datas ...any) {

@@ -12,13 +12,14 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Play, Pause, SkipBack, SkipForward, Volume2, VolumeX,
   Scan, FolderOpen, Users, Crown, Loader2, WifiOff, Tv2,
-  RefreshCw, X, UserMinus,
+  RefreshCw, X, UserMinus, Heart, ThumbsUp, Flame, Smile, Sparkles, Maximize2
 } from 'lucide-react'
 import { useLiveKitToken } from '@/hooks/use-livekit-token'
 import { useWatchRoom, type WatchParticipant } from '@/hooks/use-watch-room'
 import { UserAvatar } from '@/components/chat/user-avatar'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 
 const LIVEKIT_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL ?? 'wss://twikyapp-spq2q6t8.livekit.cloud'
 
@@ -92,6 +93,76 @@ function QualityEnforcer() {
     return () => { room.off('trackSubscribed', enforce) }
   }, [room])
   return null
+}
+
+const REACTIONS = [
+  { type: 'heart', icon: Heart, color: 'text-red-500', fill: '#ef4444', hoverBg: 'hover:bg-red-500/10' },
+  { type: 'like', icon: ThumbsUp, color: 'text-blue-500', fill: '#3b82f6', hoverBg: 'hover:bg-blue-500/10' },
+  { type: 'fire', icon: Flame, color: 'text-orange-500', fill: '#f97316', hoverBg: 'hover:bg-orange-500/10' },
+  { type: 'laugh', icon: Smile, color: 'text-yellow-500', fill: '#eab308', hoverBg: 'hover:bg-yellow-500/10' },
+  { type: 'sparkles', icon: Sparkles, color: 'text-purple-400', fill: '#c084fc', hoverBg: 'hover:bg-purple-500/10' },
+]
+
+interface FloatingReactionProps {
+  type: string
+  left: number
+  onComplete: () => void
+}
+
+function FloatingReaction({ type, left, onComplete }: FloatingReactionProps) {
+  let Icon = Heart
+  let color = 'text-red-500'
+  let fill = '#ef4444'
+
+  switch (type) {
+    case 'heart':
+      Icon = Heart
+      color = 'text-red-500'
+      fill = '#ef4444'
+      break
+    case 'like':
+      Icon = ThumbsUp
+      color = 'text-blue-500'
+      fill = '#3b82f6'
+      break
+    case 'fire':
+      Icon = Flame
+      color = 'text-orange-500'
+      fill = '#f97316'
+      break
+    case 'laugh':
+      Icon = Smile
+      color = 'text-yellow-500'
+      fill = '#eab308'
+      break
+    case 'sparkles':
+      Icon = Sparkles
+      color = 'text-purple-400'
+      fill = '#c084fc'
+      break
+  }
+
+  const randomX = useRef((Math.random() - 0.5) * 80)
+  const randomDuration = useRef(2.5 + Math.random() * 1.5)
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: '100%', x: 0, scale: 0.5, rotate: 0 }}
+      animate={{
+        opacity: [0, 1, 1, 0],
+        y: ['100%', '10%'],
+        x: [0, randomX.current, randomX.current * 0.5],
+        scale: [0.5, 1.2, 1, 0.7],
+        rotate: [0, Math.random() * 30 - 15],
+      }}
+      transition={{ duration: randomDuration.current, ease: 'easeOut' }}
+      onAnimationComplete={onComplete}
+      className={cn("absolute bottom-0 pointer-events-none flex items-center justify-center p-2 rounded-full bg-black/40 backdrop-blur-[2px] border border-white/10 shadow-lg z-50", color)}
+      style={{ left: `${left}%` }}
+    >
+      <Icon className="h-4 w-4" fill={fill} />
+    </motion.div>
+  )
 }
 
 // ── Viewer video (LiveKit track) ──────────────────────────────────────────
@@ -230,6 +301,11 @@ interface WatchRoomInnerProps {
   emitPlay: () => void
   emitPause: () => void
   emitSeek: (t: number) => void
+  emitReaction: (type: string) => void
+  liveReactions: { id: string; type: string; left: number }[]
+  onRemoveReaction: (id: string) => void
+  isPip?: boolean
+  onMaximize?: () => void
   onLeave: () => void
   onEnd: () => void
   onKick: (userId: string) => void
@@ -237,7 +313,8 @@ interface WatchRoomInnerProps {
 
 function WatchRoomInner({
   isHost, participants, syncing, videoRef, ended, sessionStartedAt,
-  emitPlay, emitPause, emitSeek, onLeave, onEnd, onKick,
+  emitPlay, emitPause, emitSeek, emitReaction, liveReactions, onRemoveReaction,
+  isPip, onMaximize, onLeave, onEnd, onKick,
 }: WatchRoomInnerProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const objectUrlRef = useRef<string | null>(null)
@@ -336,11 +413,57 @@ function WatchRoomInner({
     )
   }
 
+  if (isPip) {
+    return (
+      <motion.div 
+        className="relative flex h-full w-full overflow-hidden bg-black group rounded-[inherit] cursor-pointer"
+        onTap={onMaximize}
+      >
+        <QualityEnforcer />
+        {isHost && <HostPublisher videoRef={videoRef} />}
+        {isHost && fileLoaded ? (
+          <video
+            ref={videoRef}
+            className="absolute inset-0 z-[1] h-full w-full object-contain pointer-events-none"
+            onLoadedMetadata={(e) => {
+              setDuration(e.currentTarget.duration)
+              const fn = (videoRef.current as any)?.__watchPublish
+              if (typeof fn === 'function') fn()
+            }}
+            onTimeUpdate={(e) => { if (!dragging) setProgress(e.currentTarget.currentTime) }}
+            onDurationChange={(e) => setDuration(e.currentTarget.duration)}
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+            playsInline
+          />
+        ) : !isHost ? (
+          <ViewerVideo />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center bg-zinc-950">
+            <div className="flex flex-col items-center gap-2 text-zinc-500">
+              <Tv2 className="h-6 w-6 opacity-50" />
+              <span className="text-[10px] font-medium tracking-wide uppercase">Waiting for host</span>
+            </div>
+          </div>
+        )}
+
+        <div className="absolute inset-0 z-50 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-3 transition-opacity">
+          <Button variant="secondary" size="icon" className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 border-0" onClick={(e) => { e.stopPropagation(); onMaximize?.(); }} title="Maximize">
+            <Maximize2 className="h-4 w-4 text-white" />
+          </Button>
+          <Button variant="secondary" size="icon" className="h-9 w-9 rounded-full bg-red-500/20 hover:bg-red-500/40 border-0" onClick={(e) => { e.stopPropagation(); onLeave(); }} title="Leave">
+            <X className="h-4 w-4 text-red-500" />
+          </Button>
+        </div>
+      </motion.div>
+    )
+  }
+
   return (
     <motion.div
       className={cn(
         'flex overflow-hidden bg-background',
-        isFullscreen ? 'fixed inset-0 z-[100]' : 'min-w-0 flex-1',
+        isFullscreen ? 'fixed inset-0 z-[100]' : 'w-full h-full min-w-0 flex-1',
       )}
       initial={{ opacity: 0, y: 8, scale: 0.995 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -377,6 +500,18 @@ function WatchRoomInner({
           onPause={() => setPlaying(false)}
           playsInline
         />
+
+        {/* Floating Reactions Overlay */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden z-10">
+          {liveReactions.map((reaction) => (
+            <FloatingReaction
+              key={reaction.id}
+              type={reaction.type}
+              left={reaction.left}
+              onComplete={() => onRemoveReaction(reaction.id)}
+            />
+          ))}
+        </div>
         {/* Seek flash — left/right */}
         <AnimatePresence>
           {flashSeek && (
@@ -624,6 +759,31 @@ function WatchRoomInner({
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Floating Reactions Trigger Bar */}
+        <AnimatePresence>
+          {controlsVisible && !isPip && (
+            <motion.div
+              className="absolute bottom-24 right-6 z-20 flex flex-col gap-2 rounded-2xl border border-border/50 bg-sidebar/95 p-2 shadow-2xl backdrop-blur-xl"
+              initial={{ opacity: 0, x: 20, scale: 0.95 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: 20, scale: 0.95 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+            >
+              {REACTIONS.map(({ type, icon: Icon, color, fill, hoverBg }) => (
+                <motion.button
+                  key={type}
+                  onClick={() => emitReaction(type)}
+                  whileHover={{ scale: 1.15 }}
+                  whileTap={{ scale: 0.85 }}
+                  className={cn("flex h-9 w-9 items-center justify-center rounded-xl transition-all", color, hoverBg)}
+                >
+                  <Icon className="h-5 w-5" fill={fill} />
+                </motion.button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
 
@@ -644,22 +804,39 @@ interface WatchRoomViewProps {
   subPlan?: string | null
   isVerified?: boolean | null
   isHost: boolean
+  isPip?: boolean
+  onMaximize?: () => void
   onLeave: () => void
   onParticipantsChange?: (participants: WatchParticipant[]) => void
 }
 
-export function WatchRoomView({ roomId, userId, username, fullname, avatarUrl, bannerUrl, subPlan, isVerified, isHost, onLeave, onParticipantsChange }: WatchRoomViewProps) {
+export function WatchRoomView({ roomId, userId, username, fullname, avatarUrl, bannerUrl, subPlan, isVerified, isHost, isPip, onMaximize, onLeave, onParticipantsChange }: WatchRoomViewProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const participantIdentity = `${userId}__${username}`
   const [ended, setEnded] = useState(false)
+  const [liveReactions, setLiveReactions] = useState<{ id: string; type: string; left: number }[]>([])
+
+  const addLocalReaction = useCallback((reactionType: string) => {
+    // Spawn floaters randomly across bottom-center/bottom-right of player
+    const randomLeft = 40 + Math.random() * 45
+    setLiveReactions((prev) => [
+      ...prev,
+      { id: Math.random().toString(), type: reactionType, left: randomLeft },
+    ])
+  }, [])
 
   const { token, loading, error } = useLiveKitToken(roomId, participantIdentity)
-  const { participants, syncing, sessionStartedAt, emitPlay, emitPause, emitSeek, emitEnd, emitKick } = useWatchRoom({
+  const { participants, syncing, sessionStartedAt, emitPlay, emitPause, emitSeek, emitEnd, emitKick, emitReaction } = useWatchRoom({
     roomId, userId, username, fullname, avatarUrl, bannerUrl, subPlan, isVerified, isHost, videoRef,
     onEnded: () => setEnded(true),
     onKicked: () => {
       toast.error('You were removed from the watch party')
       onLeave()
+    },
+    onReaction: (reactionType, senderUserId) => {
+      if (senderUserId !== userId) {
+        addLocalReaction(reactionType)
+      }
     },
   })
 
@@ -672,6 +849,15 @@ export function WatchRoomView({ roomId, userId, username, fullname, avatarUrl, b
     await emitEnd()
     onLeave()
   }, [emitEnd, onLeave])
+
+  const handleSendReaction = useCallback(async (type: string) => {
+    addLocalReaction(type)
+    await emitReaction(type)
+  }, [addLocalReaction, emitReaction])
+
+  const handleRemoveReaction = useCallback((id: string) => {
+    setLiveReactions((prev) => prev.filter((r) => r.id !== id))
+  }, [])
 
   if (loading) {
     return (
@@ -706,13 +892,16 @@ export function WatchRoomView({ roomId, userId, username, fullname, avatarUrl, b
     <LiveKitRoom
       serverUrl={LIVEKIT_URL} token={token} connect={true} video={false} audio={false}
       options={{ dynacast: false, adaptiveStream: false }}
-      className="min-w-0 flex-1 flex overflow-hidden"
+      className="w-full h-full min-w-0 flex-1 flex overflow-hidden"
     >
       <WatchRoomInner
         roomId={roomId} userId={userId} username={username} isHost={isHost}
         participants={participants} syncing={syncing} videoRef={videoRef}
         ended={ended} sessionStartedAt={sessionStartedAt}
         emitPlay={emitPlay} emitPause={emitPause} emitSeek={emitSeek}
+        emitReaction={handleSendReaction} liveReactions={liveReactions}
+        onRemoveReaction={handleRemoveReaction}
+        isPip={isPip} onMaximize={onMaximize}
         onLeave={onLeave} onEnd={handleEnd} onKick={emitKick}
       />
     </LiveKitRoom>

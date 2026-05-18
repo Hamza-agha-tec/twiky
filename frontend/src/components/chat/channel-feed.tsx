@@ -64,7 +64,7 @@ import { useProfile, useSendFollowRequest, useUserById, useUserFollowers, useUse
 import { useOnlineUsers } from '@/hooks/use-socket'
 import { useAuth } from '@/context/AuthContext'
 import { filesApi } from '@/lib/files-api'
-import type { GroupMember, GroupMessageMention } from '@/lib/groups-api'
+import type { GroupMember, GroupMessageMention, LinkEmbed } from '@/lib/groups-api'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -228,6 +228,7 @@ export interface FeedPost {
   replyCount: number
   replyTo?: { author: string; body: string }
   tags?: string[]
+  embeds?: LinkEmbed[]
 }
 
 function SystemFeedRow({ post }: { post: FeedPost }) {
@@ -731,7 +732,7 @@ function ReactionsBar({
   reactions: FeedReaction[]
   onReact: (emoji: string) => void
 }) {
-  if (reactions.length === 0) return null
+  if (!reactions || reactions.length === 0) return null
 
   return (
     <div className="flex flex-wrap items-center gap-1 mt-1">
@@ -957,6 +958,50 @@ function MessageRow({
               if (forumPost) return <ForumPostEmbed data={forumPost} />
               return <AppleText text={post.body} className="text-[13.5px] leading-[1.55] text-foreground" />
             })() : null}
+
+            {post.embeds && post.embeds.length > 0 ? (
+              <div className="mt-2 flex flex-col gap-2.5">
+                {post.embeds.map((emb, idx) => (
+                  <a
+                    key={idx}
+                    href={emb.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-sidebar/55 hover:bg-sidebar/85 transition-all shadow-md group/embed"
+                  >
+                    {emb.image_url && (
+                      <div className="relative aspect-video w-full border-b border-border/40 overflow-hidden bg-black/10">
+                        <img
+                          src={emb.image_url}
+                          alt={emb.title || 'Preview'}
+                          className="h-full w-full object-cover transition-transform duration-300 group-hover/embed:scale-[1.02]"
+                        />
+                      </div>
+                    )}
+                    <div className="p-3.5 space-y-2">
+                      <div className="flex items-center gap-2">
+                        {emb.favicon && (
+                          <img src={emb.favicon} alt="" className="h-4 w-4 rounded-sm object-contain" />
+                        )}
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                          {emb.site_name || new URL(emb.url).hostname.replace('www.', '')}
+                        </span>
+                      </div>
+                      {emb.title && (
+                        <h4 className="text-[13px] font-bold text-foreground leading-snug group-hover/embed:text-primary transition-colors">
+                          {emb.title}
+                        </h4>
+                      )}
+                      {emb.description && (
+                        <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-3">
+                          {emb.description}
+                        </p>
+                      )}
+                    </div>
+                  </a>
+                ))}
+              </div>
+            ) : null}
 
             {post.poll ? (
               <FeedPollCard poll={post.poll} onVote={onPollVote} />

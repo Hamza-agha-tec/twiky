@@ -113,6 +113,15 @@ type PostLike struct {
 
 // --- MESSAGING MODELS ---
 
+type LinkEmbed struct {
+	URL         string `json:"url"`
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	ImageURL    string `json:"image_url,omitempty"`
+	SiteName    string `json:"site_name,omitempty"`
+	Favicon     string `json:"favicon,omitempty"`
+}
+
 type DirectConversation struct {
 	ID        string    `json:"id"`
 	UserOneID string    `json:"user_one_id"`
@@ -155,6 +164,7 @@ type DirectMessage struct {
 	Size           *int                     `json:"size"`
 	IsPinned       bool                     `json:"is_pinned"`
 	IsForwarded    bool                     `json:"is_forwarded"`
+	Embeds         []LinkEmbed              `json:"embeds,omitempty"`
 }
 
 type DirectMessageSender struct {
@@ -185,6 +195,7 @@ type DirectMessageResponse struct {
 	Reactions      []map[string]interface{} `json:"reactions"`
 	CreatedAt      time.Time                `json:"created_at"`
 	Sender         *DirectMessageSender     `json:"sender"`
+	Embeds         []LinkEmbed              `json:"embeds,omitempty"`
 }
 
 type GroupMessage struct {
@@ -205,6 +216,7 @@ type GroupMessage struct {
 	Mime           *string                  `json:"mime"`
 	Duration       *int                     `json:"duration"`
 	Size           *int64                   `json:"size"`
+	Embeds         []LinkEmbed              `json:"embeds,omitempty"`
 }
 
 type GroupMessageSender struct {
@@ -235,6 +247,7 @@ type GroupMessageResponse struct {
 	Duration       *int                     `json:"duration"`
 	Size           *int                     `json:"size"`
 	Sender         *GroupMessageSender      `json:"sender"`
+	Embeds         []LinkEmbed              `json:"embeds,omitempty"`
 }
 
 type MessageReaction struct {

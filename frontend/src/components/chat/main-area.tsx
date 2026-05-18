@@ -71,10 +71,12 @@ function sampleLeftEdgeColor(img: HTMLImageElement): string | null {
 function MemberBannerRow({
   member,
   isOnline,
+  onClick,
   children,
 }: {
   member: GroupMember
   isOnline: boolean
+  onClick?: () => void
   children: React.ReactNode
 }) {
   const { user } = member
@@ -99,8 +101,9 @@ function MemberBannerRow({
   if (!hasBanner) {
     return (
       <div
+        onClick={onClick}
         className={cn(
-          'flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-accent/60 transition-colors',
+          'flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-accent/60 transition-colors cursor-pointer',
           !isOnline && 'opacity-60',
         )}
       >
@@ -114,6 +117,7 @@ function MemberBannerRow({
 
   return (
     <div
+      onClick={onClick}
       className="group relative cursor-pointer rounded-lg"
       style={{
         overflow: 'hidden',
@@ -185,6 +189,7 @@ interface MainAreaProps {
   members?: GroupMember[]
   onlineUsers?: Set<string>
   onMemberMessage?: (userId: string) => void
+  onEscape?: () => void
 }
 
 const CHANNEL_TABS = [
@@ -203,6 +208,7 @@ export function MainArea({
   members = [],
   onlineUsers = new Set(),
   onMemberMessage,
+  onEscape,
 }: MainAreaProps) {
   const { data: currentUser } = useProfile()
   const [memberProfileTarget, setMemberProfileTarget] = useState<GroupMember | null>(null)
@@ -231,6 +237,30 @@ export function MainArea({
   useEffect(() => {
     if (searchOpen) inputRef.current?.focus()
   }, [searchOpen])
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (searchOpen) {
+          closeSearch()
+          return
+        }
+        if (memberProfileTarget) {
+          setMemberProfileTarget(null)
+          return
+        }
+        if (membersOpen) {
+          setMembersOpen(false)
+          return
+        }
+        if (onEscape) {
+          onEscape()
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [searchOpen, memberProfileTarget, membersOpen, onEscape])
 
   function closeSearch() {
     setSearchOpen(false)
@@ -375,7 +405,7 @@ export function MainArea({
                       </p>
                       <div className="space-y-0.5">
                         {onlineMembers.map((m) => (
-                          <MemberBannerRow key={m.user.id} member={m} isOnline>
+                          <MemberBannerRow key={m.user.id} member={m} isOnline onClick={() => setMemberProfileTarget(m)}>
                             <HoverProfileCard
                               userId={m.user.id}
                               isOnline
@@ -418,7 +448,7 @@ export function MainArea({
                       </p>
                       <div className="space-y-0.5">
                         {offlineMembers.map((m) => (
-                          <MemberBannerRow key={m.user.id} member={m} isOnline={false}>
+                          <MemberBannerRow key={m.user.id} member={m} isOnline={false} onClick={() => setMemberProfileTarget(m)}>
                             <HoverProfileCard
                               userId={m.user.id}
                               isOnline={false}

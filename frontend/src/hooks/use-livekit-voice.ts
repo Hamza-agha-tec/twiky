@@ -16,7 +16,7 @@ import {
 import { fetchLiveKitToken } from './use-livekit-token'
 import { getSocket } from '@/lib/socket'
 
-const LIVEKIT_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL ?? 'ws://localhost:7880'
+const LIVEKIT_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL ?? 'wss://twikyapp-spq2q6t8.livekit.cloud'
 
 type VideoSource = 'camera' | 'screen'
 

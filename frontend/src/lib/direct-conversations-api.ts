@@ -40,6 +40,8 @@ export type DirectConversation = {
   unread_count?: number
 }
 
+import type { LinkEmbed } from '@/lib/groups-api'
+
 export type BackendDirectMessage = {
   id: string
   conversation_id: string
@@ -66,6 +68,7 @@ export type BackendDirectMessage = {
     is_verified?: boolean | null
     sub_plan?: 'FREE' | 'PRO' | 'GEEK' | null
   }
+  embeds?: LinkEmbed[] | null
 }
 
 export function toChatMessage(m: BackendDirectMessage): ChatMessage {
@@ -102,6 +105,7 @@ export function toChatMessage(m: BackendDirectMessage): ChatMessage {
       : null,
     created_at: m.created_at,
     sender: m.sender,
+    embeds: m.embeds ?? [],
   }
 }
 

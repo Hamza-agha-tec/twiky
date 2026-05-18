@@ -16,6 +16,15 @@ export interface Chat {
   otherUserId?: string;
 }
 
+export interface LinkEmbed {
+  url: string;
+  title?: string;
+  description?: string;
+  image_url?: string;
+  site_name?: string;
+  favicon?: string;
+}
+
 export interface Message {
   id: string;
   senderId: string;
@@ -45,6 +54,7 @@ export interface Message {
     content: string;
   };
   duration?: string;
+  embeds?: LinkEmbed[];
 }
 
 export const chatsData: Chat[] = [];

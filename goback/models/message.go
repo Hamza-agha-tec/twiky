@@ -36,6 +36,7 @@ type Message struct {
 	ReplyToID      string                   `json:"reply_to_id,omitempty" db:"reply_to_id"`
 	EntityMentions []map[string]interface{} `json:"entity_mentions,omitempty" db:"entity_mentions"`
 	IsForwarded    bool                     `json:"is_forwarded" db:"is_forwarded"`
+	Embeds         []LinkEmbed              `json:"embeds,omitempty" db:"embeds"`
 	CreatedAt      time.Time                `json:"created_at" db:"created_at"`
 	UpdatedAt      time.Time                `json:"updated_at" db:"updated_at"`
 }

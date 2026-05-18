@@ -35,6 +35,8 @@ export interface Conversation {
   } | null;
 }
 
+import type { LinkEmbed } from '@/lib/groups-api';
+
 export interface ChatMessage {
   id: string;
   conversation_id: string;
@@ -57,6 +59,7 @@ export interface ChatMessage {
     is_verified?: boolean | null;
     sub_plan?: 'FREE' | 'PRO' | 'GEEK' | null;
   };
+  embeds?: LinkEmbed[];
 }
 
 export function useMessages(conversationId: string | null) {

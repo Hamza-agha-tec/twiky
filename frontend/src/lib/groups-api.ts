@@ -61,6 +61,15 @@ export interface GroupMember {
   };
 }
 
+export interface LinkEmbed {
+  url: string;
+  title?: string;
+  description?: string;
+  image_url?: string;
+  site_name?: string;
+  favicon?: string;
+}
+
 export interface GroupMessage {
   id: string;
   group_id: string;
@@ -76,6 +85,7 @@ export interface GroupMessage {
   created_at: string;
   reactions?: { emoji: string; users: string[] }[] | null;
   sender?: { id: string; email?: string | null; fullname?: string | null; full_name?: string | null; username: string | null; avatar_url: string | null; is_verified?: boolean | null; sub_plan?: 'FREE' | 'PRO' | 'GEEK' | null };
+  embeds?: LinkEmbed[] | null;
 }
 
 export interface GroupMessageMention {
