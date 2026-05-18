@@ -12,6 +12,7 @@ import {
   MonitorOff,
   Scan,
   PhoneOff,
+  AudioLines,
   Volume2,
   UserMinus,
   VolumeX,
@@ -502,7 +503,7 @@ export function VoiceGroupView({
             exit={{ opacity: 0, y: -40 }}
             transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.7 }}
           >
-            <Volume2 className="h-4 w-4 flex-shrink-0 text-primary" />
+            <AudioLines className="h-4 w-4 flex-shrink-0 text-primary" />
             <span className="text-[13px] font-semibold text-foreground">{group.label}</span>
             <span className="ml-auto text-[11px] text-muted-foreground">
               {participants.length} {participants.length === 1 ? 'participant' : 'participants'}
@@ -605,7 +606,7 @@ export function VoiceGroupView({
             ) : (
               <>
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
-                  <Volume2 className="h-6 w-6 text-muted-foreground" />
+                  <AudioLines className="h-6 w-6 text-muted-foreground" />
                 </div>
                 <p className="text-[13px] font-semibold text-foreground">Connecting…</p>
               </>

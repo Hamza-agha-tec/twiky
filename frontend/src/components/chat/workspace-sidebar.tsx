@@ -9,7 +9,7 @@ import {
   Hash,
   Lock,
   MessageSquare,
-  MessagesSquare,
+  Bird ,
   Plus,
   Search,
 } from 'lucide-react'
@@ -253,7 +253,7 @@ export function WorkspaceSidebar({
                 className="h-9 w-9 rounded-xl"
                 onClick={() => onModeChange('direct')}
               >
-                <MessagesSquare className="h-4 w-4" />
+                <Bird  className="h-4 w-4" />
               </Button>
               <Button
                 variant={mode === 'channels' ? 'secondary' : 'ghost'}

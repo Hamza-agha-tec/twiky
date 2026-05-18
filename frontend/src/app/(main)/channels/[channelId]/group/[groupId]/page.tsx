@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useRouter } from 'next/navigation'
 import { WorkspaceEmptyState } from '@/components/chat/workspace-empty-state'
 import { useGroupMessageRealtime, useGroupMessages, useGroupMembers, useSendGroupMessage, useChannelGroups, useToggleGroupMessageReaction, backendGroupToMock } from '@/hooks/use-groups'
 import { useCreateDirectConversation } from '@/hooks/use-direct-conversations'
 import { useVoice } from '@/context/VoiceContext'
 import { Button } from '@/components/ui/button'
-import { Volume2, PhoneOff, Tv } from 'lucide-react'
+import { AudioLines, PhoneOff, Tv } from 'lucide-react'
 
 import { useProfile } from '@/hooks/use-user'
 import { useOnlineUsers } from '@/hooks/use-socket'
@@ -20,96 +21,51 @@ import { ChannelFeed, type FeedPost } from '@/components/chat/channel-feed'
 import { MainArea, type MainAreaTab } from '@/components/chat/main-area'
 import type { GroupMessage } from '@/lib/groups-api'
 
-function ActiveCallBlockedView({ onHangUp, type }: { onHangUp: () => void; type: 'voice' | 'watch' }) {
-  return (
-    <div className="flex h-full w-full flex-col items-center justify-center bg-background relative overflow-hidden px-6">
-      {/* Sleek radial backgrounds */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.06)_0%,transparent_70%)]" />
-      <div className="absolute -top-40 -left-40 h-[400px] w-[400px] rounded-full bg-primary/5 blur-[128px]" />
-      
-      <div className="relative z-10 max-w-md w-full bg-card/45 backdrop-blur-md border border-white/5 rounded-2xl p-8 text-center shadow-2xl flex flex-col items-center gap-6">
-        <div className="h-16 w-16 rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/20 animate-pulse">
-          <PhoneOff className="h-6 w-6 text-red-400" />
-        </div>
-        
-        <div className="space-y-2">
-          <h2 className="text-xl font-bold tracking-tight text-foreground">
-            Ongoing Call Active
-          </h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            You are currently in a direct call. Please hang up your active call to join this {type === 'voice' ? 'voice channel' : 'watch room'}.
-          </p>
-        </div>
-
-        <Button 
-          onClick={onHangUp}
-          variant="destructive"
-          className="w-full h-11 font-medium rounded-xl shadow-lg shadow-red-500/20 hover:shadow-red-500/35 transition-all duration-300 transform hover:scale-[1.02]"
-        >
-          Hang Up Call
-        </Button>
-      </div>
-    </div>
-  )
+// ── Blocked overlay modal — shown on top of blurred background content ───
+interface BlockedOverlayProps {
+  icon: React.ReactNode
+  title: string
+  description: React.ReactNode
+  btnText: string
+  onAction: () => void
+  onCancel: () => void
 }
 
-function ActiveWatchBlockedView({ onLeave, roomName }: { onLeave: () => void; roomName: string }) {
-  return (
-    <div className="flex h-full w-full flex-col items-center justify-center bg-background relative overflow-hidden px-6">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.06)_0%,transparent_70%)]" />
-      <div className="absolute -top-40 -left-40 h-[400px] w-[400px] rounded-full bg-primary/5 blur-[128px]" />
-      <div className="relative z-10 max-w-md w-full bg-card/45 backdrop-blur-md border border-white/5 rounded-2xl p-8 text-center shadow-2xl flex flex-col items-center gap-6">
-        <div className="h-16 w-16 rounded-full bg-blue-500/10 flex items-center justify-center border border-blue-500/20 animate-pulse">
-          <Tv className="h-6 w-6 text-blue-400" />
+function BlockedOverlay({ icon, title, description, btnText, onAction, onCancel }: BlockedOverlayProps) {
+  if (typeof document === 'undefined') return null
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center backdrop-blur-[6px] bg-background/70">
+      <div className="relative w-full max-w-[340px] mx-5 rounded-2xl border border-border bg-card shadow-2xl overflow-hidden">
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
+        <div className="flex flex-col items-center gap-4 px-7 py-8 text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted border border-border">
+            {icon}
+          </div>
+          <div className="space-y-1.5">
+            <h2 className="text-[15px] font-semibold text-foreground">{title}</h2>
+            <p className="text-[13px] text-muted-foreground leading-relaxed">{description}</p>
+          </div>
+          <div className="w-full h-px bg-border" />
+          <div className="flex w-full gap-2">
+            <Button
+              onClick={onCancel}
+              variant="ghost"
+              className="flex-1 h-10 text-[13px] font-medium rounded-xl"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={onAction}
+              variant="destructive"
+              className="flex-1 h-10 text-[13px] font-medium rounded-xl"
+            >
+              {btnText}
+            </Button>
+          </div>
         </div>
-        <div className="space-y-2">
-          <h2 className="text-xl font-bold tracking-tight text-foreground">Watch Room Active</h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            You are currently watching <span className="font-semibold text-foreground">"{roomName}"</span>. Leave the watch room to join this voice channel.
-          </p>
-        </div>
-        <Button
-          onClick={onLeave}
-          variant="destructive"
-          className="w-full h-11 font-medium rounded-xl shadow-lg shadow-red-500/20 hover:shadow-red-500/35 transition-all duration-300 transform hover:scale-[1.02]"
-        >
-          Leave Watch Room
-        </Button>
       </div>
-    </div>
-  )
-}
-
-function ActiveVoiceBlockedView({ onDisconnect, groupName }: { onDisconnect: () => void; groupName: string }) {
-  return (
-    <div className="flex h-full w-full flex-col items-center justify-center bg-background relative overflow-hidden px-6">
-      {/* Sleek radial backgrounds */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.06)_0%,transparent_70%)]" />
-      <div className="absolute -top-40 -left-40 h-[400px] w-[400px] rounded-full bg-primary/5 blur-[128px]" />
-      
-      <div className="relative z-10 max-w-md w-full bg-card/45 backdrop-blur-md border border-white/5 rounded-2xl p-8 text-center shadow-2xl flex flex-col items-center gap-6">
-        <div className="h-16 w-16 rounded-full bg-blue-500/10 flex items-center justify-center border border-blue-500/20 animate-pulse">
-          <Volume2 className="h-6 w-6 text-blue-400" />
-        </div>
-        
-        <div className="space-y-2">
-          <h2 className="text-xl font-bold tracking-tight text-foreground">
-            Voice Channel Active
-          </h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            You are currently connected to the voice channel <span className="font-semibold text-foreground">"{groupName}"</span>. Please disconnect from voice to join this watch room.
-          </p>
-        </div>
-
-        <Button 
-          onClick={onDisconnect}
-          variant="destructive"
-          className="w-full h-11 font-medium rounded-xl shadow-lg shadow-red-500/20 hover:shadow-red-500/35 transition-all duration-300 transform hover:scale-[1.02]"
-        >
-          Disconnect Voice
-        </Button>
-      </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -168,6 +124,22 @@ export default function GroupPage() {
   const voice = useVoice()
   const onlineUsers = useOnlineUsers()
   const dmCall = useDmCallContext()
+
+  // Track active watch room as React state so clearing localStorage triggers re-render
+  const [activeWatchRoomLS, setActiveWatchRoomLS] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('twiky-active-watch-room')
+    return null
+  })
+
+  useEffect(() => {
+    const handler = () => setActiveWatchRoomLS(localStorage.getItem('twiky-active-watch-room'))
+    window.addEventListener('twiky-watch-room-changed', handler)
+    window.addEventListener('storage', handler)
+    return () => {
+      window.removeEventListener('twiky-watch-room-changed', handler)
+      window.removeEventListener('storage', handler)
+    }
+  }, [])
 
   // Handle Escape key to go back to channel home for non-text groups
   useEffect(() => {
@@ -228,55 +200,54 @@ export default function GroupPage() {
 
   const isInDmCall = dmCall.status.state === 'active'
 
-  if (isInDmCall && (group.kind === 'voice' || group.kind === 'watch')) {
-    return (
-      <ActiveCallBlockedView
-        type={group.kind}
-        onHangUp={() => dmCall.hangUp()}
-      />
-    )
+  // Compute blocked states
+  let watchRoomName = 'watch room'
+  if (activeWatchRoomLS) {
+    try { watchRoomName = JSON.parse(activeWatchRoomLS).groupName || watchRoomName } catch {}
   }
 
-  if (group.kind === 'voice' && typeof window !== 'undefined') {
-    const rawWatch = localStorage.getItem('twiky-active-watch-room')
-    if (rawWatch) {
-      try {
-        const parsed = JSON.parse(rawWatch)
-        const watchRoomName = parsed.groupName || 'watch room'
-        return (
-          <ActiveWatchBlockedView
-            roomName={watchRoomName}
-            onLeave={() => {
-              localStorage.removeItem('twiky-active-watch-room')
-              window.dispatchEvent(new Event('twiky-watch-room-changed'))
-            }}
-          />
-        )
-      } catch {}
-    }
-  }
-
-  if (group.kind === 'watch' && voice.joinedGroupId) {
-    let activeVoiceName = 'active voice channel'
-    if (typeof window !== 'undefined') {
-      const raw = localStorage.getItem('twiky-active-voice-meta')
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw)
-          if (parsed.groupName) activeVoiceName = parsed.groupName
-        } catch {}
-      }
-    }
-
-    return (
-      <ActiveVoiceBlockedView
-        groupName={activeVoiceName}
-        onDisconnect={() => voice.leave()}
-      />
-    )
+  let activeVoiceName = 'voice channel'
+  if (typeof window !== 'undefined') {
+    const raw = localStorage.getItem('twiky-active-voice-meta')
+    if (raw) { try { const p = JSON.parse(raw); if (p.groupName) activeVoiceName = p.groupName } catch {} }
   }
 
   if (group.kind === 'voice') {
+    const watchBlocked = !!activeWatchRoomLS
+    const callBlocked = isInDmCall
+    const isBlocked = watchBlocked || callBlocked
+
+    if (isBlocked) {
+      // Don't mount VoiceGroupView — it auto-joins on mount via useEffect
+      return (
+        <div className="relative flex h-full w-full overflow-hidden bg-background">
+          {watchBlocked && (
+            <BlockedOverlay
+              icon={<Tv className="h-6 w-6 text-muted-foreground" />}
+              title="Watch Room Active"
+              description={<>You're watching <span className="font-medium text-foreground">"{watchRoomName}"</span>. Leave to join this voice channel.</>}
+              btnText="Leave Watch Room"
+              onAction={() => {
+                localStorage.removeItem('twiky-active-watch-room')
+                window.dispatchEvent(new Event('twiky-watch-room-changed'))
+              }}
+              onCancel={() => router.back()}
+            />
+          )}
+          {callBlocked && (
+            <BlockedOverlay
+              icon={<PhoneOff className="h-6 w-6 text-muted-foreground" />}
+              title="Direct Call Active"
+              description="Hang up your current call to join this voice channel."
+              btnText="Hang Up Call"
+              onAction={() => dmCall.hangUp()}
+              onCancel={() => router.back()}
+            />
+          )}
+        </div>
+      )
+    }
+
     return (
       <div className="flex h-full w-full overflow-hidden">
         <VoiceGroupView
@@ -311,12 +282,34 @@ export default function GroupPage() {
   }
 
   if (group.kind === 'watch') {
+    const voiceBlocked = !!voice.joinedGroupId
+    const callBlocked = isInDmCall
     return (
-      <div className="flex h-full w-full items-center justify-center bg-background">
+      <div className="relative flex h-full w-full items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
           <Tv className="h-10 w-10 text-muted-foreground animate-pulse" />
           <p className="text-sm font-semibold text-foreground">Joining Watch Party...</p>
         </div>
+        {voiceBlocked && (
+          <BlockedOverlay
+            icon={<AudioLines className="h-6 w-6 text-muted-foreground" />}
+            title="Voice Channel Active"
+            description={<>Connected to <span className="font-medium text-foreground">"{activeVoiceName}"</span>. Disconnect to join this watch room.</>}
+            btnText="Disconnect Voice"
+            onAction={() => voice.leave()}
+            onCancel={() => router.back()}
+          />
+        )}
+        {callBlocked && (
+          <BlockedOverlay
+            icon={<PhoneOff className="h-6 w-6 text-muted-foreground" />}
+            title="Direct Call Active"
+            description="Hang up your current call to join this watch room."
+            btnText="Hang Up Call"
+            onAction={() => dmCall.hangUp()}
+            onCancel={() => router.back()}
+          />
+        )}
       </div>
     )
   }

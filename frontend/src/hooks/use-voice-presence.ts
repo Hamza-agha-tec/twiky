@@ -88,8 +88,8 @@ export function useVoicePresence(
   const myInfoRef = useRef<MyVoiceInfo | null>(myInfo)
   const isMutedRef = useRef(false)
   const currentSelfRef = useRef<VoicePresenceUser | null>(null)
-  const joinRefFn = useRef<(groupId: string, muted?: boolean) => Promise<void>>(async () => {})
-  const pendingJoinRef = useRef<{ groupId: string; muted: boolean } | null>(null)
+  const joinRefFn = useRef<(groupId: string, muted?: boolean, restoredJoinedAt?: number) => Promise<void>>(async () => {})
+  const pendingJoinRef = useRef<{ groupId: string; muted: boolean; restoredJoinedAt?: number } | null>(null)
   const joinSeqRef = useRef(0)
   const analyserRafRef = useRef<number | null>(null)
   const analyserCtxRef = useRef<AudioContext | null>(null)
@@ -105,7 +105,7 @@ export function useVoicePresence(
     if (myInfo && pendingJoinRef.current) {
       const pending = pendingJoinRef.current
       pendingJoinRef.current = null
-      void joinRefFn.current(pending.groupId, pending.muted)
+      void joinRefFn.current(pending.groupId, pending.muted, pending.restoredJoinedAt)
     }
   }, [myInfo])
 
@@ -295,6 +295,7 @@ export function useVoicePresence(
       setJoinedGroupId(null)
       setIsJoined(false)
       setJoinedAt(0)
+      sessionStorage.removeItem('twiky-voice-session')
       if (myId) {
         setParticipantsByGroup(prev => ({
           ...prev,
@@ -341,6 +342,33 @@ export function useVoicePresence(
       if (!mounted) return
       socket = s
       socketRef.current = s
+
+      // Reload recovery: immediately restore timer + state, then emit join when ready
+      if (!currentGroupIdRef.current) {
+        const raw = sessionStorage.getItem('twiky-voice-session')
+        if (raw) {
+          try {
+            const { groupId, muted: savedMuted, joinedAt: savedJoinedAt } = JSON.parse(raw)
+            if (groupId && savedJoinedAt) {
+              // Set state directly so timer restores without waiting for profile
+              currentGroupIdRef.current = groupId
+              isMutedRef.current = savedMuted
+              setCurrentGroupId(groupId)
+              setJoinedGroupId(groupId)
+              setIsJoined(true)
+              setJoinedAt(savedJoinedAt)
+              setIsMuted(savedMuted)
+              // Schedule the actual socket room join (needs myInfo)
+              pendingJoinRef.current = { groupId, muted: savedMuted, restoredJoinedAt: savedJoinedAt }
+              // If myInfo already loaded, join immediately
+              if (myInfoRef.current) {
+                void joinRefFn.current(groupId, savedMuted, savedJoinedAt)
+              }
+            }
+          } catch {}
+        }
+      }
+
       s.on('voice-room-users', onRoomUsers)
       s.on('voice-room-participants', onRoomParticipants)
       s.on('user-joined-voice', onUserJoined)
@@ -455,6 +483,7 @@ export function useVoicePresence(
     setJoinedGroupId(null)
     setIsJoined(false)
     setJoinedAt(0)
+    sessionStorage.removeItem('twiky-voice-session')
     if (myId) {
       setParticipantsByGroup(prev => ({
         ...prev,
@@ -464,10 +493,10 @@ export function useVoicePresence(
     socket?.emit('leave-voice-room', { roomId: groupId })
   }, [stopActiveSound])
 
-  const join = useCallback(async (groupId: string, muted = false) => {
+  const join = useCallback(async (groupId: string, muted = false, restoredJoinedAt?: number) => {
     if (!groupId) return
     if (!myInfoRef.current) {
-      pendingJoinRef.current = { groupId, muted }
+      pendingJoinRef.current = { groupId, muted, restoredJoinedAt }
       currentGroupIdRef.current = groupId
       setCurrentGroupId(groupId)
       setJoinedGroupId(null)
@@ -487,7 +516,7 @@ export function useVoicePresence(
 
     const previousGroupId = currentGroupIdRef.current
     const info = myInfoRef.current
-    const nextJoinedAt = Date.now()
+    const nextJoinedAt = restoredJoinedAt ?? Date.now()
 
     const optimisticUser: VoicePresenceUser = {
       id: info.id,
@@ -510,6 +539,7 @@ export function useVoicePresence(
     setIsMuted(muted)
     setIsJoined(true)
     setJoinedAt(nextJoinedAt)
+    sessionStorage.setItem('twiky-voice-session', JSON.stringify({ groupId, muted, joinedAt: nextJoinedAt }))
 
     // Optimistically add self, remove self from old group
     setParticipantsByGroup(prev => {

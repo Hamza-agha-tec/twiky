@@ -5,13 +5,13 @@ import { AnimatePresence, motion } from 'framer-motion'
 import {
   Hash,
   ListTodo,
-  MessagesSquare,
+  Bird ,
   NotebookPen,
   Search,
   Target,
   Tv,
   Users,
-  Volume2,
+  AudioLines,
   X,
 } from 'lucide-react'
 
@@ -220,7 +220,7 @@ export function MainArea({
   const [membersOpen, setMembersOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const GroupIcon = activeGroup.kind === 'voice' ? Volume2 : activeGroup.kind === 'watch' ? Tv : activeGroup.kind === 'board' ? MessagesSquare : Hash
+  const GroupIcon = activeGroup.kind === 'voice' ? AudioLines : activeGroup.kind === 'watch' ? Tv : activeGroup.kind === 'board' ? Bird  : Hash
   const groupScopeLabel = activeGroup.kind === 'board' ? `Forum: ${activeGroup.label}` : activeGroup.label
   const feedChild = isValidElement(children)
     ? cloneElement(children as any, {

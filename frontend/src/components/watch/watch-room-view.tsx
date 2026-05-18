@@ -312,7 +312,7 @@ interface WatchRoomInnerProps {
 }
 
 function WatchRoomInner({
-  isHost, participants, syncing, videoRef, ended, sessionStartedAt,
+  roomId, isHost, participants, syncing, videoRef, ended, sessionStartedAt,
   emitPlay, emitPause, emitSeek, emitReaction, liveReactions, onRemoveReaction,
   isPip, onMaximize, onLeave, onEnd, onKick,
 }: WatchRoomInnerProps) {
@@ -332,6 +332,26 @@ function WatchRoomInner({
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [watchersOpen, setWatchersOpen] = useState(false)
 
+  // Check for saved video position from a previous page reload
+  const savedVideoPositionKey = `twiky-watch-video-pos-${roomId}`
+  const savedVideoPos = useRef<{ currentTime: number } | null>(
+    typeof window !== 'undefined'
+      ? (() => { const r = sessionStorage.getItem(savedVideoPositionKey); try { return r ? JSON.parse(r) : null } catch { return null } })()
+      : null
+  )
+
+  // Save video position before page unload so host can resume after reload
+  useEffect(() => {
+    if (!isHost) return
+    const onUnload = () => {
+      if (videoRef.current && fileLoaded) {
+        sessionStorage.setItem(savedVideoPositionKey, JSON.stringify({ currentTime: videoRef.current.currentTime }))
+      }
+    }
+    window.addEventListener('beforeunload', onUnload)
+    return () => window.removeEventListener('beforeunload', onUnload)
+  }, [isHost, fileLoaded, videoRef, savedVideoPositionKey])
+
   const sessionTimer = useElapsed(sessionStartedAt ?? 0)
 
 
@@ -343,11 +363,25 @@ function WatchRoomInner({
     objectUrlRef.current = url
     setFileLoaded(true)
     setPlaying(false)
-    setProgress(0)
-    setDuration(0)
     const video = videoRef.current
-    if (video) { video.src = url; video.load() }
-  }, [videoRef])
+    if (video) {
+      video.src = url
+      video.load()
+      // Restore position if file was reloaded after a page reload
+      const saved = savedVideoPos.current
+      if (saved?.currentTime) {
+        video.addEventListener('loadedmetadata', () => {
+          video.currentTime = saved.currentTime
+          setProgress(saved.currentTime)
+          savedVideoPos.current = null
+          sessionStorage.removeItem(savedVideoPositionKey)
+        }, { once: true })
+      } else {
+        setProgress(0)
+        setDuration(0)
+      }
+    }
+  }, [videoRef, savedVideoPositionKey])
 
   const handlePlayPause = useCallback(() => {
     const video = videoRef.current
@@ -599,13 +633,24 @@ function WatchRoomInner({
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
                   <FolderOpen className="h-6 w-6 text-muted-foreground" />
                 </div>
-                <p className="text-[13px] font-semibold text-foreground">No video loaded</p>
-                <p className="text-[11px] text-muted-foreground">Choose a file to start the watch party</p>
+                {savedVideoPos.current ? (
+                  <>
+                    <p className="text-[13px] font-semibold text-foreground">Video paused</p>
+                    <p className="text-[11px] text-muted-foreground text-center max-w-[220px]">
+                      Paused at <span className="font-semibold text-foreground">{formatTime(savedVideoPos.current.currentTime)}</span>. Reload the file to resume.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[13px] font-semibold text-foreground">No video loaded</p>
+                    <p className="text-[11px] text-muted-foreground">Choose a file to start the watch party</p>
+                  </>
+                )}
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="mt-1 rounded-xl bg-primary px-5 py-2 text-[12px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
                 >
-                  Choose video file
+                  {savedVideoPos.current ? 'Reload video file' : 'Choose video file'}
                 </button>
               </motion.div>
             ) : null /* video shown via absolute z-[1] above */

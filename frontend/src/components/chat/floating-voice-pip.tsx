@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence, useMotionValue, animate } from 'framer-motion'
-import { Volume2, Maximize2, X, Mic, MicOff, Tv } from 'lucide-react'
+import { AudioLines, Maximize2, X, Mic, MicOff, Tv } from 'lucide-react'
 import { useVoice } from '@/context/VoiceContext'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
@@ -155,7 +155,7 @@ export function FloatingVoicePiP({ groupName, channelUrl }: { groupName?: string
     >
       <div className="relative">
         <div className="h-10 w-10 rounded-xl bg-linear-to-br from-emerald-500/10 to-teal-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-          <Volume2 className="h-5 w-5 animate-pulse" />
+          <AudioLines className="h-5 w-5 animate-pulse" />
         </div>
         <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 border-2 border-background animate-ping" />
         <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 border-2 border-background" />

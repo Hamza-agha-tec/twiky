@@ -14,7 +14,7 @@ import {
   Link,
   Lock,
   LockOpen,
-  MessagesSquare,
+  Bird ,
   Mic,
   MicOff,
   MoreHorizontal,
@@ -22,13 +22,13 @@ import {
   Plus,
   Search,
   Trash2,
-  Tv,
+  Popcorn,
   Upload,
   User,
   UserMinus,
   UserPlus,
   UserX,
-  Volume2,
+  AudioLines  ,
   X,
 } from 'lucide-react'
 import { CreateEntityDialog, type CreateEntityValues } from '@/components/chat/create-entity-dialog'
@@ -1135,9 +1135,9 @@ function GroupSettingsSheet({
             <div className="grid grid-cols-2 gap-2">
               {([
                 { value: 'text', icon: Hash, label: 'Text', desc: 'Messages and threads' },
-                { value: 'board', icon: MessagesSquare, label: 'Forum', desc: 'Forum-style topics' },
-                { value: 'voice', icon: Volume2, label: 'Voice', desc: 'Audio conversations' },
-                { value: 'watch', icon: Tv, label: 'Watch', desc: 'Watch together room' },
+                { value: 'board', icon: Bird , label: 'Forum', desc: 'Forum-style topics' },
+                { value: 'voice', icon: AudioLines  , label: 'Voice', desc: 'Audio conversations' },
+                { value: 'watch', icon: Popcorn, label: 'Watch', desc: 'Watch together room' },
               ] as const).map(({ value, icon: Icon, label, desc }) => (
                 <button
                   key={value}
@@ -1529,7 +1529,7 @@ export function ChannelsPanel({
               return sorted.map((group, idx) => {
               const isActive = activeGroup === group.id
               const isDefault = group.label.toLowerCase() === 'general'
-              const GroupIcon = group.kind === 'voice' ? Volume2 : group.kind === 'watch' ? Tv : group.kind === 'board' ? MessagesSquare : Hash
+              const GroupIcon = group.kind === 'voice' ? AudioLines   : group.kind === 'watch' ? Popcorn : group.kind === 'board' ? Bird  : Hash
               const isPrivate = group.access_type === 'PRIVATE'
               const hasRequested = requestedGroups.has(group.id)
               const memberCanRequest = !canManage && isPrivate && !group.is_member
@@ -1543,7 +1543,7 @@ export function ChannelsPanel({
                 <div key={group.id}>
                 {isFirstBoard && (
                   <div className="flex items-center gap-2 px-1 pb-1 pt-2">
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50">Forums</span>
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50">Twikies</span>
                     <div className="flex-1 border-t border-border/50" />
                   </div>
                 )}
@@ -1933,7 +1933,7 @@ export function ChannelsPanel({
             <div className="flex items-center gap-2 mb-2 px-1">
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <div className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-500/15">
-                  <Tv className="h-3.5 w-3.5 text-blue-500" />
+                  <Popcorn className="h-3.5 w-3.5 text-blue-500" />
                 </div>
                 <div className="flex flex-col min-w-0">
                   <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wide">Watch Connected</span>

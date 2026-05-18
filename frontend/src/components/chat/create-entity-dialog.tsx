@@ -1,7 +1,7 @@
 'use client'
 
 import { type ChangeEvent, FormEvent, useRef, useState } from 'react'
-import { Globe, Hash, ImagePlus, Lock, MessagesSquare, Tv, UserCircle2, Volume2 } from 'lucide-react'
+import { AudioLines, Globe, Hash, ImagePlus, Lock, Bird , Tv, UserCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -47,7 +47,7 @@ const GROUP_TYPES = [
   },
   {
     value: 'board' as const,
-    icon: MessagesSquare,
+    icon: Bird ,
     label: 'Forum',
     desc: 'Forum-style posts',
     gradient: 'from-blue-500/20 to-cyan-500/10',
@@ -56,7 +56,7 @@ const GROUP_TYPES = [
   },
   {
     value: 'voice' as const,
-    icon: Volume2,
+    icon: AudioLines,
     label: 'Voice',
     desc: 'Live audio rooms',
     gradient: 'from-emerald-500/20 to-green-500/10',

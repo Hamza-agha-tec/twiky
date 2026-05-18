@@ -40,8 +40,24 @@ type UseWatchRoomOptions = {
 export function useWatchRoom({ roomId, userId, username, fullname, avatarUrl, bannerUrl, subPlan, isVerified, isHost, videoRef, onEnded, onKicked, onReaction }: UseWatchRoomOptions) {
   const [participants, setParticipants] = useState<WatchParticipant[]>([])
   const [syncing, setSyncing] = useState(false)
-  const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null)
+  // Initialize from sessionStorage to avoid flash of 0 timer on reload
+  const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(() => {
+    if (typeof window === 'undefined') return null
+    const raw = sessionStorage.getItem(`twiky-watch-session-${roomId}`)
+    if (raw) { try { return JSON.parse(raw).sessionStartedAt ?? null } catch {} }
+    return null
+  })
   const suppressSync = useRef(false)
+
+  // Persist sessionStartedAt so timer survives page reload
+  useEffect(() => {
+    if (sessionStartedAt) {
+      sessionStorage.setItem(`twiky-watch-session-${roomId}`, JSON.stringify({ sessionStartedAt }))
+    } else {
+      sessionStorage.removeItem(`twiky-watch-session-${roomId}`)
+    }
+  }, [sessionStartedAt, roomId])
+
   const onEndedRef = useRef(onEnded)
   useEffect(() => { onEndedRef.current = onEnded }, [onEnded])
   const onKickedRef = useRef(onKicked)
