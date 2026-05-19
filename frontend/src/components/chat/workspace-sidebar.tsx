@@ -484,8 +484,8 @@ export function WorkspaceSidebar({
                   const hasGeekBanner = chat.subPlan === 'GEEK' && Boolean(chat.bannerUrl)
 
                   return (
-                    <ChatHoverCard key={chat.id} chat={chat} isMuted={chatMeta[chat.id]?.isMuted ?? chat.isMuted}>
                     <motion.button
+                      key={chat.id}
                       initial={{ opacity: 0, x: -8 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: index * 0.02 }}
@@ -581,7 +581,6 @@ export function WorkspaceSidebar({
                         ) : null}
                       </div>
                     </motion.button>
-                    </ChatHoverCard>
                   )
                 })
               ) : (
@@ -616,37 +615,36 @@ export function WorkspaceSidebar({
                 const storedAvatar = channelAssets[channel.id]?.avatar ?? channel.avatarUrl ?? null
 
                 return (
-                  <ChannelHoverCard key={channel.id} channel={{ ...channel, avatarUrl: storedAvatar ?? channel.avatarUrl }}>
-                    <button
-                      onClick={() => onSelectChannel?.(channel.id)}
+                  <button
+                    key={channel.id}
+                    onClick={() => onSelectChannel?.(channel.id)}
+                    className={cn(
+                      'flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left transition-colors',
+                      isActive
+                        ? 'bg-primary/10 text-foreground'
+                        : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                    )}
+                  >
+                    <div
                       className={cn(
-                        'flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left transition-colors',
-                        isActive
-                          ? 'bg-primary/10 text-foreground'
-                          : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                        'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-linear-to-br text-[10px] font-bold text-white shadow-sm overflow-hidden',
+                        getChannelTone(channel.id),
+                        isActive && 'ring-2 ring-primary/20 ring-offset-1 ring-offset-sidebar',
                       )}
                     >
-                      <div
-                        className={cn(
-                          'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-linear-to-br text-[10px] font-bold text-white shadow-sm overflow-hidden',
-                          getChannelTone(channel.id),
-                          isActive && 'ring-2 ring-primary/20 ring-offset-1 ring-offset-sidebar',
-                        )}
-                      >
-                        {storedAvatar ? (
-                          <img src={storedAvatar} alt={channel.label} className="block h-full w-full object-cover object-center" />
-                        ) : getChannelMonogram(channel.label)}
-                      </div>
-                      <span className="truncate text-[12px] font-medium text-foreground">
-                        {channel.label}
-                      </span>
-                      {channel.access_type === 'PRIVATE' ? (
-                        <Lock className="ml-auto h-3 w-3 shrink-0 text-muted-foreground/60" />
-                      ) : (
-                        <Globe className="ml-auto h-3 w-3 shrink-0 text-muted-foreground/40" />
-                      )}
-                    </button>
-                  </ChannelHoverCard>
+                      {storedAvatar ? (
+                        <img src={storedAvatar} alt={channel.label} className="block h-full w-full object-cover object-center" />
+                      ) : getChannelMonogram(channel.label)}
+                    </div>
+                    <span className="truncate text-[12px] font-medium text-foreground">
+                      {channel.label}
+                    </span>
+                    {channel.access_type === 'PRIVATE' ? (
+                      <Lock className="ml-auto h-3 w-3 shrink-0 text-muted-foreground/60" />
+                    ) : (
+                      <Globe className="ml-auto h-3 w-3 shrink-0 text-muted-foreground/40" />
+                    )}
+                  </button>
                 )
               })}
             </div>

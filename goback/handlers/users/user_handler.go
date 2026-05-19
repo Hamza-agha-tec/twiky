@@ -68,14 +68,15 @@ func (h *UserHandler) GetSettings(c echo.Context) error {
 func (h *UserHandler) UpdateSettings(c echo.Context) error {
 	user := c.Get("user").(*middleware.AuthenticatedUser)
 
-	var updateData models.UserSettings
+	var updateData map[string]interface{}
 	if err := c.Bind(&updateData); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
 	updatedSettings, err := h.userService.UpdateSettings(user.UserID, updateData)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update settings"})
+		log.Printf("UpdateSettings error: %v", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, updatedSettings)

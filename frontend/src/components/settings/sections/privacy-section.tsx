@@ -25,6 +25,8 @@ type PrivacySettings = {
 }
 
 const TYPING_INDICATORS_KEY = 'twiky-typing-indicators-enabled'
+const DM_FROM_STRANGERS_KEY = 'twiky-dm-from-strangers-enabled'
+const LINK_PREVIEWS_KEY = 'twiky-link-previews-enabled'
 
 export function PrivacySection() {
   const { data: rawSettings } = useSettings()
@@ -57,8 +59,12 @@ export function PrivacySection() {
     }
     try {
       setTypingIndicators(localStorage.getItem(TYPING_INDICATORS_KEY) !== 'false')
+      setDmFromStrangers(localStorage.getItem(DM_FROM_STRANGERS_KEY) !== 'false')
+      setLinkPreviews(localStorage.getItem(LINK_PREVIEWS_KEY) !== 'false')
     } catch {
       setTypingIndicators(true)
+      setDmFromStrangers(true)
+      setLinkPreviews(true)
     }
   }, [settings])
 
@@ -123,8 +129,14 @@ export function PrivacySection() {
         </SettingRow>
       </SectionBlock>
       <SectionBlock title="Messages">
-        <SettingRow title="DMs from anyone" description="Allow strangers to message you."><Switch checked={dmFromStrangers} onCheckedChange={setDmFromStrangers} /></SettingRow>
-        <SettingRow title="Link previews" description="Expand URLs in your messages."><Switch checked={linkPreviews} onCheckedChange={setLinkPreviews} /></SettingRow>
+        <SettingRow title="DMs from anyone" description="Allow strangers to message you."><Switch checked={dmFromStrangers} onCheckedChange={(checked) => {
+          setDmFromStrangers(checked)
+          try { localStorage.setItem(DM_FROM_STRANGERS_KEY, checked ? 'true' : 'false') } catch {}
+        }} /></SettingRow>
+        <SettingRow title="Link previews" description="Expand URLs in your messages."><Switch checked={linkPreviews} onCheckedChange={(checked) => {
+          setLinkPreviews(checked)
+          try { localStorage.setItem(LINK_PREVIEWS_KEY, checked ? 'true' : 'false') } catch {}
+        }} /></SettingRow>
       </SectionBlock>
     </>
   )
