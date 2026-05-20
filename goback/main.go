@@ -12,9 +12,9 @@ import (
 )
 
 func main() {
-	// Load .env file
+	// Load .env file only if it exists (local dev only)
 	if err := godotenv.Load(); err != nil {
-		log.Fatal("Error loading .env file")
+		log.Println("No .env file found, using system environment variables")
 	}
 
 	// Connect to Supabase

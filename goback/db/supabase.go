@@ -31,5 +31,28 @@ func Connect() {
 		log.Fatal("Failed to ping DB:", err)
 	}
 
+	// Automigrate tables
+	_, err = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS public.voice_events (
+			id uuid NOT NULL DEFAULT gen_random_uuid(),
+			group_id uuid NOT NULL,
+			title text NOT NULL,
+			description text,
+			scheduled_start timestamp with time zone NOT NULL,
+			scheduled_end timestamp with time zone,
+			creator_id uuid NOT NULL,
+			created_at timestamp with time zone NOT NULL DEFAULT now(),
+			CONSTRAINT voice_events_pkey PRIMARY KEY (id),
+			CONSTRAINT voice_events_group_id_fkey FOREIGN KEY (group_id) REFERENCES public.groups(id) ON DELETE CASCADE,
+			CONSTRAINT voice_events_creator_id_fkey FOREIGN KEY (creator_id) REFERENCES public.users(id) ON DELETE CASCADE
+		);
+		CREATE INDEX IF NOT EXISTS voice_events_group_id_idx ON public.voice_events(group_id);
+	`)
+	if err != nil {
+		log.Println("⚠️ Failed to auto-create voice_events table:", err)
+	} else {
+		log.Println("✅ Verified/created voice_events table")
+	}
+
 	log.Println("✅ Connected to Supabase DB")
 }
