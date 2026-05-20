@@ -8,7 +8,6 @@ import {
   BellOff,
   Check,
   Copy,
-  Crown,
   Globe,
   Hash,
   Link,
@@ -219,7 +218,7 @@ interface ChannelsPanelProps {
   soundboardUserId?: string | null
   soundboardIntensity?: number
   onlineUsers?: Set<string>
-  watchParticipants?: Record<string, { userId: string; username: string; fullname?: string | null; avatarUrl?: string | null; bannerUrl?: string | null; subPlan?: string | null; isVerified?: boolean | null; isHost: boolean; joinedAt: number }[]>
+  watchParticipants?: Record<string, { userId: string; username: string; fullname?: string | null; avatarUrl?: string | null; bannerUrl?: string | null; subPlan?: string | null; isVerified?: boolean | null; isHost: boolean; joinedAt: number; isSpeaking?: boolean }[]>
   watchSessionStarts?: Record<string, number | null>
   activeWatchGroupId?: string | null
   onWatchLeave?: () => void
@@ -1777,13 +1776,11 @@ export function ChannelsPanel({
                                     <span className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-[linear-gradient(90deg,rgba(0,0,0,0.92)_0%,rgba(0,0,0,0.72)_34%,rgba(0,0,0,0.34)_68%,rgba(0,0,0,0)_100%)] opacity-0 shadow-[inset_18px_0_22px_rgba(0,0,0,0.86)] transition-opacity duration-300 group-hover/watch-participant:opacity-100" />
                                   </>
                                 ) : null}
-                                <div className="relative z-10 shrink-0">
+                                <div className={cn(
+                                  'relative z-10 shrink-0 rounded-full transition-all duration-200',
+                                  p.isSpeaking && 'ring-2 ring-green-500/80 ring-offset-1 ring-offset-sidebar',
+                                )}>
                                   <UserAvatar src={p.avatarUrl} alt={p.username} className="h-5 w-5 rounded-full" />
-                                  {p.isHost && (
-                                    <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-amber-500 ring-1 ring-sidebar">
-                                      <Crown className="h-1.5 w-1.5 text-white" />
-                                    </span>
-                                  )}
                                 </div>
                                 <span className={cn(
                                   'relative z-10 min-w-0 flex-1 truncate text-[11px] font-medium transition-colors duration-300',
@@ -1792,9 +1789,6 @@ export function ChannelsPanel({
                                 )}>
                                   {p.username}{isSelf ? ' (You)' : ''}
                                 </span>
-                                {p.isHost && (
-                                  <span className="relative z-10 shrink-0 text-[9px] font-bold text-amber-500">HOST</span>
-                                )}
                               </div>
                             </ContextMenuTrigger>
                             <ContextMenuContent className="w-44 bg-sidebar border-border">

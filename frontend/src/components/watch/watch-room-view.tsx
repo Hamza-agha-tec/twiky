@@ -6,13 +6,15 @@ import {
   VideoTrack,
   useTracks,
   useRoomContext,
+  RoomAudioRenderer,
 } from '@livekit/components-react'
-import { Track, LocalVideoTrack, VideoQuality } from 'livekit-client'
+import { Track, LocalVideoTrack, LocalAudioTrack, VideoQuality, RoomEvent, type Participant } from 'livekit-client'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Play, Pause, SkipBack, SkipForward, Volume2, VolumeX,
-  Scan, FolderOpen, Users, Crown, Loader2, WifiOff, Tv2, Popcorn,
-  RefreshCw, X, UserMinus, Heart, ThumbsUp, Flame, Smile, Sparkles, Maximize2
+  Scan, FolderOpen, Users, Loader2, WifiOff, Tv2, Popcorn,
+  RefreshCw, X, UserMinus, Heart, ThumbsUp, Flame, Smile, Sparkles, Maximize2,
+  Mic, MicOff
 } from 'lucide-react'
 import { useLiveKitToken } from '@/hooks/use-livekit-token'
 import { useWatchRoom, type WatchParticipant } from '@/hooks/use-watch-room'
@@ -93,6 +95,27 @@ function QualityEnforcer() {
     return () => { room.off('trackSubscribed', enforce) }
   }, [room])
   return null
+}
+
+function SoundWave({ active }: { active: boolean }) {
+  return (
+    <div className="flex items-end gap-[1.5px] h-3 shrink-0">
+      {[0, 1, 2].map((i) => (
+        <motion.div
+          key={i}
+          className="w-[2px] rounded-full bg-green-500"
+          animate={active ? { height: ['3px', '10px', '3px'] } : { height: '3px' }}
+          transition={active ? {
+            duration: 0.5,
+            repeat: Infinity,
+            delay: i * 0.12,
+            ease: 'easeInOut',
+          } : { duration: 0.2 }}
+          style={{ height: '3px' }}
+        />
+      ))}
+    </div>
+  )
 }
 
 const REACTIONS = [
@@ -192,45 +215,117 @@ function ViewerVideo() {
 // ── Host publisher ────────────────────────────────────────────────────────
 function HostPublisher({ videoRef }: { videoRef: React.RefObject<HTMLVideoElement | null> }) {
   const room = useRoomContext()
-  const publishedRef = useRef<LocalVideoTrack | null>(null)
 
+  const s = useRef({
+    videoTrack: null as LocalVideoTrack | null,
+    audioTrack: null as LocalAudioTrack | null,
+    ctx: null as AudioContext | null,
+    dest: null as MediaStreamAudioDestinationNode | null,
+    videoNode: null as MediaStreamAudioSourceNode | null,
+    micNode: null as MediaStreamAudioSourceNode | null,
+  })
+
+  // Creates AudioContext + ScreenShareAudio track lazily on first call (requires user gesture).
+  const ensureAudio = useCallback(async () => {
+    const st = s.current
+    if (st.ctx && st.ctx.state !== 'closed' && st.audioTrack) return
+    st.ctx?.close()
+    const ctx = new AudioContext()
+    await ctx.resume() // called inside user gesture — won't be suspended
+    const dest = ctx.createMediaStreamDestination()
+    st.ctx = ctx
+    st.dest = dest
+    if (st.audioTrack) {
+      try { await room.localParticipant.unpublishTrack(st.audioTrack) } catch {}
+      st.audioTrack = null
+    }
+    const la = new LocalAudioTrack(dest.stream.getAudioTracks()[0], { name: 'watch-audio' })
+    try {
+      await room.localParticipant.publishTrack(la, { source: Track.Source.ScreenShareAudio })
+      st.audioTrack = la
+    } catch {}
+  }, [room])
+
+  // Called by toggleMic with the raw mic MediaStream.
+  const connectMic = useCallback(async (stream: MediaStream) => {
+    await ensureAudio()
+    const st = s.current
+    if (!st.ctx || !st.dest) return
+    st.micNode?.disconnect()
+    const src = st.ctx.createMediaStreamSource(stream)
+    src.connect(st.dest)
+    st.micNode = src
+  }, [ensureAudio])
+
+  const disconnectMic = useCallback(() => {
+    s.current.micNode?.disconnect()
+    s.current.micNode = null
+  }, [])
+
+  // Called on video loadedmetadata — publishes video + routes video audio into ScreenShareAudio.
   const publish = useCallback(async () => {
     const video = videoRef.current
     if (!video) return
-    if (publishedRef.current) {
-      try { await room.localParticipant.unpublishTrack(publishedRef.current) } catch {}
-      publishedRef.current = null
+    const st = s.current
+
+    if (st.videoTrack) {
+      try { await room.localParticipant.unpublishTrack(st.videoTrack) } catch {}
+      st.videoTrack = null
     }
+    st.videoNode?.disconnect()
+    st.videoNode = null
+
+    await ensureAudio()
+    if (!st.ctx || !st.dest) return
+
     try {
       const stream: MediaStream = (video as any).captureStream()
-      const raw = stream.getVideoTracks()[0]
-      if (!raw) return
-      // 'detail' hint = encoder prioritizes sharpness over motion smoothing
-      raw.contentHint = 'detail'
-      const lt = new LocalVideoTrack(raw, { name: 'watch-video' })
-      await room.localParticipant.publishTrack(lt, {
-        // ScreenShare source: LiveKit applies a detail-optimized profile with higher bitrate ceiling
-        source: Track.Source.ScreenShare,
-        videoCodec: 'h264',
-        videoEncoding: { maxBitrate: 30_000_000, maxFramerate: 60 },
-      })
-      publishedRef.current = lt
+
+      const rawVideo = stream.getVideoTracks()[0]
+      if (rawVideo) {
+        rawVideo.contentHint = 'detail'
+        const lt = new LocalVideoTrack(rawVideo, { name: 'watch-video' })
+        await room.localParticipant.publishTrack(lt, {
+          source: Track.Source.ScreenShare,
+          videoCodec: 'h264',
+          videoEncoding: { maxBitrate: 30_000_000, maxFramerate: 60 },
+        })
+        st.videoTrack = lt
+      }
+
+      if (stream.getAudioTracks().length > 0) {
+        const videoSrc = st.ctx.createMediaStreamSource(stream)
+        videoSrc.connect(st.dest)            // → viewers hear video audio
+        videoSrc.connect(st.ctx.destination) // → host hears video locally
+        st.videoNode = videoSrc
+      }
     } catch (e) {
       console.error('publish failed', e)
     }
-  }, [videoRef, room])
+  }, [videoRef, room, ensureAudio])
+
+  useEffect(() => {
+    return () => {
+      const st = s.current
+      if (st.audioTrack) room.localParticipant.unpublishTrack(st.audioTrack).catch(() => {})
+      if (st.videoTrack) room.localParticipant.unpublishTrack(st.videoTrack).catch(() => {})
+      st.ctx?.close()
+    }
+  }, [room])
 
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
     ;(video as any).__watchPublish = publish
-  }, [videoRef, publish])
+    ;(video as any).__watchConnectMic = connectMic
+    ;(video as any).__watchDisconnectMic = disconnectMic
+  }, [videoRef, publish, connectMic, disconnectMic])
 
   return null
 }
 
 // ── Member row with per-member timer ─────────────────────────────────────
-function MemberRow({ p, canKick, onKick }: { p: WatchParticipant; canKick?: boolean; onKick?: (id: string) => void }) {
+function MemberRow({ p, canKick, onKick, isSpeaking }: { p: WatchParticipant; canKick?: boolean; onKick?: (id: string) => void; isSpeaking?: boolean }) {
   const elapsed = useElapsed(p.joinedAt)
   const hasBanner = (p.subPlan === 'GEEK' || p.subPlan === 'PRO') && Boolean(p.bannerUrl)
   return (
@@ -255,23 +350,20 @@ function MemberRow({ p, canKick, onKick }: { p: WatchParticipant; canKick?: bool
           <span className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-[linear-gradient(90deg,rgba(0,0,0,0.92)_0%,rgba(0,0,0,0.72)_34%,rgba(0,0,0,0.34)_68%,rgba(0,0,0,0)_100%)] opacity-0 shadow-[inset_18px_0_22px_rgba(0,0,0,0.86)] transition-opacity duration-300 group-hover/watch-member:opacity-100" />
         </>
       )}
-      <div className="relative z-10 shrink-0">
+      <div className={cn(
+        'relative z-10 shrink-0 rounded-full transition-all duration-200',
+        isSpeaking && 'ring-2 ring-green-500/80 ring-offset-1 ring-offset-sidebar',
+      )}>
         <UserAvatar src={p.avatarUrl} alt={p.username} className="h-5 w-5 rounded-full" />
-        {p.isHost && (
-          <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-amber-500 ring-1 ring-sidebar">
-            <Crown className="h-1.5 w-1.5 text-white" />
-          </span>
-        )}
       </div>
       <span className={cn(
-        'relative z-10 min-w-0 flex-1 truncate text-[11px] font-medium transition-colors duration-300 text-muted-foreground',
+        'relative z-10 min-w-0 flex-1 truncate text-[11px] font-medium transition-colors duration-300',
+        isSpeaking ? 'text-green-400' : 'text-muted-foreground',
         hasBanner && 'group-hover/watch-member:text-white',
       )}>
         {p.username}
       </span>
-      {p.isHost && (
-        <span className="relative z-10 shrink-0 text-[9px] font-bold text-amber-500">HOST</span>
-      )}
+      {isSpeaking && <SoundWave active={true} />}
       {canKick && !p.isHost && (
         <motion.button
           whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.88 }}
@@ -309,12 +401,13 @@ interface WatchRoomInnerProps {
   onLeave: () => void
   onEnd: () => void
   onKick: (userId: string) => void
+  onSpeakingChange: (speakingIds: Set<string>) => void
 }
 
 function WatchRoomInner({
-  roomId, isHost, participants, syncing, videoRef, ended, sessionStartedAt,
+  roomId, userId, isHost, participants, syncing, videoRef, ended, sessionStartedAt,
   emitPlay, emitPause, emitSeek, emitReaction, liveReactions, onRemoveReaction,
-  isPip, onMaximize, onLeave, onEnd, onKick,
+  isPip, onMaximize, onLeave, onEnd, onKick, onSpeakingChange,
 }: WatchRoomInnerProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const objectUrlRef = useRef<string | null>(null)
@@ -331,6 +424,105 @@ function WatchRoomInner({
   const [flashSeek, setFlashSeek] = useState<'back' | 'forward' | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [watchersOpen, setWatchersOpen] = useState(false)
+  const [speakingUserIds, setSpeakingUserIds] = useState<Set<string>>(new Set())
+  const onSpeakingChangeRef = useRef(onSpeakingChange)
+  useEffect(() => { onSpeakingChangeRef.current = onSpeakingChange })
+  useEffect(() => { onSpeakingChangeRef.current(speakingUserIds) }, [speakingUserIds])
+  const [micEnabled, setMicEnabled] = useState(false)
+  const micStreamRef = useRef<MediaStream | null>(null)
+  const micAnalyserCtxRef = useRef<AudioContext | null>(null)
+  const micRafRef = useRef<number | null>(null)
+
+  const room = useRoomContext()
+
+  const stopMicAnalyser = useCallback(() => {
+    if (micRafRef.current) { cancelAnimationFrame(micRafRef.current); micRafRef.current = null }
+    micAnalyserCtxRef.current?.close()
+    micAnalyserCtxRef.current = null
+  }, [])
+
+  const startMicAnalyser = useCallback((stream: MediaStream) => {
+    stopMicAnalyser()
+    const ctx = new AudioContext()
+    micAnalyserCtxRef.current = ctx
+    const analyser = ctx.createAnalyser()
+    analyser.fftSize = 512
+    ctx.createMediaStreamSource(stream).connect(analyser)
+    const buf = new Uint8Array(analyser.frequencyBinCount)
+    const tick = () => {
+      analyser.getByteFrequencyData(buf)
+      const avg = buf.reduce((a, b) => a + b, 0) / buf.length
+      setSpeakingUserIds(prev => {
+        const speaking = avg > 8
+        const has = prev.has(userId)
+        if (speaking === has) return prev
+        const next = new Set(prev)
+        speaking ? next.add(userId) : next.delete(userId)
+        return next
+      })
+      micRafRef.current = requestAnimationFrame(tick)
+    }
+    ctx.resume().then(() => { micRafRef.current = requestAnimationFrame(tick) })
+  }, [stopMicAnalyser, userId])
+
+  useEffect(() => {
+    return () => {
+      micStreamRef.current?.getTracks().forEach(t => t.stop())
+      stopMicAnalyser()
+    }
+  }, [stopMicAnalyser])
+
+  const toggleMic = useCallback(async () => {
+    if (isHost) {
+      if (!micEnabled) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+          micStreamRef.current = stream
+          await (videoRef.current as any)?.__watchConnectMic?.(stream)
+          startMicAnalyser(stream)
+          setMicEnabled(true)
+        } catch { /* mic denied */ }
+      } else {
+        ;(videoRef.current as any)?.__watchDisconnectMic?.()
+        micStreamRef.current?.getTracks().forEach(t => t.stop())
+        micStreamRef.current = null
+        stopMicAnalyser()
+        setSpeakingUserIds(prev => { const next = new Set(prev); next.delete(userId); return next })
+        setMicEnabled(false)
+      }
+    } else {
+      const next = !micEnabled
+      await room.localParticipant.setMicrophoneEnabled(next)
+      setMicEnabled(next)
+    }
+  }, [room, micEnabled, isHost, userId, videoRef, startMicAnalyser, stopMicAnalyser])
+
+  useEffect(() => {
+    const onActiveSpeakers = (speakers: Participant[]) => {
+      setSpeakingUserIds(prev => {
+        const next = new Set(speakers.map((s) => s.identity.split('__')[0]))
+        // Host speaking is tracked by local analyser — don't let LiveKit clobber it
+        if (isHost && prev.has(userId)) next.add(userId)
+        return next
+      })
+    }
+    const onLocalSpeaking = (speaking: boolean) => {
+      if (isHost) return
+      setSpeakingUserIds(prev => {
+        const has = prev.has(userId)
+        if (speaking === has) return prev
+        const next = new Set(prev)
+        speaking ? next.add(userId) : next.delete(userId)
+        return next
+      })
+    }
+    room.on(RoomEvent.ActiveSpeakersChanged, onActiveSpeakers)
+    room.localParticipant.on('isSpeakingChanged', onLocalSpeaking)
+    return () => {
+      room.off(RoomEvent.ActiveSpeakersChanged, onActiveSpeakers)
+      room.localParticipant.off('isSpeakingChanged', onLocalSpeaking)
+    }
+  }, [room, userId, isHost])
 
   // Check for saved video position from a previous page reload
   const savedVideoPositionKey = `twiky-watch-video-pos-${roomId}`
@@ -449,7 +641,9 @@ function WatchRoomInner({
 
   if (isPip) {
     return (
-      <motion.div 
+      <>
+      <RoomAudioRenderer />
+      <motion.div
         className="relative flex h-full w-full overflow-hidden bg-black group rounded-[inherit] cursor-pointer"
         onTap={onMaximize}
       >
@@ -490,10 +684,13 @@ function WatchRoomInner({
           </Button>
         </div>
       </motion.div>
+      </>
     )
   }
 
   return (
+    <>
+    <RoomAudioRenderer />
     <motion.div
       className={cn(
         'flex overflow-hidden bg-background',
@@ -512,6 +709,11 @@ function WatchRoomInner({
         className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
         onMouseEnter={() => setControlsVisible(true)}
         onMouseLeave={() => setControlsVisible(false)}
+        onClick={(e) => {
+          if (!isHost || !fileLoaded) return
+          if ((e.target as HTMLElement).closest('button, input, a')) return
+          handlePlayPause()
+        }}
       >
         {/* video — always in DOM so captureStream works; visible only when host has file */}
         <video
@@ -612,9 +814,17 @@ function WatchRoomInner({
             >
               <Popcorn className="h-4 w-4 shrink-0 text-primary" />
               <span className="text-[13px] font-semibold text-foreground">Watch Together</span>
-              <span className="ml-auto text-[11px] text-muted-foreground">
-                {participants.length} watching
-              </span>
+              <motion.button
+                onClick={() => setWatchersOpen((v) => !v)}
+                whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.9 }}
+                className={cn(
+                  'ml-auto flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium transition-colors',
+                  watchersOpen ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                )}
+              >
+                <Users className="h-3.5 w-3.5" />
+                {participants.length}
+              </motion.button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -765,6 +975,20 @@ function WatchRoomInner({
 
                   <div className="flex shrink-0 items-center gap-1.5 pl-3 border-l border-border/40">
                     <motion.button
+                      title={micEnabled ? 'Mute mic' : 'Enable mic'}
+                      whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.88 }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+                      onClick={toggleMic}
+                      className={cn(
+                        'flex h-9 w-9 items-center justify-center rounded-xl border transition-colors',
+                        micEnabled
+                          ? 'border-primary/20 bg-primary/10 text-primary hover:bg-primary/20'
+                          : 'border-border/60 bg-muted/40 text-muted-foreground hover:bg-accent hover:text-foreground',
+                      )}
+                    >
+                      {micEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+                    </motion.button>
+                    <motion.button
                       title="Fullscreen"
                       whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.88 }}
                       transition={{ type: 'spring', stiffness: 400, damping: 17 }}
@@ -831,8 +1055,39 @@ function WatchRoomInner({
         </AnimatePresence>
       </div>
 
+      {/* Participants sidebar */}
+      <AnimatePresence initial={false}>
+        {watchersOpen && (
+          <motion.div
+            key="watchers-sidebar"
+            className="flex w-52 shrink-0 flex-col overflow-hidden border-l border-border/50 bg-sidebar"
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: 208, opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 420, damping: 36, mass: 0.7 }}
+          >
+            <div className="flex h-10 shrink-0 items-center gap-1.5 border-b border-border/50 px-3">
+              <Users className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Watching</span>
+              <span className="ml-auto text-[10px] text-muted-foreground">{participants.length}</span>
+            </div>
+            <div className="flex flex-col gap-0.5 overflow-y-auto p-2">
+              {participants.map((p) => (
+                <MemberRow
+                  key={p.userId}
+                  p={p}
+                  canKick={isHost}
+                  onKick={onKick}
+                  isSpeaking={speakingUserIds.has(p.userId)}
+                />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     </motion.div>
+    </>
   )
 }
 
@@ -885,10 +1140,15 @@ export function WatchRoomView({ roomId, userId, username, fullname, avatarUrl, b
     },
   })
 
-  // stable ref so the effect doesn't re-run (and loop) when the parent re-renders
+  const [speakingIds, setSpeakingIds] = useState<Set<string>>(new Set())
+
+  // Merge socket participants with local speaking state before propagating up
   const onParticipantsChangeRef = useRef(onParticipantsChange)
   useEffect(() => { onParticipantsChangeRef.current = onParticipantsChange })
-  useEffect(() => { onParticipantsChangeRef.current?.(participants) }, [participants])
+  useEffect(() => {
+    const enriched = participants.map(p => ({ ...p, isSpeaking: speakingIds.has(p.userId) }))
+    onParticipantsChangeRef.current?.(enriched)
+  }, [participants, speakingIds])
 
   const handleEnd = useCallback(async () => {
     await emitEnd()
@@ -948,6 +1208,7 @@ export function WatchRoomView({ roomId, userId, username, fullname, avatarUrl, b
         onRemoveReaction={handleRemoveReaction}
         isPip={isPip} onMaximize={onMaximize}
         onLeave={onLeave} onEnd={handleEnd} onKick={emitKick}
+        onSpeakingChange={setSpeakingIds}
       />
     </LiveKitRoom>
   )
