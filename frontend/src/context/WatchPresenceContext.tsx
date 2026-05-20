@@ -22,7 +22,15 @@ export function WatchPresenceProvider({ children }: { children: React.ReactNode 
   const [watchSessionStarts, setWatchSessionStarts] = useState<Record<string, number | null>>({})
 
   const setGroupParticipants = useCallback((groupId: string, participants: WatchParticipant[]) => {
-    setWatchParticipants(prev => ({ ...prev, [groupId]: participants }))
+    setWatchParticipants(prev => {
+      const existing = prev[groupId] ?? []
+      // Preserve isSpeaking — socket data doesn't carry it, onParticipantsChange does
+      const merged = participants.map(p => ({
+        ...p,
+        isSpeaking: p.isSpeaking ?? existing.find(e => e.userId === p.userId)?.isSpeaking ?? false,
+      }))
+      return { ...prev, [groupId]: merged }
+    })
   }, [])
 
   const setGroupSessionStart = useCallback((groupId: string, startedAt: number | null) => {

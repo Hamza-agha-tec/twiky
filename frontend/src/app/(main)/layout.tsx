@@ -17,6 +17,7 @@ import { useVoice } from '@/context/VoiceContext'
 import { VoiceGroupView } from '@/components/chat/voice-group-view'
 import { FloatingVoicePiP } from '@/components/chat/floating-voice-pip'
 import { WatchRoomView } from '@/components/watch/watch-room-view'
+import { useWatchPresence } from '@/context/WatchPresenceContext'
 import { Popcorn, Maximize2, Minimize2, PhoneOff, X, Users, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -26,6 +27,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   const router = useRouter()
   const params = useParams()
   const onlineUsers = useOnlineUsers()
+  const { setGroupParticipants } = useWatchPresence()
   
   const {
     workspaceCollapsed,
@@ -282,6 +284,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                   localStorage.removeItem('twiky-active-watch-room')
                   window.dispatchEvent(new Event('twiky-watch-room-changed'))
                 }}
+                onParticipantsChange={(participants) => setGroupParticipants(activeWatchRoom.roomId, participants)}
               />
             </motion.div>
           )}

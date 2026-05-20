@@ -19,6 +19,7 @@ export type WatchParticipant = {
   isVerified?: boolean | null
   isHost: boolean
   joinedAt: number
+  isSpeaking?: boolean
 }
 
 type UseWatchRoomOptions = {
@@ -161,8 +162,9 @@ export function useWatchRoom({ roomId, userId, username, fullname, avatarUrl, ba
       }
       const onParticipants = (data: { roomId?: string; participants: WatchParticipant[]; sessionStartedAt?: number | null }) => {
         if (!mounted) return
+        if (data.roomId && data.roomId !== roomId) return
         setParticipants(data.participants)
-        if (data.sessionStartedAt) setSessionStartedAt(data.sessionStartedAt)
+        if ('sessionStartedAt' in data) setSessionStartedAt(data.sessionStartedAt ?? null)
       }
       const onSyncRequest = () => {
         if (!isHost) return
