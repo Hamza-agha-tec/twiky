@@ -235,3 +235,61 @@ func (h *GroupHandler) RespondToJoinRequest(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "join request processed successfully"})
 }
+
+func (h *GroupHandler) GetGroupEvents(c echo.Context) error {
+	user := c.Get("user").(*middleware.AuthenticatedUser)
+	groupID := c.Param("groupId")
+
+	events, err := h.groupService.GetGroupEvents(groupID, user.UserID)
+	if err != nil {
+		if err.Error() == "access denied" {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "access denied"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, events)
+}
+
+func (h *GroupHandler) CreateGroupEvent(c echo.Context) error {
+	user := c.Get("user").(*middleware.AuthenticatedUser)
+	groupID := c.Param("groupId")
+
+	var dto models.CreateVoiceEventDto
+	if err := c.Bind(&dto); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	event, err := h.groupService.CreateGroupEvent(groupID, user.UserID, dto)
+	if err != nil {
+		if err.Error() == "insufficient permissions to create events" {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Broadcast socket update
+	h.socketIOService.BroadcastToRoom("group_"+groupID, "eventCreated", event)
+
+	return c.JSON(http.StatusCreated, event)
+}
+
+func (h *GroupHandler) DeleteGroupEvent(c echo.Context) error {
+	user := c.Get("user").(*middleware.AuthenticatedUser)
+	groupID := c.Param("groupId")
+	eventID := c.Param("eventId")
+
+	err := h.groupService.DeleteGroupEvent(groupID, eventID, user.UserID)
+	if err != nil {
+		if err.Error() == "insufficient permissions to delete events" {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Broadcast socket update
+	h.socketIOService.BroadcastToRoom("group_"+groupID, "eventDeleted", map[string]string{"eventId": eventID})
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "event deleted successfully"})
+}
+

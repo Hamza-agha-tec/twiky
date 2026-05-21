@@ -9,7 +9,7 @@ async function isPrivateHost(hostname: string): Promise<boolean> {
     const { address } = await lookup(hostname)
     return PRIVATE_IP_RE.test(address)
   } catch {
-    return true
+    return false
   }
 }
 

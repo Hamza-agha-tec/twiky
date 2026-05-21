@@ -181,4 +181,28 @@ export const groupsApi = {
 
   deleteGroup: (groupId: string) =>
     authedFetch(`/groups/${groupId}`, { method: 'DELETE' }),
+
+  getGroupEvents: (groupId: string) =>
+    authedFetch<VoiceEvent[]>(`/groups/${groupId}/events`),
+
+  createGroupEvent: (groupId: string, data: { title: string; description?: string; scheduled_start: string; scheduled_end?: string | null }) =>
+    authedFetch<VoiceEvent>(`/groups/${groupId}/events`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  deleteGroupEvent: (groupId: string, eventId: string) =>
+    authedFetch(`/groups/${groupId}/events/${eventId}`, { method: 'DELETE' }),
 };
+
+export interface VoiceEvent {
+  id: string;
+  group_id: string;
+  title: string;
+  description: string | null;
+  scheduled_start: string;
+  scheduled_end: string | null;
+  creator_id: string;
+  created_at: string;
+}
+

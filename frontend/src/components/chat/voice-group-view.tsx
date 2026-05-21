@@ -27,6 +27,10 @@ import {
   ChevronUp,
   Check,
   Smile,
+  Share2,
+  Calendar,
+  Trash2,
+  UserPlus,
 } from 'lucide-react'
 import { UserAvatar } from '@/components/chat/user-avatar'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -39,6 +43,9 @@ import { useQuery } from '@tanstack/react-query'
 import { channelsApi } from '@/lib/channels-api'
 import { getSocket } from '@/lib/socket'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ShareModal } from '@/components/chat/share-modal'
+import { useProfile } from '@/hooks/use-user'
+import { groupsApi } from '@/lib/groups-api'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -174,6 +181,44 @@ export function VoiceGroupView({
   const [inviteOpen, setInviteOpen] = useState(false)
   const [inviteSearch, setInviteSearch] = useState('')
   const [sentInvites, setSentInvites] = useState<Set<string>>(new Set())
+
+  // New features states
+  const [shareOpen, setShareOpen] = useState(false)
+  const [eventsOpen, setEventsOpen] = useState(false)
+  const [formTitle, setFormTitle] = useState('')
+  const [formDesc, setFormDesc] = useState('')
+  const [formStart, setFormStart] = useState('')
+  const [isCreatingEvent, setIsCreatingEvent] = useState(false)
+
+  const { data: profile } = useProfile()
+
+  const { data: events = [], isLoading: eventsLoading, refetch: refetchEvents } = useQuery({
+    queryKey: ['voice-events', group.id],
+    queryFn: () => groupsApi.getGroupEvents(group.id),
+    enabled: eventsOpen,
+  })
+
+  const handleCreateEvent = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!formTitle.trim() || !formStart) return
+    setIsCreatingEvent(true)
+    try {
+      await groupsApi.createGroupEvent(group.id, {
+        title: formTitle.trim(),
+        description: formDesc.trim(),
+        scheduled_start: new Date(formStart).toISOString(),
+      })
+      toast.success('Event scheduled successfully!')
+      setFormTitle('')
+      setFormDesc('')
+      setFormStart('')
+      refetchEvents()
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to schedule event')
+    } finally {
+      setIsCreatingEvent(false)
+    }
+  }
 
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([])
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('default')
@@ -327,6 +372,17 @@ export function VoiceGroupView({
       upsertMessage(message)
     }
 
+    const onEventCreated = (event: any) => {
+      if (event.group_id === roomId) {
+        refetchEvents()
+        toast.info(`New event scheduled: "${event.title}"`)
+      }
+    }
+
+    const onEventDeleted = () => {
+      refetchEvents()
+    }
+
     if (!isJoined) {
       setChatMessages([])
       setChatUnread(false)
@@ -340,6 +396,8 @@ export function VoiceGroupView({
       s.on('voice-chat-history', onHistory)
       s.on('voice-chat-message', onMessage)
       s.on('voice-chat-message-updated', onMessageUpdated)
+      s.on('eventCreated', onEventCreated)
+      s.on('eventDeleted', onEventDeleted)
       s.emit('voice-chat-history', { roomId })
     })
 
@@ -349,9 +407,11 @@ export function VoiceGroupView({
         socket.off('voice-chat-history', onHistory)
         socket.off('voice-chat-message', onMessage)
         socket.off('voice-chat-message-updated', onMessageUpdated)
+        socket.off('eventCreated', onEventCreated)
+        socket.off('eventDeleted', onEventDeleted)
       }
     }
-  }, [group.id, group.label, isJoined, myId])
+  }, [group.id, group.label, isJoined, myId, refetchEvents])
 
   const sendChatMessage = useCallback(() => {
     const text = chatInput.trim()
@@ -731,20 +791,34 @@ export function VoiceGroupView({
               </AnimatePresence>
             </div>
 
-            {/* Invite friends */}
+            {/* Action buttons */}
             <motion.div
-              className="flex justify-center"
+              className="flex items-center justify-center gap-3"
               animate={{ y: uiVisible ? -80 : 0 }}
               transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.7 }}
             >
               <button
                 onClick={() => { setInviteSearch(''); setSentInvites(new Set()); setInviteOpen(true) }}
-                className="flex items-center gap-2 rounded-xl border border-dashed border-border/50 px-5 py-2 text-[12px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+                className="flex items-center gap-2 rounded-xl border border-dashed border-border/50 px-4 py-2 text-[12px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary shadow-sm"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>
-                </svg>
+                <UserPlus className="h-4 w-4" />
                 Invite Friends
+              </button>
+
+              <button
+                onClick={() => setShareOpen(true)}
+                className="flex items-center gap-2 rounded-xl border border-dashed border-border/50 px-4 py-2 text-[12px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary shadow-sm"
+              >
+                <Share2 className="h-4 w-4" />
+                Share Call
+              </button>
+
+              <button
+                onClick={() => setEventsOpen(true)}
+                className="flex items-center gap-2 rounded-xl border border-dashed border-border/50 px-4 py-2 text-[12px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary shadow-sm"
+              >
+                <Calendar className="h-4 w-4" />
+                Events
               </button>
             </motion.div>
           </motion.div>
@@ -1322,6 +1396,161 @@ export function VoiceGroupView({
             })
           )}
         </div>
+      </DialogContent>
+    </Dialog>
+
+    {/* Share Call Modal */}
+    <ShareModal
+      open={shareOpen}
+      onClose={() => setShareOpen(false)}
+      payload={{
+        content: JSON.stringify({
+          __twiky_type: 'voice_invite',
+          groupId: group.id,
+          groupName: group.label,
+          channelId: channelId,
+          inviterName: profile?.username || 'Someone'
+        })
+      }}
+      title={`Share ${group.label}`}
+    />
+
+    {/* Events Modal */}
+    <Dialog open={eventsOpen} onOpenChange={setEventsOpen}>
+      <DialogContent className="max-w-2xl bg-sidebar border-border p-6 rounded-2xl shadow-2xl flex flex-col md:flex-row gap-6 max-h-[90vh] overflow-y-auto">
+        {/* Left panel: list of events */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <h3 className="text-[15px] font-bold text-foreground mb-3 flex items-center gap-2">
+            <Calendar className="h-4.5 w-4.5 text-primary" />
+            Scheduled Events
+          </h3>
+          
+          <div className="flex-1 overflow-y-auto space-y-2.5 max-h-[50vh] pr-2">
+            {eventsLoading ? (
+              <div className="flex flex-col gap-2 py-4">
+                <div className="h-12 w-full animate-pulse bg-muted/30 rounded-xl" />
+                <div className="h-12 w-full animate-pulse bg-muted/30 rounded-xl" />
+              </div>
+            ) : events.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-center gap-2">
+                <div className="h-10 w-10 flex items-center justify-center rounded-xl bg-muted/40 text-muted-foreground">
+                  <Calendar className="h-5 w-5" />
+                </div>
+                <p className="text-[12px] font-semibold text-foreground">No events scheduled</p>
+                <p className="text-[11px] text-muted-foreground">Plan a call or meeting for this group!</p>
+              </div>
+            ) : (
+              events.map((ev) => (
+                <div key={ev.id} className="relative group/ev flex items-start gap-3 p-3 rounded-xl border border-border/40 bg-muted/20 hover:bg-muted/45 transition-colors">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <p className="text-[13px] font-bold text-foreground truncate">{ev.title}</p>
+                    {ev.description && (
+                      <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed">
+                        {ev.description}
+                      </p>
+                    )}
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-primary/80 font-medium pt-0.5">
+                      <span>
+                        {new Date(ev.scheduled_start).toLocaleDateString([], {
+                          weekday: 'short',
+                          month: 'short',
+                          day: 'numeric',
+                        })}
+                      </span>
+                      <span>·</span>
+                      <span>
+                        {new Date(ev.scheduled_start).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                      {ev.scheduled_end && (
+                        <>
+                          <span>-</span>
+                          <span>
+                            {new Date(ev.scheduled_end).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <button
+                    onClick={async () => {
+                      try {
+                        await groupsApi.deleteGroupEvent(group.id, ev.id)
+                        refetchEvents()
+                        toast.success('Event deleted successfully')
+                      } catch (err: any) {
+                        toast.error(err.message || 'Failed to delete event')
+                      }
+                    }}
+                    className="opacity-0 group-hover/ev:opacity-100 flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-destructive/10 hover:text-destructive self-center"
+                    title="Delete event"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Vertical divider on desktop */}
+        <div className="hidden md:block w-px bg-border/40 self-stretch" />
+
+        {/* Right panel: scheduling form */}
+        <form onSubmit={handleCreateEvent} className="w-full md:w-64 flex flex-col gap-3.5">
+          <div>
+            <h4 className="text-[13px] font-bold text-foreground">Schedule New Event</h4>
+            <p className="text-[11px] text-muted-foreground">Notify members about an upcoming voice call.</p>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Title</label>
+            <input
+              required
+              type="text"
+              value={formTitle}
+              onChange={(e) => setFormTitle(e.target.value)}
+              placeholder="Team Meeting, Gaming Session..."
+              className="w-full h-8 px-2.5 rounded-xl border border-border bg-muted/30 text-[12px] placeholder:text-muted-foreground outline-none focus:border-primary/45 transition-colors"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Description</label>
+            <textarea
+              value={formDesc}
+              onChange={(e) => setFormDesc(e.target.value)}
+              placeholder="What is this meeting about? (optional)"
+              rows={3}
+              className="w-full p-2 rounded-xl border border-border bg-muted/30 text-[12px] placeholder:text-muted-foreground outline-none focus:border-primary/45 transition-colors resize-none"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Starts At</label>
+            <input
+              required
+              type="datetime-local"
+              value={formStart}
+              onChange={(e) => setFormStart(e.target.value)}
+              className="w-full h-8 px-2.5 rounded-xl border border-border bg-muted/30 text-[12px] outline-none focus:border-primary/45 transition-colors text-foreground"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={isCreatingEvent}
+            className="mt-2 w-full h-8.5 rounded-xl bg-primary text-[12px] font-bold text-primary-foreground shadow-md transition-colors hover:bg-primary/95 disabled:opacity-50 flex items-center justify-center"
+          >
+            {isCreatingEvent ? 'Scheduling...' : 'Schedule Event'}
+          </button>
+        </form>
       </DialogContent>
     </Dialog>
     </motion.div>

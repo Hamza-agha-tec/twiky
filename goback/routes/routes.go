@@ -174,6 +174,9 @@ func SetupRoutes(e *echo.Echo) {
 	protected.POST("/groups/:groupId/join-requests", groupHandler.RequestJoin)
 	protected.GET("/groups/:groupId/join-requests", groupHandler.GetJoinRequests)
 	protected.PATCH("/groups/:groupId/join-requests/:requestId", groupHandler.RespondToJoinRequest)
+	protected.GET("/groups/:groupId/events", groupHandler.GetGroupEvents)
+	protected.POST("/groups/:groupId/events", groupHandler.CreateGroupEvent)
+	protected.DELETE("/groups/:groupId/events/:eventId", groupHandler.DeleteGroupEvent)
 
 	// WebSocket routes
 	protected.GET("/websocket", webSocketHandler.HandleWebSocket)

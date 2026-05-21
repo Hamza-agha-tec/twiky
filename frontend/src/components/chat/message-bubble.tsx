@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { Check, CheckCheck, Forward, FileText, Download, X, Pin } from 'lucide-react';
+import { Check, CheckCheck, Forward, FileText, Download, X, Pin, Play, AudioLines } from 'lucide-react';
 import { VoiceMessagePlayer } from './voice-message-player'
 import { VideoPlayer } from './video-player';
 import { AppleText, EmojiImg } from './apple-text';
@@ -35,6 +35,14 @@ interface ProfilePayload { __twiky_type: 'profile'; username: string; name: stri
 
 export interface ForumPostPayload { __twiky_type: 'forum_post'; title: string; content: string; imageUrl: string | null; groupName: string; url: string | null }
 
+export interface VoiceInvitePayload {
+  __twiky_type: 'voice_invite'
+  groupId: string
+  groupName: string
+  channelId?: string
+  inviterName: string
+}
+
 function tryParseProfile(content: string): ProfilePayload | null {
   try {
     const p = JSON.parse(content)
@@ -50,6 +58,58 @@ export function tryParseForumPost(content: string): ForumPostPayload | null {
   } catch { /* not JSON */ }
   return null
 }
+
+export function tryParseVoiceInvite(content: string): VoiceInvitePayload | null {
+  try {
+    const p = JSON.parse(content)
+    if (p?.__twiky_type === 'voice_invite') return p as VoiceInvitePayload
+  } catch { /* not JSON */ }
+  return null
+}
+
+export function VoiceInviteCard({ data }: { data: VoiceInvitePayload }) {
+  const router = useRouter()
+  function handleJoin(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (data.channelId && data.groupId) {
+      router.push(`/channels/${data.channelId}/group/${data.groupId}`)
+    }
+  }
+  return (
+    <div className="mt-1 w-[260px] overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-muted/30 to-muted/20 shadow-lg backdrop-blur-md transition-all hover:border-primary/45 hover:shadow-primary/5">
+      <div className="p-4 space-y-3.5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="space-y-1 min-w-0 flex-1">
+            <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[9px] font-semibold text-green-500">
+              <span className="relative flex h-1.5 w-1.5 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500"></span>
+              </span>
+              LIVE VOICE ROOM
+            </span>
+            <p className="text-[13px] font-bold text-foreground leading-snug truncate mt-1">
+              {data.groupName}
+            </p>
+            <p className="text-[10px] text-muted-foreground leading-tight truncate">
+              Shared by <span className="font-semibold text-foreground/80">@{data.inviterName}</span>
+            </p>
+          </div>
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 border border-primary/20 text-primary">
+            <AudioLines className="h-4.5 w-4.5 animate-pulse" />
+          </div>
+        </div>
+        <button
+          onClick={handleJoin}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-3 py-1.5 text-[11px] font-bold text-primary-foreground shadow-md transition-all hover:bg-primary/90 hover:scale-[1.02] active:scale-[0.98]"
+        >
+          <Play className="h-3 w-3 fill-current" />
+          Join Voice Call
+        </button>
+      </div>
+    </div>
+  )
+}
+
 
 export function ForumPostCard({ data }: { data: ForumPostPayload }) {
   const router = useRouter()
@@ -249,6 +309,8 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
             if (profileData) return <ProfileCard data={profileData} />
             const forumPost = tryParseForumPost(message.content)
             if (forumPost) return <ForumPostCard data={forumPost} />
+            const voiceInvite = tryParseVoiceInvite(message.content)
+            if (voiceInvite) return <VoiceInviteCard data={voiceInvite} />
             const firstUrl = extractFirstUrl(message.content)
             return (
               <>
