@@ -188,7 +188,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
   // Format direct chats for the sidebar
   const sidebarDirectChats = useMemo(() => {
-    return directConversations.map(conv => {
+    return (directConversations ?? []).map(conv => {
       // Find the other user in the conversation
       const otherUser = conv.user_one?.id === profile?.id ? conv.user_two : conv.user_one;
       
