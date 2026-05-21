@@ -91,19 +91,23 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   // Sync active watch room from localStorage
   useEffect(() => {
     if (typeof window === 'undefined') return
+    const navEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+    const isReload = navEntry?.type === 'reload'
+    // On reload: clear persisted watch room so user doesn't auto-rejoin
+    if (isReload) {
+      localStorage.removeItem('twiky-active-watch-room')
+      setActiveWatchRoom(null)
+    }
     const syncWatchRoom = () => {
       const raw = localStorage.getItem('twiky-active-watch-room')
       if (raw) {
-        try {
-          setActiveWatchRoom(JSON.parse(raw))
-        } catch {
-          setActiveWatchRoom(null)
-        }
+        try { setActiveWatchRoom(JSON.parse(raw)) } catch { setActiveWatchRoom(null) }
       } else {
         setActiveWatchRoom(null)
       }
     }
-    syncWatchRoom()
+    // On normal load restore; on reload skip (already cleared above)
+    if (!isReload) syncWatchRoom()
     window.addEventListener('twiky-watch-room-changed', syncWatchRoom)
     window.addEventListener('storage', syncWatchRoom)
     return () => {
@@ -281,8 +285,13 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                 isPip={!isViewingWatchRoom}
                 onMaximize={() => router.push(`/channels/${activeWatchRoom.channelId}/group/${activeWatchRoom.roomId}`)}
                 onLeave={() => {
+                  const roomId = activeWatchRoom.roomId
+                  const chId = activeWatchRoom.channelId
                   localStorage.removeItem('twiky-active-watch-room')
                   window.dispatchEvent(new Event('twiky-watch-room-changed'))
+                  if (pathname.includes(`/group/${roomId}`)) {
+                    router.push(`/channels/${chId}`)
+                  }
                 }}
                 onParticipantsChange={(participants) => setGroupParticipants(activeWatchRoom.roomId, participants)}
               />
