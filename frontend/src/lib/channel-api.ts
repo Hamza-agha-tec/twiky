@@ -59,15 +59,16 @@ export interface ChannelInviteLink {
 export const channelApi = {
   getChannels: () => authedFetch<BackendChannel[]>('/channels'),
   createChannel: (data: CreateChannelInput) => {
-    console.log("Creating channel ", data);
-
-    const res = authedFetch<BackendChannel>('/channels', {
+    // Strip empty strings — Go validator rejects empty avatar_url/banner_url with url tag
+    const payload: Record<string, unknown> = { name: data.name }
+    if (data.description) payload.description = data.description
+    if (data.avatar_url) payload.avatar_url = data.avatar_url
+    if (data.access_type) payload.access_type = data.access_type
+    if (data.type) payload.type = data.type
+    return authedFetch<BackendChannel>('/channels', {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify(payload),
     })
-
-    console.log("Creating channel Response", res);
-    return res;
   },
   getInviteLink: (channelId: string) =>
     authedFetch<ChannelInviteLink>(`/channels/${channelId}/invite-link`),

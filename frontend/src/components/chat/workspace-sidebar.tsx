@@ -4,18 +4,15 @@ import { useEffect, useRef, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   BellOff,
-  ChevronLeft,
-  ChevronRight,
   Globe,
   Hash,
   Lock,
   MessageSquare,
   AudioLines,
   Monitor,
-  Bird ,
+  Bird,
   Popcorn,
   Plus,
-  Search,
 } from 'lucide-react'
 
 import { CreateEntityDialog, type CreateEntityValues } from '@/components/chat/create-entity-dialog'
@@ -300,7 +297,7 @@ export function WorkspaceSidebar({
   activeChat,
   channelAssets = {},
   channels = [],
-  collapsed = false,
+  collapsed: _collapsed = false,
   mode,
   storiesSlot,
   onCreateChannel,
@@ -316,12 +313,13 @@ export function WorkspaceSidebar({
   unreadCounts = {},
   typingConversations = {},
 }: WorkspaceSidebarProps) {
+  const collapsed = true
   const [chatMeta, setChatMeta] = useState<Record<string, ChatMeta>>({})
   const [deleted, setDeleted] = useState<Set<string>>(new Set())
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [showCreateChannel, setShowCreateChannel] = useState(false)
 
-  const isSearching = searchQuery.trim().length > 0
+  const isSearching = false
 
   const directChats = useMemo<SidebarChat[]>(() => {
     const localChats = syntheticDirectChats
@@ -363,60 +361,8 @@ export function WorkspaceSidebar({
   return (
     <>
       <div
-        className={cn(
-          'z-10 flex h-full shrink-0 flex-col border-r border-border bg-sidebar transition-[width] duration-300',
-          collapsed ? 'w-[78px]' : 'w-[248px]',
-        )}
+        className="z-10 flex h-full w-[78px] shrink-0 flex-col border-r border-border bg-sidebar"
       >
-        <div className="border-b border-border px-3 py-3">
-          <div className={cn('flex items-center', collapsed ? 'justify-center' : 'justify-between')}>
-            {!collapsed ? (
-              <div>
-                <p className="text-[12.5px] font-semibold">Workspace</p>
-                <p className="text-[11px] text-muted-foreground">
-                  Personal tools and channel navigation
-                </p>
-              </div>
-            ) : null}
-
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 rounded-xl"
-              onClick={onToggleCollapse}
-            >
-              {collapsed ? (
-                <ChevronRight className="h-4 w-4" />
-              ) : (
-                <ChevronLeft className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-
-          {!collapsed ? (
-            <div className="relative mt-2">
-              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <input
-                placeholder="Search everything…"
-                value={searchQuery}
-                onChange={(e) => onSearchChange(e.target.value)}
-                className="h-8 w-full rounded-xl border border-border bg-background pl-8 pr-3 text-[12px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
-              />
-            </div>
-          ) : (
-            <div className="flex justify-center mt-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground"
-                onClick={onToggleCollapse}
-                title="Search"
-              >
-                <Search className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
-        </div>
 
         <div className="border-b border-border px-3 py-3">
           {!collapsed ? (
