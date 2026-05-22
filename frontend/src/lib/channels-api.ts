@@ -1,6 +1,9 @@
 import { createClient } from '@/utils/supabase/client';
+import type { VoiceEvent } from '@/lib/groups-api';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api';
+
+export const CHANNEL_EVENTS_KEY = (channelId: string) => ['channel-events', channelId] as const;
 
 async function getToken(): Promise<string> {
   const supabase = createClient();
@@ -20,7 +23,7 @@ async function authedFetch<T = unknown>(path: string, init: RequestInit = {}): P
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.message ?? `Request failed (${res.status})`);
+    throw new Error((body as { message?: string; error?: string }).message ?? (body as { error?: string }).error ?? `Request failed (${res.status})`);
   }
   return res.json();
 }
@@ -108,4 +111,22 @@ export const channelsApi = {
 
   requestJoinChannel: (id: string) =>
     authedFetch(`/channels/${id}/request-join`, { method: 'POST' }),
+
+  getChannelEvents: (channelId: string) =>
+    authedFetch<VoiceEvent[]>(`/channels/${channelId}/events`),
+
+  createChannelEvent: (
+    channelId: string,
+    data: {
+      group_id: string;
+      title: string;
+      description?: string;
+      scheduled_start: string;
+      scheduled_end?: string | null;
+    },
+  ) =>
+    authedFetch<VoiceEvent>(`/channels/${channelId}/events`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };

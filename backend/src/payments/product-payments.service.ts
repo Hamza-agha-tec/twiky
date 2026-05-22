@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.module';
 import DodoPayments from 'dodopayments';
 import { ProductCheckoutDto, OrderStatus, WebhookOrderDto } from './dto/order.dto';
+import { createDodoClient } from './dodo-client.config';
 
 @Injectable()
 export class ProductPaymentsService {
@@ -13,11 +14,7 @@ export class ProductPaymentsService {
         private readonly configService: ConfigService,
         private readonly supabaseService: SupabaseService,
     ) {
-        this.client = new DodoPayments({
-            bearerToken: this.configService.get<string>('DODO_PAYMENTS_API_KEY') || '',
-            environment: 'test_mode',
-            webhookKey: this.configService.get<string>('DODO_PAYMENTS_WEBHOOK_SECRET') || '',
-        });
+        this.client = createDodoClient(this.configService);
     }
 
     private async getOrCreateCustomer(userId: string, email: string): Promise<string> {

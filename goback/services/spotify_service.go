@@ -83,7 +83,7 @@ func (s *SpotifyService) HandleCallback(userID, code string) error {
 	}
 
 	var tokens []models.SpotifyToken
-	err = s.supabase.GetClient().DB.From("spotify_tokens").
+	err = s.supabase.GetClient().DB.From("spotify_connections").
 		Upsert(tokenData).
 		Execute(&tokens)
 
@@ -92,7 +92,7 @@ func (s *SpotifyService) HandleCallback(userID, code string) error {
 
 func (s *SpotifyService) Disconnect(userID string) error {
 	var tokens []models.SpotifyToken
-	err := s.supabase.GetClient().DB.From("spotify_tokens").
+	err := s.supabase.GetClient().DB.From("spotify_connections").
 		Delete().
 		Eq("user_id", userID).
 		Execute(&tokens)
@@ -102,7 +102,7 @@ func (s *SpotifyService) Disconnect(userID string) error {
 
 func (s *SpotifyService) GetValidToken(userID string) (string, error) {
 	var tokens []models.SpotifyToken
-	err := s.supabase.GetClient().DB.From("spotify_tokens").
+	err := s.supabase.GetClient().DB.From("spotify_connections").
 		Select("*").
 		Eq("user_id", userID).
 		Execute(&tokens)
@@ -159,7 +159,7 @@ func (s *SpotifyService) refreshToken(userID, refreshToken string) (string, erro
 		"access_token": tokenRes.AccessToken,
 		"expires_at":   expiresAt,
 	}
-	s.supabase.GetClient().DB.From("spotify_tokens").
+	s.supabase.GetClient().DB.From("spotify_connections").
 		Update(updateData).
 		Eq("user_id", userID).
 		Execute(&[]models.SpotifyToken{})

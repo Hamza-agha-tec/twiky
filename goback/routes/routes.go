@@ -132,6 +132,8 @@ func SetupRoutes(e *echo.Echo) {
 	protected.POST("/channels/:id/request-join", channelHandler.RequestJoinChannel)
 	protected.GET("/channels/:id/join-requests", channelHandler.GetChannelJoinRequests)
 	protected.PATCH("/channels/:id/join-requests/:requestId", channelHandler.RespondToChannelJoinRequest)
+	protected.GET("/channels/:channelId/events", groupHandler.GetChannelEvents)
+	protected.POST("/channels/:channelId/events", groupHandler.CreateChannelEvent)
 
 	// Contact routes
 	protected.GET("/contacts", contactHandler.FindAll)
@@ -176,6 +178,7 @@ func SetupRoutes(e *echo.Echo) {
 	protected.PATCH("/groups/:groupId/join-requests/:requestId", groupHandler.RespondToJoinRequest)
 	protected.GET("/groups/:groupId/events", groupHandler.GetGroupEvents)
 	protected.POST("/groups/:groupId/events", groupHandler.CreateGroupEvent)
+	protected.POST("/groups/:groupId/events/:eventId/start", groupHandler.StartGroupEvent)
 	protected.DELETE("/groups/:groupId/events/:eventId", groupHandler.DeleteGroupEvent)
 
 	// WebSocket routes

@@ -62,9 +62,12 @@ func (h *SpotifyHandler) GetNowPlaying(c echo.Context) error {
 
 func (h *SpotifyHandler) Connect(c echo.Context) error {
 	userID := c.Get("userID").(string)
+	code := c.QueryParam("code")
+	if code == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing code"})
+	}
 
-	err := h.spotifyService.Connect(userID)
-	if err != nil {
+	if err := h.spotifyService.HandleCallback(userID, code); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 

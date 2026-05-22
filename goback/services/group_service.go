@@ -3,10 +3,26 @@ package services
 import (
 	"database/sql"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/Hamza-agha-tec/goback/models"
 )
+
+func buildEventShareLink(channelID, groupID, eventID string) string {
+	base := os.Getenv("FRONTEND_URL")
+	if base == "" {
+		base = "http://localhost:3000"
+	}
+	return fmt.Sprintf(
+		"%s/channels/%s/group/%s?event=%s",
+		strings.TrimRight(base, "/"),
+		channelID,
+		groupID,
+		eventID,
+	)
+}
 
 type GroupService struct {
 	db       *sql.DB
@@ -545,11 +561,11 @@ func (s *GroupService) GetGroupEvents(groupID, requestingUserID string) ([]*mode
 	}
 
 	rows, err := s.db.Query(`
-		SELECT id, group_id, title, description, scheduled_start, scheduled_end, creator_id, created_at
+		SELECT id, group_id, COALESCE(channel_id, $2), title, description, scheduled_start, scheduled_end, started_at, started_by, creator_id, created_at
 		FROM voice_events
 		WHERE group_id = $1
 		ORDER BY scheduled_start ASC
-	`, groupID)
+	`, groupID, channelID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query events: %w", err)
 	}
@@ -559,40 +575,144 @@ func (s *GroupService) GetGroupEvents(groupID, requestingUserID string) ([]*mode
 	for rows.Next() {
 		ev := &models.VoiceEvent{}
 		var desc sql.NullString
-		var sEnd sql.NullTime
-		err := rows.Scan(&ev.ID, &ev.GroupID, &ev.Title, &desc, &ev.ScheduledStart, &sEnd, &ev.CreatorID, &ev.CreatedAt)
+		var sEnd, startedAt sql.NullTime
+		var startedBy sql.NullString
+		err := rows.Scan(
+			&ev.ID, &ev.GroupID, &ev.ChannelID, &ev.Title, &desc,
+			&ev.ScheduledStart, &sEnd, &startedAt, &startedBy,
+			&ev.CreatorID, &ev.CreatedAt,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan event: %w", err)
 		}
-		if desc.Valid {
-			ev.Description = &desc.String
-		}
-		if sEnd.Valid {
-			ev.ScheduledEnd = &sEnd.Time
-		}
+		applyVoiceEventNulls(ev, desc, sEnd, startedAt, startedBy)
 		result = append(result, ev)
 	}
 	return result, nil
 }
 
-func (s *GroupService) CreateGroupEvent(groupID, creatorID string, dto models.CreateVoiceEventDto) (*models.VoiceEvent, error) {
-	// Check user role in group / channel: must be OWNER, ADMIN, MODERATOR
-	var channelRole string
-	var groupRole string
-
-	// Check channel role
+func (s *GroupService) GetGroupChannelID(groupID string) (string, error) {
 	var channelID string
 	err := s.db.QueryRow(`SELECT channel_id FROM groups WHERE id = $1`, groupID).Scan(&channelID)
+	return channelID, err
+}
+
+func (s *GroupService) isChannelMember(channelID, userID string) error {
+	var channelCount int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM channel_members WHERE channel_id = $1 AND user_id = $2`, channelID, userID).Scan(&channelCount)
+	if err != nil || channelCount == 0 {
+		return fmt.Errorf("access denied")
+	}
+	return nil
+}
+
+func (s *GroupService) isChannelAdmin(channelID, userID string) bool {
+	var role string
+	err := s.db.QueryRow(`SELECT role FROM channel_members WHERE channel_id = $1 AND user_id = $2`, channelID, userID).Scan(&role)
+	return err == nil && (role == "OWNER" || role == "ADMIN")
+}
+
+func applyVoiceEventNulls(
+	ev *models.VoiceEvent,
+	desc sql.NullString,
+	sEnd sql.NullTime,
+	startedAt sql.NullTime,
+	startedBy sql.NullString,
+) {
+	if desc.Valid {
+		ev.Description = &desc.String
+	}
+	if sEnd.Valid {
+		ev.ScheduledEnd = &sEnd.Time
+	}
+	if startedAt.Valid {
+		ev.StartedAt = &startedAt.Time
+	}
+	if startedBy.Valid {
+		ev.StartedBy = &startedBy.String
+	}
+	if ev.ChannelID != "" {
+		ev.ShareLink = buildEventShareLink(ev.ChannelID, ev.GroupID, ev.ID)
+	}
+}
+
+func (s *GroupService) GetChannelEvents(channelID, requestingUserID string) ([]*models.VoiceEvent, error) {
+	if err := s.isChannelMember(channelID, requestingUserID); err != nil {
+		return nil, err
+	}
+
+	rows, err := s.db.Query(`
+		SELECT ve.id, ve.group_id, g.name, COALESCE(ve.channel_id, g.channel_id), ve.title, ve.description,
+			ve.scheduled_start, ve.scheduled_end, ve.started_at, ve.started_by, ve.creator_id, ve.created_at
+		FROM voice_events ve
+		INNER JOIN groups g ON g.id = ve.group_id
+		WHERE g.channel_id = $1 AND g.group_type = 'voice'
+		ORDER BY ve.scheduled_start ASC
+	`, channelID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query events: %w", err)
+	}
+	defer rows.Close()
+
+	result := make([]*models.VoiceEvent, 0)
+	for rows.Next() {
+		ev := &models.VoiceEvent{}
+		var groupName string
+		var desc sql.NullString
+		var sEnd, startedAt sql.NullTime
+		var startedBy sql.NullString
+		err := rows.Scan(
+			&ev.ID, &ev.GroupID, &groupName, &ev.ChannelID, &ev.Title, &desc,
+			&ev.ScheduledStart, &sEnd, &startedAt, &startedBy,
+			&ev.CreatorID, &ev.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan event: %w", err)
+		}
+		ev.GroupName = &groupName
+		applyVoiceEventNulls(ev, desc, sEnd, startedAt, startedBy)
+		result = append(result, ev)
+	}
+	return result, nil
+}
+
+func (s *GroupService) CreateChannelEvent(channelID, creatorID string, dto models.CreateChannelEventDto) (*models.VoiceEvent, error) {
+	if err := s.isChannelMember(channelID, creatorID); err != nil {
+		return nil, err
+	}
+
+	var groupChannelID, groupType string
+	err := s.db.QueryRow(`SELECT channel_id, group_type FROM groups WHERE id = $1`, dto.GroupID).Scan(&groupChannelID, &groupType)
+	if err != nil {
+		return nil, fmt.Errorf("voice room not found")
+	}
+	if groupChannelID != channelID {
+		return nil, fmt.Errorf("voice room does not belong to this channel")
+	}
+	if groupType != "voice" {
+		return nil, fmt.Errorf("events can only be scheduled in voice rooms")
+	}
+
+	return s.CreateGroupEvent(dto.GroupID, creatorID, models.CreateVoiceEventDto{
+		Title:          dto.Title,
+		Description:    dto.Description,
+		ScheduledStart: dto.ScheduledStart,
+		ScheduledEnd:   dto.ScheduledEnd,
+	})
+}
+
+func (s *GroupService) CreateGroupEvent(groupID, creatorID string, dto models.CreateVoiceEventDto) (*models.VoiceEvent, error) {
+	var channelID string
+	var groupType string
+	err := s.db.QueryRow(`SELECT channel_id, group_type FROM groups WHERE id = $1`, groupID).Scan(&channelID, &groupType)
 	if err != nil {
 		return nil, fmt.Errorf("group not found")
 	}
-	_ = s.db.QueryRow(`SELECT role FROM channel_members WHERE channel_id = $1 AND user_id = $2`, channelID, creatorID).Scan(&channelRole)
-
-	// Check group role
-	_ = s.db.QueryRow(`SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2`, groupID, creatorID).Scan(&groupRole)
-
-	if channelRole != "OWNER" && channelRole != "ADMIN" && groupRole != "OWNER" && groupRole != "ADMIN" && groupRole != "MODERATOR" {
-		return nil, fmt.Errorf("insufficient permissions to create events")
+	if groupType != "voice" {
+		return nil, fmt.Errorf("events can only be scheduled in voice rooms")
+	}
+	if err := s.isChannelMember(channelID, creatorID); err != nil {
+		return nil, err
 	}
 
 	var ev models.VoiceEvent
@@ -605,45 +725,88 @@ func (s *GroupService) CreateGroupEvent(groupID, creatorID string, dto models.Cr
 		sEnd = sql.NullTime{Time: *dto.ScheduledEnd, Valid: true}
 	}
 
+	var startedAt sql.NullTime
+	var startedBy sql.NullString
+
 	err = s.db.QueryRow(`
-		INSERT INTO voice_events (group_id, title, description, scheduled_start, scheduled_end, creator_id)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id, group_id, title, description, scheduled_start, scheduled_end, creator_id, created_at
-	`, groupID, dto.Title, desc, dto.ScheduledStart, sEnd, creatorID).Scan(
-		&ev.ID, &ev.GroupID, &ev.Title, &desc, &ev.ScheduledStart, &sEnd, &ev.CreatorID, &ev.CreatedAt,
+		INSERT INTO voice_events (group_id, channel_id, title, description, scheduled_start, scheduled_end, creator_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id, group_id, channel_id, title, description, scheduled_start, scheduled_end, started_at, started_by, creator_id, created_at
+	`, groupID, channelID, dto.Title, desc, dto.ScheduledStart, sEnd, creatorID).Scan(
+		&ev.ID, &ev.GroupID, &ev.ChannelID, &ev.Title, &desc,
+		&ev.ScheduledStart, &sEnd, &startedAt, &startedBy,
+		&ev.CreatorID, &ev.CreatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create event: %w", err)
 	}
 
-	if desc.Valid {
-		ev.Description = &desc.String
-	}
-	if sEnd.Valid {
-		ev.ScheduledEnd = &sEnd.Time
-	}
+	applyVoiceEventNulls(&ev, desc, sEnd, startedAt, startedBy)
 
 	return &ev, nil
 }
 
-func (s *GroupService) DeleteGroupEvent(groupID, eventID, requestingUserID string) error {
-	// Check user role in group / channel: must be OWNER, ADMIN, MODERATOR
-	var channelRole string
-	var groupRole string
-
-	// Check channel role
+func (s *GroupService) StartGroupEvent(groupID, eventID, userID string) (*models.VoiceEvent, error) {
 	var channelID string
+	err := s.db.QueryRow(`SELECT channel_id FROM groups WHERE id = $1`, groupID).Scan(&channelID)
+	if err != nil {
+		return nil, fmt.Errorf("group not found")
+	}
+	if !s.isChannelAdmin(channelID, userID) {
+		return nil, fmt.Errorf("only channel owners and admins can start events")
+	}
+
+	var ev models.VoiceEvent
+	var desc sql.NullString
+	var sEnd, startedAt sql.NullTime
+	var startedBy sql.NullString
+
+	err = s.db.QueryRow(`
+		UPDATE voice_events
+		SET
+			started_at = COALESCE(started_at, NOW()),
+			started_by = COALESCE(started_by, $3::uuid),
+			channel_id = COALESCE(channel_id, $4::uuid)
+		WHERE id = $1 AND group_id = $2
+		RETURNING id, group_id, channel_id, title, description, scheduled_start, scheduled_end, started_at, started_by, creator_id, created_at
+	`, eventID, groupID, userID, channelID).Scan(
+		&ev.ID, &ev.GroupID, &ev.ChannelID, &ev.Title, &desc,
+		&ev.ScheduledStart, &sEnd, &startedAt, &startedBy,
+		&ev.CreatorID, &ev.CreatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("event not found")
+		}
+		return nil, fmt.Errorf("failed to start event: %w", err)
+	}
+
+	applyVoiceEventNulls(&ev, desc, sEnd, startedAt, startedBy)
+	return &ev, nil
+}
+
+func (s *GroupService) DeleteGroupEvent(groupID, eventID, requestingUserID string) error {
+	var channelID, creatorID string
 	err := s.db.QueryRow(`SELECT channel_id FROM groups WHERE id = $1`, groupID).Scan(&channelID)
 	if err != nil {
 		return fmt.Errorf("group not found")
 	}
-	_ = s.db.QueryRow(`SELECT role FROM channel_members WHERE channel_id = $1 AND user_id = $2`, channelID, requestingUserID).Scan(&channelRole)
+	if err := s.isChannelMember(channelID, requestingUserID); err != nil {
+		return err
+	}
 
-	// Check group role
-	_ = s.db.QueryRow(`SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2`, groupID, requestingUserID).Scan(&groupRole)
+	err = s.db.QueryRow(`SELECT creator_id FROM voice_events WHERE id = $1 AND group_id = $2`, eventID, groupID).Scan(&creatorID)
+	if err != nil {
+		return fmt.Errorf("event not found")
+	}
 
-	if channelRole != "OWNER" && channelRole != "ADMIN" && groupRole != "OWNER" && groupRole != "ADMIN" && groupRole != "MODERATOR" {
-		return fmt.Errorf("insufficient permissions to delete events")
+	if creatorID != requestingUserID {
+		var channelRole, groupRole string
+		_ = s.db.QueryRow(`SELECT role FROM channel_members WHERE channel_id = $1 AND user_id = $2`, channelID, requestingUserID).Scan(&channelRole)
+		_ = s.db.QueryRow(`SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2`, groupID, requestingUserID).Scan(&groupRole)
+		if channelRole != "OWNER" && channelRole != "ADMIN" && groupRole != "OWNER" && groupRole != "ADMIN" && groupRole != "MODERATOR" {
+			return fmt.Errorf("insufficient permissions to delete events")
+		}
 	}
 
 	_, err = s.db.Exec(`DELETE FROM voice_events WHERE id = $1 AND group_id = $2`, eventID, groupID)

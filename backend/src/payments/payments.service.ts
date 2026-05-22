@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.module';
 import DodoPayments from 'dodopayments';
 import { CreateOrderDto, ProductCheckoutDto, OrderStatus, WebhookOrderDto } from './dto/order.dto';
+import { createDodoClient } from './dodo-client.config';
 
 @Injectable()
 export class PaymentsService {
@@ -14,11 +15,7 @@ export class PaymentsService {
         private readonly configService: ConfigService,
         private readonly supabaseService: SupabaseService,
     ) {
-        this.client = new DodoPayments({
-            bearerToken: this.configService.get<string>('DODO_PAYMENTS_API_KEY') || '',
-            environment: 'test_mode',
-            webhookKey: this.configService.get<string>('DODO_PAYMENTS_WEBHOOK_SECRET') || '',
-        });
+        this.client = createDodoClient(this.configService);
     }
 
     private getPlanTypeFromProductId(productId: string): 'PRO' | 'GEEK' {
@@ -99,8 +96,16 @@ export class PaymentsService {
 
     async getCustomerPortalUrl(userId: string, returnUrl?: string) {
         const client = this.supabaseService.getClient();
+
+        const { data: settings } = await client
+            .from('user_settings')
+            .select('dodo_customer_id')
+            .eq('user_id', userId)
+            .maybeSingle();
+
         const { data: user } = await client.auth.admin.getUserById(userId);
-        const customerId = user?.user?.user_metadata?.dodo_customer_id;
+        const customerId =
+            settings?.dodo_customer_id ?? user?.user?.user_metadata?.dodo_customer_id;
 
         if (!customerId) {
             throw new BadRequestException('No payment customer found. Please make a purchase first.');

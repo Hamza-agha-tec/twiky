@@ -6,6 +6,7 @@ import {
   Archive,
   Bell,
   BellOff,
+  Calendar,
   Check,
   Copy,
   Globe,
@@ -30,6 +31,7 @@ import {
   AudioLines  ,
   X,
 } from 'lucide-react'
+import { ChannelEventsDialog } from '@/components/chat/channel-events-dialog'
 import { CreateEntityDialog, type CreateEntityValues } from '@/components/chat/create-entity-dialog'
 import { UserAvatar } from '@/components/chat/user-avatar'
 import { Button } from '@/components/ui/button'
@@ -1360,6 +1362,7 @@ export function ChannelsPanel({
   onViewWatchParticipantProfile,
 }: ChannelsPanelProps) {
   const [showCreateGroup, setShowCreateGroup] = useState(false)
+  const [eventsOpen, setEventsOpen] = useState(false)
   const [channelSettingsOpen, setChannelSettingsOpen] = useState(false)
   const [groupSettingsTarget, setGroupSettingsTarget] = useState<MockChannelGroup | null>(null)
   const [inviteTarget, setInviteTarget] = useState<MockChannelGroup | null>(null)
@@ -1381,6 +1384,7 @@ export function ChannelsPanel({
   const displayAvatar = channelAvatarUrl ?? channel.avatarUrl ?? null
   const displayBanner = channelBannerUrl ?? channel.bannerUrl ?? null
   const canManage = channel.role === 'OWNER' || channel.role === 'ADMIN' || (!!myId && channel.owner_id === myId)
+  const voiceGroups = channel.groups.filter((g) => g.kind === 'voice')
 
   function parseVoiceDrag(event: DragEvent<HTMLElement>) {
     const raw =
@@ -1441,43 +1445,59 @@ export function ChannelsPanel({
           )}
 
           <div className="relative flex justify-end pt-2.5">
-            {canManage ? (
-              <div className="flex items-center gap-0.5">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    'h-7 w-7 rounded-xl',
-                    displayBanner
-                      ? 'bg-black/25 text-white hover:bg-black/40 hover:text-white'
-                      : '',
-                  )}
-                  onClick={() => setShowCreateGroup(true)}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    'h-7 w-7 rounded-xl',
-                    displayBanner
-                      ? 'bg-black/25 text-white hover:bg-black/40 hover:text-white'
-                      : '',
-                  )}
-                  onClick={() => setChannelSettingsOpen(true)}
-                >
-                  <div className="relative">
-                    <MoreHorizontal className="h-3.5 w-3.5" />
-                    {channelPendingRequests.length > 0 && (
-                      <span className="absolute -right-1 -top-1 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-destructive text-[8px] font-bold text-white ring-1 ring-background">
-                        {channelPendingRequests.length > 9 ? '9+' : channelPendingRequests.length}
-                      </span>
+            <div className="flex items-center gap-0.5">
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  'h-7 w-7 rounded-xl',
+                  displayBanner
+                    ? 'bg-black/25 text-white hover:bg-black/40 hover:text-white'
+                    : '',
+                )}
+                onClick={() => setEventsOpen(true)}
+                title="Channel events"
+              >
+                <Calendar className="h-3.5 w-3.5" />
+              </Button>
+              {canManage ? (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                      'h-7 w-7 rounded-xl',
+                      displayBanner
+                        ? 'bg-black/25 text-white hover:bg-black/40 hover:text-white'
+                        : '',
                     )}
-                  </div>
-                </Button>
-              </div>
-            ) : null}
+                    onClick={() => setShowCreateGroup(true)}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                      'h-7 w-7 rounded-xl',
+                      displayBanner
+                        ? 'bg-black/25 text-white hover:bg-black/40 hover:text-white'
+                        : '',
+                    )}
+                    onClick={() => setChannelSettingsOpen(true)}
+                  >
+                    <div className="relative">
+                      <MoreHorizontal className="h-3.5 w-3.5" />
+                      {channelPendingRequests.length > 0 && (
+                        <span className="absolute -right-1 -top-1 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-destructive text-[8px] font-bold text-white ring-1 ring-background">
+                          {channelPendingRequests.length > 9 ? '9+' : channelPendingRequests.length}
+                        </span>
+                      )}
+                    </div>
+                  </Button>
+                </>
+              ) : null}
+            </div>
           </div>
 
           <div className="absolute inset-x-3 bottom-2 flex items-center gap-2.5">
@@ -1919,6 +1939,7 @@ export function ChannelsPanel({
               })
             })()}
           </div>
+
         </div>
 
 
@@ -1950,6 +1971,15 @@ export function ChannelsPanel({
         )}
 
       </div>
+
+      <ChannelEventsDialog
+        open={eventsOpen}
+        onOpenChange={setEventsOpen}
+        channelId={channel.id}
+        voiceGroups={voiceGroups}
+        myId={myId}
+        canManage={canManage}
+      />
 
       <CreateEntityDialog
         open={showCreateGroup}

@@ -54,5 +54,20 @@ func Connect() {
 		log.Println("✅ Verified/created voice_events table")
 	}
 
+	_, err = DB.Exec(`
+		ALTER TABLE public.voice_events ADD COLUMN IF NOT EXISTS channel_id uuid;
+		ALTER TABLE public.voice_events ADD COLUMN IF NOT EXISTS started_at timestamp with time zone;
+		ALTER TABLE public.voice_events ADD COLUMN IF NOT EXISTS started_by uuid;
+		UPDATE public.voice_events ve
+		SET channel_id = g.channel_id
+		FROM public.groups g
+		WHERE ve.group_id = g.id AND ve.channel_id IS NULL;
+	`)
+	if err != nil {
+		log.Println("⚠️ Failed to migrate voice_events columns:", err)
+	} else {
+		log.Println("✅ Verified voice_events started_at / channel_id columns")
+	}
+
 	log.Println("✅ Connected to Supabase DB")
 }

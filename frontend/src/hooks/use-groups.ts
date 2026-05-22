@@ -2,7 +2,8 @@
 
 import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { type BackendGroup, type GroupMessage, groupsApi } from '@/lib/groups-api';
+import { CHANNEL_EVENTS_KEY, channelsApi } from '@/lib/channels-api';
+import { type BackendGroup, type GroupMessage, groupsApi, type VoiceEvent } from '@/lib/groups-api';
 import { getSocket } from '@/lib/socket';
 export { type BackendGroup };
 
@@ -248,17 +249,41 @@ export function useGroupsRealtime(channelId: string | undefined) {
         queryClient.invalidateQueries({ queryKey: groupsKey });
       };
 
+      const eventsKey = CHANNEL_EVENTS_KEY(channelId);
+      const onEventChanged = () => {
+        if (!mounted) return;
+        queryClient.invalidateQueries({ queryKey: eventsKey });
+      };
+
+      const onEventStarted = (payload: VoiceEvent) => {
+        if (!mounted || !payload?.id) return;
+        queryClient.setQueryData<VoiceEvent[]>(eventsKey, (prev) => {
+          if (!prev?.length) return prev;
+          const idx = prev.findIndex((e) => e.id === payload.id);
+          if (idx === -1) return [...prev, payload];
+          const next = [...prev];
+          next[idx] = { ...next[idx], ...payload };
+          return next;
+        });
+      };
+
       joinRoom();
       socket.on('connect', joinRoom);
       socket.on('groupCreated', onGroupCreated);
       socket.on('groupUpdated', onGroupUpdated);
       socket.on('groupDeleted', onGroupDeleted);
+      socket.on('eventCreated', onEventChanged);
+      socket.on('eventDeleted', onEventChanged);
+      socket.on('eventStarted', onEventStarted);
 
       cleanup = () => {
         socket.off('connect', joinRoom);
         socket.off('groupCreated', onGroupCreated);
         socket.off('groupUpdated', onGroupUpdated);
         socket.off('groupDeleted', onGroupDeleted);
+        socket.off('eventCreated', onEventChanged);
+        socket.off('eventDeleted', onEventChanged);
+        socket.off('eventStarted', onEventStarted);
         socket.emit('leaveChannelRoom', channelId);
       };
     });

@@ -236,6 +236,48 @@ func (h *GroupHandler) RespondToJoinRequest(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"message": "join request processed successfully"})
 }
 
+func (h *GroupHandler) GetChannelEvents(c echo.Context) error {
+	user := c.Get("user").(*middleware.AuthenticatedUser)
+	channelID := c.Param("channelId")
+
+	events, err := h.groupService.GetChannelEvents(channelID, user.UserID)
+	if err != nil {
+		if err.Error() == "access denied" {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "access denied"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, events)
+}
+
+func (h *GroupHandler) CreateChannelEvent(c echo.Context) error {
+	user := c.Get("user").(*middleware.AuthenticatedUser)
+	channelID := c.Param("channelId")
+
+	var dto models.CreateChannelEventDto
+	if err := c.Bind(&dto); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	event, err := h.groupService.CreateChannelEvent(channelID, user.UserID, dto)
+	if err != nil {
+		switch err.Error() {
+		case "access denied":
+			return c.JSON(http.StatusForbidden, map[string]string{"error": err.Error()})
+		case "voice room not found", "voice room does not belong to this channel", "events can only be scheduled in voice rooms":
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		default:
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+	}
+
+	h.socketIOService.BroadcastToRoom("group_"+event.GroupID, "eventCreated", event)
+	h.socketIOService.BroadcastToRoom("channel_"+channelID, "eventCreated", event)
+
+	return c.JSON(http.StatusCreated, event)
+}
+
 func (h *GroupHandler) GetGroupEvents(c echo.Context) error {
 	user := c.Get("user").(*middleware.AuthenticatedUser)
 	groupID := c.Param("groupId")
@@ -262,16 +304,50 @@ func (h *GroupHandler) CreateGroupEvent(c echo.Context) error {
 
 	event, err := h.groupService.CreateGroupEvent(groupID, user.UserID, dto)
 	if err != nil {
-		if err.Error() == "insufficient permissions to create events" {
+		switch err.Error() {
+		case "access denied":
 			return c.JSON(http.StatusForbidden, map[string]string{"error": err.Error()})
+		case "events can only be scheduled in voice rooms":
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		default:
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	// Broadcast socket update
+	channelID, _ := h.groupService.GetGroupChannelID(groupID)
+
 	h.socketIOService.BroadcastToRoom("group_"+groupID, "eventCreated", event)
+	if channelID != "" {
+		h.socketIOService.BroadcastToRoom("channel_"+channelID, "eventCreated", event)
+	}
 
 	return c.JSON(http.StatusCreated, event)
+}
+
+func (h *GroupHandler) StartGroupEvent(c echo.Context) error {
+	user := c.Get("user").(*middleware.AuthenticatedUser)
+	groupID := c.Param("groupId")
+	eventID := c.Param("eventId")
+
+	event, err := h.groupService.StartGroupEvent(groupID, eventID, user.UserID)
+	if err != nil {
+		switch err.Error() {
+		case "only channel owners and admins can start events":
+			return c.JSON(http.StatusForbidden, map[string]string{"error": err.Error()})
+		case "event not found", "group not found":
+			return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		default:
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+	}
+
+	channelID, _ := h.groupService.GetGroupChannelID(groupID)
+	h.socketIOService.BroadcastToRoom("group_"+groupID, "eventStarted", event)
+	if channelID != "" {
+		h.socketIOService.BroadcastToRoom("channel_"+channelID, "eventStarted", event)
+	}
+
+	return c.JSON(http.StatusOK, event)
 }
 
 func (h *GroupHandler) DeleteGroupEvent(c echo.Context) error {
@@ -287,8 +363,12 @@ func (h *GroupHandler) DeleteGroupEvent(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	// Broadcast socket update
+	channelID, _ := h.groupService.GetGroupChannelID(groupID)
+
 	h.socketIOService.BroadcastToRoom("group_"+groupID, "eventDeleted", map[string]string{"eventId": eventID})
+	if channelID != "" {
+		h.socketIOService.BroadcastToRoom("channel_"+channelID, "eventDeleted", map[string]string{"eventId": eventID})
+	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "event deleted successfully"})
 }

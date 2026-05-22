@@ -29,7 +29,6 @@ import {
   Smile,
   Share2,
   Calendar,
-  Trash2,
   UserPlus,
 } from 'lucide-react'
 import { UserAvatar } from '@/components/chat/user-avatar'
@@ -45,7 +44,6 @@ import { getSocket } from '@/lib/socket'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ShareModal } from '@/components/chat/share-modal'
 import { useProfile } from '@/hooks/use-user'
-import { groupsApi } from '@/lib/groups-api'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -108,6 +106,10 @@ interface VoiceGroupViewProps {
   localScreenStream?: MediaStream | null
   localCameraStream?: MediaStream | null
   isScreenSharing?: boolean
+  /** When true, do not auto-join on mount (scheduled voice events). */
+  disableAutoJoin?: boolean
+  /** Show waiting UI until the host starts the event. */
+  eventNotStarted?: boolean
 }
 
 function useElapsedTime(startMs: number, active: boolean) {
@@ -155,6 +157,8 @@ export function VoiceGroupView({
   localScreenStream,
   localCameraStream,
   isScreenSharing,
+  disableAutoJoin = false,
+  eventNotStarted = false,
 }: VoiceGroupViewProps) {
   const [videoOn, setVideoOn] = useState(
     () => !!(localCameraStream?.getVideoTracks().some(t => t.readyState === 'live' && !t.muted))
@@ -182,43 +186,9 @@ export function VoiceGroupView({
   const [inviteSearch, setInviteSearch] = useState('')
   const [sentInvites, setSentInvites] = useState<Set<string>>(new Set())
 
-  // New features states
   const [shareOpen, setShareOpen] = useState(false)
-  const [eventsOpen, setEventsOpen] = useState(false)
-  const [formTitle, setFormTitle] = useState('')
-  const [formDesc, setFormDesc] = useState('')
-  const [formStart, setFormStart] = useState('')
-  const [isCreatingEvent, setIsCreatingEvent] = useState(false)
 
   const { data: profile } = useProfile()
-
-  const { data: events = [], isLoading: eventsLoading, refetch: refetchEvents } = useQuery({
-    queryKey: ['voice-events', group.id],
-    queryFn: () => groupsApi.getGroupEvents(group.id),
-    enabled: eventsOpen,
-  })
-
-  const handleCreateEvent = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!formTitle.trim() || !formStart) return
-    setIsCreatingEvent(true)
-    try {
-      await groupsApi.createGroupEvent(group.id, {
-        title: formTitle.trim(),
-        description: formDesc.trim(),
-        scheduled_start: new Date(formStart).toISOString(),
-      })
-      toast.success('Event scheduled successfully!')
-      setFormTitle('')
-      setFormDesc('')
-      setFormStart('')
-      refetchEvents()
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to schedule event')
-    } finally {
-      setIsCreatingEvent(false)
-    }
-  }
 
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([])
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('default')
@@ -372,17 +342,6 @@ export function VoiceGroupView({
       upsertMessage(message)
     }
 
-    const onEventCreated = (event: any) => {
-      if (event.group_id === roomId) {
-        refetchEvents()
-        toast.info(`New event scheduled: "${event.title}"`)
-      }
-    }
-
-    const onEventDeleted = () => {
-      refetchEvents()
-    }
-
     if (!isJoined) {
       setChatMessages([])
       setChatUnread(false)
@@ -396,8 +355,6 @@ export function VoiceGroupView({
       s.on('voice-chat-history', onHistory)
       s.on('voice-chat-message', onMessage)
       s.on('voice-chat-message-updated', onMessageUpdated)
-      s.on('eventCreated', onEventCreated)
-      s.on('eventDeleted', onEventDeleted)
       s.emit('voice-chat-history', { roomId })
     })
 
@@ -407,11 +364,9 @@ export function VoiceGroupView({
         socket.off('voice-chat-history', onHistory)
         socket.off('voice-chat-message', onMessage)
         socket.off('voice-chat-message-updated', onMessageUpdated)
-        socket.off('eventCreated', onEventCreated)
-        socket.off('eventDeleted', onEventDeleted)
       }
     }
-  }, [group.id, group.label, isJoined, myId, refetchEvents])
+  }, [group.id, group.label, isJoined, myId])
 
   const sendChatMessage = useCallback(() => {
     const text = chatInput.trim()
@@ -509,16 +464,18 @@ export function VoiceGroupView({
   }
 
   useEffect(() => {
+    if (disableAutoJoin || eventNotStarted) return
     if (!isJoined) onJoin()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const soloOrDuo = participants.length <= 2
   const cols =
-    participants.length <= 1 ? 'grid-cols-1 max-w-lg mx-auto w-full place-content-center'
-    : participants.length <= 2 ? 'grid-cols-2 place-content-center'
-    : participants.length <= 4 ? 'grid-cols-2 place-content-center'
-    : participants.length <= 6 ? 'grid-cols-3 place-content-center'
-    : 'grid-cols-4 place-content-center'
+    participants.length <= 1 ? 'grid-cols-1'
+    : participants.length <= 2 ? 'grid-cols-2'
+    : participants.length <= 4 ? 'grid-cols-2'
+    : participants.length <= 6 ? 'grid-cols-3'
+    : 'grid-cols-4'
 
   const remoteScreenPeerIds = new Set<string>()
   if (isJoined) {
@@ -532,7 +489,7 @@ export function VoiceGroupView({
   return (
     <motion.div
       className={cn(
-        'flex overflow-hidden bg-background',
+        'flex h-full w-full min-h-0 overflow-hidden bg-background',
         isFullscreen
           ? 'fixed inset-0 z-[100]'
           : 'min-w-0 flex-1',
@@ -549,32 +506,21 @@ export function VoiceGroupView({
     )}
     {/* Main voice area */}
     <div
-      className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
+      className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
       onMouseEnter={() => setControlsVisible(true)}
       onMouseLeave={() => setControlsVisible(false)}
     >
-      {/* Header — floats over content, shows on hover */}
-      <AnimatePresence>
-        {uiVisible && (
-          <motion.div
-            className="absolute top-0 left-0 right-0 z-20 flex h-12 items-center gap-2.5 bg-sidebar/90 px-4 backdrop-blur-xl border-b border-border/50 shadow-sm"
-            initial={{ opacity: 0, y: -40 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -40 }}
-            transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.7 }}
-          >
-            <AudioLines className="h-4 w-4 flex-shrink-0 text-primary" />
-            <span className="text-[13px] font-semibold text-foreground">{group.label}</span>
-            <span className="ml-auto text-[11px] text-muted-foreground">
-              {participants.length} {participants.length === 1 ? 'participant' : 'participants'}
-            </span>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border/40 bg-sidebar/60 px-3 backdrop-blur-sm">
+        <AudioLines className="h-3.5 w-3.5 shrink-0 text-primary" />
+        <span className="truncate text-[12px] font-semibold text-foreground">{group.label}</span>
+        <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+          {participants.length} {participants.length === 1 ? 'participant' : 'participants'}
+        </span>
+      </div>
 
       {/* Local screen share preview — always mounted so ref is valid; hidden when not sharing */}
       <div
-        className="mx-4 mt-4 flex gap-3"
+        className="mx-2 mt-2 flex shrink-0 gap-3"
         style={{ display: (isJoined && (sharing || remoteScreenShares.length > 0)) ? undefined : 'none', maxHeight: '40%' }}
       >
         <div
@@ -638,7 +584,7 @@ export function VoiceGroupView({
       </div>
 
       {/* Participants grid */}
-      <div className="flex flex-1 flex-col overflow-hidden p-4">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden p-2">
         <AnimatePresence mode="wait" initial={false}>
           {!isJoined ? (
           <motion.div
@@ -649,7 +595,17 @@ export function VoiceGroupView({
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.16, ease: 'easeOut' }}
           >
-            {exitReason === 'left' ? (
+            {eventNotStarted ? (
+              <>
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/10 border border-amber-500/20">
+                  <Calendar className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+                </div>
+                <p className="text-[13px] font-semibold text-foreground">Event not yet started</p>
+                <p className="max-w-[240px] text-[11px] text-muted-foreground leading-relaxed">
+                  The host has not started this event yet. You will be able to join as soon as it goes live.
+                </p>
+              </>
+            ) : exitReason === 'left' ? (
               <>
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
                   <PhoneOff className="h-6 w-6 text-muted-foreground" />
@@ -675,14 +631,13 @@ export function VoiceGroupView({
         ) : (
           <motion.div
             key="participants"
-            className="flex h-full flex-col gap-3"
+            className="flex h-full min-h-0 flex-col"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.16, ease: 'easeOut' }}
           >
-            {/* Participant grid — fills available space */}
-            <div className={cn('grid flex-1 gap-2', cols)}>
+            <div className={cn('grid min-h-0 flex-1 auto-rows-fr gap-2', cols)}>
               <AnimatePresence>
                 {participants.map((member) => {
                   const isMe = member.id === myId
@@ -702,7 +657,8 @@ export function VoiceGroupView({
                           exit={{ opacity: 0, scale: 0.95 }}
                           transition={{ duration: 0.15 }}
                           className={cn(
-                            'group/tile relative flex flex-col items-center justify-center overflow-hidden rounded-xl border border-white/5 bg-muted/30 cursor-default select-none transition-all duration-200 aspect-video',
+                            'group/tile relative flex h-full min-h-[140px] flex-col items-center justify-center overflow-hidden rounded-xl border border-white/5 bg-muted/30 cursor-default select-none transition-all duration-200',
+                            !soloOrDuo && 'aspect-video min-h-0',
                             member.isSpeaking && !member.isMuted && 'ring-2 ring-green-500/80',
                           )}
                           style={soundboardUserId === member.id ? {
@@ -791,34 +747,26 @@ export function VoiceGroupView({
               </AnimatePresence>
             </div>
 
-            {/* Action buttons */}
             <motion.div
-              className="flex items-center justify-center gap-3"
-              animate={{ y: uiVisible ? -80 : 0 }}
+              className="pointer-events-none absolute bottom-20 left-0 right-0 z-10 flex items-center justify-center gap-2 px-2"
+              animate={{ opacity: uiVisible ? 1 : 0, y: uiVisible ? 0 : 8 }}
               transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.7 }}
             >
               <button
+                type="button"
                 onClick={() => { setInviteSearch(''); setSentInvites(new Set()); setInviteOpen(true) }}
-                className="flex items-center gap-2 rounded-xl border border-dashed border-border/50 px-4 py-2 text-[12px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary shadow-sm"
+                className="pointer-events-auto flex items-center gap-1.5 rounded-xl border border-border/50 bg-sidebar/90 px-3 py-1.5 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur-md transition-colors hover:border-primary/40 hover:text-primary"
               >
-                <UserPlus className="h-4 w-4" />
-                Invite Friends
+                <UserPlus className="h-3.5 w-3.5" />
+                Invite
               </button>
-
               <button
+                type="button"
                 onClick={() => setShareOpen(true)}
-                className="flex items-center gap-2 rounded-xl border border-dashed border-border/50 px-4 py-2 text-[12px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary shadow-sm"
+                className="pointer-events-auto flex items-center gap-1.5 rounded-xl border border-border/50 bg-sidebar/90 px-3 py-1.5 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur-md transition-colors hover:border-primary/40 hover:text-primary"
               >
-                <Share2 className="h-4 w-4" />
+                <Share2 className="h-3.5 w-3.5" />
                 Share Call
-              </button>
-
-              <button
-                onClick={() => setEventsOpen(true)}
-                className="flex items-center gap-2 rounded-xl border border-dashed border-border/50 px-4 py-2 text-[12px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary shadow-sm"
-              >
-                <Calendar className="h-4 w-4" />
-                Events
               </button>
             </motion.div>
           </motion.div>
@@ -1415,144 +1363,6 @@ export function VoiceGroupView({
       title={`Share ${group.label}`}
     />
 
-    {/* Events Modal */}
-    <Dialog open={eventsOpen} onOpenChange={setEventsOpen}>
-      <DialogContent className="max-w-2xl bg-sidebar border-border p-6 rounded-2xl shadow-2xl flex flex-col md:flex-row gap-6 max-h-[90vh] overflow-y-auto">
-        {/* Left panel: list of events */}
-        <div className="flex-1 flex flex-col min-w-0">
-          <h3 className="text-[15px] font-bold text-foreground mb-3 flex items-center gap-2">
-            <Calendar className="h-4.5 w-4.5 text-primary" />
-            Scheduled Events
-          </h3>
-          
-          <div className="flex-1 overflow-y-auto space-y-2.5 max-h-[50vh] pr-2">
-            {eventsLoading ? (
-              <div className="flex flex-col gap-2 py-4">
-                <div className="h-12 w-full animate-pulse bg-muted/30 rounded-xl" />
-                <div className="h-12 w-full animate-pulse bg-muted/30 rounded-xl" />
-              </div>
-            ) : events.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-10 text-center gap-2">
-                <div className="h-10 w-10 flex items-center justify-center rounded-xl bg-muted/40 text-muted-foreground">
-                  <Calendar className="h-5 w-5" />
-                </div>
-                <p className="text-[12px] font-semibold text-foreground">No events scheduled</p>
-                <p className="text-[11px] text-muted-foreground">Plan a call or meeting for this group!</p>
-              </div>
-            ) : (
-              events.map((ev) => (
-                <div key={ev.id} className="relative group/ev flex items-start gap-3 p-3 rounded-xl border border-border/40 bg-muted/20 hover:bg-muted/45 transition-colors">
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <p className="text-[13px] font-bold text-foreground truncate">{ev.title}</p>
-                    {ev.description && (
-                      <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed">
-                        {ev.description}
-                      </p>
-                    )}
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-primary/80 font-medium pt-0.5">
-                      <span>
-                        {new Date(ev.scheduled_start).toLocaleDateString([], {
-                          weekday: 'short',
-                          month: 'short',
-                          day: 'numeric',
-                        })}
-                      </span>
-                      <span>·</span>
-                      <span>
-                        {new Date(ev.scheduled_start).toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </span>
-                      {ev.scheduled_end && (
-                        <>
-                          <span>-</span>
-                          <span>
-                            {new Date(ev.scheduled_end).toLocaleTimeString([], {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <button
-                    onClick={async () => {
-                      try {
-                        await groupsApi.deleteGroupEvent(group.id, ev.id)
-                        refetchEvents()
-                        toast.success('Event deleted successfully')
-                      } catch (err: any) {
-                        toast.error(err.message || 'Failed to delete event')
-                      }
-                    }}
-                    className="opacity-0 group-hover/ev:opacity-100 flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-destructive/10 hover:text-destructive self-center"
-                    title="Delete event"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Vertical divider on desktop */}
-        <div className="hidden md:block w-px bg-border/40 self-stretch" />
-
-        {/* Right panel: scheduling form */}
-        <form onSubmit={handleCreateEvent} className="w-full md:w-64 flex flex-col gap-3.5">
-          <div>
-            <h4 className="text-[13px] font-bold text-foreground">Schedule New Event</h4>
-            <p className="text-[11px] text-muted-foreground">Notify members about an upcoming voice call.</p>
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Title</label>
-            <input
-              required
-              type="text"
-              value={formTitle}
-              onChange={(e) => setFormTitle(e.target.value)}
-              placeholder="Team Meeting, Gaming Session..."
-              className="w-full h-8 px-2.5 rounded-xl border border-border bg-muted/30 text-[12px] placeholder:text-muted-foreground outline-none focus:border-primary/45 transition-colors"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Description</label>
-            <textarea
-              value={formDesc}
-              onChange={(e) => setFormDesc(e.target.value)}
-              placeholder="What is this meeting about? (optional)"
-              rows={3}
-              className="w-full p-2 rounded-xl border border-border bg-muted/30 text-[12px] placeholder:text-muted-foreground outline-none focus:border-primary/45 transition-colors resize-none"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Starts At</label>
-            <input
-              required
-              type="datetime-local"
-              value={formStart}
-              onChange={(e) => setFormStart(e.target.value)}
-              className="w-full h-8 px-2.5 rounded-xl border border-border bg-muted/30 text-[12px] outline-none focus:border-primary/45 transition-colors text-foreground"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={isCreatingEvent}
-            className="mt-2 w-full h-8.5 rounded-xl bg-primary text-[12px] font-bold text-primary-foreground shadow-md transition-colors hover:bg-primary/95 disabled:opacity-50 flex items-center justify-center"
-          >
-            {isCreatingEvent ? 'Scheduling...' : 'Schedule Event'}
-          </button>
-        </form>
-      </DialogContent>
-    </Dialog>
     </motion.div>
   )
 }

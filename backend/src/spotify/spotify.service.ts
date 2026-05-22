@@ -197,13 +197,16 @@ export class SpotifyService {
       const { error } = await this.supabaseService
         .getClient()
         .from('spotify_connections')
-        .upsert({
-          user_id: userId,
-          access_token,
-          refresh_token,
-          expires_at: expiresAt.toISOString(),
-          updated_at: new Date().toISOString(),
-        });
+        .upsert(
+          {
+            user_id: userId,
+            access_token,
+            refresh_token,
+            expires_at: expiresAt.toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' },
+        );
 
       if (error) throw new Error(`Database error: ${error.message}`);
       return { success: true };

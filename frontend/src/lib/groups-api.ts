@@ -193,16 +193,24 @@ export const groupsApi = {
 
   deleteGroupEvent: (groupId: string, eventId: string) =>
     authedFetch(`/groups/${groupId}/events/${eventId}`, { method: 'DELETE' }),
+
+  startGroupEvent: (groupId: string, eventId: string) =>
+    authedFetch<VoiceEvent>(`/groups/${groupId}/events/${eventId}/start`, { method: 'POST' }),
 };
 
 export interface VoiceEvent {
   id: string;
   group_id: string;
+  channel_id?: string;
+  group_name?: string | null;
   title: string;
   description: string | null;
   scheduled_start: string;
   scheduled_end: string | null;
+  started_at?: string | null;
+  started_by?: string | null;
   creator_id: string;
   created_at: string;
+  share_link?: string;
 }
 

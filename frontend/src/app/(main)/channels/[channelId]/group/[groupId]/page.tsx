@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { WorkspaceEmptyState } from '@/components/chat/workspace-empty-state'
 import { useGroupMessageRealtime, useGroupMessages, useGroupMembers, useSendGroupMessage, useChannelGroups, useToggleGroupMessageReaction, backendGroupToMock } from '@/hooks/use-groups'
 import { useCreateDirectConversation } from '@/hooks/use-direct-conversations'
@@ -12,7 +14,12 @@ import { AudioLines, PhoneOff, Popcorn } from 'lucide-react'
 
 import { useProfile } from '@/hooks/use-user'
 import { useOnlineUsers } from '@/hooks/use-socket'
+import { VoiceEventBanner } from '@/components/chat/voice-event-banner'
 import { VoiceGroupView } from '@/components/chat/voice-group-view'
+import { useChannelEventLive } from '@/hooks/use-channel-event-live'
+import { CHANNEL_EVENTS_KEY, channelsApi } from '@/lib/channels-api'
+import { isEventLive, resolveActiveEvent } from '@/lib/event-utils'
+import { groupsApi, type VoiceEvent } from '@/lib/groups-api'
 import { WatchRoomView } from '@/components/watch/watch-room-view'
 import { useDmCallContext } from '@/context/DmCallContext'
 import { useChannels } from '@/hooks/use-channels'
@@ -102,7 +109,10 @@ function toFeedPosts(messages: GroupMessage[], myId?: string): FeedPost[] {
 export default function GroupPage() {
   const { channelId, groupId } = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const queryClient = useQueryClient()
   const gId = groupId as string
+  const eventId = searchParams.get('event')
   
   // Initialize realtime hooks
   useGroupMessageRealtime(gId)
@@ -115,11 +125,36 @@ export default function GroupPage() {
   const { mutateAsync: sendMessage } = useSendGroupMessage(gId)
   const { mutate: toggleReaction } = useToggleGroupMessageReaction(gId, profile?.id)
   const [activeTab, setActiveTab] = useState<MainAreaTab>('feed')
+  const [startingEvent, setStartingEvent] = useState(false)
   const { data: channelGroups = [], isLoading: groupsLoading } = useChannelGroups(channelId as string)
   const { data: channels = [] } = useChannels()
   const activeChannel = channels.find(c => c.id === channelId)
-  
+  const canManageChannel =
+    activeChannel?.role === 'OWNER' ||
+    activeChannel?.role === 'ADMIN' ||
+    (!!profile?.id && activeChannel?.owner_id === profile.id)
+
+  const { data: channelEvents = [] } = useQuery({
+    queryKey: CHANNEL_EVENTS_KEY(channelId as string),
+    queryFn: () => channelsApi.getChannelEvents(channelId as string),
+    enabled: !!channelId,
+  })
+
   const backendGroup = channelGroups.find(g => g.id === gId)
+
+  const activeEvent =
+    backendGroup?.group_type === 'voice'
+      ? resolveActiveEvent(channelEvents, gId, eventId)
+      : null
+
+  const eventBlocksJoin = !!activeEvent && !isEventLive(activeEvent)
+
+  useChannelEventLive(
+    channelId as string,
+    backendGroup?.group_type === 'voice' ? gId : undefined,
+    eventId,
+    canManageChannel,
+  )
   
   const voice = useVoice()
   const onlineUsers = useOnlineUsers()
@@ -185,6 +220,51 @@ export default function GroupPage() {
     }
   }, [gId, channelId, backendGroup, voice.joinedGroupId])
 
+  // Cannot stay in voice while waiting for a scheduled event to start
+  useEffect(() => {
+    if (!eventBlocksJoin || backendGroup?.group_type !== 'voice') return
+    if (voice.joinedGroupId === gId) {
+      void voice.leave()
+    }
+  }, [eventBlocksJoin, backendGroup?.group_type, gId, voice])
+
+  async function handleJoinEvent() {
+    if (eventBlocksJoin) {
+      toast.error('Event has not started yet')
+      return
+    }
+    try {
+      await voice.join(gId)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to join'
+      toast.error(message)
+    }
+  }
+
+  async function handleStartEvent() {
+    if (!activeEvent) return
+    setStartingEvent(true)
+    try {
+      const started = await groupsApi.startGroupEvent(activeEvent.group_id, activeEvent.id)
+      queryClient.setQueryData<VoiceEvent[]>(
+        CHANNEL_EVENTS_KEY(channelId as string),
+        (prev) => {
+          if (!prev?.length) return prev
+          return prev.map((e) => (e.id === started.id ? { ...e, ...started } : e))
+        },
+      )
+      if (voice.joinedGroupId !== gId) {
+        await voice.join(gId)
+      }
+      toast.success('Event started — members can join now')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to start event'
+      toast.error(message)
+    } finally {
+      setStartingEvent(false)
+    }
+  }
+
   if (!backendGroup) {
     if (groupsLoading) {
       return (
@@ -249,7 +329,18 @@ export default function GroupPage() {
     }
 
     return (
-      <div className="flex h-full w-full overflow-hidden">
+      <div className="flex h-full w-full flex-col overflow-hidden">
+        {activeEvent && (
+          <VoiceEventBanner
+            event={activeEvent}
+            canManage={canManageChannel}
+            isJoined={voice.joinedGroupId === gId}
+            onJoin={handleJoinEvent}
+            onStart={handleStartEvent}
+            starting={startingEvent}
+          />
+        )}
+        <div className="min-h-0 flex-1">
         <VoiceGroupView
           group={group}
           channelId={channelId as string}
@@ -258,7 +349,9 @@ export default function GroupPage() {
           isMuted={voice.isMuted}
           joinedAt={voice.joinedAt}
           myId={profile?.id}
-          onJoin={() => voice.join(gId)}
+          disableAutoJoin={!!activeEvent}
+          eventNotStarted={eventBlocksJoin}
+          onJoin={handleJoinEvent}
           onLeave={() => voice.leave()}
           onToggleMute={() => voice.toggleMute()}
           onKick={(userId) => voice.kick(userId, gId)}
@@ -277,6 +370,7 @@ export default function GroupPage() {
           localCameraStream={voice.webrtc.localCameraStream}
           isScreenSharing={voice.webrtc.isScreenSharing}
         />
+        </div>
       </div>
     )
   }
