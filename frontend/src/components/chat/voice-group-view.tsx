@@ -1357,10 +1357,12 @@ export function VoiceGroupView({
           groupId: group.id,
           groupName: group.label,
           channelId: channelId,
-          inviterName: profile?.username || 'Someone'
+          inviterName: profile?.username || 'Someone',
+          participants: participants.map(p => ({ id: p.id, name: p.name, avatarUrl: p.avatarUrl ?? null })),
         })
       }}
       title={`Share ${group.label}`}
+      participants={participants.map(p => ({ id: p.id, name: p.name, avatarUrl: p.avatarUrl }))}
     />
 
     </motion.div>

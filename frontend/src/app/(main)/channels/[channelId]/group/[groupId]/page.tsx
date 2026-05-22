@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -194,17 +194,20 @@ export default function GroupPage() {
     }
   }, [voice.joinedGroupId, gId, channelId, backendGroup])
 
-  // Sync active watch room for watch groups
+  // Sync active watch room for watch groups — skip on page reload
+  const isPageReload = useRef(
+    typeof performance !== 'undefined' &&
+    (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type === 'reload'
+  )
   useEffect(() => {
+    if (isPageReload.current) return
     if (backendGroup?.group_type === 'watch' && !voice.joinedGroupId) {
       const activeWatch = localStorage.getItem('twiky-active-watch-room')
       let shouldUpdate = true
       if (activeWatch) {
         try {
           const parsed = JSON.parse(activeWatch)
-          if (parsed.roomId === gId) {
-            shouldUpdate = false
-          }
+          if (parsed.roomId === gId) shouldUpdate = false
         } catch {
           shouldUpdate = true
         }

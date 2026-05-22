@@ -16,6 +16,7 @@ import {
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   ArrowLeft,
+  AudioLines,
   BarChart3,
   Bookmark,
   Crown,
@@ -28,6 +29,7 @@ import {
   MoreHorizontal,
   Paperclip,
   Pin,
+  Play,
   PinOff,
   Plus,
   Reply,
@@ -64,6 +66,7 @@ import { useRemoveGroupMember, useUpdateGroupMemberRole } from '@/hooks/use-grou
 import { useProfile, useSendFollowRequest, useUserById, useUserFollowers, useUserFollowing, useUserPosts } from '@/hooks/use-user'
 import { useOnlineUsers } from '@/hooks/use-socket'
 import { useAuth } from '@/context/AuthContext'
+import { useVoiceRoomLive } from '@/hooks/use-voice-room-live'
 import { filesApi } from '@/lib/files-api'
 import type { GroupMember, GroupMessageMention, LinkEmbed } from '@/lib/groups-api'
 import { cn } from '@/lib/utils'
@@ -724,6 +727,130 @@ function ForumPostEmbed({ data }: { data: ForumPostEmbedPayload }) {
   )
 }
 
+// ─── Voice Invite Card ───────────────────────────────────────────────────────
+
+interface VoiceInviteEmbedPayload {
+  __twiky_type: 'voice_invite'
+  groupId: string
+  groupName: string
+  channelId?: string
+  inviterName: string
+  participants?: { id: string; name: string; avatarUrl: string | null }[]
+}
+
+function tryParseVoiceInvite(body: string): VoiceInviteEmbedPayload | null {
+  try {
+    const p = JSON.parse(body)
+    if (p?.__twiky_type === 'voice_invite') return p as VoiceInviteEmbedPayload
+  } catch { /* not JSON */ }
+  return null
+}
+
+function VoiceInviteEmbed({ data }: { data: VoiceInviteEmbedPayload }) {
+  const router = useNextRouter()
+  const { participants: livePts, lastEvent } = useVoiceRoomLive(data.groupId)
+
+  const isActive = livePts === null ? true : livePts.length > 0
+  const displayPts = livePts ?? (data.participants ?? [])
+  const shownPts = displayPts.slice(0, 5)
+  const overflow = displayPts.length - shownPts.length
+
+  function handleJoin(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!isActive) return
+    if (data.channelId && data.groupId) {
+      router.push(`/channels/${data.channelId}/group/${data.groupId}`)
+    }
+  }
+
+  return (
+    <div className={`mt-1 w-[268px] overflow-hidden rounded-2xl border shadow-xl transition-all duration-300 ${isActive ? 'border-zinc-800 bg-zinc-950 hover:border-zinc-700' : 'border-zinc-800/40 bg-zinc-950/50'}`}>
+      <div className={`h-0.5 w-full bg-gradient-to-r ${isActive ? 'from-zinc-700 via-zinc-500 to-zinc-700' : 'from-zinc-800/60 via-zinc-700/60 to-zinc-800/60'}`} />
+      <div className="p-4 space-y-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              {isActive ? (
+                <>
+                  <span className="relative flex h-1.5 w-1.5 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60" />
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500" />
+                  </span>
+                  <span className="text-[9px] font-semibold uppercase tracking-widest text-green-500">Voice · Live</span>
+                </>
+              ) : (
+                <>
+                  <span className="relative inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-600" />
+                  <span className="text-[9px] font-semibold uppercase tracking-widest text-zinc-600">Room Expired</span>
+                </>
+              )}
+            </div>
+            <p className={`text-[14px] font-bold leading-snug truncate ${isActive ? 'text-zinc-50' : 'text-zinc-500'}`}>{data.groupName}</p>
+            {shownPts.length > 0 ? (
+              <div className="flex items-center gap-1.5 pt-0.5">
+                <div className="flex items-center">
+                  {shownPts.map((p, i) => (
+                    <div
+                      key={p.id}
+                      className="relative shrink-0"
+                      style={{ marginLeft: i === 0 ? 0 : -6, zIndex: shownPts.length - i }}
+                      title={p.name}
+                    >
+                      <div className={`flex h-5 w-5 items-center justify-center overflow-hidden rounded-full ring-2 ring-zinc-950 text-[8px] font-bold transition-all ${isActive ? 'bg-zinc-700 text-zinc-200' : 'bg-zinc-800/60 text-zinc-600'}`}>
+                        {p.avatarUrl ? (
+                          <img src={p.avatarUrl} alt={p.name} className={`block h-full w-full object-cover ${!isActive && 'opacity-30'}`} />
+                        ) : (
+                          p.name[0]?.toUpperCase() ?? '?'
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {overflow > 0 && <span className="ml-1 text-[9px] font-semibold text-zinc-500">+{overflow}</span>}
+                </div>
+                <span className="text-[10px] text-zinc-500">
+                  {isActive ? `${displayPts.length} in call` : `${displayPts.length} were in call`}
+                </span>
+              </div>
+            ) : (
+              <p className="text-[10px] text-zinc-600">Shared by <span className="text-zinc-500">@{data.inviterName}</span></p>
+            )}
+          </div>
+          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all ${isActive ? 'bg-zinc-900 border-zinc-800 text-zinc-400' : 'bg-zinc-900/30 border-zinc-800/30 text-zinc-700'}`}>
+            {isActive ? <AudioLines className="h-4 w-4 animate-pulse" /> : <AudioLines className="h-4 w-4 opacity-30" />}
+          </div>
+        </div>
+
+        {lastEvent && isActive && (
+          <div className="flex items-center gap-1.5 rounded-lg bg-zinc-900/60 px-2.5 py-1.5">
+            <span className={`text-[9px] font-bold ${lastEvent.type === 'join' ? 'text-green-500' : 'text-zinc-500'}`}>
+              {lastEvent.type === 'join' ? '↑' : '↓'}
+            </span>
+            <span className="truncate text-[11px] text-zinc-400">
+              <span className="font-semibold text-zinc-300">{lastEvent.name}</span>
+              {lastEvent.type === 'join' ? ' joined' : ' left'}
+            </span>
+          </div>
+        )}
+
+        {isActive ? (
+          <button
+            onClick={handleJoin}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-100 px-3 py-2 text-[11px] font-bold text-zinc-900 shadow-sm transition-all hover:bg-white active:scale-[0.98]"
+          >
+            <Play className="h-3 w-3 fill-current" />
+            Join Voice Room
+          </button>
+        ) : (
+          <div className="flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900/40 border border-zinc-800/30 px-3 py-2 text-[11px] font-medium text-zinc-600 cursor-not-allowed select-none">
+            <AudioLines className="h-3 w-3 opacity-50" />
+            Room no longer active
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ReactionsBar({
@@ -955,6 +1082,8 @@ function MessageRow({
             ) : null}
 
             {post.body ? (() => {
+              const voiceInvite = tryParseVoiceInvite(post.body)
+              if (voiceInvite) return <VoiceInviteEmbed data={voiceInvite} />
               const forumPost = tryParseForumPost(post.body)
               if (forumPost) return <ForumPostEmbed data={forumPost} />
               const firstUrl = extractFirstUrl(post.body)
@@ -2000,6 +2129,8 @@ function FeedProfileRow({
         ) : null}
 
         {post.body ? (() => {
+          const voiceInvite = tryParseVoiceInvite(post.body)
+          if (voiceInvite) return <VoiceInviteEmbed data={voiceInvite} />
           const forumPost = tryParseForumPost(post.body)
           if (forumPost) return <ForumPostEmbed data={forumPost} />
           const firstUrl = extractFirstUrl(post.body)

@@ -1,13 +1,17 @@
 'use client'
 
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { usePathname, useRouter, useParams } from 'next/navigation'
 import { motion, AnimatePresence, useMotionValue, animate } from 'framer-motion'
 import { WorkspaceShellLayout } from '@/components/chat/workspace-shell-layout'
 import { WorkspaceSidebar, WorkspaceMode } from '@/components/chat/workspace-sidebar'
 import { useChat } from '@/context/ChatContext'
-import { useChannels } from '@/hooks/use-channels'
+import { useChannels, useCreateChannel } from '@/hooks/use-channels'
 import { useDirectConversations } from '@/hooks/use-direct-conversations'
+import { filesApi } from '@/lib/files-api'
+import { channelsApi } from '@/lib/channels-api'
+import type { CreateEntityValues } from '@/components/chat/create-entity-dialog'
 import { useProfile } from '@/hooks/use-user'
 import { useDmCallContext } from '@/context/DmCallContext'
 import { DmCallIncoming } from '@/components/chat/dm-call-incoming'
@@ -43,6 +47,37 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   const { data: channels = [] } = useChannels()
   const { data: directConversations = [] } = useDirectConversations()
   const { data: profile } = useProfile()
+  const createChannel = useCreateChannel()
+  const queryClient = useQueryClient()
+
+  const handleCreateChannel = useCallback(async (values: CreateEntityValues) => {
+    const channel = await createChannel.mutateAsync({
+      name: values.name,
+      description: values.description,
+      access_type: (values.access_type as 'PUBLIC' | 'PRIVATE') ?? 'PUBLIC',
+      type: 'NORMAL',
+    })
+
+    const updates: { avatar_url?: string; banner_url?: string } = {}
+
+    await Promise.all([
+      values.avatarFile
+        ? filesApi.uploadChannelLogo(channel.id, values.avatarFile)
+            .then(res => { if (res.publicUrl) updates.avatar_url = res.publicUrl })
+            .catch(() => {})
+        : null,
+      values.bannerFile
+        ? filesApi.uploadChannelBanner(channel.id, values.bannerFile)
+            .then(res => { if (res.publicUrl) updates.banner_url = res.publicUrl })
+            .catch(() => {})
+        : null,
+    ])
+
+    if (updates.avatar_url || updates.banner_url) {
+      await channelsApi.updateChannel(channel.id, updates)
+      queryClient.invalidateQueries({ queryKey: ['channels'] })
+    }
+  }, [createChannel, queryClient])
   const dmCall = useDmCallContext()
   const [isCallMinimized, setIsCallMinimized] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -91,19 +126,23 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   // Sync active watch room from localStorage
   useEffect(() => {
     if (typeof window === 'undefined') return
+    const navEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+    const isReload = navEntry?.type === 'reload'
+    // On reload: clear persisted watch room so user doesn't auto-rejoin
+    if (isReload) {
+      localStorage.removeItem('twiky-active-watch-room')
+      setActiveWatchRoom(null)
+    }
     const syncWatchRoom = () => {
       const raw = localStorage.getItem('twiky-active-watch-room')
       if (raw) {
-        try {
-          setActiveWatchRoom(JSON.parse(raw))
-        } catch {
-          setActiveWatchRoom(null)
-        }
+        try { setActiveWatchRoom(JSON.parse(raw)) } catch { setActiveWatchRoom(null) }
       } else {
         setActiveWatchRoom(null)
       }
     }
-    syncWatchRoom()
+    // On normal load restore; on reload skip (already cleared above)
+    if (!isReload) syncWatchRoom()
     window.addEventListener('twiky-watch-room-changed', syncWatchRoom)
     window.addEventListener('storage', syncWatchRoom)
     return () => {
@@ -184,7 +223,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
   // Format direct chats for the sidebar
   const sidebarDirectChats = useMemo(() => {
-    return directConversations.map(conv => {
+    return (directConversations ?? []).map(conv => {
       // Find the other user in the conversation
       const otherUser = conv.user_one?.id === profile?.id ? conv.user_two : conv.user_one;
       
@@ -192,8 +231,18 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       let lastMessageStr = ''
       if (Array.isArray(conv.last_message) && conv.last_message.length > 0) {
         const msg = conv.last_message[0]
-        if (msg.content) lastMessageStr = msg.content
-        else if (msg.type === 'voice') lastMessageStr = 'Voice Message'
+        if (msg.content) {
+          try {
+            const parsed = JSON.parse(msg.content)
+            if (parsed?.__twiky_type === 'voice_invite') {
+              lastMessageStr = `Voice Room: ${parsed.groupName || 'Unknown'}`
+            } else {
+              lastMessageStr = msg.content
+            }
+          } catch {
+            lastMessageStr = msg.content
+          }
+        } else if (msg.type === 'voice') lastMessageStr = 'Voice Message'
         else if (msg.type === 'call') lastMessageStr = 'Call'
         else if (msg.file_url) lastMessageStr = 'Attachment'
       }
@@ -244,6 +293,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           syntheticDirectChats={sidebarDirectChats as any}
           unreadCounts={unreadCounts}
           typingConversations={typingConversations}
+          onCreateChannel={handleCreateChannel}
         />
         <main className="flex-1 overflow-hidden relative bg-background">
           {children}
@@ -281,8 +331,13 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                 isPip={!isViewingWatchRoom}
                 onMaximize={() => router.push(`/channels/${activeWatchRoom.channelId}/group/${activeWatchRoom.roomId}`)}
                 onLeave={() => {
+                  const roomId = activeWatchRoom.roomId
+                  const chId = activeWatchRoom.channelId
                   localStorage.removeItem('twiky-active-watch-room')
                   window.dispatchEvent(new Event('twiky-watch-room-changed'))
+                  if (pathname.includes(`/group/${roomId}`)) {
+                    router.push(`/channels/${chId}`)
+                  }
                 }}
                 onParticipantsChange={(participants) => setGroupParticipants(activeWatchRoom.roomId, participants)}
               />

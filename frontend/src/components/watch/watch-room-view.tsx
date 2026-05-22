@@ -679,7 +679,7 @@ function WatchRoomInner({
           <Button variant="secondary" size="icon" className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 border-0" onClick={(e) => { e.stopPropagation(); onMaximize?.(); }} title="Maximize">
             <Maximize2 className="h-4 w-4 text-white" />
           </Button>
-          <Button variant="secondary" size="icon" className="h-9 w-9 rounded-full bg-red-500/20 hover:bg-red-500/40 border-0" onClick={(e) => { e.stopPropagation(); onLeave(); }} title="Leave">
+          <Button variant="secondary" size="icon" className="h-9 w-9 rounded-full bg-red-500/20 hover:bg-red-500/40 border-0" onClick={(e) => { e.stopPropagation(); isHost ? onEnd() : onLeave() }} title={isHost ? 'End watch party' : 'Leave'}>
             <X className="h-4 w-4 text-red-500" />
           </Button>
         </div>
@@ -1139,6 +1139,14 @@ export function WatchRoomView({ roomId, userId, username, fullname, avatarUrl, b
       }
     },
   })
+
+  // Auto-leave when host ends the party (viewers don't need to click anything)
+  useEffect(() => {
+    if (ended && !isHost) {
+      const t = setTimeout(onLeave, 1500)
+      return () => clearTimeout(t)
+    }
+  }, [ended, isHost, onLeave])
 
   const [speakingIds, setSpeakingIds] = useState<Set<string>>(new Set())
 
