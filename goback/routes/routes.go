@@ -17,6 +17,7 @@ import (
 	"github.com/Hamza-agha-tec/goback/handlers/messaging"
 	"github.com/Hamza-agha-tec/goback/handlers/notifications"
 	"github.com/Hamza-agha-tec/goback/handlers/payments"
+	githubhandler "github.com/Hamza-agha-tec/goback/handlers/github"
 	"github.com/Hamza-agha-tec/goback/handlers/spotify"
 	userhandlers "github.com/Hamza-agha-tec/goback/handlers/users"
 	"github.com/Hamza-agha-tec/goback/handlers/voice"
@@ -53,6 +54,7 @@ func SetupRoutes(e *echo.Echo) {
 	contentService := services.NewContentService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	fileService := services.NewFileService(os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	spotifyService := services.NewSpotifyService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
+	githubService := services.NewGitHubService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	invitationService := services.NewInvitationService(os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	boardService := services.NewBoardService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"), socketIOService)
 
@@ -78,6 +80,7 @@ func SetupRoutes(e *echo.Echo) {
 	contentHandler := content.NewContentHandler(contentService, notificationService, socketIOService)
 	fileHandler := files.NewFileHandler(fileService)
 	spotifyHandler := spotify.NewSpotifyHandler(spotifyService)
+	githubHandler := githubhandler.NewGitHubHandler(githubService)
 	invitationHandler := invitations.NewInvitationHandler(invitationService)
 	boardHandler := boards.NewBoardHandler(boardService)
 
@@ -269,6 +272,14 @@ func SetupRoutes(e *echo.Echo) {
 	protected.GET("/spotify/now-playing/:userId", spotifyHandler.GetNowPlaying)
 	protected.GET("/spotify/profile/:userId", spotifyHandler.GetProfile)
 	protected.GET("/spotify/search", spotifyHandler.Search)
+
+	// GitHub routes
+	protected.GET("/github/auth", githubHandler.GetAuthURL)
+	protected.GET("/github/callback", githubHandler.Callback)
+	protected.DELETE("/github/disconnect", githubHandler.Disconnect)
+	protected.GET("/github/profile/:userId", githubHandler.GetProfile)
+	protected.GET("/github/activity/:userId", githubHandler.GetActivity)
+	protected.GET("/github/status/:userId", githubHandler.GetStatus)
 
 	// Invitation routes
 	protected.POST("/invitations", invitationHandler.Create)
