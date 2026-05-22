@@ -1684,23 +1684,10 @@ export function ChannelsPanel({
                     </span>
                   )}
 
-                  {/* Voice call timer — non-joined users */}
-                  {group.kind === 'voice' && group.id !== activeVoiceGroupId && participants.length > 0 && (
+                  {/* Voice call timer — all users */}
+                  {group.kind === 'voice' && participants.length > 0 && (
                     <span className={cn('absolute right-1.5 top-1/2 z-10 -translate-y-1/2 pointer-events-none transition-opacity duration-150', canManage && 'group-hover/row:opacity-0')}>
                       <VoiceGroupTimer participants={participants} />
-                    </span>
-                  )}
-
-                  {/* Voice call timer — joined user */}
-                  {group.kind === 'voice' && group.id === activeVoiceGroupId && voiceTimer && (
-                    <span
-                      className={cn(
-                        'absolute right-1.5 top-1/2 z-10 -translate-y-1/2 text-[10px] font-semibold tabular-nums pointer-events-none transition-opacity duration-150',
-                        canManage && 'group-hover/row:opacity-0',
-                      )}
-                      style={{ color: '#55FF55' }}
-                    >
-                      {voiceTimer}
                     </span>
                   )}
 

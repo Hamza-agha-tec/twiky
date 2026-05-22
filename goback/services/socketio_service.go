@@ -466,6 +466,11 @@ func (s *SocketIOService) setupHandlers() {
 				server.To(socketio.Room("sub_voice_" + oldRoomID)).Emit("user-left-voice", leftPayload)
 				// Also send to the switching user themselves so their own sidebar updates
 				client.Emit("user-left-voice", leftPayload)
+				// Send authoritative snapshot to sidebar observers of the old room
+				server.To(socketio.Room("sub_voice_" + oldRoomID)).Emit("voice-room-participants", map[string]interface{}{
+					"roomId": oldRoomID,
+					"users":  s.getVoiceParticipants(oldRoomID),
+				})
 			}
 
 			// Join socket.io room for broadcast
@@ -481,6 +486,11 @@ func (s *SocketIOService) setupHandlers() {
 			joinPayload := map[string]interface{}{"roomId": roomID, "user": userPayload}
 			server.To(socketio.Room("voice_" + roomID)).Emit("user-joined-voice", joinPayload)
 			server.To(socketio.Room("sub_voice_" + roomID)).Emit("user-joined-voice", joinPayload)
+			// Send authoritative snapshot to sidebar observers so they always see current state
+			server.To(socketio.Room("sub_voice_" + roomID)).Emit("voice-room-participants", map[string]interface{}{
+				"roomId": roomID,
+				"users":  s.getVoiceParticipants(roomID),
+			})
 		})
 
 		client.On("leave-voice-room", func(datas ...any) {
@@ -501,6 +511,11 @@ func (s *SocketIOService) setupHandlers() {
 			server.To(socketio.Room("sub_voice_" + roomID)).Emit("user-left-voice", leftPayload)
 			// Also notify the leaving user so their own sidebar clears
 			client.Emit("user-left-voice", leftPayload)
+			// Send authoritative snapshot to sidebar observers
+			server.To(socketio.Room("sub_voice_" + roomID)).Emit("voice-room-participants", map[string]interface{}{
+				"roomId": roomID,
+				"users":  s.getVoiceParticipants(roomID),
+			})
 		})
 
 		client.On("subscribe-voice-rooms", func(datas ...any) {
@@ -1436,6 +1451,11 @@ func (s *SocketIOService) setupHandlers() {
 				leftPayload := map[string]interface{}{"roomId": roomID, "userId": userID}
 				server.To(socketio.Room("voice_" + roomID)).Emit("user-left-voice", leftPayload)
 				server.To(socketio.Room("sub_voice_" + roomID)).Emit("user-left-voice", leftPayload)
+				// Send authoritative snapshot to sidebar observers
+				server.To(socketio.Room("sub_voice_" + roomID)).Emit("voice-room-participants", map[string]interface{}{
+					"roomId": roomID,
+					"users":  s.getVoiceParticipants(roomID),
+				})
 			}
 
 			// Watch cleanup

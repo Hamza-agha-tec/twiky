@@ -151,6 +151,21 @@ export default function GroupPage() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [channelId, router, backendGroup?.group_type])
 
+  // Navigate when admin moves us to a different voice group in this channel
+  useEffect(() => {
+    if (backendGroup?.group_type !== 'voice') return
+    const handler = (e: Event) => {
+      const { targetRoomId } = (e as CustomEvent).detail
+      if (!targetRoomId || targetRoomId === gId) return
+      const targetGroup = channelGroups.find(g => g.id === targetRoomId)
+      if (targetGroup) {
+        router.push(`/channels/${channelId}/group/${targetRoomId}`)
+      }
+    }
+    window.addEventListener('twiky-voice-moved', handler)
+    return () => window.removeEventListener('twiky-voice-moved', handler)
+  }, [backendGroup?.group_type, gId, channelId, channelGroups, router])
+
   // Sync voice meta for PiP
   useEffect(() => {
     if (voice.joinedGroupId === gId && backendGroup?.group_type === 'voice') {

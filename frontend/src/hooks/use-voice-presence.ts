@@ -190,10 +190,8 @@ export function useVoicePresence(
         Object.entries(prev).forEach(([gId, list]) => {
           next[gId] = gId === payload.roomId! ? list : list.filter(u => !incomingIds.has(u.id))
         })
-        const existing = next[payload.roomId!] ?? []
-        const byId = new Map(existing.map(u => [u.id, u]))
-        users.forEach(u => byId.set(u.id, u))
-        next[payload.roomId!] = Array.from(byId.values())
+        // Replace with authoritative snapshot (not merge) so leave events remove correctly
+        next[payload.roomId!] = users
         return next
       })
     }
@@ -347,6 +345,7 @@ export function useVoicePresence(
       if (!mounted || !payload.targetRoomId) return
       if (payload.targetRoomId !== currentGroupIdRef.current) {
         void joinRefFn.current(payload.targetRoomId, isMutedRef.current)
+        window.dispatchEvent(new CustomEvent('twiky-voice-moved', { detail: { targetRoomId: payload.targetRoomId } }))
       }
     }
 

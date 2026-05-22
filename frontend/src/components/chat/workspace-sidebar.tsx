@@ -21,7 +21,6 @@ import { ConversationContextMenu } from '@/components/chat/conversation-context-
 import { useVoice } from '@/context/VoiceContext'
 import { useWatchPresence } from '@/context/WatchPresenceContext'
 import { useChannelGroups, backendGroupToMock } from '@/hooks/use-groups'
-import { getSocket } from '@/lib/socket'
 import { Button } from '@/components/ui/button'
 import { HoverCard, HoverCardArrow, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -148,8 +147,6 @@ function ChannelHoverCard({ channel, children }: { channel: WorkspaceChannel; ch
   const [open, setOpen] = useState(false)
   const { participantsByGroup } = useVoice()
   const { watchParticipants } = useWatchPresence()
-  const socketRef = useRef<Awaited<ReturnType<typeof getSocket>> | null>(null)
-
   // Fetch real groups for this channel (cached after first fetch)
   const { data: backendGroups = [] } = useChannelGroups(channel.id)
   const groups = useMemo(() => backendGroups.map(backendGroupToMock), [backendGroups])
@@ -157,22 +154,7 @@ function ChannelHoverCard({ channel, children }: { channel: WorkspaceChannel; ch
   const voiceGroupIds = useMemo(() => groups.filter(g => g.kind === 'voice').map(g => g.id), [groups])
   const watchGroupIds = useMemo(() => groups.filter(g => g.kind === 'watch').map(g => g.id), [groups])
 
-  // Subscribe to voice rooms when card opens so participantsByGroup gets populated
-  useEffect(() => {
-    if (!open || voiceGroupIds.length === 0) return
-    let cancelled = false
-
-    getSocket().then(s => {
-      if (cancelled) return
-      socketRef.current = s
-      s.emit('subscribe-voice-rooms', { roomIds: voiceGroupIds })
-    })
-
-    return () => {
-      cancelled = true
-      socketRef.current?.emit('unsubscribe-voice-rooms', { roomIds: voiceGroupIds })
-    }
-  }, [open, voiceGroupIds.join(',')])
+  // participantsByGroup is managed by useVoicePresence in the channel layout — no local subscription needed
 
   const voiceRows = useMemo(() =>
     voiceGroupIds

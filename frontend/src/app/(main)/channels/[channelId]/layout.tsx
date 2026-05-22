@@ -58,32 +58,28 @@ export default function ChannelLayout({ children }: { children: React.ReactNode 
     return () => { mounted = false }
   }, [setGroupParticipants, setGroupSessionStart])
 
-  // Subscribe to voice room presence for this channel's voice groups
+  // Subscribe socket to voice room presence rooms — fast path, no extra render cycle
+  const voiceGroupIdsKey = channelGroups.filter(g => g.group_type === 'voice').map(g => g.id).join(',')
   useEffect(() => {
-    const voiceGroupIds = channelGroups
-      .filter(g => g.group_type === 'voice')
-      .map(g => g.id)
+    const voiceGroupIds = voiceGroupIdsKey ? voiceGroupIdsKey.split(',') : []
     if (!voiceGroupIds.length) return
-
-    let socket: Awaited<ReturnType<typeof getSocket>> | null = null
     let cancelled = false
-
-    const subscribe = (s: Awaited<ReturnType<typeof getSocket>>) => {
-      s.emit('subscribe-voice-rooms', { roomIds: voiceGroupIds })
-    }
-
+    let socket: Awaited<ReturnType<typeof getSocket>> | null = null
+    const onConnect = () => socket?.emit('subscribe-voice-rooms', { roomIds: voiceGroupIds })
     getSocket().then(s => {
       if (cancelled) return
       socket = s
-      subscribe(s)
-      s.on('connect', () => subscribe(s))
+      s.emit('subscribe-voice-rooms', { roomIds: voiceGroupIds })
+      s.on('connect', onConnect)
     })
-
     return () => {
       cancelled = true
-      socket?.emit('unsubscribe-voice-rooms', { roomIds: voiceGroupIds })
+      if (socket) {
+        socket.emit('unsubscribe-voice-rooms', { roomIds: voiceGroupIds })
+        socket.off('connect', onConnect)
+      }
     }
-  }, [channelGroups])
+  }, [voiceGroupIdsKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Voice call duration timer
   useEffect(() => {

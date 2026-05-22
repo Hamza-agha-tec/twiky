@@ -46,11 +46,7 @@ export function useVoiceRoomLive(groupId: string) {
       if (!mounted || payload.roomId !== groupId) return
       const users = Array.isArray(payload.users) ? payload.users : []
       users.forEach((u: any) => nameMapRef.current.set(u.id, u.name))
-      setParticipants(prev => {
-        const map = new Map((prev ?? []).map(p => [p.id, p]))
-        users.forEach((u: any) => map.set(u.id, { id: u.id, name: u.name ?? 'Unknown', avatarUrl: u.avatarUrl ?? null }))
-        return Array.from(map.values())
-      })
+      setParticipants(users.map((u: any) => ({ id: u.id, name: u.name ?? 'Unknown', avatarUrl: u.avatarUrl ?? null })))
     }
 
     const onUserJoined = (payload: { roomId?: string; user?: any }) => {
@@ -96,7 +92,9 @@ export function useVoiceRoomLive(groupId: string) {
         socket.off('voice-room-participants', onRoomParticipants)
         socket.off('user-joined-voice', onUserJoined)
         socket.off('user-left-voice', onUserLeft)
-        socket.emit('unsubscribe-voice-rooms', { roomIds: [groupId] })
+        // Don't unsubscribe — the channel layout manages subscription lifetime
+        // for all voice rooms in the channel. Unsubscribing here would evict the
+        // socket from sub_voice_<roomId> even while the layout still needs it.
       }
     }
   }, [groupId])
