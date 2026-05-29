@@ -1481,7 +1481,7 @@ export function FeedMemberProfileView({
   storyRingState?: StoryRingState
   hideRole?: boolean
 }) {
-  const [activeTab, setActiveTab] = useState<'posts' | 'articles' | 'pixel-room' | 'saved'>('posts')
+  const [activeTab, setActiveTab] = useState<'posts' | 'articles' | 'pixel-room' | 'saved'>('pixel-room')
   const [followRequested, setFollowRequested] = useState(false)
   const [followSheet, setFollowSheet] = useState<'followers' | 'following' | null>(null)
   const [viewingUser, setViewingUser] = useState<FeedMemberProfile | null>(null)
@@ -1565,24 +1565,23 @@ export function FeedMemberProfileView({
   }, [memberProfile.id, realUser?.id, realUser?.username, resolvedProfile.handle])
 
   useEffect(() => {
-    if (!roomUsername) {
+    const uname = memberProfile.handle || null
+    if (!uname) {
       setRoomPayload(null)
       return
     }
     let cancelled = false
-    fetchPublicRoom<PixelRoomState>(roomUsername)
+    fetchPublicRoom<PixelRoomState>(uname)
       .then((res) => {
         if (!cancelled) setRoomPayload(res)
       })
-      .catch((err) => {
-        if (cancelled) return
-        setRoomPayload(null)
-        console.warn('[pixel-room] fetch failed', err)
+      .catch(() => {
+        if (!cancelled) setRoomPayload(null)
       })
     return () => {
       cancelled = true
     }
-  }, [roomUsername])
+  }, [memberProfile.handle, memberProfile.id])
 
   const handleEnterPixelRoom = () => {
     if (!roomUsername) return
@@ -1884,8 +1883,8 @@ export function FeedMemberProfileView({
       >
         <div className="flex items-center gap-0.5 rounded-xl border border-border bg-card p-1">
           {([
-            { id: 'posts' as const, label: 'Posts' },
             { id: 'pixel-room' as const, label: 'Pixel Room' },
+            { id: 'posts' as const, label: 'Posts' },
             { id: 'articles' as const, label: 'Articles' },
             { id: 'saved' as const, label: 'Saved' },
           ]).map((tab) => {
