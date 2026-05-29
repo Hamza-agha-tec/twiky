@@ -282,7 +282,12 @@ export function PixelRoomCanvas({
       const bottom = top + asset.height
 
       if (image) {
-        ctx.drawImage(image, left, top, asset.width, asset.height)
+        if (asset.frame) {
+          const { sx, sy, sw, sh } = asset.frame
+          ctx.drawImage(image, sx, sy, sw, sh, left, top, asset.width, asset.height)
+        } else {
+          ctx.drawImage(image, left, top, asset.width, asset.height)
+        }
       } else {
         ctx.fillStyle = '#1e293b'
         ctx.fillRect(left, top, asset.width, asset.height)

@@ -17,6 +17,7 @@ import (
 	"github.com/Hamza-agha-tec/goback/handlers/messaging"
 	"github.com/Hamza-agha-tec/goback/handlers/notifications"
 	"github.com/Hamza-agha-tec/goback/handlers/payments"
+	"github.com/Hamza-agha-tec/goback/handlers/rooms"
 	githubhandler "github.com/Hamza-agha-tec/goback/handlers/github"
 	"github.com/Hamza-agha-tec/goback/handlers/spotify"
 	userhandlers "github.com/Hamza-agha-tec/goback/handlers/users"
@@ -57,6 +58,7 @@ func SetupRoutes(e *echo.Echo) {
 	githubService := services.NewGitHubService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	invitationService := services.NewInvitationService(os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	boardService := services.NewBoardService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"), socketIOService)
+	roomService := services.NewRoomService(db.DB)
 
 	// Add user routes with new code style
 	userRoutes(e, userService, contentService, notificationService, socketIOService)
@@ -83,6 +85,7 @@ func SetupRoutes(e *echo.Echo) {
 	githubHandler := githubhandler.NewGitHubHandler(githubService)
 	invitationHandler := invitations.NewInvitationHandler(invitationService)
 	boardHandler := boards.NewBoardHandler(boardService)
+	roomHandler := rooms.NewRoomHandler(roomService)
 
 	// Health check
 	e.GET("/health", func(c echo.Context) error {
@@ -298,6 +301,13 @@ func SetupRoutes(e *echo.Echo) {
 	protected.DELETE("/board-posts/:postId", boardHandler.DeletePost)
 	protected.POST("/board-posts/:postId/likes", boardHandler.LikePost)
 	protected.DELETE("/board-posts/:postId/likes", boardHandler.UnlikePost)
+
+	// Pixel Room routes
+	protected.GET("/rooms/me", roomHandler.GetMyRoom)
+	protected.PUT("/rooms/me", roomHandler.SaveMyRoom)
+	protected.GET("/rooms/user/:username", roomHandler.GetPublicRoom)
+	protected.POST("/rooms/user/:username/visit", roomHandler.VisitRoom)
+	protected.POST("/rooms/user/:username/like", roomHandler.ToggleLike)
 
 	protected.GET("/board-posts/:postId/comments", boardHandler.GetComments)
 	protected.POST("/board-posts/:postId/comments", boardHandler.AddComment)

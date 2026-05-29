@@ -1,6 +1,6 @@
 'use client'
 
-import { cloneElement, isValidElement, useEffect, useRef, useState } from 'react'
+import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Hash,
@@ -222,14 +222,19 @@ export function MainArea({
 
   const GroupIcon = activeGroup.kind === 'voice' ? AudioLines : activeGroup.kind === 'watch' ? Popcorn : activeGroup.kind === 'board' ? Bird  : Hash
   const groupScopeLabel = activeGroup.kind === 'board' ? `Forum: ${activeGroup.label}` : activeGroup.label
-  const feedChild = isValidElement(children)
-    ? cloneElement(children as any, {
+  const handleCloseRequestChange = useCallback((closeFn: (() => void) | null) => {
+    setCloseFeedProfile(() => closeFn)
+  }, [])
+  const feedChildProps = useMemo(
+    () => ({
       onProfilePanelWidthChange: setFeedProfilePanelWidth,
       onProfileSidebarContentChange: setFeedProfileSidebarContent,
-      onProfileCloseRequestChange: (closeFn: (() => void) | null) => {
-        setCloseFeedProfile(() => closeFn)
-      },
-    })
+      onProfileCloseRequestChange: handleCloseRequestChange,
+    }),
+    [handleCloseRequestChange],
+  )
+  const feedChild = isValidElement(children)
+    ? cloneElement(children as any, feedChildProps)
     : children
 
   const channelMonogram = activeChannel.label.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || 'CH'

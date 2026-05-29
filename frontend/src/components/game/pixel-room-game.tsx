@@ -1,12 +1,63 @@
 'use client'
 
-import { useRef } from 'react'
-import { Armchair, Box, Gamepad2, PackagePlus, Plus, RotateCw, Save, Trash2, Undo2, UserRound } from 'lucide-react'
+import { useRef, useState, useMemo } from 'react'
+import { Armchair, Box, Gamepad2, PackagePlus, RotateCw, Save, Trash2, Undo2, UserRound, Search, ChevronLeft, ChevronRight, Check } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { useProfile } from '@/hooks/use-user'
 import { cn } from '@/lib/utils'
-import { OBJECT_CATALOG } from './game-data'
+import { AVATAR_CATALOG, OBJECT_CATALOG, type PixelCatalogItem } from './game-data'
+import { saveMyRoom } from '@/lib/rooms-api'
+
+function AvatarThumb({ src, size = 26 }: { src: string; size?: number }) {
+  return (
+    <div
+      style={{ width: size, height: size, overflow: 'hidden', flexShrink: 0 }}
+    >
+      <img
+        src={src}
+        alt=""
+        style={{
+          height: size,
+          width: 'auto',
+          maxWidth: 'none',
+          display: 'block',
+          imageRendering: 'pixelated',
+        }}
+      />
+    </div>
+  )
+}
+
+function ItemThumb({ item, size = 26 }: { item: PixelCatalogItem; size?: number }) {
+  if (item.frame) {
+    const { sx, sy, sw, sh, sheetW, sheetH } = item.frame
+    const scale = size / Math.max(sw, sh)
+    return (
+      <div
+        style={{
+          width: size,
+          height: size,
+          flexShrink: 0,
+          backgroundImage: `url(${item.src})`,
+          backgroundPosition: `-${sx * scale}px -${sy * scale}px`,
+          backgroundSize: `${sheetW * scale}px ${sheetH * scale}px`,
+          backgroundRepeat: 'no-repeat',
+          imageRendering: 'pixelated',
+        }}
+      />
+    )
+  }
+  return (
+    <img
+      src={item.src}
+      alt=""
+      width={size}
+      height={size}
+      style={{ objectFit: 'contain', imageRendering: 'pixelated', flexShrink: 0 }}
+    />
+  )
+}
 import { PixelRoomCanvas } from './pixel-room-canvas'
 import { usePixelRoom } from './use-pixel-room'
 
@@ -16,7 +67,7 @@ export function PixelRoomGame() {
   const captureRoomRef = useRef<(() => string | null) | null>(null)
   const {
     state,
-    inventoryObjects,
+    avatarOptions,
     selectedObjectId,
     setSelectedObjectId,
     placeObject,
@@ -25,6 +76,7 @@ export function PixelRoomGame() {
     moveObject,
     rotateSelectedObject,
     deleteSelectedObject,
+    setAvatar,
     resetRoom,
   } = usePixelRoom(profile?.id)
 
@@ -33,7 +85,22 @@ export function PixelRoomGame() {
     ? OBJECT_CATALOG.find((item) => item.id === selectedObject.itemId)
     : null
 
-  const saveRoomPreview = () => {
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(0)
+  const PAGE_SIZE = 5
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return q
+      ? OBJECT_CATALOG.filter(i => i.name.toLowerCase().includes(q) || i.category.toLowerCase().includes(q))
+      : OBJECT_CATALOG
+  }, [search])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages - 1)
+  const pageItems = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
+
+  const saveRoomPreview = async () => {
     if (typeof window === 'undefined') return
 
     const image = captureRoomRef.current?.()
@@ -42,20 +109,19 @@ export function PixelRoomGame() {
       return
     }
 
-    const preview = {
-      image,
-      savedAt: new Date().toISOString(),
-      username: profile?.username ?? null,
-      objectCount: state.objects.length,
+    if (!profile?.id) {
+      toast.error('Sign in to save your room')
+      return
     }
-    const serialized = JSON.stringify(preview)
-    window.localStorage.setItem(`twiky-pixel-room-preview:${profile?.id ?? 'guest'}`, serialized)
-    if (profile?.username) {
-      window.localStorage.setItem(`twiky-pixel-room-preview:username:${profile.username}`, serialized)
+
+    try {
+      await saveMyRoom(state, image)
+      window.localStorage.setItem(`twiky-pixel-room:${profile.id}`, JSON.stringify(state))
+      window.dispatchEvent(new CustomEvent('twiky-pixel-room-preview-saved'))
+      toast.success('Room saved')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed')
     }
-    window.localStorage.setItem(`twiky-pixel-room:${profile?.id ?? 'guest'}`, JSON.stringify(state))
-    window.dispatchEvent(new CustomEvent('twiky-pixel-room-preview-saved'))
-    toast.success('Room preview saved')
   }
 
   return (
@@ -74,53 +140,115 @@ export function PixelRoomGame() {
         </div>
 
         <div className="flex-1 overflow-y-auto px-3 py-3">
-          <Panel title="Room" icon={Box}>
-            <div className="grid grid-cols-2 gap-2">
-              <Stat label="Objects" value={state.objects.length.toString()} />
-              <Stat label="Unlocked" value={inventoryObjects.length.toString()} />
+          <Panel title="Avatar" icon={UserRound}>
+            <div className="grid grid-cols-4 gap-1.5">
+              {avatarOptions.map((avatar) => {
+                const active = avatar.id === state.avatarId
+                return (
+                  <button
+                    type="button"
+                    key={avatar.id}
+                    onClick={() => {
+                      if (active) return
+                      setAvatar(avatar.id)
+                      toast.success(`${avatar.name} equipped`)
+                    }}
+                    title={avatar.name}
+                    className={cn(
+                      'relative flex h-[52px] items-center justify-center rounded-[6px] border bg-[#020617] transition-colors',
+                      active
+                        ? 'border-[#3b82f6] ring-1 ring-[#3b82f6]/40'
+                        : 'border-[#334155] hover:border-[#3b82f6]',
+                    )}
+                  >
+                    <AvatarThumb src={avatar.src} size={36} />
+                    {active && (
+                      <span className="absolute right-0.5 top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#3b82f6] text-white">
+                        <Check className="h-2.5 w-2.5" />
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
             </div>
-            <div className="mt-3 rounded-[10px] border border-[#1e3a5f] bg-[#0f172a] p-3">
-              <div className="flex items-center gap-2">
-                <img
-                  src="/pixel/game/avatars/default_avatar.png"
-                  alt=""
-                  className="h-10 w-10 rounded-[8px] border border-[#334155] bg-[#020617] object-cover [image-rendering:pixelated]"
-                />
-                <div className="min-w-0">
-                  <p className="truncate text-[12px] font-semibold text-slate-100">{playerName}</p>
-                  <p className="text-[11px] text-slate-500">Default avatar</p>
-                </div>
-              </div>
-            </div>
+            {avatarOptions.length < AVATAR_CATALOG.length && (
+              <p className="mt-2 text-[10px] text-slate-500">
+                {AVATAR_CATALOG.length - avatarOptions.length} more unlock in store.
+              </p>
+            )}
           </Panel>
 
-          <Panel title="Inventory" icon={PackagePlus}>
-            <div className="grid gap-2">
-              {inventoryObjects.map((item) => (
+          <Panel title="Objects" icon={PackagePlus}>
+            {/* Search */}
+            <div className="relative mb-2">
+              <Search className="absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-500" />
+              <input
+                value={search}
+                onChange={e => { setSearch(e.target.value); setPage(0) }}
+                placeholder="Search objects…"
+                className="w-full rounded-[6px] border border-[#334155] bg-[#0f172a] py-1.5 pl-7 pr-3 text-[11px] text-slate-200 placeholder-slate-600 outline-none focus:border-[#3b82f6]"
+              />
+            </div>
+
+            {/* List */}
+            <div className="grid gap-1.5">
+              {pageItems.length === 0 && (
+                <p className="py-4 text-center text-[11px] text-slate-600">No objects found</p>
+              )}
+              {pageItems.map((item) => {
+                const owned = state.ownedItemIds.includes(item.id)
+                return (
+                  <button
+                    type="button"
+                    key={item.id}
+                    onClick={() => { placeObject(item.id); toast.success(`${item.name} placed`) }}
+                    className="grid min-h-[48px] grid-cols-[34px_1fr_auto] items-center gap-2 rounded-[6px] border border-[#334155] bg-[#0f172a] p-2 text-left transition-colors hover:border-[#3b82f6] hover:bg-[rgba(59,130,246,0.1)]"
+                  >
+                    <div className="flex h-[30px] w-[30px] items-center justify-center overflow-hidden rounded-[5px] border border-[#334155] bg-[#020617]">
+                      <ItemThumb item={item} size={26} />
+                    </div>
+                    <span className="min-w-0">
+                      <span className="block truncate text-[10px] font-semibold text-slate-100">{item.name}</span>
+                      <span className="block truncate text-[8px] text-slate-500">{item.category}</span>
+                    </span>
+                    <span className={cn(
+                      'inline-flex h-[16px] items-center rounded-full border px-1.5 text-[8px] font-bold',
+                      owned
+                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                        : 'border-[#334155] bg-[#020617] text-slate-500',
+                    )}>
+                      {owned ? 'Owned' : `${item.price}c`}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="mt-2 flex items-center justify-between">
                 <button
                   type="button"
-                  key={item.id}
-                  onClick={() => {
-                    placeObject(item.id)
-                    toast.success(`${item.name} added`)
-                  }}
-                  className="grid min-h-[52px] grid-cols-[38px_1fr_auto] items-center gap-2 rounded-[6px] border border-[#334155] bg-[#0f172a] p-2 text-left transition-colors hover:border-[#3b82f6] hover:bg-[rgba(59,130,246,0.1)]"
+                  onClick={() => setPage(p => Math.max(0, p - 1))}
+                  disabled={safePage === 0}
+                  className="flex h-6 w-6 items-center justify-center rounded-[5px] border border-[#334155] bg-[#0f172a] text-slate-400 disabled:opacity-30 hover:border-[#3b82f6] hover:text-[#93c5fd] disabled:cursor-not-allowed"
                 >
-                  <img
-                    src={item.src}
-                    alt=""
-                    className="h-[34px] w-[34px] rounded-[6px] border border-[#334155] bg-[#020617] object-contain p-1 [image-rendering:pixelated]"
-                  />
-                  <span className="min-w-0">
-                    <span className="block truncate text-[10px] font-semibold text-slate-100">{item.name}</span>
-                    <span className="block truncate text-[8px] text-slate-500">{item.category}</span>
-                  </span>
-                  <span className="inline-flex h-[18px] items-center rounded-full border border-[#334155] bg-[#020617] px-2 text-[8px] font-bold text-slate-400">
-                    {item.price === 0 ? 'Owned' : item.price}
-                  </span>
+                  <ChevronLeft className="h-3.5 w-3.5" />
                 </button>
-              ))}
-            </div>
+                <span className="text-[9px] text-slate-500">
+                  {safePage + 1} / {totalPages}
+                  <span className="ml-1 text-slate-600">({filtered.length} items)</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                  disabled={safePage === totalPages - 1}
+                  className="flex h-6 w-6 items-center justify-center rounded-[5px] border border-[#334155] bg-[#0f172a] text-slate-400 disabled:opacity-30 hover:border-[#3b82f6] hover:text-[#93c5fd] disabled:cursor-not-allowed"
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
           </Panel>
         </div>
 
@@ -128,11 +256,9 @@ export function PixelRoomGame() {
           {selectedObject && selectedAsset ? (
             <div className="rounded-[10px] border border-[#1e3a5f] bg-[#0f172a] p-3">
               <div className="mb-3 flex items-center gap-2">
-                <img
-                  src={selectedAsset.src}
-                  alt=""
-                  className="h-9 w-9 rounded-[6px] border border-[#334155] bg-[#020617] object-contain p-1 [image-rendering:pixelated]"
-                />
+                <div className="flex h-9 w-9 items-center justify-center rounded-[6px] border border-[#334155] bg-[#020617]">
+                  <ItemThumb item={selectedAsset} size={28} />
+                </div>
                 <div className="min-w-0">
                   <p className="truncate text-[12px] font-semibold text-slate-100">{selectedAsset.name}</p>
                   <p className="text-[10.5px] text-slate-500">
@@ -173,24 +299,7 @@ export function PixelRoomGame() {
             <KeyCap>Drag</KeyCap> objects
           </div>
 
-          <div className="absolute bottom-[10px] left-[10px] z-10 flex gap-2">
-            <button
-              type="button"
-              className="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[#334155] bg-[rgba(6,9,16,0.9)] text-[#94a3b8] transition-colors hover:border-[#3b82f6] hover:text-[#93c5fd]"
-              title="Add object"
-            >
-              <Plus className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              className="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[#334155] bg-[rgba(6,9,16,0.9)] text-[#94a3b8] transition-colors hover:border-[#3b82f6] hover:text-[#93c5fd]"
-              title="Avatar"
-            >
-              <UserRound className="h-4 w-4" />
-            </button>
-          </div>
-
-          <div className="absolute bottom-[10px] right-[10px] z-10 flex items-center gap-2">
+<div className="absolute bottom-[10px] right-[10px] z-10 flex items-center gap-2">
             <button
               type="button"
               onClick={saveRoomPreview}
@@ -248,15 +357,6 @@ function Panel({
       </div>
       {children}
     </section>
-  )
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-[8px] border border-[#1e3a5f] bg-[#0f172a] p-3">
-      <p className="text-[10.5px] text-slate-500">{label}</p>
-      <p className="mt-1 text-[16px] font-bold text-slate-100">{value}</p>
-    </div>
   )
 }
 

@@ -1,7 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  AVATAR_CATALOG,
   createDefaultRoomState,
   DEFAULT_AVATAR_ID,
   OBJECT_CATALOG,
@@ -12,6 +13,7 @@ import {
   ROOM_COLUMNS,
   ROOM_ROWS,
 } from './game-data'
+import { fetchMyRoom, saveMyRoom } from '@/lib/rooms-api'
 
 function storageKey(userId?: string | null) {
   return `twiky-pixel-room:${userId ?? 'guest'}`
@@ -77,17 +79,38 @@ function normalizeState(value: unknown): PixelRoomState {
 export function usePixelRoom(userId?: string | null) {
   const [state, setState] = useState<PixelRoomState>(() => createDefaultRoomState())
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null)
+  const hydratedRef = useRef(false)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
+    hydratedRef.current = false
 
+    let cancelled = false
+    let initial: PixelRoomState = createDefaultRoomState()
     try {
       const raw = window.localStorage.getItem(storageKey(userId))
-      setState(raw ? normalizeState(JSON.parse(raw)) : createDefaultRoomState())
-      setSelectedObjectId(null)
-    } catch {
-      setState(createDefaultRoomState())
-      setSelectedObjectId(null)
+      if (raw) initial = normalizeState(JSON.parse(raw))
+    } catch {}
+    setState(initial)
+    setSelectedObjectId(null)
+
+    if (!userId) {
+      hydratedRef.current = true
+      return
+    }
+
+    void fetchMyRoom<PixelRoomState>()
+      .then((payload) => {
+        if (cancelled) return
+        if (payload.state) setState(normalizeState(payload.state))
+        hydratedRef.current = true
+      })
+      .catch(() => {
+        if (!cancelled) hydratedRef.current = true
+      })
+
+    return () => {
+      cancelled = true
     }
   }, [userId])
 
@@ -95,7 +118,10 @@ export function usePixelRoom(userId?: string | null) {
     if (typeof window === 'undefined') return
     const timeoutId = window.setTimeout(() => {
       window.localStorage.setItem(storageKey(userId), JSON.stringify(state))
-    }, 250)
+      if (userId && hydratedRef.current) {
+        void saveMyRoom(state).catch(() => {})
+      }
+    }, 800)
 
     return () => window.clearTimeout(timeoutId)
   }, [state, userId])
@@ -107,7 +133,7 @@ export function usePixelRoom(userId?: string | null) {
   )
 
   const placeObject = useCallback((itemId: string) => {
-    if (!ownedItemIds.has(itemId)) return
+    if (!PIXEL_CATALOG.some(i => i.id === itemId)) return
 
     const id = `${itemId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
     setState((prev) => ({
@@ -212,6 +238,16 @@ export function usePixelRoom(userId?: string | null) {
     setSelectedObjectId(null)
   }, [selectedObjectId])
 
+  const setAvatar = useCallback((avatarId: string) => {
+    if (!AVATAR_CATALOG.some((item) => item.id === avatarId)) return
+    setState((prev) => (prev.avatarId === avatarId ? prev : { ...prev, avatarId }))
+  }, [])
+
+  const avatarOptions = useMemo(
+    () => AVATAR_CATALOG.filter((item) => item.defaultUnlocked || ownedItemIds.has(item.id)),
+    [ownedItemIds],
+  )
+
   const resetRoom = useCallback(() => {
     setState((prev) => ({ ...createDefaultRoomState(), avatarId: prev.avatarId, ownedItemIds: prev.ownedItemIds }))
     setSelectedObjectId(null)
@@ -220,6 +256,7 @@ export function usePixelRoom(userId?: string | null) {
   return {
     state,
     inventoryObjects,
+    avatarOptions,
     selectedObjectId,
     setSelectedObjectId,
     placeObject,
@@ -228,6 +265,7 @@ export function usePixelRoom(userId?: string | null) {
     moveObject,
     rotateSelectedObject,
     deleteSelectedObject,
+    setAvatar,
     resetRoom,
   }
 }

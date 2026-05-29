@@ -5,7 +5,8 @@ import { useProfile, useUserByUsername, useUserPosts, useUserFollowers, useUserF
 import { IconRail, type ActiveView } from '@/components/chat/icon-rail'
 import { useNotifications } from '@/hooks/use-notifications'
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Gamepad2, Globe, ImageIcon, MessageSquare } from 'lucide-react'
+import { ArrowLeft, DoorOpen, Gamepad2, Globe, Heart, ImageIcon, MessageSquare, Users } from 'lucide-react'
+import { fetchPublicRoom, toggleRoomLike, type PublicRoomPayload } from '@/lib/rooms-api'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { UserAvatar } from '@/components/chat/user-avatar'
 import { toast } from 'sonner'
@@ -25,12 +26,7 @@ function formatPostTime(iso: string) {
   return d.toLocaleDateString('en', { month: 'short', day: 'numeric' })
 }
 
-type RoomPreview = {
-  image: string
-  savedAt: string
-  username: string | null
-  objectCount: number
-}
+type RoomPreview = PublicRoomPayload<unknown>
 
 export default function ProfilePage() {
   const params = useParams()
@@ -66,34 +62,36 @@ export default function ProfilePage() {
   }
 
   useEffect(() => {
-    if (!profile || typeof window === 'undefined') {
+    if (!profile?.username) {
       setRoomPreview(null)
       return
     }
 
-    const byId = window.localStorage.getItem(`twiky-pixel-room-preview:${profile.id}`)
-    const byUsername = profile.username
-      ? window.localStorage.getItem(`twiky-pixel-room-preview:username:${profile.username}`)
-      : null
-    const raw = byId ?? byUsername
+    let cancelled = false
+    fetchPublicRoom(profile.username)
+      .then((payload) => {
+        if (!cancelled) setRoomPreview(payload.image ? payload : null)
+      })
+      .catch(() => {
+        if (!cancelled) setRoomPreview(null)
+      })
 
-    if (!raw) {
-      setRoomPreview(null)
-      return
-    }
-
-    try {
-      const parsed = JSON.parse(raw) as Partial<RoomPreview>
-      setRoomPreview(typeof parsed.image === 'string' ? {
-        image: parsed.image,
-        savedAt: typeof parsed.savedAt === 'string' ? parsed.savedAt : new Date().toISOString(),
-        username: typeof parsed.username === 'string' ? parsed.username : null,
-        objectCount: Number.isFinite(parsed.objectCount) ? Number(parsed.objectCount) : 0,
-      } : null)
-    } catch {
-      setRoomPreview(null)
+    return () => {
+      cancelled = true
     }
   }, [profile])
+
+  async function handleToggleRoomLike() {
+    if (!profile?.username || !roomPreview) return
+    try {
+      const result = await toggleRoomLike(profile.username)
+      setRoomPreview((prev) =>
+        prev ? { ...prev, hasLiked: result.liked, likeCount: result.likeCount } : prev,
+      )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not update like')
+    }
+  }
 
   async function handleFollow() {
     if (!profile?.id) return
@@ -321,7 +319,14 @@ export default function ProfilePage() {
         <div className="flex-1 overflow-y-auto bg-background px-8 py-6">
           {tab === 'posts' && (
             <div className="mx-auto max-w-2xl space-y-4">
-              {roomPreview ? <RoomPreviewCard preview={roomPreview} handle={handle} /> : null}
+              {roomPreview ? (
+                <RoomPreviewCard
+                  preview={roomPreview}
+                  handle={handle}
+                  onEnter={() => router.push(`/room/${handle}`)}
+                  onToggleLike={handleToggleRoomLike}
+                />
+              ) : null}
               {posts.length === 0 ? (
                 <div className="flex flex-col items-center py-20 text-center">
                   <ImageIcon className="mb-4 h-10 w-10 text-muted-foreground/40" />
@@ -359,7 +364,14 @@ export default function ProfilePage() {
 
           {tab === 'about' && (
             <div className="mx-auto max-w-2xl space-y-6">
-              {roomPreview ? <RoomPreviewCard preview={roomPreview} handle={handle} /> : null}
+              {roomPreview ? (
+                <RoomPreviewCard
+                  preview={roomPreview}
+                  handle={handle}
+                  onEnter={() => router.push(`/room/${handle}`)}
+                  onToggleLike={handleToggleRoomLike}
+                />
+              ) : null}
               <div className="rounded-2xl border border-border bg-card p-6 space-y-4">
                 <h2 className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">About</h2>
                 <p className="text-[14px] leading-relaxed text-foreground">{profile.bio ?? 'No bio yet.'}</p>
@@ -402,7 +414,17 @@ export default function ProfilePage() {
   )
 }
 
-function RoomPreviewCard({ preview, handle }: { preview: RoomPreview; handle: string }) {
+function RoomPreviewCard({
+  preview,
+  handle,
+  onEnter,
+  onToggleLike,
+}: {
+  preview: RoomPreview
+  handle: string
+  onEnter: () => void
+  onToggleLike: () => void
+}) {
   return (
     <section className="overflow-hidden rounded-2xl border border-border bg-card">
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
@@ -410,20 +432,57 @@ function RoomPreviewCard({ preview, handle }: { preview: RoomPreview; handle: st
           <Gamepad2 className="h-4 w-4 text-primary" />
           <div className="min-w-0">
             <p className="truncate text-[13px] font-semibold text-foreground">@{handle}&apos;s room</p>
-            <p className="text-[11px] text-muted-foreground">Preview only</p>
+            <p className="flex items-center gap-3 text-[11px] text-muted-foreground">
+              <span className="inline-flex items-center gap-1">
+                <Users className="h-3 w-3" />
+                {preview.visitorCount} visitor{preview.visitorCount === 1 ? '' : 's'}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <Heart className="h-3 w-3" />
+                {preview.likeCount}
+              </span>
+            </p>
           </div>
         </div>
-        <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-          {preview.objectCount} objects
-        </span>
+        <button
+          onClick={onEnter}
+          className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[12px] font-semibold text-primary-foreground hover:opacity-90"
+        >
+          <DoorOpen className="h-3.5 w-3.5" />
+          Enter
+        </button>
       </div>
       <div className="bg-[#060910] p-3">
-        <img
-          src={preview.image}
-          alt={`${handle}'s saved room preview`}
-          className="aspect-[832/576] w-full rounded-[10px] border border-[#1e3a5f] object-cover [image-rendering:pixelated]"
-        />
+        {preview.image ? (
+          <img
+            src={preview.image}
+            alt={`${handle}'s saved room preview`}
+            className="aspect-[832/576] w-full rounded-[10px] border border-[#1e3a5f] object-cover [image-rendering:pixelated]"
+          />
+        ) : (
+          <div className="flex aspect-[832/576] w-full items-center justify-center rounded-[10px] border border-[#1e3a5f] text-[12px] text-slate-500">
+            No snapshot yet
+          </div>
+        )}
       </div>
+      {!preview.isOwn && (
+        <div className="flex items-center justify-between border-t border-border px-4 py-3">
+          <button
+            onClick={onToggleLike}
+            className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[12px] font-semibold transition-colors ${
+              preview.hasLiked
+                ? 'border-rose-500/40 bg-rose-500/10 text-rose-400'
+                : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'
+            }`}
+          >
+            <Heart className={`h-3.5 w-3.5 ${preview.hasLiked ? 'fill-current' : ''}`} />
+            {preview.hasLiked ? 'Liked' : 'Like'}
+          </button>
+          <span className="text-[11px] text-muted-foreground">
+            {preview.visitCount} total visit{preview.visitCount === 1 ? '' : 's'}
+          </span>
+        </div>
+      )}
     </section>
   )
 }
