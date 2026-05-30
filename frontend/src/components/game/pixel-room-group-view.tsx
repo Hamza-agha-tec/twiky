@@ -28,6 +28,7 @@ import { getSocket } from '@/lib/socket'
 import { cn } from '@/lib/utils'
 import type { MockChannelGroup } from '@/components/chat/channels-panel'
 import { useSpotifyNowPlaying } from '@/hooks/use-spotify'
+import { usePixelRoomVoice } from '@/hooks/use-pixel-room-voice'
 
 const EMOJI_LIST = ['👍', '❤️', '😂', '😮', '😢', '😡', '🎉', '👋', '🔥', '💯', '🙌', '😎']
 const EDIT_PAGE_SIZE = 6
@@ -110,7 +111,6 @@ export function PixelRoomGroupView({ group, channelId, myId, isChannelAdmin = fa
   const [others, setOthers] = useState<OtherParticipant[]>([])
   const [participantCount, setParticipantCount] = useState(1)
   const [micMuted, setMicMuted] = useState(false)
-  const [isSpeaking, setIsSpeaking] = useState(false)
   const [localChatBubble, setLocalChatBubble] = useState<string | null>(null)
   const [localChatBubbleAt, setLocalChatBubbleAt] = useState(0)
   const [localFloatingEmoji, setLocalFloatingEmoji] = useState<string | null>(null)
@@ -133,10 +133,32 @@ export function PixelRoomGroupView({ group, channelId, myId, isChannelAdmin = fa
   const visitorRef = useRef<VisitorMotion>(defaultMotion())
   const lastEmitRef = useRef(0)
   const micMutedRef = useRef(false)
-  const speakingStateRef = useRef(false)
   const liveGroupIdRef = useRef(group.id)
   liveGroupIdRef.current = group.id
   visitorRef.current = visitor
+
+  const { isSpeaking, remoteSpeakingIds, updateParticipantPosition, resumeAudio } = usePixelRoomVoice(
+    group.id,
+    currentUser?.id ?? null,
+    micMuted,
+    visitor.avatarX,
+    visitor.avatarY,
+  )
+
+  // Sync LiveKit speaking state into others array
+  useEffect(() => {
+    setOthers(prev => prev.map(p => ({ ...p, isSpeaking: remoteSpeakingIds.has(p.userId) })))
+  }, [remoteSpeakingIds])
+
+  // Resume AudioContext on every user gesture until it's running
+  useEffect(() => {
+    window.addEventListener('pointerdown', resumeAudio)
+    window.addEventListener('keydown', resumeAudio)
+    return () => {
+      window.removeEventListener('pointerdown', resumeAudio)
+      window.removeEventListener('keydown', resumeAudio)
+    }
+  }, [resumeAudio])
 
   // Broadcast own Spotify track to pixel room on change
   useEffect(() => {
@@ -162,45 +184,6 @@ export function PixelRoomGroupView({ group, channelId, myId, isChannelAdmin = fa
     return () => { cancelled = true }
   }, [group.id])
 
-  // Mic + speaking detection
-  useEffect(() => {
-    if (!currentUser) return
-    let stream: MediaStream | null = null
-    let audioCtx: AudioContext | null = null
-    let intervalId = 0
-
-    navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-      .then((s) => {
-        stream = s
-        audioCtx = new AudioContext()
-        const source = audioCtx.createMediaStreamSource(s)
-        const analyser = audioCtx.createAnalyser()
-        analyser.fftSize = 512
-        source.connect(analyser)
-        const buffer = new Uint8Array(analyser.frequencyBinCount)
-
-        intervalId = window.setInterval(() => {
-          analyser.getByteFrequencyData(buffer)
-          const avg = buffer.reduce((a, b) => a + b, 0) / buffer.length
-          const nowSpeaking = !micMutedRef.current && avg > 8
-          setIsSpeaking(nowSpeaking)
-          if (nowSpeaking !== speakingStateRef.current) {
-            speakingStateRef.current = nowSpeaking
-            getSocket().then(s => s.emit('pixel-room:speaking', {
-              groupId: liveGroupIdRef.current,
-              speaking: nowSpeaking,
-            }))
-          }
-        }, 100)
-      })
-      .catch(() => {})
-
-    return () => {
-      clearInterval(intervalId)
-      audioCtx?.close()
-      stream?.getTracks().forEach(t => t.stop())
-    }
-  }, [currentUser])
 
   // Socket presence + events
   useEffect(() => {
@@ -223,6 +206,7 @@ export function PixelRoomGroupView({ group, channelId, myId, isChannelAdmin = fa
       const onParticipants = (data: { groupId: string; participants: OtherParticipant[] }) => {
         if (data.groupId !== group.id) return
         const filtered = data.participants.filter(p => p.userId !== currentUser.id)
+        filtered.forEach(p => updateParticipantPosition(p.userId, p.x, p.y))
         setOthers(prev => filtered.map(p => {
           const existing = prev.find(e => e.userId === p.userId)
           return {
@@ -240,6 +224,7 @@ export function PixelRoomGroupView({ group, channelId, myId, isChannelAdmin = fa
 
       const onMoved = (data: { groupId: string; userId: string; x: number; y: number; direction: string; isSitting: boolean }) => {
         if (data.groupId !== group.id || data.userId === currentUser.id) return
+        updateParticipantPosition(data.userId, data.x, data.y)
         const movedAt = performance.now()
         setOthers(prev => prev.map(p =>
           p.userId === data.userId
@@ -266,13 +251,6 @@ export function PixelRoomGroupView({ group, channelId, myId, isChannelAdmin = fa
         ))
       }
 
-      const onSpeaking = (data: { groupId: string; userId: string; speaking: boolean }) => {
-        if (data.groupId !== group.id || data.userId === currentUser.id) return
-        setOthers(prev => prev.map(p =>
-          p.userId === data.userId ? { ...p, isSpeaking: data.speaking } : p
-        ))
-      }
-
       const onSpotifyTrack = (data: { groupId: string; userId: string; track: OtherParticipant['spotifyTrack'] }) => {
         if (data.groupId !== group.id || data.userId === currentUser.id) return
         setOthers(prev => prev.map(p =>
@@ -289,7 +267,6 @@ export function PixelRoomGroupView({ group, channelId, myId, isChannelAdmin = fa
       socket.on('pixel-room:moved', onMoved)
       socket.on('pixel-room:chat', onChat)
       socket.on('pixel-room:emoji', onEmoji)
-      socket.on('pixel-room:speaking', onSpeaking)
       socket.on('pixel-room:spotify-track', onSpotifyTrack)
       socket.on('pixel-room:objects-update', onObjectsUpdate)
 
@@ -313,7 +290,6 @@ export function PixelRoomGroupView({ group, channelId, myId, isChannelAdmin = fa
         socket.off('pixel-room:moved', onMoved)
         socket.off('pixel-room:chat', onChat)
         socket.off('pixel-room:emoji', onEmoji)
-        socket.off('pixel-room:speaking', onSpeaking)
         socket.off('pixel-room:spotify-track', onSpotifyTrack)
         socket.off('pixel-room:objects-update', onObjectsUpdate)
       }
@@ -553,7 +529,7 @@ export function PixelRoomGroupView({ group, channelId, myId, isChannelAdmin = fa
     ownedItemIds: [],
   }), [visitor, activeObjects])
 
-  const myName = currentUser?.fullname ?? currentUser?.username ?? 'You'
+  const myName = currentUser?.username ?? currentUser?.fullname ?? 'You'
 
   return (
     <section ref={sectionRef} className="relative flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background text-foreground">
