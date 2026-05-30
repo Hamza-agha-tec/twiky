@@ -116,7 +116,7 @@ export const RichTextComposer = forwardRef<RichTextComposerHandle, RichTextCompo
                 .map(item => ({
                   label: item.tag,
                   id: item.tag,
-                  command: ({ editor, range }) => {
+                  command: ({ editor, range }: { editor: any, range: any }) => {
                     editor.chain().focus().deleteRange(range).setMention({ id: item.tag, label: item.tag }).run();
                   }
                 }));
@@ -127,10 +127,10 @@ export const RichTextComposer = forwardRef<RichTextComposerHandle, RichTextCompo
           },
           render: () => {
             let component: ReactRenderer<SuggestionListRef> | null = null
-            let popup: ReturnType<typeof tippy> | null = null
+            let popup: any = null
 
             return {
-              onStart: (props: SuggestionProps) => {
+              onStart: (props: any) => {
                 if (!props.clientRect) return;
 
                 component = new ReactRenderer<SuggestionListRef>(SuggestionList, {
@@ -149,7 +149,7 @@ export const RichTextComposer = forwardRef<RichTextComposerHandle, RichTextCompo
                 });
               },
 
-              onUpdate(props: SuggestionProps) {
+              onUpdate(props: any) {
                 component?.updateProps(props);
 
                 if (props.clientRect) {
@@ -159,7 +159,7 @@ export const RichTextComposer = forwardRef<RichTextComposerHandle, RichTextCompo
                 }
               },
 
-              onKeyDown(props: SuggestionKeyDownProps) {
+              onKeyDown(props: any) {
                 if (props.event.key === 'Escape') {
                   popup?.[0]?.hide();
                   return true;
@@ -224,7 +224,7 @@ export const RichTextComposer = forwardRef<RichTextComposerHandle, RichTextCompo
     const current = editor.getHTML()
     const next = value || ""
     if (current !== next) {
-      editor.commands.setContent(next, false)
+      editor.commands.setContent(next, { emitUpdate: false })
     }
   }, [value, editor])
 

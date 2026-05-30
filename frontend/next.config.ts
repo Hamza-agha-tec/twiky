@@ -1,9 +1,6 @@
-/** @type {import('next').NextConfig} */
-export const nextConfig = {
-  allowedDevOrigins: [
-    'http://192.168.43.1:3000',
-    'http://192.168.100.181:3000',
-  ],
+import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       {
@@ -24,9 +21,18 @@ export const nextConfig = {
       },
       {
         protocol: 'https',
-        hostname: '', // This allows all HTTPS domains
+        hostname: '**', // This allows all HTTPS domains
       }
     ],
   },
-  // Other Next.js config options can go here
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: 'http://localhost:8080/api/:path*',
+      },
+    ];
+  },
 };
+
+export default nextConfig;

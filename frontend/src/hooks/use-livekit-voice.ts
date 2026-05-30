@@ -5,6 +5,7 @@ import {
   Room,
   RoomEvent,
   Track,
+  Participant,
   ParticipantEvent,
   LocalVideoTrack,
   type RemoteTrack,
@@ -165,7 +166,7 @@ export function useLiveKitVoice(
     // pub.track may be null when muted — use kind-based removal, not identity
     const onTrackMuted = (
       pub: TrackPublication,
-      participant: RemoteParticipant,
+      participant: Participant,
     ) => {
       if (!mounted || pub.kind !== Track.Kind.Video) return
       const isScreen = pub.source === Track.Source.ScreenShare
@@ -179,7 +180,7 @@ export function useLiveKitVoice(
     // ── remote track unmuted (cam re-enabled by sender) ────────────────
     const onTrackUnmuted = (
       pub: TrackPublication,
-      participant: RemoteParticipant,
+      participant: Participant,
     ) => {
       if (!mounted || pub.kind !== Track.Kind.Video) return
       const mediaTrack = pub.track?.mediaStreamTrack
@@ -319,9 +320,9 @@ export function useLiveKitVoice(
         await room.localParticipant.setScreenShareEnabled(true, {
           video: { frameRate: 30, width: { ideal: 1920 }, height: { ideal: 1080 } },
           contentHint: 'detail',
-        }, {
+        } as any, {
           videoEncoding: { maxBitrate: 7_500_000, maxFramerate: 30 },
-        })
+        } as any)
       } else {
         await room.localParticipant.setScreenShareEnabled(false)
       }

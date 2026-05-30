@@ -464,7 +464,7 @@ export default function GroupPage() {
     bannerUrl: activeChannel?.banner_url ?? undefined,
     access_type: activeChannel?.access_type as any,
     role: activeChannel?.role as any,
-    owner_id: activeChannel?.owner_id,
+    owner_id: activeChannel?.owner_id ?? '',
     type: (activeChannel?.type as any) ?? 'NORMAL',
   }
 

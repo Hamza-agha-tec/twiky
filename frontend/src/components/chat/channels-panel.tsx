@@ -58,7 +58,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { ChannelSettingsSheet, type WorkspaceChannel } from '@/components/chat/channel-settings-sheet'
+import { ChannelSettingsSheet, type WorkspaceChannel as BaseWorkspaceChannel } from '@/components/chat/channel-settings-sheet'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
@@ -97,10 +97,10 @@ export interface WorkspaceChannel {
   groups: MockChannelGroup[]
   avatarUrl?: string
   bannerUrl?: string
-  access_type?: 'PUBLIC' | 'PRIVATE'
-  role?: 'OWNER' | 'ADMIN' | 'MEMBER' | string
-  owner_id?: string
-  type: 'NORMAL' | 'WORKSPACE'
+  access_type: 'PUBLIC' | 'PRIVATE'
+  role: 'OWNER' | 'ADMIN' | 'MEMBER'
+  owner_id: string
+  type: 'WORKSPACE' | 'NORMAL'
 }
 
 interface BuildChannelGroupInput {
@@ -287,6 +287,9 @@ export function buildWorkspaceChannel({
         membersLabel,
       }),
     ],
+    access_type: 'PUBLIC',
+    role: 'MEMBER',
+    owner_id: '',
     type,
   }
 }
@@ -1468,7 +1471,6 @@ export function ChannelsPanel({
         onOpenChange={setChannelSettingsOpen}
         onSave={(avatarUrl, bannerUrl) => onAssetSave?.(channel.id, avatarUrl, bannerUrl)}
         onDeleted={onChannelDeleted}
-        activeGroupId={activeGroup}
       />
 
       {groupSettingsTarget ? (

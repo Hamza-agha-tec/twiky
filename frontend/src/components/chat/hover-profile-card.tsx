@@ -22,7 +22,7 @@ interface HoverProfileCardProps {
   onViewProfile?: (userId: string) => void
   hideMessage?: boolean
   side?: 'left' | 'right' | 'top'
-  anchorRef?: React.RefObject<HTMLElement>
+  anchorRef?: React.RefObject<HTMLElement | null>
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -74,7 +74,7 @@ function Card({
   const isVerified = profile?.is_verified ?? false
   const showVerified = isVerified || subPlan === 'PRO' || subPlan === 'GEEK'
   const roleColor = role ? (ROLE_COLORS[role] ?? null) : null
-  const statusMsg = profile?.status ?? profile?.status_message ?? null
+  const statusMsg = profile?.status ?? (profile as any)?.status_message ?? null
   const nameEffect = profile?.name_effect ?? null
   const effectiveStatus = resolveStatus(profile?.user_status, isOnline)
 

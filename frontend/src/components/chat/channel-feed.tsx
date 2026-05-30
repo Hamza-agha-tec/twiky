@@ -2395,6 +2395,11 @@ export function ChannelFeed({
   const [pollAllowMultiple, setPollAllowMultiple] = useState(false)
   const voiceStopRef = useRef<(() => Promise<void>) | null>(null)
 
+  const [mentionCursor, setMentionCursor] = useState(0)
+  const [activeMentionIndex, setActiveMentionIndex] = useState(0)
+  const [mentionIndex, setMentionIndex] = useState(0)
+  const showMentionMenu = mentionCursor > 0
+
   const posts = postsByGroup[group.id] ?? postsOverride ?? buildFallbackPosts(channel, group)
   const latestPostId = posts.at(-1)?.id
   const draft = drafts[group.id] ?? ''
@@ -2987,32 +2992,7 @@ export function ChannelFeed({
     }
   }
 
-  function handleKeyDown(e: KeyboardEvent<HTMLDivElement>) {
-    if (showMentionMenu) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setActiveMentionIndex((current) => (current + 1) % filteredMentionOptions.length)
-        return
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setActiveMentionIndex((current) => (
-          current - 1 + filteredMentionOptions.length
-        ) % filteredMentionOptions.length)
-        return
-      }
-      if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault()
-        insertMention(filteredMentionOptions[activeMentionIndex] ?? filteredMentionOptions[0])
-        return
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        setMentionCursor(0)
-        return
-      }
-    }
-
+  function handleKeyDown(e: React.KeyboardEvent | globalThis.KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       void sendDraft()

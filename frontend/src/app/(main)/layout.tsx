@@ -3,9 +3,9 @@
 import { useMemo, useState, useEffect, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { usePathname, useRouter, useParams } from 'next/navigation'
-import { motion, AnimatePresence, useMotionValue, animate } from 'framer-motion'
+import { motion, useMotionValue, animate } from 'framer-motion'
 import { WorkspaceShellLayout } from '@/components/chat/workspace-shell-layout'
-import { WorkspaceSidebar, WorkspaceMode } from '@/components/chat/workspace-sidebar'
+import { WorkspaceSidebar } from '@/components/chat/workspace-sidebar'
 import { useChat } from '@/context/ChatContext'
 import { useChannels, useCreateChannel } from '@/hooks/use-channels'
 import { projectApi } from '@/lib/project-api'
@@ -20,12 +20,9 @@ import { DmCallIncoming } from '@/components/chat/dm-call-incoming'
 import { DmCallWindow, DmCallOutgoing } from '@/components/chat/dm-call-window'
 import { useOnlineUsers } from '@/hooks/use-socket'
 import { useVoice } from '@/context/VoiceContext'
-import { VoiceGroupView } from '@/components/chat/voice-group-view'
 import { FloatingVoicePiP } from '@/components/chat/floating-voice-pip'
 import { WatchRoomView } from '@/components/watch/watch-room-view'
 import { useWatchPresence } from '@/context/WatchPresenceContext'
-import { Popcorn, Maximize2, Minimize2, PhoneOff, X, Users, Settings } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
@@ -233,7 +230,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       access_type: ch.access_type as any,
       role: (ch.role as any) ?? 'MEMBER',
       owner_id: ch.owner_id,
-      type: isWorkspaceChannel(ch.type) ? 'WORKSPACE' : 'NORMAL',
+      type: (isWorkspaceChannel(ch.type) ? 'WORKSPACE' : 'NORMAL') as 'WORKSPACE' | 'NORMAL',
     }))
   }, [channels])
 

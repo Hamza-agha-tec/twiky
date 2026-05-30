@@ -165,7 +165,7 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent | globalThis.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();

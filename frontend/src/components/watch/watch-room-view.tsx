@@ -239,7 +239,7 @@ function HostPublisher({ videoRef }: { videoRef: React.RefObject<HTMLVideoElemen
       try { await room.localParticipant.unpublishTrack(st.audioTrack) } catch {}
       st.audioTrack = null
     }
-    const la = new LocalAudioTrack(dest.stream.getAudioTracks()[0], { name: 'watch-audio' })
+    const la = new LocalAudioTrack(dest.stream.getAudioTracks()[0], { name: 'watch-audio' } as any)
     try {
       await room.localParticipant.publishTrack(la, { source: Track.Source.ScreenShareAudio })
       st.audioTrack = la
@@ -284,7 +284,7 @@ function HostPublisher({ videoRef }: { videoRef: React.RefObject<HTMLVideoElemen
       const rawVideo = stream.getVideoTracks()[0]
       if (rawVideo) {
         rawVideo.contentHint = 'detail'
-        const lt = new LocalVideoTrack(rawVideo, { name: 'watch-video' })
+        const lt = new LocalVideoTrack(rawVideo, { name: 'watch-video' } as any)
         await room.localParticipant.publishTrack(lt, {
           source: Track.Source.ScreenShare,
           videoCodec: 'h264',
