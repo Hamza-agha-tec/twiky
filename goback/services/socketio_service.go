@@ -998,6 +998,59 @@ func (s *SocketIOService) setupHandlers() {
 			})
 			go s.saveDirectCallLog(mapStr(payload, "conversationId"), calleeID, "declined", mapStr(payload, "callType"), 0)
 		})
+
+		// ── Whiteboard ──────────────────────────────────────────────────────
+
+		client.On("whiteboard:join", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			whiteboardID := mapStr(payload, "whiteboardId")
+			if whiteboardID == "" {
+				return
+			}
+			client.Join(socketio.Room("whiteboard_" + whiteboardID))
+			log.Printf("User %s joined whiteboard %s", senderID(), whiteboardID)
+		})
+
+		client.On("whiteboard:leave", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			whiteboardID := mapStr(payload, "whiteboardId")
+			if whiteboardID == "" {
+				return
+			}
+			client.Leave(socketio.Room("whiteboard_" + whiteboardID))
+		})
+
+		client.On("whiteboard:element-change", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			whiteboardID := mapStr(payload, "whiteboardId")
+			if whiteboardID == "" {
+				return
+			}
+			// Broadcast to everyone else in the room
+			client.To(socketio.Room("whiteboard_" + whiteboardID)).Emit("whiteboard:element-change", payload)
+		})
+
+		client.On("whiteboard:cursor-move", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			whiteboardID := mapStr(payload, "whiteboardId")
+			if whiteboardID == "" {
+				return
+			}
+			// Broadcast to everyone else in the room
+			client.To(socketio.Room("whiteboard_" + whiteboardID)).Emit("whiteboard:cursor-move", payload)
+		})
 		client.On("dm-call-cancelled", func(datas ...any) {
 			if len(datas) == 0 {
 				return

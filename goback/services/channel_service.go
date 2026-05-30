@@ -47,21 +47,33 @@ func (s *ChannelService) CreateChannel(userID string, createData models.CreateCh
 		return nil, fmt.Errorf("failed to add owner to channel_members: %w", err)
 	}
 
-	var generalGroupID string
-	err = s.db.QueryRow(`
-		INSERT INTO groups (channel_id, name, description, is_general, group_type, access_type)
-		VALUES ($1, 'general', 'Default group for general discussion', true, 'text', 'PUBLIC')
-		RETURNING id
-	`, channel.ID).Scan(&generalGroupID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create general group: %w", err)
+	channelType := createData.Type
+	if channelType == "" {
+		channelType = "NORMAL"
 	}
 
-	_, err = s.db.Exec(`
-		INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, 'OWNER')
-	`, generalGroupID, userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to add owner to general group: %w", err)
+	if channelType == "WORKSPACE" {
+		projectSvc := NewProjectService(s.db)
+		if _, err := projectSvc.BootstrapDefaultProject(channel.ID, userID); err != nil {
+			return nil, fmt.Errorf("failed to bootstrap workspace project: %w", err)
+		}
+	} else {
+		var generalGroupID string
+		err = s.db.QueryRow(`
+			INSERT INTO groups (channel_id, name, description, is_general, group_type, access_type)
+			VALUES ($1, 'general', 'Default group for general discussion', true, 'text', 'PUBLIC')
+			RETURNING id
+		`, channel.ID).Scan(&generalGroupID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create general group: %w", err)
+		}
+
+		_, err = s.db.Exec(`
+			INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, 'OWNER')
+		`, generalGroupID, userID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to add owner to general group: %w", err)
+		}
 	}
 
 	return channel, nil
@@ -165,7 +177,7 @@ func (s *ChannelService) DiscoverChannels(userID string) ([]*models.Channel, err
 
 func (s *ChannelService) GetChannelDetails(channelID string) (*models.Channel, error) {
 	query := `
-		SELECT id, name, description, avatar_url, owner_id, access_type, created_at
+		SELECT id, name, description, avatar_url, owner_id, access_type, type, created_at
 		FROM channels 
 		WHERE id = $1
 	`
@@ -173,7 +185,7 @@ func (s *ChannelService) GetChannelDetails(channelID string) (*models.Channel, e
 	channel := &models.Channel{}
 	err := s.db.QueryRow(query, channelID).Scan(
 		&channel.ID, &channel.Name, &channel.Description, &channel.AvatarURL, &channel.OwnerID,
-		&channel.AccessType, &channel.CreatedAt,
+		&channel.AccessType, &channel.Type, &channel.CreatedAt,
 	)
 
 	if err != nil {
@@ -281,9 +293,17 @@ func (s *ChannelService) RespondToChannelJoinRequest(channelID, requestID, statu
 			_, err = s.db.Exec(`
 				INSERT INTO channel_members (channel_id, user_id, role) VALUES ($1, $2, 'MEMBER')
 			`, channelID, userID)
+			if err != nil {
+				return fmt.Errorf("failed to add member: %w", err)
+			}
 		}
-		if err != nil {
-			return fmt.Errorf("failed to add member: %w", err)
+
+		// Add to main project if it's a workspace
+		var channelType string
+		_ = s.db.QueryRow(`SELECT type FROM channels WHERE id = $1`, channelID).Scan(&channelType)
+		if channelType == "WORKSPACE" {
+			projectSvc := NewProjectService(s.db)
+			_ = projectSvc.AddUserToMainProject(channelID, userID)
 		}
 	}
 
@@ -371,33 +391,30 @@ func (s *ChannelService) GetMembers(channelID, requestingUserID string) ([]*mode
 
 func (s *ChannelService) AddMember(channelID string, addData models.AddMemberDto) error {
 	// Check if user is already a member
-	var existingMembers []models.ChannelMember
-	err := s.supabase.GetClient().DB.From("channel_members").
-		Select("user_id").
-		Eq("channel_id", channelID).
-		Eq("user_id", addData.UserID).
-		Execute(&existingMembers)
-
+	var count int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM channel_members WHERE channel_id = $1 AND user_id = $2`, channelID, addData.UserID).Scan(&count)
 	if err != nil {
 		return fmt.Errorf("failed to check existing membership: %w", err)
 	}
-
-	if len(existingMembers) > 0 {
+	if count > 0 {
 		return fmt.Errorf("user is already a member")
 	}
 
 	// Add member
-	var newMembers []models.ChannelMember
-	err = s.supabase.GetClient().DB.From("channel_members").
-		Insert(map[string]interface{}{
-			"channel_id": channelID,
-			"user_id":    addData.UserID,
-			"role":       addData.Role,
-		}).
-		Execute(&newMembers)
-
+	_, err = s.db.Exec(`
+		INSERT INTO channel_members (channel_id, user_id, role)
+		VALUES ($1, $2, $3)
+	`, channelID, addData.UserID, addData.Role)
 	if err != nil {
 		return fmt.Errorf("failed to add member: %w", err)
+	}
+
+	// Add to main project if it's a workspace
+	var channelType string
+	_ = s.db.QueryRow(`SELECT type FROM channels WHERE id = $1`, channelID).Scan(&channelType)
+	if channelType == "WORKSPACE" {
+		projectSvc := NewProjectService(s.db)
+		_ = projectSvc.AddUserToMainProject(channelID, addData.UserID)
 	}
 
 	return nil
@@ -476,17 +493,20 @@ func (s *ChannelService) JoinChannel(userID, channelID string) error {
 	}
 
 	// Add member
-	var newMembers []models.ChannelMember
-	err = s.supabase.GetClient().DB.From("channel_members").
-		Insert(map[string]interface{}{
-			"channel_id": channelID,
-			"user_id":    userID,
-			"role":       "MEMBER",
-		}).
-		Execute(&newMembers)
-
+	_, err = s.db.Exec(`
+		INSERT INTO channel_members (channel_id, user_id, role)
+		VALUES ($1, $2, 'MEMBER')
+	`, channelID, userID)
 	if err != nil {
-		return fmt.Errorf("failed to join channel: %w", err)
+		return fmt.Errorf("failed to add member: %w", err)
+	}
+
+	// Add to main project if it's a workspace
+	var channelType string
+	_ = s.db.QueryRow(`SELECT type FROM channels WHERE id = $1`, channelID).Scan(&channelType)
+	if channelType == "WORKSPACE" {
+		projectSvc := NewProjectService(s.db)
+		_ = projectSvc.AddUserToMainProject(channelID, userID)
 	}
 
 	return nil

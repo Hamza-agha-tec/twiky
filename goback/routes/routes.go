@@ -17,6 +17,7 @@ import (
 	"github.com/Hamza-agha-tec/goback/handlers/messaging"
 	"github.com/Hamza-agha-tec/goback/handlers/notifications"
 	"github.com/Hamza-agha-tec/goback/handlers/payments"
+	projecthandlers "github.com/Hamza-agha-tec/goback/handlers/projects"
 	"github.com/Hamza-agha-tec/goback/handlers/spotify"
 	userhandlers "github.com/Hamza-agha-tec/goback/handlers/users"
 	"github.com/Hamza-agha-tec/goback/handlers/voice"
@@ -46,6 +47,7 @@ func SetupRoutes(e *echo.Echo) {
 	productPaymentsService := services.NewProductPaymentsService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	voiceService := services.NewVoiceService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	groupService := services.NewGroupService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
+	projectService := services.NewProjectService(db.DB)
 	notificationService := services.NewNotificationService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"), socketIOService)
 
 	collaborationService := services.NewCollaborationService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
@@ -70,10 +72,11 @@ func SetupRoutes(e *echo.Echo) {
 	paymentHandler := payments.NewPaymentHandler(paymentService, productPaymentsService)
 	voiceHandler := voice.NewVoiceHandler(voiceService)
 	groupHandler := groups.NewGroupHandler(groupService, socketIOService)
+	projectHandler := projecthandlers.NewProjectHandler(projectService, groupService)
 	webSocketHandler := websocket.NewWebSocketHandler(socketIOService)
 	notificationHandler := notifications.NewNotificationHandler(notificationService)
 
-	collaborationHandler := collaboration.NewCollaborationHandler(collaborationService)
+	collaborationHandler := collaboration.NewCollaborationHandler(collaborationService, projectService)
 	messagingHandler := messaging.NewMessagingHandler(messagingService, socketIOService, notificationService)
 	contentHandler := content.NewContentHandler(contentService, notificationService, socketIOService)
 	fileHandler := files.NewFileHandler(fileService)
@@ -87,20 +90,20 @@ func SetupRoutes(e *echo.Echo) {
 	})
 
 	// Public routes — no middleware
-	public := e.Group("")
+	public := e.Group("/api")
 	public.GET("/users", userhandlers.GetAllUsers(userService))
 	public.GET("/users/:id", userhandlers.GetUserByID(userService))
 	public.POST("/auth", authHandler.Authenticate)
 
 	// Optional auth routes (work with or without auth)
-	optionalAuth := e.Group("")
+	optionalAuth := e.Group("/api")
 	optionalAuth.Use(middleware.AuthMiddleware)
 	optionalAuth.GET("/users/:id/followers", userHandler.GetFollowers)
 	optionalAuth.GET("/users/:id/following", userHandler.GetFollowing)
 	optionalAuth.GET("/users/username/:username", userHandler.GetUserByUsername)
 
 	// Protected routes — with middleware
-	protected := e.Group("")
+	protected := e.Group("/api")
 	protected.Use(middleware.AuthMiddleware)
 
 	// Auth routes
@@ -134,6 +137,22 @@ func SetupRoutes(e *echo.Echo) {
 	protected.PATCH("/channels/:id/join-requests/:requestId", channelHandler.RespondToChannelJoinRequest)
 	protected.GET("/channels/:channelId/events", groupHandler.GetChannelEvents)
 	protected.POST("/channels/:channelId/events", groupHandler.CreateChannelEvent)
+
+	// Workspace project routes
+	protected.GET("/channels/:channelId/projects", projectHandler.ListProjects)
+	protected.POST("/channels/:channelId/projects", projectHandler.CreateProject)
+	protected.GET("/channels/:channelId/projects/:projectId", projectHandler.GetProject)
+	protected.PATCH("/channels/:channelId/projects/:projectId", projectHandler.UpdateProject)
+	protected.DELETE("/channels/:channelId/projects/:projectId", projectHandler.DeleteProject)
+	protected.GET("/channels/:channelId/projects/:projectId/groups", projectHandler.GetProjectGroups)
+	protected.POST("/channels/:channelId/projects/:projectId/groups", projectHandler.CreateProjectGroup)
+	protected.POST("/projects/:projectId/join", projectHandler.JoinProject)
+	protected.POST("/projects/:projectId/request-join", projectHandler.RequestJoinProject)
+	protected.GET("/projects/:projectId/join-requests", projectHandler.GetProjectJoinRequests)
+	protected.PATCH("/projects/join-requests/:requestId", projectHandler.HandleJoinRequest)
+	protected.GET("/projects/:projectId/members", projectHandler.GetProjectMembers)
+	protected.POST("/projects/:projectId/members", projectHandler.AddProjectMember)
+	protected.DELETE("/projects/:projectId/members/:userId", projectHandler.RemoveProjectMember)
 
 	// Contact routes
 	protected.GET("/contacts", contactHandler.FindAll)
@@ -196,17 +215,33 @@ func SetupRoutes(e *echo.Echo) {
 	protected.GET("/tasks", collaborationHandler.GetTasks)
 	protected.POST("/tasks", collaborationHandler.CreateTask)
 	protected.PATCH("/tasks/:id", collaborationHandler.UpdateTask)
+	protected.DELETE("/tasks/:id", collaborationHandler.DeleteTask)
+	protected.GET("/subtasks", collaborationHandler.GetSubtasks)
+	protected.POST("/subtasks", collaborationHandler.CreateSubtask)
+	protected.PATCH("/subtasks/:id", collaborationHandler.UpdateSubtask)
+	protected.GET("/task-comments", collaborationHandler.GetTaskComments)
+	protected.POST("/task-comments", collaborationHandler.CreateTaskComment)
+	protected.PATCH("/task-comments/:id", collaborationHandler.UpdateTaskComment)
+	protected.DELETE("/task-comments/:id", collaborationHandler.DeleteTaskComment)
 	protected.GET("/notes", collaborationHandler.GetNotes)
 	protected.POST("/notes", collaborationHandler.CreateNote)
 	protected.PATCH("/notes/:id", collaborationHandler.UpdateNote)
+	protected.DELETE("/notes/:id", collaborationHandler.DeleteNote)
 	protected.GET("/goals", collaborationHandler.GetGoals)
 	protected.POST("/goals", collaborationHandler.CreateGoal)
 	protected.PATCH("/goals/:id", collaborationHandler.UpdateGoal)
+	protected.DELETE("/goals/:id", collaborationHandler.DeleteGoal)
+	protected.GET("/whiteboards", collaborationHandler.GetWhiteboards)
+	protected.GET("/whiteboards/:id", collaborationHandler.GetWhiteboard)
+	protected.POST("/whiteboards", collaborationHandler.CreateWhiteboard)
+	protected.PATCH("/whiteboards/:id", collaborationHandler.UpdateWhiteboard)
+	protected.DELETE("/whiteboards/:id", collaborationHandler.DeleteWhiteboard)
 	protected.GET("/goals/:id/milestones", collaborationHandler.GetMilestones)
 	protected.POST("/goals/:id/milestones", collaborationHandler.CreateMilestone)
 	protected.PATCH("/goals/milestones/:milestoneId/toggle", collaborationHandler.ToggleMilestone)
 	protected.GET("/goals/:id/notes", collaborationHandler.GetGoalNotes)
 	protected.POST("/goals/:id/notes", collaborationHandler.CreateGoalNote)
+	protected.DELETE("/goals/:id/notes/:noteId", collaborationHandler.DeleteGoalNote)
 
 	// Messaging routes
 	protected.GET("/direct-conversations", messagingHandler.GetDirectConversations)

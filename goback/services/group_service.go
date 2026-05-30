@@ -59,7 +59,58 @@ func (s *GroupService) getChannelRoleForGroup(groupID, userID string) (string, e
 	return channelMembers[0].Role, nil
 }
 
+func (s *GroupService) CreateGroupInProject(channelID, projectID, userID string, createData models.CreateGroupDto) (*models.Group, error) {
+	var channelType string
+	_ = s.db.QueryRow(`SELECT type FROM channels WHERE id = $1`, channelID).Scan(&channelType)
+	if channelType != "WORKSPACE" {
+		return nil, fmt.Errorf("use channel groups endpoint for normal channels")
+	}
+
+	projectSvc := NewProjectService(s.db)
+	if _, err := projectSvc.canAccessProject(projectID, userID); err != nil {
+		return nil, err
+	}
+
+	var groups []models.Group
+	err := s.supabase.GetClient().DB.From("groups").
+		Insert(map[string]interface{}{
+			"channel_id":  channelID,
+			"project_id":  projectID,
+			"name":        createData.Name,
+			"description": createData.Description,
+			"group_type":  createData.GroupType,
+			"access_type": createData.AccessType,
+		}).
+		Execute(&groups)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create group: %w", err)
+	}
+	if len(groups) == 0 {
+		return nil, fmt.Errorf("failed to create group: no data returned")
+	}
+
+	var members []interface{}
+	err = s.supabase.GetClient().DB.From("group_members").
+		Insert(map[string]interface{}{
+			"group_id": groups[0].ID,
+			"user_id":  userID,
+			"role":     "OWNER",
+		}).
+		Execute(&members)
+	if err != nil {
+		return nil, fmt.Errorf("failed to add owner as group member: %w", err)
+	}
+	return &groups[0], nil
+}
+
 func (s *GroupService) CreateGroup(channelID, userID string, createData models.CreateGroupDto) (*models.Group, error) {
+	var channelType string
+	_ = s.db.QueryRow(`SELECT type FROM channels WHERE id = $1`, channelID).Scan(&channelType)
+	if channelType == "WORKSPACE" {
+		return nil, fmt.Errorf("create groups inside a project for workspace channels")
+	}
+
 	var groups []models.Group
 	err := s.supabase.GetClient().DB.From("groups").
 		Insert(map[string]interface{}{
@@ -112,7 +163,7 @@ func (s *GroupService) GetGroupsInChannel(channelID, requestingUserID string) ([
 		       END AS is_member
 		FROM groups g
 		LEFT JOIN group_members gm ON gm.group_id = g.id AND gm.user_id = $2
-		WHERE g.channel_id = $1
+		WHERE g.channel_id = $1 AND g.project_id IS NULL
 		ORDER BY g.created_at ASC
 	`, channelID, requestingUserID)
 	if err != nil {

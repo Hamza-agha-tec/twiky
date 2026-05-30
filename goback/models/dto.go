@@ -5,7 +5,7 @@ type CreateChannelDto struct {
 	Description string `json:"description" validate:"max=500"`
 	AvatarURL   string `json:"avatar_url" validate:"url"`
 	AccessType  string `json:"access_type"`
-	Type        string `json:"type"`
+	Type        string `json:"type"` // NORMAL | WORKSPACE
 	BannerURL   string `json:"banner_url" db:"banner_url "`
 }
 
