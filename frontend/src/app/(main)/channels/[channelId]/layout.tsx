@@ -28,6 +28,8 @@ export default function ChannelLayout({ children }: { children: React.ReactNode 
   const { watchParticipants, watchSessionStarts, setGroupParticipants, setGroupSessionStart } = useWatchPresence()
   const onlineUsers = useOnlineUsers()
   const [voiceTimer, setVoiceTimer] = useState<string>('00:00')
+  const [pixelParticipants, setPixelParticipants] = useState<Record<string, { userId: string; username: string; avatarUrl?: string | null; bannerUrl?: string | null; subPlan?: string | null; micMuted: boolean; isSpeaking: boolean }[]>>({})
+  const [pixelSessionStarts, setPixelSessionStarts] = useState<Record<string, number | null>>({})
 
   // Watch room real-time participants synchronization
   useEffect(() => {
@@ -57,6 +59,45 @@ export default function ChannelLayout({ children }: { children: React.ReactNode 
 
     return () => { mounted = false }
   }, [setGroupParticipants, setGroupSessionStart])
+
+  // Pixel room participants
+  const pixelGroupIdsKey = channelGroups.filter(g => g.group_type === 'pixel-room').map(g => g.id).join(',')
+  useEffect(() => {
+    const pixelGroupIds = pixelGroupIdsKey ? pixelGroupIdsKey.split(',') : []
+    if (!pixelGroupIds.length) return
+    let cancelled = false
+    let socket: Awaited<ReturnType<typeof getSocket>> | null = null
+
+    const onPixelParticipants = (data: { groupId: string; participants: { userId: string; username: string; avatarUrl?: string | null; bannerUrl?: string | null; subPlan?: string | null; micMuted: boolean; isSpeaking: boolean }[]; sessionStartedAt?: number | null }) => {
+      if (!pixelGroupIds.includes(data.groupId)) return
+      setPixelParticipants(prev => ({ ...prev, [data.groupId]: data.participants }))
+      setPixelSessionStarts(prev => ({ ...prev, [data.groupId]: data.sessionStartedAt ?? null }))
+    }
+    const onPixelSpeaking = (data: { groupId: string; userId: string; speaking: boolean }) => {
+      if (!pixelGroupIds.includes(data.groupId)) return
+      setPixelParticipants(prev => {
+        const list = prev[data.groupId]
+        if (!list) return prev
+        return { ...prev, [data.groupId]: list.map(p => p.userId === data.userId ? { ...p, isSpeaking: data.speaking } : p) }
+      })
+    }
+
+    getSocket().then(s => {
+      if (cancelled) return
+      socket = s
+      s.emit('subscribe-pixel-rooms', { groupIds: pixelGroupIds })
+      s.on('pixel-room:participants', onPixelParticipants)
+      s.on('pixel-room:speaking', onPixelSpeaking)
+    })
+    return () => {
+      cancelled = true
+      if (socket) {
+        socket.emit('unsubscribe-pixel-rooms', { groupIds: pixelGroupIds })
+        socket.off('pixel-room:participants', onPixelParticipants)
+        socket.off('pixel-room:speaking', onPixelSpeaking)
+      }
+    }
+  }, [pixelGroupIdsKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Subscribe socket to voice room presence rooms — fast path, no extra render cycle
   const voiceGroupIdsKey = channelGroups.filter(g => g.group_type === 'voice').map(g => g.id).join(',')
@@ -146,6 +187,10 @@ export default function ChannelLayout({ children }: { children: React.ReactNode 
           onKickVoiceParticipant={(targetId) => voice.kick(targetId)}
           soundboardUserId={voice.soundboardUserId}
           soundboardIntensity={voice.soundboardIntensity}
+          // Pixel room props
+          pixelParticipants={pixelParticipants}
+          pixelSessionStarts={pixelSessionStarts}
+          activePixelGroupId={groupId as string | undefined}
           // Watch props
           watchParticipants={watchParticipants}
           watchSessionStarts={watchSessionStarts}

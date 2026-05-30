@@ -50,16 +50,18 @@ export function useSpotifyNowPlaying(userId: string | undefined) {
     };
   }, [userId, queryClient]);
 
-  // REST fetch runs immediately for instant display — socket overrides when it arrives
+  // One-shot REST fetch for instant display on mount — socket pushes all updates after
   const restQuery = useQuery({
     queryKey: SPOTIFY_KEYS.nowPlaying(userId ?? ''),
     queryFn: () => spotifyApi.getNowPlaying(userId!),
     enabled: !!userId,
-    staleTime: 30_000,
+    staleTime: Infinity,
     refetchInterval: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
-  const data = restQuery.data?.message === 'Spotify not connected' ? restQuery.data : socketData ?? restQuery.data;
+  const data = socketData ?? restQuery.data;
 
   return { data, isLoading: restQuery.isLoading && !socketData };
 }

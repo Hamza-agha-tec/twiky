@@ -32,8 +32,8 @@ func (s *SpotifyService) GetAuthURL(userID string) string {
 
 	scopes := "user-read-currently-playing user-read-playback-state user-top-read user-read-recently-played"
 
-	authURL := fmt.Sprintf("https://accounts.spotify.com/authorize?client_id=%s&response_type=code&redirect_uri=%s&scope=%s",
-		clientID, url.QueryEscape(redirectURI), url.QueryEscape(scopes))
+	authURL := fmt.Sprintf("https://accounts.spotify.com/authorize?client_id=%s&response_type=code&redirect_uri=%s&scope=%s&state=%s",
+		clientID, url.QueryEscape(redirectURI), url.QueryEscape(scopes), url.QueryEscape(userID))
 
 	return authURL
 }
@@ -83,7 +83,7 @@ func (s *SpotifyService) HandleCallback(userID, code string) error {
 	}
 
 	var tokens []models.SpotifyToken
-	err = s.supabase.GetClient().DB.From("spotify_tokens").
+	err = s.supabase.GetClient().DB.From("spotify_connections").
 		Upsert(tokenData).
 		Execute(&tokens)
 
@@ -92,7 +92,7 @@ func (s *SpotifyService) HandleCallback(userID, code string) error {
 
 func (s *SpotifyService) Disconnect(userID string) error {
 	var tokens []models.SpotifyToken
-	err := s.supabase.GetClient().DB.From("spotify_tokens").
+	err := s.supabase.GetClient().DB.From("spotify_connections").
 		Delete().
 		Eq("user_id", userID).
 		Execute(&tokens)
@@ -102,7 +102,7 @@ func (s *SpotifyService) Disconnect(userID string) error {
 
 func (s *SpotifyService) GetValidToken(userID string) (string, error) {
 	var tokens []models.SpotifyToken
-	err := s.supabase.GetClient().DB.From("spotify_tokens").
+	err := s.supabase.GetClient().DB.From("spotify_connections").
 		Select("*").
 		Eq("user_id", userID).
 		Execute(&tokens)
@@ -159,7 +159,7 @@ func (s *SpotifyService) refreshToken(userID, refreshToken string) (string, erro
 		"access_token": tokenRes.AccessToken,
 		"expires_at":   expiresAt,
 	}
-	s.supabase.GetClient().DB.From("spotify_tokens").
+	s.supabase.GetClient().DB.From("spotify_connections").
 		Update(updateData).
 		Eq("user_id", userID).
 		Execute(&[]models.SpotifyToken{})
@@ -188,10 +188,60 @@ func (s *SpotifyService) GetNowPlaying(targetUserID, requestUserID string) (map[
 	}
 
 	body, _ := io.ReadAll(resp.Body)
-	var result map[string]interface{}
-	json.Unmarshal(body, &result)
+	var raw map[string]interface{}
+	json.Unmarshal(body, &raw)
 
-	return result, nil
+	isPlaying, _ := raw["is_playing"].(bool)
+	progressMs, _ := raw["progress_ms"].(float64)
+
+	item, _ := raw["item"].(map[string]interface{})
+	if item == nil {
+		return map[string]interface{}{"is_playing": false}, nil
+	}
+
+	name, _ := item["name"].(string)
+	durationMs, _ := item["duration_ms"].(float64)
+
+	var artist string
+	if artists, ok := item["artists"].([]interface{}); ok {
+		names := make([]string, 0, len(artists))
+		for _, a := range artists {
+			if am, ok := a.(map[string]interface{}); ok {
+				if n, ok := am["name"].(string); ok {
+					names = append(names, n)
+				}
+			}
+		}
+		artist = strings.Join(names, ", ")
+	}
+
+	var albumName, albumArt string
+	if album, ok := item["album"].(map[string]interface{}); ok {
+		albumName, _ = album["name"].(string)
+		if images, ok := album["images"].([]interface{}); ok && len(images) > 0 {
+			if img, ok := images[0].(map[string]interface{}); ok {
+				albumArt, _ = img["url"].(string)
+			}
+		}
+	}
+
+	var spotifyURL string
+	if ext, ok := item["external_urls"].(map[string]interface{}); ok {
+		spotifyURL, _ = ext["spotify"].(string)
+	}
+
+	return map[string]interface{}{
+		"is_playing": isPlaying,
+		"track": map[string]interface{}{
+			"name":        name,
+			"artist":      artist,
+			"album":       albumName,
+			"album_art":   albumArt,
+			"spotify_url": spotifyURL,
+			"progress_ms": int(progressMs),
+			"duration_ms": int(durationMs),
+		},
+	}, nil
 }
 
 func (s *SpotifyService) Connect(userID string) error {

@@ -59,6 +59,7 @@ func SetupRoutes(e *echo.Echo) {
 	invitationService := services.NewInvitationService(os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	boardService := services.NewBoardService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"), socketIOService)
 	roomService := services.NewRoomService(db.DB)
+	socketIOService.SetSpotifyService(spotifyService)
 
 	// Add user routes with new code style
 	userRoutes(e, userService, contentService, notificationService, socketIOService)
@@ -97,6 +98,7 @@ func SetupRoutes(e *echo.Echo) {
 	public.GET("/users", userhandlers.GetAllUsers(userService))
 	public.GET("/users/:id", userhandlers.GetUserByID(userService))
 	public.POST("/auth", authHandler.Authenticate)
+	public.GET("/spotify/callback", spotifyHandler.Callback)
 
 	// Optional auth routes (work with or without auth)
 	optionalAuth := e.Group("")
@@ -269,7 +271,6 @@ func SetupRoutes(e *echo.Echo) {
 
 	// Spotify routes
 	protected.GET("/spotify/auth", spotifyHandler.GetAuthURL)
-	protected.GET("/spotify/callback", spotifyHandler.Callback)
 	protected.GET("/spotify/connect", spotifyHandler.Connect)
 	protected.DELETE("/spotify/disconnect", spotifyHandler.Disconnect)
 	protected.GET("/spotify/now-playing/:userId", spotifyHandler.GetNowPlaying)

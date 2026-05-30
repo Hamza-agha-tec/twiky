@@ -14,6 +14,7 @@ import { useProfile } from '@/hooks/use-user'
 import { useOnlineUsers } from '@/hooks/use-socket'
 import { VoiceGroupView } from '@/components/chat/voice-group-view'
 import { WatchRoomView } from '@/components/watch/watch-room-view'
+import { PixelRoomGroupView } from '@/components/game/pixel-room-group-view'
 import { useDmCallContext } from '@/context/DmCallContext'
 import { useChannels } from '@/hooks/use-channels'
 import { BoardView } from '@/components/chat/board-view'
@@ -353,6 +354,18 @@ export default function GroupPage() {
             })
           }}
           onViewProfile={() => {}}
+        />
+      </div>
+    )
+  }
+
+  if (group.kind === 'pixel-room') {
+    return (
+      <div className="flex h-full w-full overflow-hidden">
+        <PixelRoomGroupView
+          group={group}
+          channelId={channelId as string}
+          myId={profile?.id}
         />
       </div>
     )

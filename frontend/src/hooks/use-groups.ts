@@ -25,7 +25,7 @@ export function useChannelGroups(channelId: string | undefined) {
 export function useCreateGroup(channelId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; description?: string; group_type?: 'text' | 'board' | 'voice' | 'watch'; access_type?: 'PUBLIC' | 'PRIVATE' }) =>
+    mutationFn: (data: { name: string; description?: string; group_type?: 'text' | 'board' | 'voice' | 'watch' | 'pixel-room'; access_type?: 'PUBLIC' | 'PRIVATE' }) =>
       groupsApi.createGroup(channelId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: GROUP_KEYS.byChannel(channelId) });
@@ -294,7 +294,7 @@ export function useRemoveGroupMember(groupId: string) {
 export function useUpdateGroup(channelId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ groupId, data }: { groupId: string; data: { name?: string; description?: string; group_type?: 'text' | 'board' | 'voice' | 'watch'; access_type?: 'PUBLIC' | 'PRIVATE' } }) =>
+    mutationFn: ({ groupId, data }: { groupId: string; data: { name?: string; description?: string; group_type?: 'text' | 'board' | 'voice' | 'watch' | 'pixel-room'; access_type?: 'PUBLIC' | 'PRIVATE' } }) =>
       groupsApi.updateGroup(groupId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: GROUP_KEYS.byChannel(channelId) });
@@ -343,7 +343,7 @@ export function backendGroupToMock(group: BackendGroup) {
     id: group.id,
     label: group.name,
     description: group.description ?? '',
-    kind: (group.group_type ?? 'text') as 'text' | 'board' | 'voice' | 'watch',
+    kind: (group.group_type ?? 'text') as 'text' | 'board' | 'voice' | 'watch' | 'pixel-room',
     access_type: (group.access_type ?? 'PUBLIC') as 'PUBLIC' | 'PRIVATE',
     is_general: group.is_general,
     is_member: group.is_member ?? false,

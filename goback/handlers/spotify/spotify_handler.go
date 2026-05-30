@@ -2,6 +2,8 @@ package spotify
 
 import (
 	"net/http"
+	"net/url"
+	"os"
 
 	"github.com/Hamza-agha-tec/goback/services"
 	"github.com/labstack/echo/v4"
@@ -25,17 +27,22 @@ func (h *SpotifyHandler) GetAuthURL(c echo.Context) error {
 
 func (h *SpotifyHandler) Callback(c echo.Context) error {
 	code := c.QueryParam("code")
-	if code == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing code"})
+	userID := c.QueryParam("state")
+	frontendURL := os.Getenv("NEXT_PUBLIC_SITE_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:3000"
 	}
 
-	userID := c.Get("userID").(string)
+	if code == "" || userID == "" {
+		return c.Redirect(http.StatusFound, frontendURL+"/chat?spotify=error&reason="+url.QueryEscape("missing code or state: code="+code+" state="+userID))
+	}
+
 	err := h.spotifyService.HandleCallback(userID, code)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.Redirect(http.StatusFound, frontendURL+"/chat?spotify=error&reason="+url.QueryEscape(err.Error()))
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"message": "spotify connected successfully"})
+	return c.Redirect(http.StatusFound, frontendURL+"/chat?spotify=connected")
 }
 
 func (h *SpotifyHandler) Disconnect(c echo.Context) error {

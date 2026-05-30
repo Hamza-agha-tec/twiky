@@ -28,6 +28,7 @@ import {
   UserPlus,
   UserX,
   AudioLines  ,
+  Gamepad2,
   X,
 } from 'lucide-react'
 import { CreateEntityDialog, type CreateEntityValues } from '@/components/chat/create-entity-dialog'
@@ -87,7 +88,7 @@ export interface MockChannelGroup {
   id: string
   label: string
   description: string
-  kind: 'text' | 'board' | 'voice' | 'watch'
+  kind: 'text' | 'board' | 'voice' | 'watch' | 'pixel-room'
   access_type?: 'PUBLIC' | 'PRIVATE'
   is_general?: boolean
   is_member?: boolean
@@ -118,7 +119,7 @@ interface BuildChannelGroupInput {
   channelLabel: string
   label: string
   description?: string
-  kind?: 'text' | 'board' | 'voice' | 'watch'
+  kind?: 'text' | 'board' | 'voice' | 'watch' | 'pixel-room'
   membersLabel?: string
   pinnedBy?: string
   pinnedMessage?: string
@@ -192,6 +193,23 @@ function VoiceGroupTimer({ participants }: { participants: VoiceParticipant[] })
   )
 }
 
+function PixelRoomTimer({ startedAt }: { startedAt: number }) {
+  const [elapsed, setElapsed] = useState(0)
+  useEffect(() => {
+    const tick = () => setElapsed(Math.floor((Date.now() - startedAt) / 1000))
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [startedAt])
+  const m = Math.floor(elapsed / 60).toString().padStart(2, '0')
+  const s = (elapsed % 60).toString().padStart(2, '0')
+  return (
+    <span className="ml-auto text-[9px] font-semibold tabular-nums" style={{ color: '#55FF55' }}>
+      {m}:{s}
+    </span>
+  )
+}
+
 interface ChannelsPanelProps {
   activeGroup?: string
   channel?: WorkspaceChannel | null
@@ -224,6 +242,9 @@ interface ChannelsPanelProps {
   onWatchLeave?: () => void
   onKickWatchParticipant?: (userId: string, groupId: string) => void
   onViewWatchParticipantProfile?: (participant: { userId: string; username: string; fullname?: string | null; avatarUrl?: string | null; bannerUrl?: string | null; subPlan?: string | null; isVerified?: boolean | null; isHost: boolean; joinedAt: number }) => void
+  pixelParticipants?: Record<string, { userId: string; username: string; avatarUrl?: string | null; bannerUrl?: string | null; subPlan?: string | null; micMuted: boolean; isSpeaking: boolean }[]>
+  pixelSessionStarts?: Record<string, number | null>
+  activePixelGroupId?: string | null
 }
 
 const MEMBER_LABELS = ['26 online', '18 online', '12 online', '9 online', '6 online']
@@ -1073,7 +1094,7 @@ function GroupSettingsSheet({
 }) {
   const [name, setName] = useState(group.label)
   const [description, setDescription] = useState(group.description)
-  const [kind, setKind] = useState<'text' | 'board' | 'voice' | 'watch'>(group.kind)
+  const [kind, setKind] = useState<'text' | 'board' | 'voice' | 'watch' | 'pixel-room'>(group.kind)
   const [accessType, setAccessType] = useState<'PUBLIC' | 'PRIVATE'>(group.access_type ?? 'PUBLIC')
   const [notifications, setNotifications] = useState(true)
   const [mentionsOnly, setMentionsOnly] = useState(false)
@@ -1137,6 +1158,7 @@ function GroupSettingsSheet({
                 { value: 'board', icon: Bird , label: 'Forum', desc: 'Forum-style topics' },
                 { value: 'voice', icon: AudioLines  , label: 'Voice', desc: 'Audio conversations' },
                 { value: 'watch', icon: Popcorn, label: 'Watch', desc: 'Watch together room' },
+                { value: 'pixel-room', icon: Gamepad2, label: 'Pixel Room', desc: 'Shared pixel avatar room' },
               ] as const).map(({ value, icon: Icon, label, desc }) => (
                 <button
                   key={value}
@@ -1358,6 +1380,9 @@ export function ChannelsPanel({
   onWatchLeave,
   onKickWatchParticipant,
   onViewWatchParticipantProfile,
+  pixelParticipants = {},
+  pixelSessionStarts = {},
+  activePixelGroupId,
 }: ChannelsPanelProps) {
   const [showCreateGroup, setShowCreateGroup] = useState(false)
   const [channelSettingsOpen, setChannelSettingsOpen] = useState(false)
@@ -1521,19 +1546,21 @@ export function ChannelsPanel({
               const boardGroups = channel.groups.filter((g) => g.kind === 'board')
               const watchGroups = channel.groups.filter((g) => g.kind === 'watch')
               const voiceGroups = channel.groups.filter((g) => g.kind === 'voice')
-              const sorted = [...textGroups, ...boardGroups, ...watchGroups, ...voiceGroups]
+              const pixelGroups = channel.groups.filter((g) => g.kind === 'pixel-room')
+              const sorted = [...textGroups, ...boardGroups, ...watchGroups, ...voiceGroups, ...pixelGroups]
               const boardStart = textGroups.length
               const watchStart = textGroups.length + boardGroups.length
               const voiceStart = textGroups.length + boardGroups.length + watchGroups.length
               return sorted.map((group, idx) => {
               const isActive = activeGroup === group.id
               const isDefault = group.label.toLowerCase() === 'general'
-              const GroupIcon = group.kind === 'voice' ? AudioLines   : group.kind === 'watch' ? Popcorn : group.kind === 'board' ? Bird  : Hash
+              const GroupIcon = group.kind === 'voice' ? AudioLines : group.kind === 'watch' ? Popcorn : group.kind === 'board' ? Bird : group.kind === 'pixel-room' ? Gamepad2 : Hash
               const isPrivate = group.access_type === 'PRIVATE'
               const hasRequested = requestedGroups.has(group.id)
               const memberCanRequest = !canManage && isPrivate && !group.is_member
               const participants = group.kind === 'voice' ? (voiceParticipants[group.id] ?? []) : []
               const watchPeople = group.kind === 'watch' ? (watchParticipants[group.id] ?? []) : []
+              const pixelPeople = group.kind === 'pixel-room' ? (pixelParticipants[group.id] ?? []) : []
 
               const isFirstBoard = idx === boardStart && boardGroups.length > 0
               const isFirstWatch = idx === watchStart && watchGroups.length > 0
@@ -1691,6 +1718,13 @@ export function ChannelsPanel({
                     </span>
                   )}
 
+                  {/* Pixel room session timer */}
+                  {group.kind === 'pixel-room' && pixelPeople.length > 0 && pixelSessionStarts[group.id] && (
+                    <span className={cn('absolute right-1.5 top-1/2 z-10 -translate-y-1/2 pointer-events-none transition-opacity duration-150', canManage && 'group-hover/row:opacity-0')}>
+                      <PixelRoomTimer startedAt={pixelSessionStarts[group.id]!} />
+                    </span>
+                  )}
+
                   {/* Group 3-dot menu — admins/owners only */}
                   {canManage ? (
                   <DropdownMenu>
@@ -1797,6 +1831,61 @@ export function ChannelsPanel({
                               )}
                             </ContextMenuContent>
                           </ContextMenu>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {/* Pixel room participants */}
+                  {group.kind === 'pixel-room' && pixelPeople.length > 0 && (
+                    <div className="ml-6 mb-1 space-y-0.5">
+                      {pixelPeople.map((p) => {
+                        const isSelf = p.userId === myId
+                        const speaking = p.isSpeaking && !p.micMuted
+                        const hasGeekBanner = p.subPlan === 'GEEK' && Boolean(p.bannerUrl)
+                        const avatarActivity = speaking ? 0.65 : 0
+                        return (
+                          <div
+                            key={p.userId}
+                            className={cn(
+                              'group/pixel-participant relative flex min-h-7 items-center gap-2 overflow-hidden rounded-lg px-2 py-0.5 hover:bg-accent/40 transition-colors',
+                              hasGeekBanner && 'transition-shadow duration-300 ease-out hover:shadow-[0_10px_22px_rgba(0,0,0,0.22)]',
+                            )}
+                          >
+                            {hasGeekBanner ? (
+                              <>
+                                <img
+                                  src={p.bannerUrl ?? ''}
+                                  alt=""
+                                  aria-hidden="true"
+                                  draggable={false}
+                                  className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-300 group-hover/pixel-participant:opacity-100"
+                                />
+                                <span className="pointer-events-none absolute inset-0 bg-gradient-to-r from-sidebar/95 via-sidebar/58 to-sidebar/18 opacity-0 transition-opacity duration-300 group-hover/pixel-participant:opacity-100" />
+                                <span className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-[linear-gradient(90deg,rgba(0,0,0,0.92)_0%,rgba(0,0,0,0.72)_34%,rgba(0,0,0,0.34)_68%,rgba(0,0,0,0)_100%)] opacity-0 shadow-[inset_18px_0_22px_rgba(0,0,0,0.86)] transition-opacity duration-300 group-hover/pixel-participant:opacity-100" />
+                              </>
+                            ) : null}
+                            <div
+                              className="relative z-10 flex-shrink-0 rounded-full transition-shadow duration-75"
+                              style={avatarActivity > 0 ? {
+                                outline: `${1 + avatarActivity * 2}px solid rgba(74,222,128,${0.5 + avatarActivity * 0.5})`,
+                                boxShadow: `0 0 ${4 + avatarActivity * 12}px ${avatarActivity * 4}px rgba(74,222,128,${0.2 + avatarActivity * 0.6})`,
+                              } : undefined}
+                            >
+                              <UserAvatar src={p.avatarUrl ?? null} alt={p.username} className="h-5 w-5 rounded-full object-cover" />
+                              <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-background bg-green-500" />
+                            </div>
+                            <span className="relative z-10 flex min-w-0 flex-1 items-center">
+                              <span className={cn(
+                                'truncate text-[11px] transition-colors duration-300',
+                                p.micMuted ? 'text-muted-foreground/50' : 'text-muted-foreground',
+                                hasGeekBanner && 'group-hover/pixel-participant:text-white',
+                              )}>
+                                {p.username}{isSelf ? ' (You)' : ''}
+                              </span>
+                            </span>
+                            {p.micMuted && <MicOff className="relative z-10 ml-auto h-2.5 w-2.5 flex-shrink-0 text-muted-foreground/40" />}
+                          </div>
                         )
                       })}
                     </div>

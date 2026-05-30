@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"fmt"
@@ -49,6 +50,18 @@ type SocketIOService struct {
 	watchRooms       map[string]map[string]*watchParticipant // roomID → userID → participant
 	watchSocketIndex map[string][2]string                    // socketID → [roomID, userID]
 	watchRoomMeta    map[string]*watchRoomMeta               // roomID → meta
+
+	// Pixel room tracking
+	pixelMu          sync.RWMutex
+	pixelRooms       map[string]map[string]*pixelParticipant // groupID → userID → participant
+	pixelSocketIndex map[string][2]string                    // socketID → [groupID, userID]
+	pixelRoomMeta    map[string]int64                        // groupID → sessionStartedAt (UnixMilli)
+
+	// Spotify polling
+	spotifyMu      sync.RWMutex
+	spotifySubs    map[string]map[string]struct{} // targetUserID → set of subscriberSocketIDs
+	spotifyCancel  map[string]func()              // targetUserID → cancel polling goroutine
+	spotifyService *SpotifyService
 }
 
 type watchParticipant struct {
@@ -66,6 +79,22 @@ type watchParticipant struct {
 
 type watchRoomMeta struct {
 	SessionStartedAt int64 // 0 means not started
+}
+
+type pixelParticipant struct {
+	UserID       string
+	Username     string
+	AvatarId     string
+	AvatarUrl    *string
+	BannerUrl    *string
+	SubPlan      *string
+	X            int
+	Y            int
+	Direction    string
+	IsSitting    bool
+	MicMuted     bool
+	IsSpeaking   bool
+	SpotifyTrack map[string]interface{}
 }
 
 type ChatMessage struct {
@@ -95,6 +124,11 @@ func NewSocketIOService(db *sql.DB) *SocketIOService {
 		watchRooms:       make(map[string]map[string]*watchParticipant),
 		watchSocketIndex: make(map[string][2]string),
 		watchRoomMeta:    make(map[string]*watchRoomMeta),
+		pixelRooms:       make(map[string]map[string]*pixelParticipant),
+		pixelSocketIndex: make(map[string][2]string),
+		pixelRoomMeta:    make(map[string]int64),
+		spotifySubs:   make(map[string]map[string]struct{}),
+		spotifyCancel: make(map[string]func()),
 	}
 	svc.setupHandlers()
 	return svc
@@ -390,6 +424,79 @@ func (s *SocketIOService) removeFromWatchRoom(socketID string) string {
 	return roomID
 }
 
+// ── pixel room helpers ────────────────────────────────────────────────────────
+
+// pixelParticipantsList MUST be called with pixelMu held (at least RLock).
+func (s *SocketIOService) pixelParticipantsList(groupID string) []map[string]interface{} {
+	room := s.pixelRooms[groupID]
+	list := make([]map[string]interface{}, 0, len(room))
+	for _, p := range room {
+		var avatar, banner, sub interface{}
+		if p.AvatarUrl != nil { avatar = *p.AvatarUrl }
+		if p.BannerUrl != nil { banner = *p.BannerUrl }
+		if p.SubPlan != nil   { sub = *p.SubPlan }
+		entry := map[string]interface{}{
+			"userId":     p.UserID,
+			"username":   p.Username,
+			"avatarId":   p.AvatarId,
+			"avatarUrl":  avatar,
+			"bannerUrl":  banner,
+			"subPlan":    sub,
+			"x":          p.X,
+			"y":          p.Y,
+			"direction":  p.Direction,
+			"isSitting":  p.IsSitting,
+			"micMuted":   p.MicMuted,
+			"isSpeaking": p.IsSpeaking,
+		}
+		if p.SpotifyTrack != nil {
+			entry["spotifyTrack"] = p.SpotifyTrack
+		}
+		list = append(list, entry)
+	}
+	return list
+}
+
+// pixelPayload MUST be called with pixelMu held (at least RLock).
+func (s *SocketIOService) pixelPayload(groupID string) map[string]interface{} {
+	list := s.pixelParticipantsList(groupID)
+	var startedAt interface{}
+	if t := s.pixelRoomMeta[groupID]; t > 0 {
+		startedAt = t
+	}
+	return map[string]interface{}{
+		"groupId":          groupID,
+		"participants":     list,
+		"sessionStartedAt": startedAt,
+	}
+}
+
+func (s *SocketIOService) removeFromPixelRoom(socketID string) (groupID, userID string) {
+	s.pixelMu.Lock()
+	entry, ok := s.pixelSocketIndex[socketID]
+	if !ok {
+		s.pixelMu.Unlock()
+		return "", ""
+	}
+	groupID, userID = entry[0], entry[1]
+	delete(s.pixelSocketIndex, socketID)
+	if room := s.pixelRooms[groupID]; room != nil {
+		delete(room, userID)
+		if len(room) == 0 {
+			delete(s.pixelRooms, groupID)
+			delete(s.pixelRoomMeta, groupID)
+		}
+	}
+	s.pixelMu.Unlock()
+	return groupID, userID
+}
+
+func (s *SocketIOService) SetSpotifyService(svc *SpotifyService) {
+	s.spotifyMu.Lock()
+	s.spotifyService = svc
+	s.spotifyMu.Unlock()
+}
+
 // ── socket event setup ────────────────────────────────────────────────────────
 
 func (s *SocketIOService) setupHandlers() {
@@ -550,6 +657,40 @@ func (s *SocketIOService) setupHandlers() {
 					continue
 				}
 				client.Leave(socketio.Room("sub_voice_" + roomID))
+			}
+		})
+
+		client.On("subscribe-pixel-rooms", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			rawIDs, _ := payload["groupIds"].([]interface{})
+			for _, raw := range rawIDs {
+				groupID, ok := raw.(string)
+				if !ok || groupID == "" {
+					continue
+				}
+				client.Join(socketio.Room("sub_pixel_" + groupID))
+				s.pixelMu.RLock()
+				subPayload := s.pixelPayload(groupID)
+				s.pixelMu.RUnlock()
+				client.Emit("pixel-room:participants", subPayload)
+			}
+		})
+
+		client.On("unsubscribe-pixel-rooms", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			rawIDs, _ := payload["groupIds"].([]interface{})
+			for _, raw := range rawIDs {
+				groupID, ok := raw.(string)
+				if !ok || groupID == "" {
+					continue
+				}
+				client.Leave(socketio.Room("sub_pixel_" + groupID))
 			}
 		})
 
@@ -1440,6 +1581,374 @@ func (s *SocketIOService) setupHandlers() {
 			})
 		})
 
+		// ── Pixel room ───────────────────────────────────────────────────────
+
+		client.On("pixel-room:join", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			if payload == nil {
+				return
+			}
+			groupID := mapStr(payload, "groupId")
+			if groupID == "" {
+				return
+			}
+			s.presenceMu.RLock()
+			userID := s.socketUsers[socketID]
+			s.presenceMu.RUnlock()
+			if userID == "" {
+				return
+			}
+			userMap := asMap(payload["user"])
+			username := mapStr(userMap, "username")
+			avatarId := mapStr(userMap, "avatarId")
+			x := 10
+			y := 8
+			if v, ok := userMap["x"].(float64); ok {
+				x = int(v)
+			}
+			if v, ok := userMap["y"].(float64); ok {
+				y = int(v)
+			}
+
+			// Read profile fields from the join payload (sent by frontend)
+			var avatarUrl, bannerUrl, subPlan *string
+			if v := mapStr(userMap, "avatarUrl"); v != "" {
+				avatarUrl = &v
+			}
+			if v := mapStr(userMap, "bannerUrl"); v != "" {
+				bannerUrl = &v
+			}
+			if v := mapStr(userMap, "subPlan"); v != "" {
+				subPlan = &v
+			}
+
+			var oldGroupToLeave string
+			s.pixelMu.Lock()
+			// Remove from any previous pixel room
+			if old, ok := s.pixelSocketIndex[socketID]; ok {
+				oldGroupID := old[0]
+				if oldGroupID != groupID {
+					if room := s.pixelRooms[oldGroupID]; room != nil {
+						delete(room, old[1])
+					}
+					oldGroupToLeave = oldGroupID
+				}
+			}
+			s.pixelSocketIndex[socketID] = [2]string{groupID, userID}
+			if s.pixelRooms[groupID] == nil {
+				s.pixelRooms[groupID] = make(map[string]*pixelParticipant)
+			}
+			s.pixelRooms[groupID][userID] = &pixelParticipant{
+				UserID:    userID,
+				Username:  username,
+				AvatarId:  avatarId,
+				AvatarUrl: avatarUrl,
+				BannerUrl: bannerUrl,
+				SubPlan:   subPlan,
+				X:         x,
+				Y:         y,
+				Direction: "down",
+				IsSitting: false,
+			}
+			// Record session start time on first join
+			if _, exists := s.pixelRoomMeta[groupID]; !exists {
+				s.pixelRoomMeta[groupID] = time.Now().UnixMilli()
+			}
+			joinPayloadData := s.pixelPayload(groupID)
+			s.pixelMu.Unlock()
+
+			// Room join/leave outside the mutex so the socket room state
+			// is committed before we broadcast participants
+			if oldGroupToLeave != "" {
+				client.Leave(socketio.Room("group_" + oldGroupToLeave))
+			}
+			client.Join(socketio.Room("group_" + groupID))
+
+			// Broadcast to everyone in room and sidebar subscribers
+			server.To(socketio.Room("group_" + groupID)).Emit("pixel-room:participants", joinPayloadData)
+			server.To(socketio.Room("sub_pixel_" + groupID)).Emit("pixel-room:participants", joinPayloadData)
+			// Also emit directly to the joining socket so they always get it
+			client.Emit("pixel-room:participants", joinPayloadData)
+		})
+
+		client.On("pixel-room:move", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			if payload == nil {
+				return
+			}
+			groupID := mapStr(payload, "groupId")
+			if groupID == "" {
+				return
+			}
+			s.presenceMu.RLock()
+			userID := s.socketUsers[socketID]
+			s.presenceMu.RUnlock()
+			if userID == "" {
+				return
+			}
+
+			s.pixelMu.Lock()
+			if room := s.pixelRooms[groupID]; room != nil {
+				if p := room[userID]; p != nil {
+					if v, ok := payload["x"].(float64); ok {
+						p.X = int(v)
+					}
+					if v, ok := payload["y"].(float64); ok {
+						p.Y = int(v)
+					}
+					if v, ok := payload["direction"].(string); ok && v != "" {
+						p.Direction = v
+					}
+					if v, ok := payload["isSitting"].(bool); ok {
+						p.IsSitting = v
+					}
+				}
+			}
+			s.pixelMu.Unlock()
+
+			server.To(socketio.Room("group_" + groupID)).Emit("pixel-room:moved", map[string]interface{}{
+				"groupId":   groupID,
+				"userId":    userID,
+				"x":         payload["x"],
+				"y":         payload["y"],
+				"direction": payload["direction"],
+				"isSitting": payload["isSitting"],
+			})
+		})
+
+		client.On("pixel-room:leave", func(datas ...any) {
+			groupID := ""
+			if len(datas) > 0 {
+				if payload := asMap(datas[0]); payload != nil {
+					groupID = mapStr(payload, "groupId")
+				}
+			}
+			s.presenceMu.RLock()
+			userID := s.socketUsers[socketID]
+			s.presenceMu.RUnlock()
+
+			s.pixelMu.Lock()
+			if groupID == "" {
+				if old, ok := s.pixelSocketIndex[socketID]; ok {
+					groupID = old[0]
+				}
+			}
+			if groupID != "" {
+				delete(s.pixelSocketIndex, socketID)
+				if room := s.pixelRooms[groupID]; room != nil {
+					delete(room, userID)
+					if len(room) == 0 {
+						delete(s.pixelRooms, groupID)
+						delete(s.pixelRoomMeta, groupID)
+					}
+				}
+			}
+			leavePayloadData := s.pixelPayload(groupID)
+			s.pixelMu.Unlock()
+
+			if groupID != "" {
+				client.Leave(socketio.Room("group_" + groupID))
+				server.To(socketio.Room("group_" + groupID)).Emit("pixel-room:participants", leavePayloadData)
+				server.To(socketio.Room("sub_pixel_" + groupID)).Emit("pixel-room:participants", leavePayloadData)
+			}
+		})
+
+		client.On("pixel-room:mic", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			if payload == nil {
+				return
+			}
+			groupID := mapStr(payload, "groupId")
+			if groupID == "" {
+				return
+			}
+			s.presenceMu.RLock()
+			userID := s.socketUsers[socketID]
+			s.presenceMu.RUnlock()
+			if userID == "" {
+				return
+			}
+			muted, _ := payload["muted"].(bool)
+
+			s.pixelMu.Lock()
+			if room := s.pixelRooms[groupID]; room != nil {
+				if p := room[userID]; p != nil {
+					p.MicMuted = muted
+				}
+			}
+			micPayloadData := s.pixelPayload(groupID)
+			s.pixelMu.Unlock()
+
+			server.To(socketio.Room("group_" + groupID)).Emit("pixel-room:participants", micPayloadData)
+			server.To(socketio.Room("sub_pixel_" + groupID)).Emit("pixel-room:participants", micPayloadData)
+		})
+
+		client.On("pixel-room:speaking", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			if payload == nil {
+				return
+			}
+			groupID := mapStr(payload, "groupId")
+			if groupID == "" {
+				return
+			}
+			s.presenceMu.RLock()
+			userID := s.socketUsers[socketID]
+			s.presenceMu.RUnlock()
+			if userID == "" {
+				return
+			}
+			speaking, _ := payload["speaking"].(bool)
+
+			s.pixelMu.Lock()
+			if room := s.pixelRooms[groupID]; room != nil {
+				if p := room[userID]; p != nil {
+					p.IsSpeaking = speaking
+				}
+			}
+			s.pixelMu.Unlock()
+
+			speakPayload := map[string]interface{}{"groupId": groupID, "userId": userID, "speaking": speaking}
+			server.To(socketio.Room("group_" + groupID)).Emit("pixel-room:speaking", speakPayload)
+			server.To(socketio.Room("sub_pixel_" + groupID)).Emit("pixel-room:speaking", speakPayload)
+		})
+
+		client.On("pixel-room:spotify-update", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			if payload == nil {
+				return
+			}
+			groupID := mapStr(payload, "groupId")
+			if groupID == "" {
+				return
+			}
+			s.presenceMu.RLock()
+			uid := s.socketUsers[socketID]
+			s.presenceMu.RUnlock()
+			if uid == "" {
+				return
+			}
+			var trackData map[string]interface{}
+			if t, ok := payload["track"].(map[string]interface{}); ok {
+				trackData = t
+			}
+			s.pixelMu.Lock()
+			if room, ok := s.pixelRooms[groupID]; ok {
+				if p, ok := room[uid]; ok {
+					p.SpotifyTrack = trackData
+				}
+			}
+			s.pixelMu.Unlock()
+			broadcast := map[string]interface{}{
+				"groupId": groupID,
+				"userId":  uid,
+				"track":   trackData,
+			}
+			server.To(socketio.Room("group_" + groupID)).Emit("pixel-room:spotify-track", broadcast)
+			server.To(socketio.Room("sub_pixel_" + groupID)).Emit("pixel-room:spotify-track", broadcast)
+		})
+
+		client.On("pixel-room:chat", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			if payload == nil {
+				return
+			}
+			groupID := mapStr(payload, "groupId")
+			if groupID == "" {
+				return
+			}
+			s.presenceMu.RLock()
+			userID := s.socketUsers[socketID]
+			s.presenceMu.RUnlock()
+			if userID == "" {
+				return
+			}
+			text := mapStr(payload, "text")
+			if text == "" {
+				return
+			}
+
+			server.To(socketio.Room("group_" + groupID)).Emit("pixel-room:chat", map[string]interface{}{
+				"groupId": groupID,
+				"userId":  userID,
+				"text":    text,
+				"at":      time.Now().UnixMilli(),
+			})
+		})
+
+		client.On("pixel-room:emoji", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			if payload == nil {
+				return
+			}
+			groupID := mapStr(payload, "groupId")
+			if groupID == "" {
+				return
+			}
+			s.presenceMu.RLock()
+			userID := s.socketUsers[socketID]
+			s.presenceMu.RUnlock()
+			if userID == "" {
+				return
+			}
+			emoji := mapStr(payload, "emoji")
+			if emoji == "" {
+				return
+			}
+
+			server.To(socketio.Room("group_" + groupID)).Emit("pixel-room:emoji", map[string]interface{}{
+				"groupId": groupID,
+				"userId":  userID,
+				"emoji":   emoji,
+				"at":      time.Now().UnixMilli(),
+			})
+		})
+
+		// ── Spotify ─────────────────────────────────────────────────────────
+
+			client.On("subscribeSpotifyStatus", func(datas ...any) {
+				if len(datas) == 0 || s.spotifyService == nil {
+					return
+				}
+				targetUserID, ok := datas[0].(string)
+				if !ok || targetUserID == "" {
+					return
+				}
+				s.addSpotifySub(socketID, targetUserID)
+			})
+
+			client.On("unsubscribeSpotifyStatus", func(datas ...any) {
+				if len(datas) == 0 {
+					return
+				}
+				targetUserID, ok := datas[0].(string)
+				if !ok || targetUserID == "" {
+					return
+				}
+				s.removeSpotifySub(socketID, targetUserID)
+			})
+
 		// ── Disconnect ───────────────────────────────────────────────────────
 
 		client.On("disconnect", func(_ ...any) {
@@ -1463,10 +1972,122 @@ func (s *SocketIOService) setupHandlers() {
 				s.emitWatchParticipants(watchRoomID)
 			}
 
+			// Pixel room cleanup
+			if pixelGroupID, pixelUserID := s.removeFromPixelRoom(socketID); pixelGroupID != "" {
+				_ = pixelUserID
+				s.pixelMu.RLock()
+				disconnPayload := s.pixelPayload(pixelGroupID)
+				s.pixelMu.RUnlock()
+				server.To(socketio.Room("group_" + pixelGroupID)).Emit("pixel-room:participants", disconnPayload)
+				server.To(socketio.Room("sub_pixel_" + pixelGroupID)).Emit("pixel-room:participants", disconnPayload)
+			}
+
+			// Spotify sub cleanup
+			s.removeAllSpotifySubs(socketID)
+
 			// Presence cleanup
 			s.trackOffline(socketID)
 		})
 	})
+}
+
+// ── Spotify polling helpers ───────────────────────────────────────────────────
+
+func (s *SocketIOService) addSpotifySub(socketID, targetUserID string) {
+	s.spotifyMu.Lock()
+	if s.spotifySubs[targetUserID] == nil {
+		s.spotifySubs[targetUserID] = make(map[string]struct{})
+	}
+	alreadyPolling := len(s.spotifySubs[targetUserID]) > 0
+	s.spotifySubs[targetUserID][socketID] = struct{}{}
+	s.spotifyMu.Unlock()
+
+	if !alreadyPolling {
+		s.startSpotifyPoller(targetUserID)
+	}
+}
+
+func (s *SocketIOService) removeSpotifySub(socketID, targetUserID string) {
+	s.spotifyMu.Lock()
+	defer s.spotifyMu.Unlock()
+
+	subs := s.spotifySubs[targetUserID]
+	if subs == nil {
+		return
+	}
+	delete(subs, socketID)
+	if len(subs) == 0 {
+		if cancel, ok := s.spotifyCancel[targetUserID]; ok {
+			cancel()
+			delete(s.spotifyCancel, targetUserID)
+		}
+		delete(s.spotifySubs, targetUserID)
+	}
+}
+
+func (s *SocketIOService) removeAllSpotifySubs(socketID string) {
+	s.spotifyMu.Lock()
+	var toStop []string
+	for targetUserID, subs := range s.spotifySubs {
+		delete(subs, socketID)
+		if len(subs) == 0 {
+			toStop = append(toStop, targetUserID)
+		}
+	}
+	for _, targetUserID := range toStop {
+		if cancel, ok := s.spotifyCancel[targetUserID]; ok {
+			cancel()
+			delete(s.spotifyCancel, targetUserID)
+		}
+		delete(s.spotifySubs, targetUserID)
+	}
+	s.spotifyMu.Unlock()
+}
+
+func (s *SocketIOService) startSpotifyPoller(targetUserID string) {
+	ctx, cancel := context.WithCancel(context.Background())
+	s.spotifyMu.Lock()
+	s.spotifyCancel[targetUserID] = cancel
+	s.spotifyMu.Unlock()
+
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		var lastState string
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				data, err := s.spotifyService.GetNowPlaying(targetUserID, targetUserID)
+				if err != nil {
+					continue
+				}
+				isPlaying, _ := data["is_playing"].(bool)
+				trackName := ""
+				if track, ok := data["track"].(map[string]interface{}); ok {
+					trackName, _ = track["name"].(string)
+				}
+				currentState := fmt.Sprintf("%v|%s", isPlaying, trackName)
+				if currentState != lastState {
+					lastState = currentState
+					payload := map[string]interface{}{"userId": targetUserID}
+					for k, v := range data {
+						payload[k] = v
+					}
+					s.spotifyMu.RLock()
+					subs := make([]string, 0, len(s.spotifySubs[targetUserID]))
+					for sid := range s.spotifySubs[targetUserID] {
+						subs = append(subs, sid)
+					}
+					s.spotifyMu.RUnlock()
+					for _, sid := range subs {
+						s.server.To(socketio.Room(sid)).Emit("spotifyNowPlaying", payload)
+					}
+				}
+			}
+		}
+	}()
 }
 
 // ── call log helper ───────────────────────────────────────────────────────────
