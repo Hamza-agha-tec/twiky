@@ -1,5 +1,5 @@
 import { createClient } from '@/utils/supabase/client';
-
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 interface ProductCheckoutRequest {
   product_id: string;
   currency?: string;
