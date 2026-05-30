@@ -28,6 +28,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Chat } from '@/lib/mock-data'
 import { cn } from '@/lib/utils'
 import { AppleText } from '@/components/chat/apple-text'
+import { getChannelTone, getChannelMonogram } from '@/lib/channel-utils'
 
 const DEFAULT_PROFILE_IMAGE = '/defaultprofile.jpg'
 
@@ -70,35 +71,9 @@ interface ContextMenuState {
 
 type SidebarChat = Chat & { isSynthetic?: boolean }
 
-
-const CHANNEL_TONES = [
-  'from-sky-500 via-cyan-500 to-blue-600',
-  'from-emerald-500 via-teal-500 to-cyan-600',
-  'from-orange-500 via-amber-500 to-yellow-500',
-  'from-fuchsia-500 via-violet-500 to-indigo-600',
-]
-
-function getChannelMonogram(label: string) {
-  const words = label.split(/\s+/).filter(Boolean)
-
-  if (words.length >= 2) {
-    return `${words[0][0]}${words[1][0]}`.toUpperCase()
-  }
-
-  return label.slice(0, 2).toUpperCase() || 'CH'
-}
-
 function readChannelAvatar(channelId: string): string | null {
   if (typeof window === 'undefined') return null
   try { return localStorage.getItem(`twiky-ch-avatar-${channelId}`) } catch { return null }
-}
-
-function getChannelTone(seed: string) {
-  const index =
-    seed.split('').reduce((total, char) => total + char.charCodeAt(0), 0) %
-    CHANNEL_TONES.length
-
-  return CHANNEL_TONES[index]
 }
 
 function resolveConversationAvatar(_name: string, avatar?: string | null) {

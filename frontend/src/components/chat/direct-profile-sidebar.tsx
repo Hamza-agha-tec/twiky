@@ -80,7 +80,7 @@ export function DirectProfileSidebar({
     const supabase = createClient()
     const { data: { session } } = await supabase.auth.getSession()
     const token = session?.access_token ?? ''
-    const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api"'
+    const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api';
     await fetch(`${API_URL}/contacts/${userId}/${path}`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

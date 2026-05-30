@@ -77,13 +77,13 @@ function applyThemeVars(v: ChatThemeVariant, isDark: boolean) {
 }
 
 export function ChatThemeProvider({ children }: { children: React.ReactNode }) {
-  const [themeId, setThemeId] = useState('default');
+  const [themeId, setThemeId] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(KEY) || 'default'
+    }
+    return 'default'
+  });
   const { resolvedTheme } = useTheme();
-
-  useEffect(() => {
-    const saved = localStorage.getItem(KEY);
-    if (saved) setThemeId(saved);
-  }, []);
 
   function setTheme(id: string) {
     setThemeId(id);

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3500'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '/api'
 
 async function fetchLiveKitToken(roomName: string, participantIdentity: string): Promise<string> {
   const supabase = createClient()

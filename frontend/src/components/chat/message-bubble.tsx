@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Check, CheckCheck, Forward, FileText, Download, X, Pin, Play, AudioLines } from 'lucide-react';
 import { VoiceMessagePlayer } from './voice-message-player'
@@ -9,7 +9,7 @@ import { VideoPlayer } from './video-player';
 import { AppleText, EmojiImg } from './apple-text';
 import { Message } from '@/lib/mock-data';
 import { format } from 'date-fns';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { MessageContextMenu } from './message-context-menu';
 import { HoverProfileCard } from '@/components/chat/hover-profile-card'
@@ -67,6 +67,22 @@ export function tryParseVoiceInvite(content: string): VoiceInvitePayload | null 
     if (p?.__twiky_type === 'voice_invite') return p as VoiceInvitePayload
   } catch { /* not JSON */ }
   return null
+}
+
+function plainTextExcerpt(value: string | null | undefined, maxLength = 120) {
+  const plain = (value ?? '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]*(>|$)/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!plain) return ''
+  return plain.length > maxLength ? `${plain.slice(0, maxLength)}…` : plain
 }
 
 export function VoiceInviteCard({ data }: { data: VoiceInvitePayload }) {
@@ -191,6 +207,7 @@ export function VoiceInviteCard({ data }: { data: VoiceInvitePayload }) {
 
 export function ForumPostCard({ data }: { data: ForumPostPayload }) {
   const router = useRouter()
+  const summary = plainTextExcerpt(data.content)
   function handleClick(e: React.MouseEvent) {
     e.stopPropagation()
     if (data.url) router.push(data.url)
@@ -207,8 +224,8 @@ export function ForumPostCard({ data }: { data: ForumPostPayload }) {
         <div>
           <p className="text-[11px] font-bold uppercase tracking-widest text-primary/70 mb-1">#{data.groupName}</p>
           <p className="text-[13px] font-bold text-foreground leading-snug line-clamp-2">{data.title}</p>
-          {data.content && (
-            <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed line-clamp-2">{data.content}</p>
+          {summary && (
+            <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed line-clamp-2">{summary}</p>
           )}
         </div>
         <div className="pt-1 border-t border-border/40">
@@ -257,8 +274,20 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
   );
 }
 
+function renderContent(content: string, searchHighlight?: string) {
+  if (!content) return null
+  if (content.startsWith('<') && content.endsWith('>')) {
+    return (
+      <div 
+        className="prose prose-sm dark:prose-invert max-w-none break-words"
+        dangerouslySetInnerHTML={{ __html: content }} 
+      />
+    )
+  }
+  return searchHighlight ? <HighlightedText text={content} query={searchHighlight} /> : <AppleText text={content} />
+}
+
 export function MessageBubble({ message, showAvatar = true, searchHighlight, onReply, onPin, onForward, onDelete, onReact, onAvatarClick, onMessage, onViewProfile, hideMessage, isReceiverOnline = false }: MessageBubbleProps) {
-  const [isMounted, setIsMounted] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [lightbox, setLightbox] = useState(false);
   const messageRef = useRef<HTMLDivElement>(null);
@@ -272,10 +301,7 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
     .join('')
     .toUpperCase()
     .slice(0, 2);
-
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
+  const canUsePortal = typeof document !== 'undefined'
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -335,11 +361,9 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
                 {message.senderName}
               </span>
             </HoverProfileCard>
-            {isMounted && (
-              <span className="text-[11px] text-muted-foreground/60 tabular-nums">
-                {format(new Date(message.timestamp), 'MMM d, h:mm a')}
-              </span>
-            )}
+            <span className="text-[11px] text-muted-foreground/60 tabular-nums">
+              {format(new Date(message.timestamp), 'MMM d, h:mm a')}
+            </span>
             {message.isOwn && (
               <span className="ml-0.5">
                 {message.isRead ? (
@@ -392,10 +416,10 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
             const firstUrl = extractFirstUrl(message.content)
             return (
               <>
-                <p className="text-sm text-foreground/90 wrap-break-word whitespace-pre-wrap leading-relaxed">
-                  {searchHighlight ? <HighlightedText text={message.content} query={searchHighlight} /> : <AppleText text={message.content} />}
+                <div className="text-sm text-foreground/90 wrap-break-word whitespace-pre-wrap leading-relaxed">
+                  {renderContent(message.content, searchHighlight)}
                   {message.isEdited && <span className="text-[10px] text-muted-foreground ml-1.5">(edited)</span>}
-                </p>
+                </div>
                 {firstUrl && <LinkPreviewCard url={firstUrl} />}
               </>
             )
@@ -524,7 +548,7 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
       </div>
 
       {/* Hover timestamp (no-avatar rows) */}
-      {!showAvatar && isMounted && (
+      {!showAvatar && (
         <div className="absolute left-0 top-1/2 -translate-y-1/2 w-9 flex justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
           <span className="text-[10px] text-muted-foreground/50 tabular-nums leading-tight">
             {format(new Date(message.timestamp), 'h:mm')}
@@ -550,7 +574,7 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
       )}
 
       {/* Image lightbox */}
-      {lightbox && isMounted && createPortal(
+      {lightbox && canUsePortal && createPortal(
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

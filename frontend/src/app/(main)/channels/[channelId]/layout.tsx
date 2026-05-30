@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { ChannelsPanel } from '@/components/chat/channels-panel'
 import { useChannels } from '@/hooks/use-channels'
 import { useChannelGroups, backendGroupToMock, useGroupsRealtime, useCreateGroup } from '@/hooks/use-groups'
+import { useChannelProjects } from '@/hooks/use-projects'
 import { WorkspaceEmptyState } from '@/components/chat/workspace-empty-state'
 import { useVoice } from '@/context/VoiceContext'
 import { useWatchPresence } from '@/context/WatchPresenceContext'
@@ -11,6 +12,8 @@ import { useProfile } from '@/hooks/use-user'
 import { useEffect, useState } from 'react'
 import { useOnlineUsers } from '@/hooks/use-socket'
 import { getSocket } from '@/lib/socket'
+import { ProjectSidebar } from '@/components/workspace/project-sidebar'
+import { isWorkspaceChannel } from '@/lib/channel-utils'
 
 export default function ChannelLayout({ children }: { children: React.ReactNode }) {
   const { channelId, groupId } = useParams()
@@ -20,6 +23,7 @@ export default function ChannelLayout({ children }: { children: React.ReactNode 
   useGroupsRealtime(channelId as string)
 
   const { data: channels = [], isLoading: channelsLoading } = useChannels()
+  const { data: projects = [], isLoading: projectsLoading } = useChannelProjects(channelId as string)
   const { data: channelGroups = [], isLoading: groupsLoading } = useChannelGroups(channelId as string)
   const { data: profile } = useProfile()
   const { mutateAsync: createGroupAsync } = useCreateGroup(channelId as string)
@@ -102,6 +106,17 @@ export default function ChannelLayout({ children }: { children: React.ReactNode 
 
   const backendChannel = channels.find(c => c.id === channelId)
 
+  const workspace = backendChannel ? isWorkspaceChannel(backendChannel.type) : false
+
+  useEffect(() => {
+    if (!backendChannel || !workspace) return
+    const onProjectRoute =
+      typeof window !== 'undefined' && window.location.pathname.includes('/projects/')
+    if (!onProjectRoute && !projectsLoading && projects.length > 0) {
+      router.replace(`/channels/${channelId}/projects/${projects[0].id}/notes`)
+    }
+  }, [backendChannel, workspace, channelId, projects, projectsLoading, router])
+
   if (!backendChannel) {
     if (channelsLoading) {
       return (
@@ -124,10 +139,43 @@ export default function ChannelLayout({ children }: { children: React.ReactNode 
     access_type: backendChannel.access_type as any,
     role: backendChannel.role as any,
     owner_id: backendChannel.owner_id,
-    type: (backendChannel.type as any) ?? 'NORMAL',
+    type: (isWorkspaceChannel(backendChannel.type) ? 'WORKSPACE' : 'NORMAL') as 'WORKSPACE' | 'NORMAL',
   }
 
   const gId = groupId as string | undefined
+
+  if (workspace) {
+    const onProjectRoute =
+      typeof window !== 'undefined' && window.location.pathname.includes('/projects/')
+    return (
+      <div className="flex h-full w-full overflow-hidden">
+        {onProjectRoute ? (
+          children
+        ) : (
+          <>
+            <ProjectSidebar />
+            <div className="flex min-w-0 flex-1 flex-col bg-background">
+              {projectsLoading ? (
+                <div className="flex flex-1 items-center justify-center">
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                </div>
+              ) : projects.length === 0 ? (
+                <WorkspaceEmptyState
+                  title="No projects yet"
+                  subtitle="Create a project in the sidebar to get started with notes, tasks, and groups."
+                  showShortcuts={false}
+                />
+              ) : (
+                <div className="flex flex-1 items-center justify-center">
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-full w-full overflow-hidden">

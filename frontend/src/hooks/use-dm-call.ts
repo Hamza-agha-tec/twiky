@@ -29,9 +29,6 @@ export function useDmCall({ myId, isInGroupVoiceCall, onCallStarted, onCallEnded
       if (saved) {
         try {
           const parsed = JSON.parse(saved)
-          if (parsed.state === 'active' && parsed.startedAt) {
-            callStartedAtRef.current = parsed.startedAt
-          }
           return parsed
         } catch (e) {
           return { state: 'idle' }
@@ -40,6 +37,12 @@ export function useDmCall({ myId, isInGroupVoiceCall, onCallStarted, onCallEnded
     }
     return { state: 'idle' }
   })
+
+  useEffect(() => {
+    if (status.state === 'active' && 'startedAt' in status && status.startedAt) {
+      callStartedAtRef.current = status.startedAt
+    }
+  }, [])
 
   const socketRef = useRef<Awaited<ReturnType<typeof getSocket>> | null>(null)
   const myIdRef = useRef(myId)

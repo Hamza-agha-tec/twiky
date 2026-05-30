@@ -18,7 +18,6 @@ export default function ExcalidrawEditor({ initialData, onChange, onMount, theme
             <Excalidraw
                 theme={theme}
                 viewModeEnabled={isPresenting}
-                zenModeEnabled={isPresenting}
                 excalidrawAPI={(api) => {
                     setExcalidrawAPI(api);
                     if (onMount) onMount(api);

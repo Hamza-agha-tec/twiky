@@ -21,21 +21,24 @@ interface ChatContextType {
 const ChatContext = createContext<ChatContextType | undefined>(undefined)
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
-  const [workspaceCollapsed, setWorkspaceCollapsed] = useState(false)
-  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('channels')
+  const [workspaceCollapsed, setWorkspaceCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('twiky-workspace-collapsed') === 'true'
+    }
+    return false
+  })
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('twiky-workspace-mode')
+      if (saved === 'direct' || saved === 'channels') return saved
+    }
+    return 'channels'
+  })
   const [searchQuery, setSearchQuery] = useState('')
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
   const [typingConversations, setTypingConversations] = useState<Record<string, boolean>>({})
 
   // Persistence for some UI states
-  useEffect(() => {
-    const saved = localStorage.getItem('twiky-workspace-collapsed')
-    if (saved) setWorkspaceCollapsed(saved === 'true')
-    
-    const savedMode = localStorage.getItem('twiky-workspace-mode')
-    if (savedMode === 'direct' || savedMode === 'channels') setWorkspaceMode(savedMode)
-  }, [])
-
   useEffect(() => {
     localStorage.setItem('twiky-workspace-collapsed', String(workspaceCollapsed))
   }, [workspaceCollapsed])

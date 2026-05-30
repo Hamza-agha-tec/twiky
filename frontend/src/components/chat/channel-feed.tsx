@@ -52,7 +52,7 @@ import { VideoPlayer } from '@/components/chat/video-player'
 import { LinkPreviewCard, extractFirstUrl } from '@/components/chat/link-preview-card'
 import { EmojiButton, GifButton, StickerButton, GiftButton } from '@/components/chat/media-picker'
 import { AppleText, EmojiImg } from '@/components/chat/apple-text'
-import { EmojiInput, type EmojiInputHandle } from '@/components/chat/emoji-input'
+import { RichTextComposer, type RichTextComposerHandle } from './rich-text-composer'
 import { VerifiedBadge, getVerifiedBadgeVariant, hasPremiumPlan, isVerifiedAccountIdentity } from '@/components/chat/verified-badge'
 import { UserName } from '@/components/chat/user-name'
 import type { NameEffect } from '@/lib/user-api'
@@ -239,12 +239,12 @@ function SystemFeedRow({ post }: { post: FeedPost }) {
   return (
     <div className="flex justify-center px-4 py-2">
       <div className="max-w-[80%] rounded-full border border-border/70 bg-muted/45 px-3 py-1.5 text-center">
-        <p className="text-[12px] leading-5 text-muted-foreground">
-          <AppleText text={post.body} />
-          <span className="ml-2 text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground/70">
+        <div className="text-[12px] leading-5 text-muted-foreground flex items-center justify-center gap-2">
+          {renderContent(post.body)}
+          <span className="text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground/70">
             {post.time}
           </span>
-        </p>
+        </div>
       </div>
     </div>
   )
@@ -684,6 +684,35 @@ function emojiToUnified(emoji: string): string {
   return [...emoji].map(c => c.codePointAt(0)!.toString(16).toLowerCase()).join('-')
 }
 
+function renderContent(content: string, className?: string) {
+  if (!content) return null
+  if (content.startsWith('<') && content.endsWith('>')) {
+    return (
+      <div 
+        className={cn("prose prose-sm dark:prose-invert max-w-none break-words", className)}
+        dangerouslySetInnerHTML={{ __html: content }} 
+      />
+    )
+  }
+  return <AppleText text={content} className={cn("text-[13.5px] leading-[1.55] text-foreground", className)} />
+}
+
+function plainTextExcerpt(value: string | null | undefined, maxLength = 120) {
+  const plain = (value ?? '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]*(>|$)/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!plain) return ''
+  return plain.length > maxLength ? `${plain.slice(0, maxLength)}…` : plain
+}
+
 // ─── Forum Post Card (inline — avoids circular dep with message-bubble) ──────
 
 interface ForumPostEmbedPayload { __twiky_type: 'forum_post'; title: string; content: string; imageUrl: string | null; groupName: string; url?: string | null }
@@ -698,6 +727,7 @@ function tryParseForumPost(body: string): ForumPostEmbedPayload | null {
 
 function ForumPostEmbed({ data }: { data: ForumPostEmbedPayload }) {
   const router = useNextRouter()
+  const summary = plainTextExcerpt(data.content)
   function handleClick(e: React.MouseEvent) {
     e.stopPropagation()
     if (data.url) router.push(data.url)
@@ -716,8 +746,8 @@ function ForumPostEmbed({ data }: { data: ForumPostEmbedPayload }) {
       <div className="px-3 py-2.5 space-y-1.5">
         <p className="text-[11px] font-bold uppercase tracking-widest text-primary/70">#{data.groupName}</p>
         <p className="text-[13px] font-bold text-foreground leading-snug line-clamp-2">{data.title}</p>
-        {data.content && (
-          <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2">{data.content}</p>
+        {summary && (
+          <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2">{summary}</p>
         )}
         <div className="pt-1 border-t border-border/40">
           <span className="text-[11px] font-semibold text-primary">See post →</span>
@@ -1089,7 +1119,7 @@ function MessageRow({
               const firstUrl = extractFirstUrl(post.body)
               return (
                 <>
-                  <AppleText text={post.body} className="text-[13.5px] leading-[1.55] text-foreground" />
+                  {renderContent(post.body)}
                   {firstUrl && <LinkPreviewCard url={firstUrl} />}
                 </>
               )
@@ -2136,7 +2166,7 @@ function FeedProfileRow({
           const firstUrl = extractFirstUrl(post.body)
           return (
             <>
-              <AppleText text={post.body} className="text-[13.5px] leading-[1.55] text-foreground" />
+              {renderContent(post.body)}
               {firstUrl && <LinkPreviewCard url={firstUrl} />}
             </>
           )
@@ -2308,10 +2338,7 @@ export function ChannelFeed({
   const [replyingTo, setReplyingTo] = useState<FeedPost | null>(null)
   const [contextMenu, setContextMenu] = useState<{ postId: string; x: number; y: number } | null>(null)
   const [selectedProfile, setSelectedProfile] = useState<FeedProfileSelection | null>(null)
-  const [mentionCursorByGroup, setMentionCursorByGroup] = useState<Record<string, number>>({})
-  const [activeMentionIndex, setActiveMentionIndex] = useState(0)
   const [pinnedBarDismissed, setPinnedBarDismissed] = useState(false)
-  const [mentionIndex, setMentionIndex] = useState(0)
   const [unseenMentionIds, setUnseenMentionIds] = useState<Set<string>>(new Set())
   const mentionRefs = useRef<Map<string, HTMLDivElement>>(new Map())
   const mentionObserverRef = useRef<IntersectionObserver | null>(null)
@@ -2329,7 +2356,6 @@ export function ChannelFeed({
   // Reset per-group state when switching groups
   useEffect(() => {
     setPinnedBarDismissed(false)
-    setMentionIndex(0)
     setUnseenMentionIds(new Set())
     mentionRefs.current.clear()
     mentionObserverRef.current?.disconnect()
@@ -2352,7 +2378,7 @@ export function ChannelFeed({
   const imageInputRef = useRef<HTMLInputElement>(null)
   const genericFileInputRef = useRef<HTMLInputElement>(null)
   const feedScrollRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<EmojiInputHandle>(null)
+  const textareaRef = useRef<RichTextComposerHandle>(null)
   const blobUrlsRef = useRef<string[]>([])
   const previousGroupIdRef = useRef<string | null>(null)
 
@@ -2372,7 +2398,6 @@ export function ChannelFeed({
   const posts = postsByGroup[group.id] ?? postsOverride ?? buildFallbackPosts(channel, group)
   const latestPostId = posts.at(-1)?.id
   const draft = drafts[group.id] ?? ''
-  const mentionCursor = mentionCursorByGroup[group.id] ?? draft.length
   const draftImage = draftImages[group.id]
   const draftAttachment = draftAttachments[group.id]
   const selectedPost = contextMenu ? posts.find((p) => p.id === contextMenu.postId) ?? null : null
@@ -2414,13 +2439,6 @@ export function ChannelFeed({
       ...userOptions,
     ]
   }, [group.id, members])
-  const mentionQuery = getMentionQuery(draft, mentionCursor)
-  const filteredMentionOptions = mentionQuery
-    ? mentionOptions
-        .filter((option) => normalizeMentionName(option.label).includes(mentionQuery.query))
-        .slice(0, 8)
-    : []
-  const showMentionMenu = !!mentionQuery && filteredMentionOptions.length > 0
 
   useEffect(() => {
     return () => {
@@ -2461,9 +2479,6 @@ export function ChannelFeed({
     }
   }, [group.id, latestPostId, posts.length])
 
-  useEffect(() => {
-    setActiveMentionIndex(0)
-  }, [group.id, mentionQuery?.query])
 
   useEffect(() => {
     onProfilePanelWidthChange?.(profilePanelWidth)
@@ -2621,31 +2636,6 @@ export function ChannelFeed({
     setDrafts((prev) => ({ ...prev, [group.id]: value }))
   }
 
-  function setMentionCursor(cursor: number) {
-    setMentionCursorByGroup((prev) => ({ ...prev, [group.id]: cursor }))
-  }
-
-  function syncMentionCursor() {
-    setMentionCursor(textareaRef.current?.getCaretOffset() ?? draft.length)
-  }
-
-  function insertMention(option: MentionOption) {
-    if (!mentionQuery) return
-
-    const insertion = `@${option.label} `
-    const next = `${draft.slice(0, mentionQuery.start)}${insertion}${draft.slice(mentionQuery.end)}`
-    const nextCursor = mentionQuery.start + insertion.length
-
-    setDraft(next)
-    setMentionCursor(nextCursor)
-    setActiveMentionIndex(0)
-
-    requestAnimationFrame(() => {
-      textareaRef.current?.focus()
-      textareaRef.current?.setCaretOffset(nextCursor)
-    })
-  }
-
   function setDraftImage(url?: string) {
     setDraftImages((prev) => {
       const copy = { ...prev }
@@ -2777,12 +2767,13 @@ export function ChannelFeed({
 
   async function sendDraft() {
     const body = draft.trim()
+    const text = textareaRef.current?.getText() || ''
     const hasQueuedFile = !!(pendingImageFile || pendingGenericFile)
     if (!body && !draftImage && !draftAttachment && !hasQueuedFile) return
 
     if (onSendPost) {
       if (!hasQueuedFile && !body) return
-      const entityMentions = extractMentionTargets(body, mentionOptions)
+      const entityMentions = extractMentionTargets(text, mentionOptions)
       setPostUploading(true)
       try {
         let fileUrl: string | undefined
@@ -2801,7 +2792,6 @@ export function ChannelFeed({
           mime: pendingGenericFile?.type || pendingImageFile?.type || undefined,
         })
         setDraft('')
-        setMentionCursor(0)
         clearQueuedImage()
         clearQueuedGeneric()
         setReplyingTo(null)
@@ -2841,7 +2831,6 @@ export function ChannelFeed({
       return [...nextCurrent, post]
     })
     setDraft('')
-    setMentionCursor(0)
     setDraftImage(undefined)
     setAttachment(undefined)
     setReplyingTo(null)
@@ -2930,7 +2919,15 @@ export function ChannelFeed({
       return
     }
 
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+    const AudioCtx =
+      window.AudioContext ||
+      (window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!AudioCtx) {
+      stream.getTracks().forEach((t) => t.stop())
+      setVoiceRecording(false)
+      toast.error('Audio recording is not supported in this browser')
+      return
+    }
     const ctx: AudioContext = new AudioCtx()
     const source = ctx.createMediaStreamSource(stream)
     const processor = ctx.createScriptProcessor(4096, 1, 1)
@@ -3146,7 +3143,8 @@ export function ChannelFeed({
 
   async function handleCopy(post: FeedPost) {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      await navigator.clipboard.writeText(`${post.author}: ${post.body}`)
+      const text = post.body.replace(/<[^>]*>/g, '')
+      await navigator.clipboard.writeText(`${post.author}: ${text}`)
     }
   }
 
@@ -3155,13 +3153,12 @@ export function ChannelFeed({
     setContextMenu({ postId, x: e.clientX, y: e.clientY })
   }
 
-  const canSend = !!(
-    draft.trim() ||
-    draftImage ||
-    draftAttachment ||
-    pendingImageFile ||
-    pendingGenericFile
-  )
+  const canSend = useMemo(() => {
+    if (draftImage || draftAttachment || pendingImageFile || pendingGenericFile) return true
+    if (!draft || draft === '<p></p>') return false
+    const stripped = draft.replace(/<[^>]*>/g, '').trim()
+    return stripped.length > 0 || draft.includes('<img') || draft.includes('data-type="mention"') || draft.includes('class="mention"')
+  }, [draft, draftImage, draftAttachment, pendingImageFile, pendingGenericFile])
 
   const myUsername = profile?.username
   const pinnedPosts = posts.filter(p => p.pinned && !p.isSystem)
@@ -3453,7 +3450,13 @@ export function ChannelFeed({
                     'h-8 w-8 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground',
                     voiceRecording && 'bg-primary/10 text-primary',
                   )}
-                  onClick={() => { voiceRecording ? void stopVoiceRecording() : void startVoiceRecording() }}
+                  onClick={() => {
+                    if (voiceRecording) {
+                      void stopVoiceRecording()
+                    } else {
+                      void startVoiceRecording()
+                    }
+                  }}
                   title={voiceRecording ? 'Stop recording' : 'Record voice'}
                 >
                   {voiceRecording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
@@ -3482,8 +3485,10 @@ export function ChannelFeed({
                         if (useBackendUpload) {
                           if (pendingGenericFile) clearQueuedGeneric()
                           else genericFileInputRef.current?.click()
+                        } else if (draftAttachment) {
+                          setAttachment(undefined)
                         } else {
-                          draftAttachment ? setAttachment(undefined) : setAttachment(getSuggestedAttachment(channel, group))
+                          setAttachment(getSuggestedAttachment(channel, group))
                         }
                       }}
                       className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12px] font-medium text-foreground hover:bg-accent"
@@ -3520,62 +3525,15 @@ export function ChannelFeed({
                     </button>
                   </div>
                 ) : null}
-                {showMentionMenu ? (
-                  <div className="absolute bottom-full left-0 z-30 mb-2 w-[min(22rem,calc(100vw-4rem))] overflow-hidden rounded-xl border border-border bg-popover p-1 shadow-xl">
-                    {filteredMentionOptions.map((option, index) => {
-                      const isActive = index === activeMentionIndex
-                      const initials = option.label.slice(0, 2).toUpperCase()
-                      return (
-                        <button
-                          key={`${option.type}:${option.entityId}`}
-                          type="button"
-                          onMouseDown={(event) => {
-                            event.preventDefault()
-                            insertMention(option)
-                          }}
-                          className={cn(
-                            'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors',
-                            isActive ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/70',
-                          )}
-                        >
-                          {option.type === 'all' ? (
-                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                              <Users className="h-4 w-4" />
-                            </span>
-                          ) : (
-                            <Avatar className="h-8 w-8 shrink-0 rounded-lg">
-                              <AvatarImage src={option.avatarUrl ?? undefined} alt={option.label} />
-                              <AvatarFallback className="rounded-lg text-[11px]">{initials}</AvatarFallback>
-                            </Avatar>
-                          )}
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[13px] font-semibold">@{option.label}</span>
-                            <span className="block truncate text-[11px] text-muted-foreground">
-                              {option.type === 'all' ? 'Notify everyone in this group' : option.role ?? 'Member'}
-                            </span>
-                          </span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                ) : null}
-                <EmojiInput
+                <RichTextComposer
                   ref={textareaRef}
                   value={draft}
                   onChange={(val) => {
                     setDraft(val)
-                    syncMentionCursor()
                   }}
-                  onBlur={() => {
-                    window.setTimeout(() => setMentionCursor(0), 100)
-                  }}
-                  onClick={syncMentionCursor}
                   onKeyDown={handleKeyDown}
-                  onKeyUp={(event) => {
-                    if (event.key !== 'Escape') syncMentionCursor()
-                  }}
-                  onSelect={syncMentionCursor}
                   placeholder={group.kind === 'board' ? `Start a topic in ${group.label}` : `Message ${group.kind === 'voice' ? group.label : `#${group.label}`}`}
+                  channelId={channel.id}
                   className="max-h-40 min-h-[36px] w-full border-0 bg-transparent px-2 py-2 text-[13px] leading-[1.5] overflow-y-auto"
                 />
               </div>

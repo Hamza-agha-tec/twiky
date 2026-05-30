@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { EmojiInput, type EmojiInputHandle } from './emoji-input';
+import { RichTextComposer, type RichTextComposerHandle } from './rich-text-composer';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Paperclip, SendHorizontal, Mic, Square, X, Reply, Loader2, FileText, Film, ImageIcon } from 'lucide-react';
@@ -44,6 +44,25 @@ function fileIcon(mime: string) {
   return <FileText className="h-4 w-4 text-muted-foreground" />;
 }
 
+function htmlToPlainText(value: string) {
+  return value
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]*(>|$)/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function hasMeaningfulContent(value: string, textValue?: string) {
+  const plainText = (textValue ?? htmlToPlainText(value)).trim();
+  if (plainText.length > 0) return true;
+  return /<(img|span)[^>]*(data-type="mention"|class="mention")/i.test(value);
+}
+
 export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCancelReply }: ComposerProps) {
   const [message, setMessage] = useState('');
   const [isRecording, setIsRecording] = useState(false);
@@ -54,7 +73,7 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingPreviewUrl, setPendingPreviewUrl] = useState<string | null>(null);
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const textareaRef = useRef<EmojiInputHandle>(null);
+  const textareaRef = useRef<RichTextComposerHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordChunksRef = useRef<Blob[]>([]);
@@ -66,7 +85,8 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
 
 
   useEffect(() => {
-    if (message) {
+    const currentText = textareaRef.current?.getText() ?? htmlToPlainText(message);
+    if (hasMeaningfulContent(message, currentText)) {
       onTypingRef.current?.(true);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = setTimeout(() => onTypingRef.current?.(false), 2000);
@@ -104,6 +124,10 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
   };
 
   const handleSend = async () => {
+    const html = message;
+    const text = (textareaRef.current?.getText() ?? htmlToPlainText(message)).trim();
+    const hasTextContent = hasMeaningfulContent(html, text);
+
     if (pendingFile) {
       setIsUploading(true);
       setUploadingLabel('Sending…');
@@ -112,7 +136,7 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
         const mime = pendingFile.type || 'application/octet-stream';
         const type = mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : 'file';
         onSendMessage?.({
-          content: message.trim() || fileUrl,
+          content: text || fileUrl,
           type,
           replyToId: replyTo?.id ?? null,
           fileUrl,
@@ -121,6 +145,7 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
         });
         clearPendingFile();
         setMessage('');
+        textareaRef.current?.clear();
         onCancelReply?.();
       } catch {
         toast.error('Upload failed');
@@ -131,8 +156,8 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
       return;
     }
 
-    if (message.trim()) {
-      onSendMessage?.({ content: message, type: 'text', replyToId: replyTo?.id ?? null });
+    if (hasTextContent) {
+      onSendMessage?.({ content: html, type: 'text', replyToId: replyTo?.id ?? null });
       setMessage('');
       textareaRef.current?.clear();
       onCancelReply?.();
@@ -249,7 +274,7 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
     textareaRef.current?.focus();
   };
 
-  const hasText = message.trim().length > 0;
+  const hasText = hasMeaningfulContent(message, textareaRef.current?.getText());
   const hasPending = !!pendingFile;
   const busy = isUploading || isRecording;
 
@@ -384,7 +409,7 @@ export function Composer({ onTyping, onSendMessage, placeholder, replyTo, onCanc
 
           {/* Input */}
           <div className="flex-1 min-w-0">
-            <EmojiInput
+            <RichTextComposer
               ref={textareaRef}
               value={message}
               onChange={setMessage}

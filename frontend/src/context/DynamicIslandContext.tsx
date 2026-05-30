@@ -26,16 +26,16 @@ export function DynamicIslandProvider({ children }: { children: React.ReactNode 
   const queue = useRef<IslandNotification[]>([])
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const showNext = useCallback(() => {
-    const next = queue.current.shift()
-    if (!next) {
+  const showNext = useCallback(function next() {
+    const nextItem = queue.current.shift()
+    if (!nextItem) {
       setCurrent(null)
       return
     }
-    setCurrent(next)
+    setCurrent(nextItem)
     timerRef.current = setTimeout(() => {
       setCurrent(null)
-      setTimeout(showNext, 300)
+      setTimeout(next, 300)
     }, 4500)
   }, [])
 

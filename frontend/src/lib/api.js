@@ -1,10 +1,14 @@
 export const api = {
     auth: {
         me: async () => {
-            const res = await fetch('');
-            if (!res.ok) return null;
-            const data = await res.json();
-            return data.user;
+            try {
+                const res = await fetch('/api/auth/me');
+                if (!res.ok) return null;
+                const data = await res.json();
+                return data.user || data;
+            } catch (e) {
+                return null;
+            }
         }
     },
     entities: new Proxy({}, {
@@ -33,6 +37,7 @@ export const api = {
             if (entityName === 'TeamMember') finalTableName = 'team_members';
             if (entityName === 'TeamMessage') finalTableName = 'team_messages';
             if (entityName === 'TeamActivity') finalTableName = 'team_activities';
+            if (entityName === 'Whiteboard' || entityName === 'WhiteBoard') finalTableName = 'whiteboards';
 
             return {
                 list: async (orderOrParams, limit) => {
@@ -59,7 +64,7 @@ export const api = {
                     return res.json();
                 },
                 update: async (id, data) => {
-                    const res = await fetch(`/api/${finalTableName}?id=${id}`, {
+                    const res = await fetch(`/api/${finalTableName}/${id}`, {
                         method: 'PATCH',
                         body: JSON.stringify(data),
                         headers: { 'Content-Type': 'application/json' }
@@ -68,8 +73,10 @@ export const api = {
                     return res.json();
                 },
                 delete: async (id, extraParams = {}) => {
-                    const params = new URLSearchParams({ id, ...extraParams });
-                    const res = await fetch(`/api/${finalTableName}?${params.toString()}`, {
+                    const params = new URLSearchParams(extraParams);
+                    const queryString = params.toString();
+                    const url = `/api/${finalTableName}/${id}${queryString ? `?${queryString}` : ''}`;
+                    const res = await fetch(url, {
                         method: 'DELETE'
                     });
                     if (!res.ok) throw new Error(await res.text());

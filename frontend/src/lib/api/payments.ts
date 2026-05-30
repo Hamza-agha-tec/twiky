@@ -46,7 +46,7 @@ async function getToken(): Promise<string> {
   return data.session?.access_token ?? '';
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api';
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api';
 
 class PaymentsAPI {
   private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {

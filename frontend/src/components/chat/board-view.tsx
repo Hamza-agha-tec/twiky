@@ -69,6 +69,8 @@ import {
   getVerifiedBadgeVariant,
   hasPremiumPlan,
 } from '@/components/chat/verified-badge'
+import { RichTextEditor } from '@/components/notes/RichTextEditor'
+import { useAuth } from '@/context/AuthContext'
 
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime()
@@ -86,6 +88,22 @@ function timeAgo(iso: string) {
 function formatCount(n: number) {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`
   return String(n)
+}
+
+function htmlToExcerpt(value: string | null | undefined, maxLength = 120) {
+  const plain = (value ?? '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]*(>|$)/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!plain) return ''
+  return plain.length > maxLength ? `${plain.slice(0, maxLength)}…` : plain
 }
 
 function nameClass(_subPlan?: string | null) {
@@ -224,6 +242,7 @@ const VISIBILITY_OPTIONS = [
 function CreatePostModal({
   groupId,
   groupName,
+  channelId,
   channelName,
   channelAvatar,
   open,
@@ -234,6 +253,7 @@ function CreatePostModal({
 }: {
   groupId: string
   groupName: string
+  channelId?: string
   channelName?: string
   channelAvatar?: string
   open: boolean
@@ -385,13 +405,13 @@ function CreatePostModal({
               {/* Content */}
               <div className="space-y-1.5">
                 <label className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70">Content</label>
-                <textarea
-                  value={content}
-                  onChange={(e) => setContent(e.target.value.slice(0, maxChars))}
-                  placeholder="Share something with the community…"
-                  rows={6}
-                  className="w-full resize-none bg-transparent text-sm text-foreground/90 placeholder:text-muted-foreground/40 focus:outline-none leading-relaxed border-none p-0"
-                />
+                <div className="min-h-[300px] border border-border/40 rounded-2xl overflow-hidden bg-muted/5">
+                  <RichTextEditor
+                    initialContent={content}
+                    onChange={setContent}
+                    channelId={channelId as string}
+                  />
+                </div>
                 <div className="flex justify-end">
                   <span className={cn('text-[10px] tabular-nums', charCount > maxChars * 0.9 ? 'text-amber-500' : 'text-muted-foreground/50')}>
                     {charCount}/{maxChars}
@@ -521,7 +541,11 @@ function CreatePostModal({
                   )}
                 </div>
                 {title && <h2 className="px-4 pb-2 text-[15px] font-bold leading-snug">{title}</h2>}
-                {content && <p className="px-4 pb-3 text-[13px] text-muted-foreground leading-relaxed line-clamp-4">{content}</p>}
+                {content && (
+                  <div className="px-4 pb-3 line-clamp-4">
+                    <RichText text={content} className="text-[13px] text-muted-foreground" />
+                  </div>
+                )}
                 {mediaUrls[0] && (
                   <div className="mx-4 mb-3 overflow-hidden rounded-xl">
                     <img src={mediaUrls[0]} alt="" className="w-full object-cover max-h-52" />
@@ -684,6 +708,21 @@ function LinkPreview({ url }: { url: string }) {
 }
 
 function RichText({ text, className }: { text: string; className?: string }) {
+  const isHtml = text.trim().startsWith('<')
+  
+  if (isHtml) {
+    return (
+      <div 
+        className={cn(
+          "prose prose-slate dark:prose-invert prose-sm max-w-none",
+          "prose-p:leading-relaxed prose-pre:bg-muted prose-pre:border prose-pre:border-border/40",
+          className
+        )}
+        dangerouslySetInnerHTML={{ __html: text }}
+      />
+    )
+  }
+
   const URL_RE = /https?:\/\/[^\s<>"]+/g
   const segments: React.ReactNode[] = []
   let last = 0
@@ -824,7 +863,9 @@ function CommentNode({
             {showBadge && <VerifiedBadge size="xs" variant={getVerifiedBadgeVariant(comment.author.sub_plan)} />}
             <span className="text-[11px] text-muted-foreground">{timeAgo(comment.created_at)}</span>
           </div>
-          <p className="mt-1 text-sm text-foreground/90 leading-relaxed"><RichText text={comment.content} /></p>
+          <div className="mt-1 text-sm text-foreground/90 leading-relaxed">
+            <RichText text={comment.content} />
+          </div>
           {comment.media_urls?.length > 0 && <CommentThumbnails urls={comment.media_urls} />}
           <div className="mt-1 flex items-center gap-3">
             <button
@@ -1082,7 +1123,9 @@ function PostDetail({
           <h1 className="text-xl font-bold leading-snug tracking-tight mb-4"><EmojiText text={post.title} /></h1>
 
           {post.content && (
-            <p className="text-sm text-foreground/85 leading-relaxed whitespace-pre-wrap mb-4"><RichText text={post.content} /></p>
+            <div className="text-sm text-foreground/85 leading-relaxed mb-4">
+              <RichText text={post.content} />
+            </div>
           )}
           {post.media_urls?.length > 0 && <ImageSlider urls={post.media_urls} className="mb-4" maxHeight={380} noClick autoPlayOnHover />}
 
@@ -1321,9 +1364,9 @@ function PostCard({
 
       {/* Content (text-only posts) */}
       {!hasImage && post.content && (
-        <p className="px-4 pb-3 text-[13px] text-muted-foreground line-clamp-3 leading-relaxed -mt-1">
-          {post.content}
-        </p>
+        <div className="px-4 pb-3 line-clamp-3 leading-relaxed -mt-1">
+          <RichText text={post.content} className="text-[13px] text-muted-foreground" />
+        </div>
       )}
 
       {/* Image slider */}
@@ -1472,7 +1515,7 @@ export function BoardView({
     content: JSON.stringify({
       __twiky_type: 'forum_post',
       title: sharePost.title,
-      content: sharePost.content ? sharePost.content.slice(0, 120) + (sharePost.content.length > 120 ? '…' : '') : '',
+      content: htmlToExcerpt(sharePost.content, 120),
       imageUrl: sharePost.media_urls?.[0] ?? null,
       groupName,
       url: channelId ? `/channels/${channelId}/group/${groupId}?postId=${sharePost.id}` : null,
@@ -1656,6 +1699,7 @@ export function BoardView({
       <CreatePostModal
         groupId={groupId}
         groupName={groupName}
+        channelId={channelId}
         channelName={channelName}
         channelAvatar={channelAvatar}
         open={createOpen}

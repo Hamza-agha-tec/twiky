@@ -19,7 +19,7 @@ export class WebRTCManager {
   private userId: string | null = null;
   private eventListeners = new Map<keyof WebRTCManagerEvents, Function[]>();
 
-  constructor(private serverUrl: string = 'http://localhost:8080') {}
+  constructor(private serverUrl: string = process.env.NEXT_PUBLIC_SOCKET_URL ?? 'http://localhost:8080') {}
 
   async connect(userId: string, token: string) {
     this.userId = userId;

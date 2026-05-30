@@ -1,7 +1,7 @@
 import { createClient } from '@/utils/supabase/client'
 import { toChatMessage, type BackendDirectMessage } from '@/lib/direct-conversations-api'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api';
 
 async function getToken(): Promise<string> {
   const supabase = createClient()

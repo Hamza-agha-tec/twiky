@@ -7,6 +7,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { WorkspaceEmptyState } from '@/components/chat/workspace-empty-state'
 import { useGroupMessageRealtime, useGroupMessages, useGroupMembers, useSendGroupMessage, useChannelGroups, useToggleGroupMessageReaction, backendGroupToMock } from '@/hooks/use-groups'
+import { useChannelProjects, useProjectGroups } from '@/hooks/use-projects'
+import { isWorkspaceChannel } from '@/lib/channel-utils'
 import { useCreateDirectConversation } from '@/hooks/use-direct-conversations'
 import { useVoice } from '@/context/VoiceContext'
 import { Button } from '@/components/ui/button'
@@ -107,11 +109,13 @@ function toFeedPosts(messages: GroupMessage[], myId?: string): FeedPost[] {
 }
 
 export default function GroupPage() {
-  const { channelId, groupId } = useParams()
+  const params = useParams<{ channelId: string; groupId: string; projectId?: string }>()
+  const channelId = params.channelId as string
+  const gId = params.groupId as string
+  const projectId = params.projectId as string | undefined
   const router = useRouter()
   const searchParams = useSearchParams()
   const queryClient = useQueryClient()
-  const gId = groupId as string
   const eventId = searchParams.get('event')
   
   // Initialize realtime hooks
@@ -126,9 +130,18 @@ export default function GroupPage() {
   const { mutate: toggleReaction } = useToggleGroupMessageReaction(gId, profile?.id)
   const [activeTab, setActiveTab] = useState<MainAreaTab>('feed')
   const [startingEvent, setStartingEvent] = useState(false)
-  const { data: channelGroups = [], isLoading: groupsLoading } = useChannelGroups(channelId as string)
+  const { data: channelGroups = [], isLoading: channelGroupsLoading } = useChannelGroups(channelId)
   const { data: channels = [] } = useChannels()
   const activeChannel = channels.find(c => c.id === channelId)
+  const isWorkspace = isWorkspaceChannel(activeChannel?.type)
+  const { data: projects = [] } = useChannelProjects(isWorkspace ? channelId : undefined)
+  const effectiveProjectId = projectId ?? (isWorkspace ? projects[0]?.id : undefined)
+  const { data: projectGroups = [], isLoading: projectGroupsLoading } = useProjectGroups(
+    channelId,
+    effectiveProjectId,
+  )
+  const resolvedGroups = effectiveProjectId ? projectGroups : channelGroups
+  const groupsLoading = effectiveProjectId ? projectGroupsLoading : channelGroupsLoading
   const canManageChannel =
     activeChannel?.role === 'OWNER' ||
     activeChannel?.role === 'ADMIN' ||
@@ -140,7 +153,11 @@ export default function GroupPage() {
     enabled: !!channelId,
   })
 
-  const backendGroup = channelGroups.find(g => g.id === gId)
+  const backendGroup = resolvedGroups.find(g => g.id === gId)
+
+  const projectHome = effectiveProjectId
+    ? `/channels/${channelId}/projects/${effectiveProjectId}/notes`
+    : `/channels/${channelId}`
 
   const activeEvent =
     backendGroup?.group_type === 'voice'
@@ -180,7 +197,7 @@ export default function GroupPage() {
   useEffect(() => {
     if (backendGroup?.group_type === 'text') return // Handled by MainArea which manages sidebars first
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') router.push(`/channels/${channelId}`)
+      if (e.key === 'Escape') router.push(projectHome)
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
@@ -442,7 +459,7 @@ export default function GroupPage() {
     label: activeChannel?.name ?? '',
     description: activeChannel?.description ?? '',
     membersLabel: '',
-    groups: channelGroups.map(backendGroupToMock),
+    groups: resolvedGroups.map(backendGroupToMock),
     avatarUrl: activeChannel?.avatar_url ?? undefined,
     bannerUrl: activeChannel?.banner_url ?? undefined,
     access_type: activeChannel?.access_type as any,
@@ -459,7 +476,7 @@ export default function GroupPage() {
       onTabChange={setActiveTab}
       members={members}
       onlineUsers={onlineUsers}
-      onEscape={() => router.push(`/channels/${channelId}`)}
+      onEscape={() => router.push(projectHome)}
       onMemberMessage={(userId) => createDm(userId, {
         onSuccess: (data) => { if (data?.id) router.push(`/dm/${data.id}`) }
       })}

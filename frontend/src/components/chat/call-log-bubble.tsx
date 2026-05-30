@@ -47,7 +47,7 @@ export function CallLogBubble({ message }: CallLogBubbleProps) {
 
   // ── icons ───────────────────────────────────────────────────────────────────
   // Left: status icon (what happened)
-  let LeftIcon: React.ComponentType<{ className?: string }>
+  let LeftIcon: React.ComponentType<{ className?: string; size?: number }>
   if (answered) {
     LeftIcon = isVideo ? Video : Phone
   } else if (outcome === 'declined') {
@@ -77,7 +77,7 @@ export function CallLogBubble({ message }: CallLogBubbleProps) {
       )}>
         {/* Left icon */}
         <div className={cn('h-10 w-10 rounded-full flex items-center justify-center shrink-0', leftBg)}>
-          <LeftIcon className={cn('h-4.5 w-4.5', leftColor)} style={{ width: 18, height: 18 }} />
+          <LeftIcon className={leftColor} size={18} />
         </div>
 
         {/* Info */}
@@ -106,7 +106,7 @@ export function CallLogBubble({ message }: CallLogBubbleProps) {
           'h-8 w-8 rounded-full flex items-center justify-center shrink-0 border',
           rightBg,
         )}>
-          <RightIcon style={{ width: 14, height: 14 }} />
+          <RightIcon size={14} />
         </div>
       </div>
     </div>

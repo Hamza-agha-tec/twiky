@@ -1,0 +1,26 @@
+
+each task had:
+title
+date
+subtasks
+comments
+assigne
+tags
+description
+attachements
+status
+Priority
+
+
+when user click task display a Sheet,
+contains all infos  had icons in top delete/edit
+
+Sheet it self had maximize/minimize/full screen icons
+
+display =>
+
+num of (comments + icon, attachements + icon,title(uppercase),
+        Priority + icon,date + icon, assign + profile image, tags )
+
+        
+Routine entity tasks that user do every day,

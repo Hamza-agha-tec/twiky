@@ -8,6 +8,8 @@ import { WorkspaceShellLayout } from '@/components/chat/workspace-shell-layout'
 import { WorkspaceSidebar, WorkspaceMode } from '@/components/chat/workspace-sidebar'
 import { useChat } from '@/context/ChatContext'
 import { useChannels, useCreateChannel } from '@/hooks/use-channels'
+import { projectApi } from '@/lib/project-api'
+import { isWorkspaceChannel } from '@/lib/channel-utils'
 import { useDirectConversations } from '@/hooks/use-direct-conversations'
 import { filesApi } from '@/lib/files-api'
 import { channelsApi } from '@/lib/channels-api'
@@ -55,8 +57,22 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       name: values.name,
       description: values.description,
       access_type: (values.access_type as 'PUBLIC' | 'PRIVATE') ?? 'PUBLIC',
-      type: 'NORMAL',
+      type: values.type ?? 'NORMAL',
     })
+
+    if (isWorkspaceChannel(channel.type)) {
+      try {
+        const projects = await projectApi.list(channel.id)
+        if (projects.length > 0) {
+          router.push(`/channels/${channel.id}/projects/${projects[0].id}/notes`)
+          return
+        }
+      } catch {
+        /* fall through */
+      }
+      router.push(`/channels/${channel.id}`)
+      return
+    }
 
     const updates: { avatar_url?: string; banner_url?: string } = {}
 
@@ -77,7 +93,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       await channelsApi.updateChannel(channel.id, updates)
       queryClient.invalidateQueries({ queryKey: ['channels'] })
     }
-  }, [createChannel, queryClient])
+  }, [createChannel, queryClient, router])
   const dmCall = useDmCallContext()
   const [isCallMinimized, setIsCallMinimized] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -217,7 +233,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       access_type: ch.access_type as any,
       role: (ch.role as any) ?? 'MEMBER',
       owner_id: ch.owner_id,
-      type: (ch.type as any) ?? 'NORMAL',
+      type: isWorkspaceChannel(ch.type) ? 'WORKSPACE' : 'NORMAL',
     }))
   }, [channels])
 
@@ -260,7 +276,21 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     })
   }, [directConversations, unreadCounts, profile?.id])
 
-  const handleSelectChannel = (id: string) => {
+  const handleSelectChannel = async (id: string) => {
+    const ch = channels.find((c) => c.id === id)
+    if (ch && isWorkspaceChannel(ch.type)) {
+      try {
+        const projects = await projectApi.list(id)
+        if (projects.length > 0) {
+          router.push(`/channels/${id}/projects/${projects[0].id}/notes`)
+          return
+        }
+      } catch (err) {
+        console.error('Failed to load workspace projects:', err)
+      }
+      router.push(`/channels/${id}`)
+      return
+    }
     router.push(`/channels/${id}`)
   }
 

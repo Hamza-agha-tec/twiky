@@ -95,6 +95,7 @@ export function CreateEntityDialog({
   const [accessType, setAccessType] = useState<'PUBLIC' | 'PRIVATE'>('PUBLIC')
   const [groupType, setGroupType] = useState<'text' | 'board' | 'voice' | 'watch'>('text')
   const [groupAccess, setGroupAccess] = useState<'PUBLIC' | 'PRIVATE'>('PUBLIC')
+  const [channelType, setChannelType] = useState<'NORMAL' | 'WORKSPACE'>('NORMAL')
   const [bannerUrl, setBannerUrl] = useState<string | null>(null)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [bannerFile, setBannerFile] = useState<File | null>(null)
@@ -110,7 +111,7 @@ export function CreateEntityDialog({
 
   function handleOpenChange(nextOpen: boolean) {
     setName(defaultName); setDetails(defaultDescription)
-    setAccessType('PUBLIC'); setGroupType('text'); setGroupAccess('PUBLIC')
+    setAccessType('PUBLIC'); setGroupType('text'); setGroupAccess('PUBLIC'); setChannelType('NORMAL')
     setBannerUrl(null); setAvatarUrl(null); setBannerFile(null); setAvatarFile(null)
     setSubmitError(null); setIsSubmitting(false)
     onOpenChange(nextOpen)
@@ -129,6 +130,7 @@ export function CreateEntityDialog({
         bannerFile: entityKind === 'channel' ? bannerFile : null,
         access_type: entityKind === 'channel' ? accessType : groupAccess,
         group_type: entityKind === 'group' ? groupType : undefined,
+        type: entityKind === 'channel' ? channelType : undefined,
       })
       handleOpenChange(false)
     } catch (err) {
@@ -359,6 +361,33 @@ export function CreateEntityDialog({
                       ))}
                     </div>
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70">Channel type</label>
+                  <div className="flex h-10 rounded-xl border border-border/50 overflow-hidden">
+                    {([
+                      { value: 'NORMAL' as const, label: 'Normal', hint: 'Groups at channel level' },
+                      { value: 'WORKSPACE' as const, label: 'Workspace', hint: 'Projects with tools' },
+                    ]).map(({ value, label }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setChannelType(value)}
+                        className={cn(
+                          'flex flex-1 items-center justify-center text-[11px] font-medium transition-all',
+                          channelType === value ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground/70">
+                    {channelType === 'WORKSPACE'
+                      ? 'Creates a default project with chat, voice, posts, notes, tasks, and goals.'
+                      : 'Creates a #general text group for classic channels.'}
+                  </p>
                 </div>
 
                 <div className="space-y-2">
