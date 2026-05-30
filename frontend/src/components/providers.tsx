@@ -7,6 +7,7 @@ import { ChatThemeProvider } from '@/context/ChatThemeContext';
 import { ChatProvider } from '@/context/ChatContext';
 import { VoiceProvider } from '@/context/VoiceContext';
 import { WatchPresenceProvider } from '@/context/WatchPresenceContext';
+import { PixelPresenceProvider } from '@/context/PixelPresenceContext';
 import { DmCallProvider } from '@/context/DmCallContext';
 import { DynamicIslandProvider } from '@/context/DynamicIslandContext';
 import { DynamicIsland } from '@/components/dynamic-island/DynamicIsland';
@@ -33,9 +34,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
               <ChatProvider>
                 <VoiceProvider>
                   <WatchPresenceProvider>
+                  <PixelPresenceProvider>
                   <DmCallProvider>
                     {children}
                   </DmCallProvider>
+                  </PixelPresenceProvider>
                   </WatchPresenceProvider>
                 </VoiceProvider>
               </ChatProvider>

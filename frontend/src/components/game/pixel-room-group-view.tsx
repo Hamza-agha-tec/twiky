@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, MessageCircle, Mic, MicOff, Smile, Users, X } from 'lucide-react'
+import { ArrowLeft, Maximize2, Minimize2, MessageCircle, Mic, MicOff, Smile, Users, X } from 'lucide-react'
 import { motion as Motion } from 'framer-motion'
 
 import { PixelRoomCanvas, type OtherParticipant } from './pixel-room-canvas'
@@ -81,6 +81,8 @@ export function PixelRoomGroupView({ group, channelId, myId }: Props) {
   const [chatInputOpen, setChatInputOpen] = useState(false)
   const [chatInput, setChatInput] = useState('')
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const sectionRef = useRef<HTMLElement | null>(null)
 
   const joinedRef = useRef(false)
   const visitorRef = useRef<VisitorMotion>(defaultMotion())
@@ -373,11 +375,26 @@ export function PixelRoomGroupView({ group, channelId, myId }: Props) {
       if (key === 'm') { e.preventDefault(); toggleMic() }
       if (key === 't') { e.preventDefault(); setChatInputOpen(true) }
       if (key === 'r') { e.preventDefault(); setEmojiPickerOpen(prev => !prev) }
+      if (key === 'f') { e.preventDefault(); toggleFullscreen() }
       if (key === 'escape') { setChatInputOpen(false); setEmojiPickerOpen(false) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [toggleMic])
+
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      sectionRef.current?.requestFullscreen()
+    } else {
+      document.exitFullscreen()
+    }
+  }, [])
+
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', onFsChange)
+    return () => document.removeEventListener('fullscreenchange', onFsChange)
+  }, [])
 
   const canvasState: PixelRoomState = useMemo(() => ({
     ...visitor,
@@ -389,7 +406,7 @@ export function PixelRoomGroupView({ group, channelId, myId }: Props) {
   const ownerLabel = roomUsername || group.label
 
   return (
-    <section className="relative flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background text-foreground">
+    <section ref={sectionRef} className="relative flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background text-foreground">
       <Motion.header
         className="flex flex-shrink-0 items-center justify-between border-b border-border px-4 py-3"
         initial={{ opacity: 0 }}
@@ -412,6 +429,13 @@ export function PixelRoomGroupView({ group, channelId, myId }: Props) {
             <Users className="h-3 w-3" />
             {participantCount}
           </span>
+          <button
+            onClick={toggleFullscreen}
+            className="flex h-8 w-8 items-center justify-center rounded-[8px] border border-border text-muted-foreground hover:border-primary hover:text-primary"
+            title={isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
+          >
+            {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </button>
         </div>
       </Motion.header>
 
@@ -440,7 +464,7 @@ export function PixelRoomGroupView({ group, channelId, myId }: Props) {
           />
 
           <div className="pointer-events-none absolute left-1/2 top-[10px] z-10 -translate-x-1/2 rounded-full border border-border bg-background/90 px-3.5 py-1.5 text-[10px] text-muted-foreground backdrop-blur-sm">
-            {group.label} · WASD move · E sit · T chat · R emoji · M mic
+            {group.label} · WASD move · E sit · T chat · R emoji · M mic · F fullscreen
           </div>
 
           {/* Emoji picker */}

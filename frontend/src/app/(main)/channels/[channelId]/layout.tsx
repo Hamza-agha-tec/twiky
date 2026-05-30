@@ -7,6 +7,7 @@ import { useChannelGroups, backendGroupToMock, useGroupsRealtime, useCreateGroup
 import { WorkspaceEmptyState } from '@/components/chat/workspace-empty-state'
 import { useVoice } from '@/context/VoiceContext'
 import { useWatchPresence } from '@/context/WatchPresenceContext'
+import { usePixelPresence } from '@/context/PixelPresenceContext'
 import { useProfile } from '@/hooks/use-user'
 import { useEffect, useState } from 'react'
 import { useOnlineUsers } from '@/hooks/use-socket'
@@ -26,10 +27,9 @@ export default function ChannelLayout({ children }: { children: React.ReactNode 
   
   const voice = useVoice()
   const { watchParticipants, watchSessionStarts, setGroupParticipants, setGroupSessionStart } = useWatchPresence()
+  const { pixelParticipants, pixelSessionStarts, setGroupParticipants: setPixelParticipants, setGroupSessionStart: setPixelSessionStarts, updateSpeaking: updatePixelSpeaking } = usePixelPresence()
   const onlineUsers = useOnlineUsers()
   const [voiceTimer, setVoiceTimer] = useState<string>('00:00')
-  const [pixelParticipants, setPixelParticipants] = useState<Record<string, { userId: string; username: string; avatarUrl?: string | null; bannerUrl?: string | null; subPlan?: string | null; micMuted: boolean; isSpeaking: boolean }[]>>({})
-  const [pixelSessionStarts, setPixelSessionStarts] = useState<Record<string, number | null>>({})
 
   // Watch room real-time participants synchronization
   useEffect(() => {
@@ -70,16 +70,12 @@ export default function ChannelLayout({ children }: { children: React.ReactNode 
 
     const onPixelParticipants = (data: { groupId: string; participants: { userId: string; username: string; avatarUrl?: string | null; bannerUrl?: string | null; subPlan?: string | null; micMuted: boolean; isSpeaking: boolean }[]; sessionStartedAt?: number | null }) => {
       if (!pixelGroupIds.includes(data.groupId)) return
-      setPixelParticipants(prev => ({ ...prev, [data.groupId]: data.participants }))
-      setPixelSessionStarts(prev => ({ ...prev, [data.groupId]: data.sessionStartedAt ?? null }))
+      setPixelParticipants(data.groupId, data.participants)
+      setPixelSessionStarts(data.groupId, data.sessionStartedAt ?? null)
     }
     const onPixelSpeaking = (data: { groupId: string; userId: string; speaking: boolean }) => {
       if (!pixelGroupIds.includes(data.groupId)) return
-      setPixelParticipants(prev => {
-        const list = prev[data.groupId]
-        if (!list) return prev
-        return { ...prev, [data.groupId]: list.map(p => p.userId === data.userId ? { ...p, isSpeaking: data.speaking } : p) }
-      })
+      updatePixelSpeaking(data.groupId, data.userId, data.speaking)
     }
 
     getSocket().then(s => {
