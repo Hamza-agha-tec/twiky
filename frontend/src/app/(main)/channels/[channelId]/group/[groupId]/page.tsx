@@ -366,6 +366,7 @@ export default function GroupPage() {
           group={group}
           channelId={channelId as string}
           myId={profile?.id}
+          isChannelAdmin={activeChannel?.role === 'OWNER' || activeChannel?.role === 'ADMIN' || activeChannel?.owner_id === profile?.id}
         />
       </div>
     )

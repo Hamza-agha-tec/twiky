@@ -185,6 +185,8 @@ func SetupRoutes(e *echo.Echo) {
 	protected.GET("/groups/:groupId/events", groupHandler.GetGroupEvents)
 	protected.POST("/groups/:groupId/events", groupHandler.CreateGroupEvent)
 	protected.DELETE("/groups/:groupId/events/:eventId", groupHandler.DeleteGroupEvent)
+	protected.GET("/groups/:groupId/pixel-room", roomHandler.GetGroupPixelRoom)
+	protected.PUT("/groups/:groupId/pixel-room", roomHandler.SaveGroupPixelRoom)
 
 	// WebSocket routes
 	protected.GET("/websocket", webSocketHandler.HandleWebSocket)

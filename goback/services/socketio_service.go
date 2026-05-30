@@ -1925,6 +1925,31 @@ func (s *SocketIOService) setupHandlers() {
 			})
 		})
 
+		client.On("pixel-room:objects-update", func(datas ...any) {
+			if len(datas) == 0 {
+				return
+			}
+			payload := asMap(datas[0])
+			if payload == nil {
+				return
+			}
+			groupID := mapStr(payload, "groupId")
+			if groupID == "" {
+				return
+			}
+			s.presenceMu.RLock()
+			userID := s.socketUsers[socketID]
+			s.presenceMu.RUnlock()
+			if userID == "" {
+				return
+			}
+			server.To(socketio.Room("group_"+groupID)).Emit("pixel-room:objects-update", map[string]interface{}{
+				"groupId": groupID,
+				"userId":  userID,
+				"objects": payload["objects"],
+			})
+		})
+
 		// ── Spotify ─────────────────────────────────────────────────────────
 
 			client.On("subscribeSpotifyStatus", func(datas ...any) {

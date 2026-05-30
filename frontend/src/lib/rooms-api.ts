@@ -80,6 +80,32 @@ export async function recordRoomVisit(username: string): Promise<void> {
   })
 }
 
+export type GroupPixelRoomPayload<T> = {
+  state: T | null
+  updatedAt: string | null
+}
+
+export async function fetchGroupPixelRoom<T = unknown>(
+  groupId: string,
+): Promise<GroupPixelRoomPayload<T>> {
+  const res = await authedFetch(`/groups/${encodeURIComponent(groupId)}/pixel-room`)
+  if (!res.ok) throw new Error(`Failed to load group room (${res.status})`)
+  return res.json()
+}
+
+export async function saveGroupPixelRoom<T = unknown>(
+  groupId: string,
+  state: T,
+): Promise<GroupPixelRoomPayload<T>> {
+  const res = await authedFetch(`/groups/${encodeURIComponent(groupId)}/pixel-room`, {
+    method: 'PUT',
+    body: JSON.stringify({ state }),
+  })
+  if (res.status === 403) throw new Error('forbidden')
+  if (!res.ok) throw new Error(`Failed to save group room (${res.status})`)
+  return res.json()
+}
+
 export async function toggleRoomLike(
   username: string,
 ): Promise<{ liked: boolean; likeCount: number }> {

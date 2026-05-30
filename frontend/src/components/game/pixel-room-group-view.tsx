@@ -2,30 +2,67 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Maximize2, Minimize2, MessageCircle, Mic, MicOff, Smile, Users, X } from 'lucide-react'
+import {
+  ArrowLeft, ChevronLeft, ChevronRight, Edit3, Maximize2, MessageCircle,
+  Mic, MicOff, Minimize2, PackagePlus, RotateCw, Save, Search, Smile,
+  Trash2, Users, X,
+} from 'lucide-react'
 import { motion as Motion } from 'framer-motion'
+import { toast } from 'sonner'
 
 import { PixelRoomCanvas, type OtherParticipant } from './pixel-room-canvas'
 import {
   createDefaultRoomState,
   DEFAULT_AVATAR_ID,
   OBJECT_CATALOG,
+  type PixelCatalogItem,
   type PixelDirection,
   type PixelRoomState,
+  type PlacedRoomObject,
   ROOM_COLUMNS,
   ROOM_ROWS,
 } from './game-data'
-import { fetchPublicRoom, fetchMyRoom } from '@/lib/rooms-api'
+import { fetchGroupPixelRoom, saveGroupPixelRoom, fetchMyRoom } from '@/lib/rooms-api'
 import { useProfile } from '@/hooks/use-user'
 import { getSocket } from '@/lib/socket'
+import { cn } from '@/lib/utils'
 import type { MockChannelGroup } from '@/components/chat/channels-panel'
 import { useSpotifyNowPlaying } from '@/hooks/use-spotify'
 
 const EMOJI_LIST = ['👍', '❤️', '😂', '😮', '😢', '😡', '🎉', '👋', '🔥', '💯', '🙌', '😎']
+const EDIT_PAGE_SIZE = 6
 
 function emojiAppleUrl(emoji: string): string {
   const codes = [...emoji].map(c => c.codePointAt(0)!.toString(16)).join('-')
   return `https://cdn.jsdelivr.net/npm/emoji-datasource-apple/img/apple/64/${codes}.png`
+}
+
+function ItemThumb({ item, size = 26 }: { item: PixelCatalogItem; size?: number }) {
+  if (item.frame) {
+    const { sx, sy, sw, sh, sheetW, sheetH } = item.frame
+    const scale = size / Math.max(sw, sh)
+    return (
+      <div
+        style={{
+          width: size, height: size, flexShrink: 0,
+          backgroundImage: `url(${item.src})`,
+          backgroundPosition: `-${sx * scale}px -${sy * scale}px`,
+          backgroundSize: `${sheetW * scale}px ${sheetH * scale}px`,
+          backgroundRepeat: 'no-repeat',
+          imageRendering: 'pixelated',
+        }}
+      />
+    )
+  }
+  return (
+    <img
+      src={item.src}
+      alt=""
+      width={size}
+      height={size}
+      style={{ objectFit: 'contain', imageRendering: 'pixelated', flexShrink: 0 }}
+    />
+  )
 }
 
 type VisitorMotion = {
@@ -59,16 +96,16 @@ interface Props {
   group: MockChannelGroup
   channelId: string
   myId?: string
+  isChannelAdmin?: boolean
 }
 
-export function PixelRoomGroupView({ group, channelId, myId }: Props) {
+export function PixelRoomGroupView({ group, channelId, myId, isChannelAdmin = false }: Props) {
   const router = useRouter()
   const { data: currentUser } = useProfile()
   const { data: nowPlaying } = useSpotifyNowPlaying(currentUser?.id)
 
-  const roomUsername = group.description || ''
-
   const [ownerObjects, setOwnerObjects] = useState<PixelRoomState['objects']>([])
+
   const [visitor, setVisitor] = useState<VisitorMotion>(defaultMotion)
   const [others, setOthers] = useState<OtherParticipant[]>([])
   const [participantCount, setParticipantCount] = useState(1)
@@ -83,6 +120,14 @@ export function PixelRoomGroupView({ group, channelId, myId }: Props) {
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const sectionRef = useRef<HTMLElement | null>(null)
+
+  // Edit mode state
+  const [isEditMode, setIsEditMode] = useState(false)
+  const [editObjects, setEditObjects] = useState<PlacedRoomObject[]>([])
+  const [selectedEditObjectId, setSelectedEditObjectId] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const [editSearch, setEditSearch] = useState('')
+  const [editPage, setEditPage] = useState(0)
 
   const joinedRef = useRef(false)
   const visitorRef = useRef<VisitorMotion>(defaultMotion())
@@ -104,11 +149,10 @@ export function PixelRoomGroupView({ group, channelId, myId }: Props) {
     })
   }, [nowPlaying, currentUser, group.id])
 
-  // Fetch room furniture
+  // Fetch group room objects
   useEffect(() => {
-    if (!roomUsername) return
     let cancelled = false
-    fetchPublicRoom<PixelRoomState>(roomUsername)
+    fetchGroupPixelRoom<PixelRoomState>(group.id)
       .then((res) => {
         if (cancelled) return
         const merged = { ...createDefaultRoomState(), ...(res.state ?? {}) }
@@ -116,7 +160,7 @@ export function PixelRoomGroupView({ group, channelId, myId }: Props) {
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [roomUsername])
+  }, [group.id])
 
   // Mic + speaking detection
   useEffect(() => {
@@ -158,7 +202,7 @@ export function PixelRoomGroupView({ group, channelId, myId }: Props) {
     }
   }, [currentUser])
 
-  // Socket presence + new events
+  // Socket presence + events
   useEffect(() => {
     if (!currentUser || joinedRef.current) return
     joinedRef.current = true
@@ -172,9 +216,9 @@ export function PixelRoomGroupView({ group, channelId, myId }: Props) {
     ]).then(([roomData, socket]) => {
       if (!mounted) return
 
-      const avatarId = roomData?.state?.avatarId ?? DEFAULT_AVATAR_ID
-      setVisitor(prev => ({ ...prev, avatarId }))
-      visitorRef.current = { ...visitorRef.current, avatarId }
+      const myAvatarId = roomData?.state?.avatarId ?? DEFAULT_AVATAR_ID
+      setVisitor(prev => ({ ...prev, avatarId: myAvatarId }))
+      visitorRef.current = { ...visitorRef.current, avatarId: myAvatarId }
 
       const onParticipants = (data: { groupId: string; participants: OtherParticipant[] }) => {
         if (data.groupId !== group.id) return
@@ -236,19 +280,25 @@ export function PixelRoomGroupView({ group, channelId, myId }: Props) {
         ))
       }
 
+      const onObjectsUpdate = (data: { groupId: string; userId: string; objects: PlacedRoomObject[] }) => {
+        if (data.groupId !== group.id || data.userId === currentUser.id) return
+        if (Array.isArray(data.objects)) setOwnerObjects(data.objects)
+      }
+
       socket.on('pixel-room:participants', onParticipants)
       socket.on('pixel-room:moved', onMoved)
       socket.on('pixel-room:chat', onChat)
       socket.on('pixel-room:emoji', onEmoji)
       socket.on('pixel-room:speaking', onSpeaking)
       socket.on('pixel-room:spotify-track', onSpotifyTrack)
+      socket.on('pixel-room:objects-update', onObjectsUpdate)
 
       socket.emit('pixel-room:join', {
         groupId: group.id,
         user: {
           id: currentUser.id,
           username: currentUser.username || currentUser.fullname || 'Visitor',
-          avatarId,
+          avatarId: myAvatarId,
           avatarUrl: currentUser.avatar_url ?? null,
           bannerUrl: currentUser.banner ?? null,
           subPlan: currentUser.sub_plan ?? null,
@@ -265,6 +315,7 @@ export function PixelRoomGroupView({ group, channelId, myId }: Props) {
         socket.off('pixel-room:emoji', onEmoji)
         socket.off('pixel-room:speaking', onSpeaking)
         socket.off('pixel-room:spotify-track', onSpotifyTrack)
+        socket.off('pixel-room:objects-update', onObjectsUpdate)
       }
     })
 
@@ -322,6 +373,7 @@ export function PixelRoomGroupView({ group, channelId, myId }: Props) {
   }, [])
 
   const handleMoveAvatar = useCallback((dx: number, dy: number) => {
+    if (isEditMode) return
     const prev = visitorRef.current
     const next: VisitorMotion = {
       ...prev,
@@ -334,9 +386,10 @@ export function PixelRoomGroupView({ group, channelId, myId }: Props) {
     visitorRef.current = next
     setVisitor(next)
     emitMove(next)
-  }, [emitMove])
+  }, [emitMove, isEditMode])
 
   const handleToggleSit = useCallback(() => {
+    if (isEditMode) return
     const prev = visitorRef.current
     if (prev.isSitting) {
       const next: VisitorMotion = { ...prev, isSitting: false, sittingObjectId: null }
@@ -365,22 +418,119 @@ export function PixelRoomGroupView({ group, channelId, myId }: Props) {
     visitorRef.current = next
     setVisitor(next)
     emitMove(next, true)
-  }, [ownerObjects, emitMove])
+  }, [ownerObjects, emitMove, isEditMode])
 
-  // Keyboard shortcuts: M=mic, T=chat, R=emoji
+  // Edit mode callbacks
+  const enterEditMode = useCallback(() => {
+    setEditObjects([...ownerObjects])
+    setSelectedEditObjectId(null)
+    setEditSearch('')
+    setEditPage(0)
+    setIsEditMode(true)
+  }, [ownerObjects])
+
+  const cancelEditMode = useCallback(() => {
+    setIsEditMode(false)
+    setSelectedEditObjectId(null)
+  }, [])
+
+  const saveEditedRoom = useCallback(async () => {
+    setIsSaving(true)
+    try {
+      await saveGroupPixelRoom(group.id, { objects: editObjects })
+      setOwnerObjects(editObjects)
+      setIsEditMode(false)
+      setSelectedEditObjectId(null)
+      getSocket().then(socket => {
+        socket.emit('pixel-room:objects-update', {
+          groupId: liveGroupIdRef.current,
+          objects: editObjects,
+        })
+      })
+      toast.success('Room saved')
+    } catch {
+      toast.error('Save failed')
+    } finally {
+      setIsSaving(false)
+    }
+  }, [group.id, editObjects])
+
+  const placeEditObject = useCallback((itemId: string) => {
+    if (!OBJECT_CATALOG.some(i => i.id === itemId)) return
+    const id = `${itemId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+    const newObj: PlacedRoomObject = {
+      id,
+      itemId,
+      x: Math.max(1, Math.min(ROOM_COLUMNS - 2, Math.round(visitorRef.current.avatarX) + 1)),
+      y: Math.max(1, Math.min(ROOM_ROWS - 2, Math.round(visitorRef.current.avatarY))),
+      rotation: 0,
+    }
+    setEditObjects(prev => [...prev, newObj])
+    setSelectedEditObjectId(id)
+  }, [])
+
+  const moveEditObject = useCallback((objectId: string, x: number, y: number) => {
+    setEditObjects(prev => prev.map(obj =>
+      obj.id === objectId
+        ? {
+            ...obj,
+            x: Math.max(0, Math.min(ROOM_COLUMNS - 1, Math.round(x))),
+            y: Math.max(0, Math.min(ROOM_ROWS - 1, Math.round(y))),
+          }
+        : obj
+    ))
+  }, [])
+
+  const rotateEditObject = useCallback(() => {
+    if (!selectedEditObjectId) return
+    setEditObjects(prev => prev.map(obj =>
+      obj.id === selectedEditObjectId
+        ? { ...obj, rotation: ((obj.rotation + 1) % 4) as PlacedRoomObject['rotation'] }
+        : obj
+    ))
+  }, [selectedEditObjectId])
+
+  const deleteEditObject = useCallback(() => {
+    if (!selectedEditObjectId) return
+    setEditObjects(prev => prev.filter(obj => obj.id !== selectedEditObjectId))
+    setSelectedEditObjectId(null)
+  }, [selectedEditObjectId])
+
+  // Edit catalog
+  const editFiltered = useMemo(() => {
+    const q = editSearch.trim().toLowerCase()
+    return q
+      ? OBJECT_CATALOG.filter(i => i.name.toLowerCase().includes(q) || i.category.toLowerCase().includes(q))
+      : OBJECT_CATALOG
+  }, [editSearch])
+
+  const editTotalPages = Math.max(1, Math.ceil(editFiltered.length / EDIT_PAGE_SIZE))
+  const editSafePage = Math.min(editPage, editTotalPages - 1)
+  const editPageItems = editFiltered.slice(editSafePage * EDIT_PAGE_SIZE, editSafePage * EDIT_PAGE_SIZE + EDIT_PAGE_SIZE)
+
+  const selectedEditObject = editObjects.find(o => o.id === selectedEditObjectId)
+  const selectedEditAsset = selectedEditObject
+    ? OBJECT_CATALOG.find(i => i.id === selectedEditObject.itemId)
+    : null
+
+  // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       const key = e.key.toLowerCase()
       if (key === 'm') { e.preventDefault(); toggleMic() }
-      if (key === 't') { e.preventDefault(); setChatInputOpen(true) }
-      if (key === 'r') { e.preventDefault(); setEmojiPickerOpen(prev => !prev) }
+      if (key === 't' && !isEditMode) { e.preventDefault(); setChatInputOpen(true) }
+      if (key === 'r' && !isEditMode) { e.preventDefault(); setEmojiPickerOpen(prev => !prev) }
       if (key === 'f') { e.preventDefault(); toggleFullscreen() }
-      if (key === 'escape') { setChatInputOpen(false); setEmojiPickerOpen(false) }
+      if (key === 'escape') {
+        setChatInputOpen(false)
+        setEmojiPickerOpen(false)
+        if (isEditMode) cancelEditMode()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [toggleMic])
+  }, [toggleMic, isEditMode, cancelEditMode])
 
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -396,19 +546,19 @@ export function PixelRoomGroupView({ group, channelId, myId }: Props) {
     return () => document.removeEventListener('fullscreenchange', onFsChange)
   }, [])
 
+  const activeObjects = isEditMode ? editObjects : ownerObjects
   const canvasState: PixelRoomState = useMemo(() => ({
     ...visitor,
-    objects: ownerObjects,
+    objects: activeObjects,
     ownedItemIds: [],
-  }), [visitor, ownerObjects])
+  }), [visitor, activeObjects])
 
   const myName = currentUser?.fullname ?? currentUser?.username ?? 'You'
-  const ownerLabel = roomUsername || group.label
 
   return (
     <section ref={sectionRef} className="relative flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background text-foreground">
       <Motion.header
-        className="flex flex-shrink-0 items-center justify-between border-b border-border px-4 py-3"
+        className={cn('flex flex-shrink-0 items-center justify-between border-b border-border px-4 py-3', isFullscreen && 'hidden')}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
@@ -423,12 +573,28 @@ export function PixelRoomGroupView({ group, channelId, myId }: Props) {
           <div className="min-w-0">
             <h2 className="truncate text-[14px] font-semibold text-foreground">{group.label}</h2>
           </div>
+          {isEditMode && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-400">
+              <Edit3 className="h-2.5 w-2.5" />
+              Editing
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1.5 rounded-[8px] border border-border bg-card px-2.5 py-1 text-[11px] text-muted-foreground">
             <Users className="h-3 w-3" />
             {participantCount}
           </span>
+          {isChannelAdmin && !isEditMode && (
+            <button
+              onClick={enterEditMode}
+              className="flex h-8 items-center gap-1.5 rounded-[8px] border border-border px-2.5 text-[11px] font-medium text-muted-foreground hover:border-primary hover:text-primary"
+              title="Edit room"
+            >
+              <Edit3 className="h-3.5 w-3.5" />
+              Edit Room
+            </button>
+          )}
           <button
             onClick={toggleFullscreen}
             className="flex h-8 w-8 items-center justify-center rounded-[8px] border border-border text-muted-foreground hover:border-primary hover:text-primary"
@@ -440,18 +606,165 @@ export function PixelRoomGroupView({ group, channelId, myId }: Props) {
       </Motion.header>
 
       <Motion.main
-        className="relative flex min-w-0 flex-1 flex-col overflow-hidden p-4"
+        className={cn(
+          'relative flex min-w-0 flex-1 overflow-hidden',
+          isFullscreen ? 'p-0' : 'p-4',
+          isEditMode ? 'flex-row gap-3 items-start' : 'flex-col',
+        )}
         initial={{ opacity: 0, scale: 0.975 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
       >
-        <div className="relative mx-auto flex h-full max-h-[576px] w-full max-w-[832px] shrink overflow-hidden rounded-[10px] border border-border shadow-lg">
+        {/* Edit sidebar */}
+        {isEditMode && (
+          <div className={cn('flex w-[220px] shrink-0 flex-col overflow-hidden rounded-[10px] border border-amber-500/20 bg-card', isFullscreen ? 'h-full' : 'h-full max-h-[576px]')}>
+            <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground">
+                <PackagePlus className="h-3.5 w-3.5 text-amber-400" />
+                Add Objects
+              </div>
+              <button
+                onClick={cancelEditMode}
+                className="flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+
+            {/* Search */}
+            <div className="relative border-b border-border px-2 py-2">
+              <Search className="absolute left-4 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={editSearch}
+                onChange={e => { setEditSearch(e.target.value); setEditPage(0) }}
+                placeholder="Search…"
+                className="w-full rounded-[6px] border border-border bg-background py-1.5 pl-7 pr-2 text-[11px] text-foreground placeholder-muted-foreground outline-none focus:border-primary"
+              />
+            </div>
+
+            {/* Object list */}
+            <div className="flex-1 overflow-y-auto px-2 py-2">
+              <div className="grid gap-1">
+                {editPageItems.length === 0 && (
+                  <p className="py-4 text-center text-[11px] text-muted-foreground">No objects found</p>
+                )}
+                {editPageItems.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => { placeEditObject(item.id); toast.success(`${item.name} placed`) }}
+                    className="grid grid-cols-[28px_1fr] items-center gap-2 rounded-[6px] border border-border bg-background p-1.5 text-left transition-colors hover:border-primary hover:bg-primary/5"
+                  >
+                    <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-[4px] border border-border">
+                      <ItemThumb item={item} size={22} />
+                    </div>
+                    <span className="min-w-0">
+                      <span className="block truncate text-[10px] font-semibold text-foreground">{item.name}</span>
+                      <span className="block truncate text-[9px] text-muted-foreground">{item.category}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Pagination */}
+              {editTotalPages > 1 && (
+                <div className="mt-2 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setEditPage(p => Math.max(0, p - 1))}
+                    disabled={editSafePage === 0}
+                    className="flex h-6 w-6 items-center justify-center rounded-[5px] border border-border text-muted-foreground disabled:opacity-30 hover:border-primary hover:text-primary disabled:cursor-not-allowed"
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                  </button>
+                  <span className="text-[9px] text-muted-foreground">
+                    {editSafePage + 1} / {editTotalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setEditPage(p => Math.min(editTotalPages - 1, p + 1))}
+                    disabled={editSafePage === editTotalPages - 1}
+                    className="flex h-6 w-6 items-center justify-center rounded-[5px] border border-border text-muted-foreground disabled:opacity-30 hover:border-primary hover:text-primary disabled:cursor-not-allowed"
+                  >
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Selected object controls */}
+            <div className="border-t border-border p-2">
+              {selectedEditObject && selectedEditAsset ? (
+                <div className="rounded-[8px] border border-border bg-background p-2">
+                  <div className="mb-2 flex items-center gap-1.5">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-[4px] border border-border">
+                      <ItemThumb item={selectedEditAsset} size={22} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-[10px] font-semibold text-foreground">{selectedEditAsset.name}</p>
+                      <p className="text-[9px] text-muted-foreground">{selectedEditObject.x}, {selectedEditObject.y}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={rotateEditObject}
+                      className="inline-flex h-7 items-center justify-center gap-1 rounded-[6px] border border-border text-[10px] font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                    >
+                      <RotateCw className="h-3 w-3" />
+                      Rotate
+                    </button>
+                    <button
+                      type="button"
+                      onClick={deleteEditObject}
+                      className="inline-flex h-7 items-center justify-center gap-1 rounded-[6px] border border-red-500/30 bg-red-500/10 text-[10px] font-medium text-red-400 transition-colors hover:bg-red-500/20"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="rounded-[8px] border border-border bg-background p-2 text-[10px] text-muted-foreground">
+                  Click an object to select it.
+                </p>
+              )}
+
+              {/* Save / Cancel */}
+              <div className="mt-2 grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={cancelEditMode}
+                  className="inline-flex h-7 items-center justify-center rounded-[6px] border border-border text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveEditedRoom}
+                  disabled={isSaving}
+                  className="inline-flex h-7 items-center justify-center gap-1 rounded-[6px] bg-primary text-[10px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  <Save className="h-3 w-3" />
+                  {isSaving ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Canvas area */}
+        <div className={cn(
+          'relative flex shrink overflow-hidden border border-border shadow-lg',
+          isFullscreen ? 'h-full w-full rounded-none' : 'h-full max-h-[576px] rounded-[10px]',
+          !isFullscreen && (isEditMode ? 'flex-1' : 'mx-auto w-full max-w-[832px]'),
+        )}>
           <PixelRoomCanvas
             state={canvasState}
             playerName={myName}
-            selectedObjectId={null}
-            onSelectObject={() => {}}
-            onMoveObject={() => {}}
+            selectedObjectId={isEditMode ? selectedEditObjectId : null}
+            onSelectObject={isEditMode ? setSelectedEditObjectId : () => {}}
+            onMoveObject={isEditMode ? moveEditObject : () => {}}
             onMoveAvatar={handleMoveAvatar}
             onToggleSit={handleToggleSit}
             otherParticipants={others}
@@ -464,11 +777,13 @@ export function PixelRoomGroupView({ group, channelId, myId }: Props) {
           />
 
           <div className="pointer-events-none absolute left-1/2 top-[10px] z-10 -translate-x-1/2 rounded-full border border-border bg-background/90 px-3.5 py-1.5 text-[10px] text-muted-foreground backdrop-blur-sm">
-            {group.label} · WASD move · E sit · T chat · R emoji · M mic · F fullscreen
+            {isEditMode
+              ? 'Edit mode · Drag objects · Click to select · Esc to cancel'
+              : `${group.label} · WASD move · E sit · T chat · R emoji · M mic · F fullscreen`}
           </div>
 
           {/* Emoji picker */}
-          {emojiPickerOpen && (
+          {!isEditMode && emojiPickerOpen && (
             <div className="absolute bottom-16 left-1/2 z-20 -translate-x-1/2 rounded-[14px] border border-white/10 bg-black/55 p-3 shadow-2xl backdrop-blur-md">
               <div className="mb-2.5 flex items-center justify-between">
                 <span className="text-[9px] font-bold uppercase tracking-widest text-white/40">Reactions</span>
@@ -494,7 +809,7 @@ export function PixelRoomGroupView({ group, channelId, myId }: Props) {
           )}
 
           {/* Chat bubble input */}
-          {chatInputOpen && (
+          {!isEditMode && chatInputOpen && (
             <div className="absolute bottom-16 left-1/2 z-20 flex w-72 -translate-x-1/2 items-center gap-2 rounded-[12px] border border-white/10 bg-black/55 px-3 py-2.5 shadow-2xl backdrop-blur-md">
               <MessageCircle className="h-4 w-4 flex-shrink-0 text-white/40" />
               <input
@@ -527,7 +842,7 @@ export function PixelRoomGroupView({ group, channelId, myId }: Props) {
           )}
 
           {/* Spotify now playing */}
-          {nowPlaying?.is_playing && nowPlaying.track && (
+          {!isEditMode && nowPlaying?.is_playing && nowPlaying.track && (
             <a
               href={nowPlaying.track.spotify_url}
               target="_blank"
@@ -552,36 +867,38 @@ export function PixelRoomGroupView({ group, channelId, myId }: Props) {
           )}
 
           {/* Bottom toolbar */}
-          <div className="pointer-events-auto absolute bottom-4 right-4 z-10 flex items-center gap-1.5 rounded-[12px] border border-white/10 bg-black/30 px-2 py-1.5 shadow-lg backdrop-blur-md">
-            <button
-              onClick={toggleMic}
-              title={micMuted ? 'Unmute (M)' : 'Mute (M)'}
-              className={`flex h-8 w-8 items-center justify-center rounded-[8px] transition-colors ${
-                micMuted
-                  ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                  : isSpeaking
-                  ? 'bg-green-500/20 text-green-400'
-                  : 'text-white/60 hover:bg-white/10 hover:text-white'
-              }`}
-            >
-              {micMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-            </button>
-            <div className="h-4 w-px bg-white/10" />
-            <button
-              onClick={() => setEmojiPickerOpen(prev => !prev)}
-              className="flex h-8 w-8 items-center justify-center rounded-[8px] text-white/60 transition-colors hover:bg-white/10 hover:text-white"
-              title="React (R)"
-            >
-              <Smile className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => setChatInputOpen(true)}
-              className="flex h-8 w-8 items-center justify-center rounded-[8px] text-white/60 transition-colors hover:bg-white/10 hover:text-white"
-              title="Chat (T)"
-            >
-              <MessageCircle className="h-4 w-4" />
-            </button>
-          </div>
+          {!isEditMode && (
+            <div className="pointer-events-auto absolute bottom-4 right-4 z-10 flex items-center gap-1.5 rounded-[12px] border border-white/10 bg-black/30 px-2 py-1.5 shadow-lg backdrop-blur-md">
+              <button
+                onClick={toggleMic}
+                title={micMuted ? 'Unmute (M)' : 'Mute (M)'}
+                className={`flex h-8 w-8 items-center justify-center rounded-[8px] transition-colors ${
+                  micMuted
+                    ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                    : isSpeaking
+                    ? 'bg-green-500/20 text-green-400'
+                    : 'text-white/60 hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                {micMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              </button>
+              <div className="h-4 w-px bg-white/10" />
+              <button
+                onClick={() => setEmojiPickerOpen(prev => !prev)}
+                className="flex h-8 w-8 items-center justify-center rounded-[8px] text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                title="React (R)"
+              >
+                <Smile className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setChatInputOpen(true)}
+                className="flex h-8 w-8 items-center justify-center rounded-[8px] text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                title="Chat (T)"
+              >
+                <MessageCircle className="h-4 w-4" />
+              </button>
+            </div>
+          )}
         </div>
       </Motion.main>
     </section>

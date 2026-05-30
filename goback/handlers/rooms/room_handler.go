@@ -72,6 +72,34 @@ func (h *RoomHandler) VisitRoom(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
+func (h *RoomHandler) GetGroupPixelRoom(c echo.Context) error {
+	groupID := c.Param("groupId")
+	if groupID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "groupId required"})
+	}
+	payload, err := h.roomService.GetGroupRoom(groupID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, payload)
+}
+
+func (h *RoomHandler) SaveGroupPixelRoom(c echo.Context) error {
+	groupID := c.Param("groupId")
+	if groupID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "groupId required"})
+	}
+	var req saveRoomRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+	payload, err := h.roomService.SaveGroupRoom(groupID, req.State)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, payload)
+}
+
 func (h *RoomHandler) ToggleLike(c echo.Context) error {
 	username := c.Param("username")
 	result, err := h.roomService.ToggleLike(username, userID(c))

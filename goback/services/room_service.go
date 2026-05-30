@@ -211,6 +211,58 @@ type LikeResult struct {
 	LikeCount int  `json:"likeCount"`
 }
 
+// ── Group pixel room ─────────────────────────────────────────────────────────
+
+type GroupPixelRoomPayload struct {
+	State     json.RawMessage `json:"state"`
+	UpdatedAt *string         `json:"updatedAt"`
+}
+
+func (s *RoomService) GetGroupRoom(groupID string) (*GroupPixelRoomPayload, error) {
+	var state sql.NullString
+	var updatedAt sql.NullString
+	err := s.db.QueryRow(
+		`SELECT state::text, updated_at::text FROM group_pixel_rooms WHERE group_id = $1`,
+		groupID,
+	).Scan(&state, &updatedAt)
+	if err == sql.ErrNoRows {
+		return &GroupPixelRoomPayload{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to load group room: %w", err)
+	}
+	payload := &GroupPixelRoomPayload{}
+	if state.Valid {
+		payload.State = json.RawMessage(state.String)
+	}
+	if updatedAt.Valid {
+		payload.UpdatedAt = &updatedAt.String
+	}
+	return payload, nil
+}
+
+func (s *RoomService) SaveGroupRoom(groupID string, state json.RawMessage) (*GroupPixelRoomPayload, error) {
+	if len(state) == 0 {
+		state = json.RawMessage("{}")
+	}
+	var updatedAt sql.NullString
+	err := s.db.QueryRow(
+		`INSERT INTO group_pixel_rooms (group_id, state, updated_at)
+		 VALUES ($1, $2::jsonb, NOW())
+		 ON CONFLICT (group_id) DO UPDATE SET state = $2::jsonb, updated_at = NOW()
+		 RETURNING updated_at::text`,
+		groupID, string(state),
+	).Scan(&updatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save group room: %w", err)
+	}
+	payload := &GroupPixelRoomPayload{State: state}
+	if updatedAt.Valid {
+		payload.UpdatedAt = &updatedAt.String
+	}
+	return payload, nil
+}
+
 func (s *RoomService) ToggleLike(username, likerID string) (*LikeResult, error) {
 	var ownerID string
 	err := s.db.QueryRow(`SELECT id FROM users WHERE username = $1`, username).Scan(&ownerID)
