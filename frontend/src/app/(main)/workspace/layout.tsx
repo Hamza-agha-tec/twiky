@@ -15,7 +15,7 @@ import { motion } from 'framer-motion';
 
 const workspaceNav = [
   { id: 'notes', label: 'Notes', icon: StickyNote, href: '/workspace/notes', color: 'text-amber-500' },
-  { id: 'tasks', label: 'Tasks', icon: ListChecks, href: '/workspace/tasks', color: 'text-blue-500' },
+  { id: 'tasks', label: 'Tasks', icon: ListChecks, href: '/workspace/tasks', color: 'text-zinc-400' },
   { id: 'whiteboards', label: 'Whiteboards', icon: Layout, href: '/workspace/whiteboards', color: 'text-purple-500' },
   { id: 'goals', label: 'Goals', icon: Target, href: '/workspace/goals', color: 'text-emerald-500' },
 ];

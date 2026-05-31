@@ -170,8 +170,25 @@ func (h *MessagingHandler) SendGroupMessage(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	// Emit via WebSockets
+	// Emit full message to users in the group room
 	h.socketIOService.BroadcastToRoom("group_"+groupID, "newGroupMessage", msg)
+
+	// Notify all group members via personal rooms for unread tracking (catches users not in the group room)
+	go func() {
+		memberIDs, err := h.messagingService.GetGroupMemberIDs(groupID)
+		if err != nil {
+			return
+		}
+		notification := map[string]interface{}{
+			"group_id":  groupID,
+			"sender_id": userID,
+		}
+		for _, memberID := range memberIDs {
+			if memberID != userID {
+				h.socketIOService.BroadcastToUser(memberID, "groupMessageNotification", notification)
+			}
+		}
+	}()
 
 	// Detect Mentions and create notifications
 	if msg.Content != "" {

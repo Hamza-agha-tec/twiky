@@ -680,7 +680,7 @@ function LinkPreview({ url }: { url: string }) {
   return (
     <span className="relative inline-block" onMouseEnter={handleEnter} onMouseLeave={handleLeave}>
       <a href={url} target="_blank" rel="noopener noreferrer"
-        className="text-blue-400 hover:text-blue-300 underline underline-offset-2 break-all"
+        className="text-zinc-400 hover:text-zinc-200 underline underline-offset-2 break-all"
         onClick={e => e.stopPropagation()}
       >{url}</a>
 

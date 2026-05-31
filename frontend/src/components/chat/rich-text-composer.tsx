@@ -14,7 +14,7 @@ import { Color } from "@tiptap/extension-color"
 import Mention from '@tiptap/extension-mention';
 import { ReactRenderer } from "@tiptap/react";
 import tippy from "tippy.js";
-import { forwardRef, useImperativeHandle, useEffect, type KeyboardEvent as ReactKeyboardEvent } from "react"
+import { forwardRef, useImperativeHandle, useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/context/AuthContext"
 import { channelsApi } from '@/lib/channels-api';
@@ -59,6 +59,8 @@ export const RichTextComposer = forwardRef<RichTextComposerHandle, RichTextCompo
   value, onChange, onKeyDown, placeholder, disabled, className, channelId
 }, ref) => {
   const { user } = useAuth()
+  const onKeyDownRef = useRef(onKeyDown)
+  useEffect(() => { onKeyDownRef.current = onKeyDown }, [onKeyDown])
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -194,10 +196,12 @@ export const RichTextComposer = forwardRef<RichTextComposerHandle, RichTextCompo
         class: cn("focus:outline-none prose prose-sm dark:prose-invert max-w-none", className),
       },
       handleKeyDown: (view, event) => {
-        if (onKeyDown) {
-          onKeyDown(event);
+        if (event.key === 'Enter' && !event.shiftKey) {
+          onKeyDownRef.current?.(event)
+          return true
         }
-        return false;
+        onKeyDownRef.current?.(event)
+        return false
       }
     },
     onUpdate: ({ editor }) => {

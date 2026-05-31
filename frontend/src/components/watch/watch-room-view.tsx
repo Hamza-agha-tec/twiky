@@ -120,7 +120,7 @@ function SoundWave({ active }: { active: boolean }) {
 
 const REACTIONS = [
   { type: 'heart', icon: Heart, color: 'text-red-500', fill: '#ef4444', hoverBg: 'hover:bg-red-500/10' },
-  { type: 'like', icon: ThumbsUp, color: 'text-blue-500', fill: '#3b82f6', hoverBg: 'hover:bg-blue-500/10' },
+  { type: 'like', icon: ThumbsUp, color: 'text-zinc-300', fill: '#e4e4e7', hoverBg: 'hover:bg-white/10' },
   { type: 'fire', icon: Flame, color: 'text-orange-500', fill: '#f97316', hoverBg: 'hover:bg-orange-500/10' },
   { type: 'laugh', icon: Smile, color: 'text-yellow-500', fill: '#eab308', hoverBg: 'hover:bg-yellow-500/10' },
   { type: 'sparkles', icon: Sparkles, color: 'text-purple-400', fill: '#c084fc', hoverBg: 'hover:bg-purple-500/10' },
@@ -145,8 +145,8 @@ function FloatingReaction({ type, left, onComplete }: FloatingReactionProps) {
       break
     case 'like':
       Icon = ThumbsUp
-      color = 'text-blue-500'
-      fill = '#3b82f6'
+      color = 'text-zinc-300'
+      fill = '#e4e4e7'
       break
     case 'fire':
       Icon = Flame

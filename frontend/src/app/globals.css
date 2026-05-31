@@ -39,8 +39,8 @@
   color: transparent;
 }
 .name-glow-pro {
-  color: #60a5fa;
-  --glow-color: #60a5fa80;
+  color: #e4e4e7;
+  --glow-color: #e4e4e780;
   animation: name-glow-pulse 2.2s ease-in-out infinite;
 }
 .name-glow-geek {
@@ -96,39 +96,37 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
+  --background: oklch(0.08 0 0);
   --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
+  --card: oklch(0.11 0 0);
   --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
+  --popover: oklch(0.11 0 0);
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
+  --primary-foreground: oklch(0.145 0 0);
+  --secondary: oklch(0.18 0 0);
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
+  --muted: oklch(0.18 0 0);
+  --muted-foreground: oklch(0.62 0 0);
+  --accent: oklch(0.18 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.922 0 0 / 30%);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.14 0.02 260);
-  --background: oklch(0.12 0.02 260);
-  --primary: oklch(0.51 0.17 233);
+  --sidebar: oklch(0.12 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-primary: oklch(0.922 0 0);
+  --sidebar-primary-foreground: oklch(0.145 0 0);
+  --sidebar-accent: oklch(0.18 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-border: oklch(1 0 0 / 8%);
   --sidebar-ring: oklch(0.556 0 0);
 }
 
@@ -184,14 +182,14 @@
   --em-rgb-input: 242, 242, 242;
   --em-rgb-color: 20, 20, 20;
   --em-rgb-border: 214, 214, 214;
-  --em-rgb-accent: 0, 128, 200;
+  --em-rgb-accent: 200, 200, 200;
 }
 .dark {
   --em-rgb-background: 36, 36, 36;
   --em-rgb-input: 50, 50, 50;
   --em-rgb-color: 240, 240, 240;
   --em-rgb-border: 55, 55, 55;
-  --em-rgb-accent: 0, 128, 200;
+  --em-rgb-accent: 200, 200, 200;
 }
 
 /* ── Theme bubble transition (View Transitions API) ─────────────── */
@@ -230,11 +228,11 @@
 /* ── Custom scrollbar ────────────────────────────────────────────── */
 :root {
   --scrollbar-thumb: oklch(0.75 0 0 / 22%);
-  --scrollbar-thumb-hover: oklch(0.51 0.17 233 / 60%);
+  --scrollbar-thumb-hover: oklch(0.6 0 0 / 60%);
 }
 .dark {
   --scrollbar-thumb: oklch(1 0 0 / 10%);
-  --scrollbar-thumb-hover: oklch(0.51 0.17 233 / 55%);
+  --scrollbar-thumb-hover: oklch(0.7 0 0 / 55%);
 }
 
 /* Webkit — 3px forces Chrome to skip rendering arrow buttons entirely */
@@ -265,11 +263,9 @@
 /* ── Glassy theme ──────────────────────────────────────────────────── */
 html[data-style="glassy"] {
   background-image:
-    radial-gradient(ellipse at 10% 20%, rgba(0, 128, 200, 0.30) 0%, transparent 45%),
-    radial-gradient(ellipse at 90% 75%, rgba(0, 90, 170, 0.22) 0%, transparent 45%),
-    radial-gradient(ellipse at 55% 50%, rgba(0, 60, 130, 0.18) 0%, transparent 55%),
-    radial-gradient(ellipse at 70% 10%, rgba(146, 220, 229, 0.08) 0%, transparent 35%),
-    linear-gradient(160deg, #010b16 0%, #020f1e 35%, #010c18 65%, #000a14 100%);
+    radial-gradient(ellipse at 10% 20%, rgba(255, 255, 255, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 90% 75%, rgba(255, 255, 255, 0.025) 0%, transparent 50%),
+    linear-gradient(160deg, #0a0a0a 0%, #050505 50%, #000000 100%);
   background-attachment: fixed;
   background-size: cover;
 }
@@ -301,7 +297,7 @@ html[data-style="glassy"] .bg-popover {
     animation-duration: 0.001ms !important;
   }
   ::selection {
-    background: rgba(16, 185, 129, 0.28);
+    background: rgba(255, 255, 255, 0.15);
     color: inherit;
   }
   html {

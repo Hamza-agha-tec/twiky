@@ -126,7 +126,7 @@ export function VideoPlayer({ src, className }: VideoPlayerProps) {
           onClick={seek}
         >
           <div
-            className="absolute inset-y-0 left-0 rounded-full bg-blue-500 transition-none"
+            className="absolute inset-y-0 left-0 rounded-full bg-white transition-none"
             style={{ width: `${progress}%` }}
           />
         </div>

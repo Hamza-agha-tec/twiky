@@ -16,6 +16,10 @@ interface ChatContextType {
   setUnreadCounts: React.Dispatch<React.SetStateAction<Record<string, number>>>
   typingConversations: Record<string, boolean>
   setTypingConversations: React.Dispatch<React.SetStateAction<Record<string, boolean>>>
+  groupUnreadCounts: Record<string, number>
+  setGroupUnreadCounts: React.Dispatch<React.SetStateAction<Record<string, number>>>
+  groupChannelMap: Record<string, string>
+  setGroupChannelMap: React.Dispatch<React.SetStateAction<Record<string, string>>>
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined)
@@ -37,6 +41,18 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
   const [typingConversations, setTypingConversations] = useState<Record<string, boolean>>({})
+  const [groupUnreadCounts, setGroupUnreadCounts] = useState<Record<string, number>>(() => {
+    if (typeof window !== 'undefined') {
+      try { return JSON.parse(localStorage.getItem('twiky-group-unreads') || '{}') } catch { return {} }
+    }
+    return {}
+  })
+  const [groupChannelMap, setGroupChannelMap] = useState<Record<string, string>>(() => {
+    if (typeof window !== 'undefined') {
+      try { return JSON.parse(localStorage.getItem('twiky-group-channel-map') || '{}') } catch { return {} }
+    }
+    return {}
+  })
 
   // Persistence for some UI states
   useEffect(() => {
@@ -46,6 +62,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     localStorage.setItem('twiky-workspace-mode', workspaceMode)
   }, [workspaceMode])
+
+  useEffect(() => {
+    localStorage.setItem('twiky-group-unreads', JSON.stringify(groupUnreadCounts))
+  }, [groupUnreadCounts])
+
+  useEffect(() => {
+    localStorage.setItem('twiky-group-channel-map', JSON.stringify(groupChannelMap))
+  }, [groupChannelMap])
 
   return (
     <ChatContext.Provider
@@ -60,6 +84,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         setUnreadCounts,
         typingConversations,
         setTypingConversations,
+        groupUnreadCounts,
+        setGroupUnreadCounts,
+        groupChannelMap,
+        setGroupChannelMap,
       }}
     >
       {children}

@@ -52,6 +52,7 @@ interface WorkspaceSidebarProps {
   searchQuery: string
   syntheticDirectChats?: Chat[]
   unreadCounts?: Record<string, number>
+  channelUnreadCounts?: Record<string, number>
   typingConversations?: Record<string, boolean>
 }
 
@@ -284,6 +285,7 @@ export function WorkspaceSidebar({
   searchQuery,
   syntheticDirectChats = [],
   unreadCounts = {},
+  channelUnreadCounts = {},
   typingConversations = {},
 }: WorkspaceSidebarProps) {
   const collapsed = true
@@ -619,18 +621,25 @@ export function WorkspaceSidebar({
 
                 return (
                   <ChannelHoverCard key={channel.id} channel={{ ...channel, avatarUrl: storedAvatar ?? channel.avatarUrl }}>
-                    <button
-                      onClick={() => onSelectChannel?.(channel.id)}
-                      className={cn(
-                        'flex h-8 w-8 items-center justify-center rounded-lg bg-linear-to-br text-[10px] font-bold text-white shadow-sm transition-transform hover:scale-[1.02] overflow-hidden',
-                        getChannelTone(channel.id),
-                        isActive && 'ring-2 ring-primary/30 ring-offset-2 ring-offset-sidebar',
-                      )}
-                    >
-                      {storedAvatar ? (
-                        <img src={storedAvatar} alt={channel.label} className="block h-full w-full object-cover object-center" />
-                      ) : getChannelMonogram(channel.label)}
-                    </button>
+                    <div className="relative">
+                      <button
+                        onClick={() => onSelectChannel?.(channel.id)}
+                        className={cn(
+                          'flex h-8 w-8 items-center justify-center rounded-lg bg-linear-to-br text-[10px] font-bold text-white shadow-sm transition-transform hover:scale-[1.02] overflow-hidden',
+                          getChannelTone(channel.id),
+                          isActive && 'ring-2 ring-primary/30 ring-offset-2 ring-offset-sidebar',
+                        )}
+                      >
+                        {storedAvatar ? (
+                          <img src={storedAvatar} alt={channel.label} className="block h-full w-full object-cover object-center" />
+                        ) : getChannelMonogram(channel.label)}
+                      </button>
+                      {channelUnreadCounts[channel.id] ? (
+                        <span className="pointer-events-none absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold leading-none text-white shadow-sm ring-1 ring-sidebar">
+                          {channelUnreadCounts[channel.id] > 9 ? '9+' : channelUnreadCounts[channel.id]}
+                        </span>
+                      ) : null}
+                    </div>
                   </ChannelHoverCard>
                 )
               })}

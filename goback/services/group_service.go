@@ -727,6 +727,49 @@ func (s *GroupService) GetChannelEvents(channelID, requestingUserID string) ([]*
 	return result, nil
 }
 
+func (s *GroupService) GetGroupUnreadCounts(userID string) (map[string]int, error) {
+	rows, err := s.db.Query(`
+		SELECT gm.group_id, COUNT(msg.id) AS unread_count
+		FROM group_members gm
+		JOIN group_messages msg ON msg.group_id = gm.group_id
+		LEFT JOIN group_read_status grs
+			ON grs.group_id = gm.group_id AND grs.user_id = gm.user_id
+		WHERE gm.user_id = $1
+		  AND msg.sender_id != $1
+		  AND (grs.last_read_at IS NULL OR msg.created_at > grs.last_read_at)
+		GROUP BY gm.group_id
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query unread counts: %w", err)
+	}
+	defer rows.Close()
+
+	counts := make(map[string]int)
+	for rows.Next() {
+		var groupID string
+		var count int
+		if err := rows.Scan(&groupID, &count); err != nil {
+			return nil, fmt.Errorf("failed to scan unread count: %w", err)
+		}
+		if count > 0 {
+			counts[groupID] = count
+		}
+	}
+	return counts, nil
+}
+
+func (s *GroupService) MarkGroupRead(userID, groupID string) error {
+	_, err := s.db.Exec(`
+		INSERT INTO group_read_status (group_id, user_id, last_read_at)
+		VALUES ($1, $2, NOW())
+		ON CONFLICT (group_id, user_id) DO UPDATE SET last_read_at = NOW()
+	`, groupID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to mark group as read: %w", err)
+	}
+	return nil
+}
+
 func (s *GroupService) CreateChannelEvent(channelID, creatorID string, dto models.CreateChannelEventDto) (*models.VoiceEvent, error) {
 	if err := s.isChannelMember(channelID, creatorID); err != nil {
 		return nil, err

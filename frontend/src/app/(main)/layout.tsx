@@ -1,13 +1,16 @@
 'use client'
 
-import { useMemo, useState, useEffect, useCallback } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
+import { useQueryClient, useQueries } from '@tanstack/react-query'
 import { usePathname, useRouter, useParams } from 'next/navigation'
 import { motion, useMotionValue, animate } from 'framer-motion'
 import { WorkspaceShellLayout } from '@/components/chat/workspace-shell-layout'
 import { WorkspaceSidebar } from '@/components/chat/workspace-sidebar'
 import { useChat } from '@/context/ChatContext'
 import { useChannels, useCreateChannel } from '@/hooks/use-channels'
+import { GROUP_KEYS } from '@/hooks/use-groups'
+import { groupsApi } from '@/lib/groups-api'
+import { getSocket } from '@/lib/socket'
 import { projectApi } from '@/lib/project-api'
 import { isWorkspaceChannel } from '@/lib/channel-utils'
 import { useDirectConversations } from '@/hooks/use-direct-conversations'
@@ -45,7 +48,11 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     searchQuery,
     setSearchQuery,
     unreadCounts,
-    typingConversations
+    typingConversations,
+    groupUnreadCounts,
+    setGroupUnreadCounts,
+    groupChannelMap,
+    setGroupChannelMap,
   } = useChat()
 
   const { data: channels = [] } = useChannels()
@@ -96,6 +103,82 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       queryClient.invalidateQueries({ queryKey: ['channels'] })
     }
   }, [createChannel, queryClient, router])
+  // Fetch groups for all channels (parallel) for cross-channel unread tracking
+  const channelGroupsResults = useQueries({
+    queries: channels.map(ch => ({
+      queryKey: GROUP_KEYS.byChannel(ch.id),
+      queryFn: () => groupsApi.getChannelGroups(ch.id),
+      staleTime: 30_000,
+    }))
+  })
+
+  // Build flat groupId→channelId mapping when data changes
+  const allGroupMappings = useMemo(() => {
+    return channels.flatMap((ch, i) =>
+      (channelGroupsResults[i]?.data ?? []).map(g => ({ groupId: g.id, channelId: ch.id }))
+    )
+  }, [channels, channelGroupsResults])
+
+  // Sync groupChannelMap into context + fetch DB unread counts on first load
+  const didFetchUnreads = useRef(false)
+  useEffect(() => {
+    if (!allGroupMappings.length) return
+    const map: Record<string, string> = {}
+    allGroupMappings.forEach(({ groupId, channelId }) => { map[groupId] = channelId })
+    setGroupChannelMap(map)
+
+    if (didFetchUnreads.current) return
+    didFetchUnreads.current = true
+    groupsApi.getUnreadCounts().then(counts => {
+      setGroupUnreadCounts(prev => ({ ...counts, ...prev }))
+    }).catch(() => {/* silently ignore if table missing */})
+  }, [allGroupMappings.map(m => m.groupId).join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep a ref to the active group so the socket handler doesn't stale-close
+  const activeGroupIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    activeGroupIdRef.current = (params.groupId as string) || null
+  }, [params.groupId])
+
+  // Real-time unread: listen for groupMessageNotification on the personal user room
+  // (always joined on connect — no group room management needed)
+  useEffect(() => {
+    if (!profile?.id) return
+    let mounted = true
+    let cleanup: (() => void) | null = null
+
+    getSocket().then(socket => {
+      if (!mounted) return
+
+      const onGroupMessageNotification = (data: { group_id: string; sender_id: string }) => {
+        if (!mounted) return
+        if (data.sender_id === profile.id) return
+        if (data.group_id === activeGroupIdRef.current) return
+        setGroupUnreadCounts(prev => ({
+          ...prev,
+          [data.group_id]: (prev[data.group_id] || 0) + 1,
+        }))
+      }
+
+      socket.on('groupMessageNotification', onGroupMessageNotification)
+      cleanup = () => { socket.off('groupMessageNotification', onGroupMessageNotification) }
+    })
+
+    return () => { mounted = false; cleanup?.() }
+  }, [profile?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Compute per-channel unread total from group counts
+  const channelUnreadCounts = useMemo(() => {
+    const result: Record<string, number> = {}
+    for (const [groupId, count] of Object.entries(groupUnreadCounts)) {
+      const channelId = groupChannelMap[groupId]
+      if (channelId && count > 0) {
+        result[channelId] = (result[channelId] || 0) + count
+      }
+    }
+    return result
+  }, [groupUnreadCounts, groupChannelMap])
+
   const dmCall = useDmCallContext()
   const [isCallMinimized, setIsCallMinimized] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -328,6 +411,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           searchQuery={searchQuery}
           syntheticDirectChats={sidebarDirectChats as any}
           unreadCounts={unreadCounts}
+          channelUnreadCounts={channelUnreadCounts}
           typingConversations={typingConversations}
           onCreateChannel={handleCreateChannel}
         />

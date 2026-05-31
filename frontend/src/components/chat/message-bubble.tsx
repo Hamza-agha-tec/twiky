@@ -413,7 +413,7 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
               side="right"
               anchorRef={avatarRef}
             >
-              <span className={`text-sm font-semibold leading-tight ${message.isOwn ? 'text-blue-400' : 'text-foreground'}`}>
+              <span className={`text-sm font-semibold leading-tight ${message.isOwn ? 'text-zinc-300' : 'text-foreground'}`}>
                 {message.senderName}
               </span>
             </HoverProfileCard>
@@ -423,7 +423,7 @@ export function MessageBubble({ message, showAvatar = true, searchHighlight, onR
             {message.isOwn && (
               <span className="ml-0.5">
                 {message.isRead ? (
-                  <CheckCheck aria-label="Read" className="h-3 w-3 text-blue-500 inline" />
+                  <CheckCheck aria-label="Read" className="h-3 w-3 text-zinc-200 inline" />
                 ) : isReceiverOnline ? (
                   <CheckCheck aria-label="Delivered" className="h-3 w-3 text-muted-foreground/60 inline" />
                 ) : (

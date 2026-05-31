@@ -1153,15 +1153,15 @@ export function ChannelsPanel({
                       {group.kind !== 'voice' && (
                         <>
                           {group.hasMention ? (
-                            <span className="ml-auto flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-primary text-[9px] font-black text-primary-foreground">
+                            <span className="ml-auto flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center rounded-full bg-red-500 text-[8px] font-black text-white">
                               @
                             </span>
                           ) : group.unreadCount ? (
-                            <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-bold text-primary-foreground">
-                              {group.unreadCount}
+                            <span className="ml-auto flex h-3.5 min-w-[14px] flex-shrink-0 items-center justify-center rounded-full bg-red-500 px-1 text-[8px] font-bold text-white">
+                              {group.unreadCount > 99 ? '99+' : group.unreadCount}
                             </span>
                           ) : group.hasUnread ? (
-                            <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary" />
+                            <span className="ml-auto h-1.5 w-1.5 rounded-full bg-red-500" />
                           ) : null}
                         </>
                       )}
@@ -1493,11 +1493,11 @@ export function ChannelsPanel({
           <div className="flex-shrink-0 border-t border-border bg-sidebar p-2 shadow-sm">
             <div className="flex items-center gap-2 mb-2 px-1">
               <div className="flex items-center gap-2 flex-1 min-w-0">
-                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-500/15">
-                  <Popcorn className="h-3.5 w-3.5 text-blue-500" />
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-white/8">
+                  <Popcorn className="h-3.5 w-3.5 text-zinc-300" />
                 </div>
                 <div className="flex flex-col min-w-0">
-                  <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wide">Watch Connected</span>
+                  <span className="text-[10px] font-bold text-zinc-300 uppercase tracking-wide">Watch Connected</span>
                   <span className="text-[11px] text-muted-foreground truncate font-medium">
                     {channel.groups.find(g => g.id === activeWatchGroupId)?.label || 'Watch Room'}
                   </span>

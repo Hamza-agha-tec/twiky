@@ -70,7 +70,7 @@ export function ChatItem({ chat, isActive, isFavorite, onClick, isOnline }: Chat
             <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 border-2 border-background ring-0" />
           )}
           {chat.isGroup && chat.isOnline && (
-            <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-blue-500 border-2 border-background" />
+            <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 border-2 border-background" />
           )}
         </div>
 

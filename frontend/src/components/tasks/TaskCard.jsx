@@ -52,7 +52,7 @@ const isPastDate = (dateStr) => {
 
 const statusConfig = {
   TODO: { icon: Circle, color: 'text-slate-400 dark:text-slate-500' },
-  IN_PROGRESS: { icon: ArrowUpCircle, color: 'text-blue-500 dark:text-blue-400' },
+  IN_PROGRESS: { icon: ArrowUpCircle, color: 'text-zinc-300 dark:text-zinc-400' },
   DONE: { icon: CheckCircle2, color: 'text-emerald-500 dark:text-emerald-400' },
 };
 
@@ -101,7 +101,7 @@ export default function TaskCard({ task, user, onEdit, onDelete, onStatusChange,
         className={cn(
           "group/card bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-xl hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-200",
           task.status === 'done' && "opacity-60",
-          isFocused && "ring-2 ring-blue-500/20 border-blue-500/50"
+          isFocused && "ring-2 ring-white/20 border-white/30"
         )}
       >
         <CardContent className="p-5" onClick={handleCardClick}>

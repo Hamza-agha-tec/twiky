@@ -200,6 +200,8 @@ func SetupRoutes(e *echo.Echo) {
 	protected.POST("/groups/:groupId/members", groupHandler.AddGroupMember)
 	protected.PATCH("/groups/:groupId/members", groupHandler.UpdateGroupMemberRole)
 	protected.DELETE("/groups/:groupId/members/:memberId", groupHandler.DeleteGroupMember)
+	protected.GET("/groups/unread-counts", groupHandler.GetGroupUnreadCounts)
+	protected.POST("/groups/:groupId/mark-read", groupHandler.MarkGroupRead)
 	protected.POST("/groups/:groupId/join-requests", groupHandler.RequestJoin)
 	protected.GET("/groups/:groupId/join-requests", groupHandler.GetJoinRequests)
 	protected.PATCH("/groups/:groupId/join-requests/:requestId", groupHandler.RespondToJoinRequest)

@@ -27,7 +27,7 @@ interface HoverProfileCardProps {
 
 const ROLE_COLORS: Record<string, string> = {
   OWNER: 'text-amber-400',
-  ADMIN: 'text-blue-400',
+  ADMIN: 'text-zinc-300',
 }
 
 const CARD_WIDTH = 240

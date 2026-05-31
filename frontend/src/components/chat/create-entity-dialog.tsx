@@ -50,9 +50,9 @@ const GROUP_TYPES = [
     icon: Bird ,
     label: 'Forum',
     desc: 'Forum-style posts',
-    gradient: 'from-blue-500/20 to-cyan-500/10',
-    color: 'text-blue-400',
-    border: 'border-blue-500/30',
+    gradient: 'from-white/8 to-white/4',
+    color: 'text-zinc-300',
+    border: 'border-white/15',
   },
   {
     value: 'voice' as const,

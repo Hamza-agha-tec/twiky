@@ -350,6 +350,28 @@ func (h *GroupHandler) StartGroupEvent(c echo.Context) error {
 	return c.JSON(http.StatusOK, event)
 }
 
+func (h *GroupHandler) GetGroupUnreadCounts(c echo.Context) error {
+	user := c.Get("user").(*middleware.AuthenticatedUser)
+
+	counts, err := h.groupService.GetGroupUnreadCounts(user.UserID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, counts)
+}
+
+func (h *GroupHandler) MarkGroupRead(c echo.Context) error {
+	user := c.Get("user").(*middleware.AuthenticatedUser)
+	groupID := c.Param("groupId")
+
+	if err := h.groupService.MarkGroupRead(user.UserID, groupID); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]bool{"success": true})
+}
+
 func (h *GroupHandler) DeleteGroupEvent(c echo.Context) error {
 	user := c.Get("user").(*middleware.AuthenticatedUser)
 	groupID := c.Param("groupId")

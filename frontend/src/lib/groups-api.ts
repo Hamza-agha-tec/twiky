@@ -196,6 +196,12 @@ export const groupsApi = {
 
   startGroupEvent: (groupId: string, eventId: string) =>
     authedFetch<VoiceEvent>(`/groups/${groupId}/events/${eventId}/start`, { method: 'POST' }),
+
+  getUnreadCounts: () =>
+    authedFetch<Record<string, number>>('/groups/unread-counts'),
+
+  markGroupRead: (groupId: string) =>
+    authedFetch<{ success: boolean }>(`/groups/${groupId}/mark-read`, { method: 'POST' }),
 };
 
 export interface VoiceEvent {

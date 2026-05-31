@@ -44,7 +44,7 @@ const stripHtml = (html) => {
 const NOTE_COLORS = [
   { name: 'slate', value: 'bg-white border-slate-200/60 dark:bg-slate-900 dark:border-slate-800/60' },
   { name: 'amber', value: 'bg-amber-50/50 border-amber-100/60 dark:bg-amber-900/10 dark:border-amber-900/20' },
-  { name: 'blue', value: 'bg-blue-50/50 border-blue-100/60 dark:bg-blue-900/10 dark:border-blue-900/20' },
+  { name: 'blue', value: 'bg-zinc-50/50 border-zinc-200/60 dark:bg-zinc-900/20 dark:border-zinc-700/30' },
   { name: 'green', value: 'bg-green-50/50 border-green-100/60 dark:bg-green-900/10 dark:border-green-900/20' },
   { name: 'rose', value: 'bg-rose-50/50 border-rose-100/60 dark:bg-rose-900/10 dark:border-rose-900/20' },
   { name: 'indigo', value: 'bg-indigo-50/30 border-indigo-100/50 dark:bg-indigo-900/5 dark:border-indigo-900/20' },

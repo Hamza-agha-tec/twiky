@@ -20,7 +20,7 @@ export default function AuthCodeErrorPage() {
         <div className="flex flex-col space-y-3 sm:flex-row sm:space-y-0 sm:space-x-4 justify-center">
           <button
             onClick={() => router.push('/')}
-            className="px-6 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+            className="px-6 py-2 bg-zinc-900 text-white rounded-md hover:bg-zinc-800 border border-zinc-700 transition-colors dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-100"
           >
             Go to Home
           </button>

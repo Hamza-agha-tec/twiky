@@ -12,7 +12,7 @@ const renderToast = (t) => (
       "border-green-500/20 bg-green-50 dark:bg-green-950/50",
       t.type === "error" &&
       "border-red-500/20 bg-red-50 dark:bg-red-950/50",
-      t.type === "loading" && "border-blue-500/20 bg-blue-50",
+      t.type === "loading" && "border-zinc-500/20 bg-zinc-50 dark:bg-zinc-900/50 dark:border-zinc-700/50",
       t.visible ? "animate-in fade-in" : "animate-out fade-out"
     )}
   >
@@ -24,13 +24,13 @@ const renderToast = (t) => (
       <XCircle className="h-5 w-5 text-red-500" />
     )}
     {t.type === "loading" && (
-      <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+      <div className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-400 border-t-transparent dark:border-zinc-300" />
     )}
 
     {t.type !== "success" &&
       t.type !== "error" &&
       t.type !== "loading" && (
-        <AlertCircle className="h-5 w-5 text-blue-500" />
+        <AlertCircle className="h-5 w-5 text-zinc-400" />
       )}
 
     {/* MESSAGE */}

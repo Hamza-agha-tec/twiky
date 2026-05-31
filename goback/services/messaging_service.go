@@ -1032,3 +1032,20 @@ func (s *MessagingService) DeleteGroupMessage(userID string, messageID string) (
 		"messageId": messageID,
 	}, nil
 }
+
+func (s *MessagingService) GetGroupMemberIDs(groupID string) ([]string, error) {
+	rows, err := s.db.Query(`SELECT user_id FROM group_members WHERE group_id = $1`, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}

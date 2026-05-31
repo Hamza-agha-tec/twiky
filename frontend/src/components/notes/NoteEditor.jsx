@@ -36,7 +36,7 @@ import ThemeToggleButton from "../ThemeToggleButton";
 const NOTE_COLORS = [
   { name: 'slate', value: 'bg-white border-slate-200 dark:bg-slate-900 dark:border-slate-800' },
   { name: 'amber', value: 'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800' },
-  { name: 'blue', value: 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' },
+  { name: 'blue', value: 'bg-zinc-50 border-zinc-200 dark:bg-zinc-900/30 dark:border-zinc-700' },
   { name: 'green', value: 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' },
   { name: 'rose', value: 'bg-rose-50 border-rose-200 dark:bg-rose-900/20 dark:border-rose-800' },
   { name: 'indigo', value: 'bg-indigo-50 border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-800' },

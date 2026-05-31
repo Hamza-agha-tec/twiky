@@ -114,7 +114,7 @@ function ChannelPopupCard({
               </span>
             )}
             {status === 'requested' && (
-              <span className="flex-shrink-0 rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-600 dark:text-blue-400">
+              <span className="flex-shrink-0 rounded-full bg-white/8 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
                 Pending
               </span>
             )}

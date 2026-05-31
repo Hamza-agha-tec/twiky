@@ -4,8 +4,10 @@ import { useParams, useRouter } from 'next/navigation'
 import { ChannelsPanel } from '@/components/chat/channels-panel'
 import { useChannels } from '@/hooks/use-channels'
 import { useChannelGroups, backendGroupToMock, useGroupsRealtime, useCreateGroup } from '@/hooks/use-groups'
+import { groupsApi } from '@/lib/groups-api'
 import { useChannelProjects } from '@/hooks/use-projects'
 import { WorkspaceEmptyState } from '@/components/chat/workspace-empty-state'
+import { useChat } from '@/context/ChatContext'
 import { useVoice } from '@/context/VoiceContext'
 import { useWatchPresence } from '@/context/WatchPresenceContext'
 import { usePixelPresence } from '@/context/PixelPresenceContext'
@@ -29,6 +31,7 @@ export default function ChannelLayout({ children }: { children: React.ReactNode 
   const { data: profile } = useProfile()
   const { mutateAsync: createGroupAsync } = useCreateGroup(channelId as string)
   
+  const { groupUnreadCounts, setGroupUnreadCounts } = useChat()
   const voice = useVoice()
   const { watchParticipants, watchSessionStarts, setGroupParticipants, setGroupSessionStart } = useWatchPresence()
   const { pixelParticipants, pixelSessionStarts, setGroupParticipants: setPixelParticipants, setGroupSessionStart: setPixelSessionStarts, updateSpeaking: updatePixelSpeaking } = usePixelPresence()
@@ -122,6 +125,19 @@ export default function ChannelLayout({ children }: { children: React.ReactNode 
     }
   }, [voiceGroupIdsKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Mark group as read in DB + clear local count when user navigates into a group
+  useEffect(() => {
+    if (!groupId) return
+    const gid = groupId as string
+    groupsApi.markGroupRead(gid).catch(() => {/* ignore */})
+    setGroupUnreadCounts(prev => {
+      if (!prev[gid]) return prev
+      const next = { ...prev }
+      delete next[gid]
+      return next
+    })
+  }, [groupId]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Voice call duration timer
   useEffect(() => {
     if (!voice.isJoined || !voice.joinedAt) {
@@ -166,7 +182,11 @@ export default function ChannelLayout({ children }: { children: React.ReactNode 
     label: backendChannel.name,
     description: backendChannel.description ?? '',
     membersLabel: '',
-    groups: channelGroups.map(backendGroupToMock),
+    groups: channelGroups.map(g => ({
+      ...backendGroupToMock(g),
+      unreadCount: groupUnreadCounts[g.id] || undefined,
+      hasUnread: !!(groupUnreadCounts[g.id]),
+    })),
     avatarUrl: backendChannel.avatar_url ?? undefined,
     bannerUrl: backendChannel.banner_url ?? undefined,
     access_type: backendChannel.access_type as any,

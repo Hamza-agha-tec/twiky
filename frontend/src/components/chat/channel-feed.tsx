@@ -376,11 +376,11 @@ const FEED_MEMBER_PROFILES: Record<string, Omit<FeedMemberProfile, 'avatarUrl' |
 
 const ROLE_COLORS: Record<string, string> = {
   'Studio Lead':    'text-amber-500',
-  'Automation':     'text-blue-400',
+  'Automation':     'text-zinc-400',
   'Release Manager':'text-emerald-500',
   'Design':         'text-fuchsia-500',
   'UX':             'text-violet-500',
-  'Frontend':       'text-cyan-500',
+  'Frontend':       'text-zinc-300',
   'Game Design':    'text-orange-400',
   'Voice':          'text-teal-500',
   'Admin':          'text-amber-500',
