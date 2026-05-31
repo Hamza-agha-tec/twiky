@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -30,7 +30,7 @@ const TAG_STYLES: Record<string, { bg: string; color: string }> = {
   Personal: { bg: 'rgba(240,180,80,0.14)', color: '#f0b450' },
 }
 
-const NOTES_BY_SCOPE: Record<string, Note[]> = {
+const INITIAL_NOTES_BY_SCOPE: Record<string, Note[]> = {
   'personal-notes': [
     {
       id: 'pn-1',
@@ -110,15 +110,22 @@ export function NotesPanel({
 }: NotesPanelProps) {
   const [open, setOpen] = useState(false)
   const [selected, setSelected] = useState<Note | null>(null)
+  const [localNotesByScope, setLocalNotesByScope] = useState(INITIAL_NOTES_BY_SCOPE)
 
-  const notes = useMemo(
-    () => NOTES_BY_SCOPE[scopeKey] ?? buildScopeNotes(scopeLabel, scopeType),
-    [scopeKey, scopeLabel, scopeType],
-  )
+  const notes = useMemo(() => {
+    return localNotesByScope[scopeKey] ?? buildScopeNotes(scopeLabel, scopeType)
+  }, [scopeKey, scopeLabel, scopeType, localNotesByScope])
 
   function openNote(note: Note) {
     setSelected(note)
     setOpen(true)
+  }
+
+  function deleteNote(id: string) {
+    setLocalNotesByScope(prev => ({
+      ...prev,
+      [scopeKey]: (prev[scopeKey] || []).filter(n => n.id !== id)
+    }))
   }
 
   return (
@@ -146,7 +153,7 @@ export function NotesPanel({
                 <Card
                   key={note.id}
                   onClick={() => openNote(note)}
-                  className="cursor-pointer rounded-2xl border-border shadow-none transition-all hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-sm"
+                  className="group relative cursor-pointer rounded-2xl border-border shadow-none transition-all hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-sm"
                 >
                   <CardContent className="p-3.5">
                     <div className="flex items-center justify-between gap-2">
@@ -157,7 +164,20 @@ export function NotesPanel({
                       >
                         {note.tag}
                       </Badge>
-                      <span className="text-[10px] text-muted-foreground">{note.date}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-muted-foreground">{note.date}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 rounded-full opacity-0 group-hover:opacity-100 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteNote(note.id);
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
                     <p className="mt-3 text-[12px] font-semibold text-foreground">
                       {note.title}

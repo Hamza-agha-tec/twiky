@@ -328,6 +328,7 @@ export default function GoalTimelineView({ goals, teamMembers }) {
                                                                                             const sEnd = getPosition(sub.end_date);
                                                                                             const sX = sStart ?? mX + 30;
                                                                                             const sW = sEnd ? (sEnd - sX + COLUMN_WIDTH) : 100;
+                                                                                            const sMember = (teamMembers || []).find(mt => mt.user_id === sub.assigned_to);
 
                                                                                             return (
                                                                                                 <motion.div
@@ -359,7 +360,16 @@ export default function GoalTimelineView({ goals, teamMembers }) {
                                                                                                         )}
                                                                                                     >
                                                                                                         <div className={cn("w-1 h-1 rounded-full", sub.completed ? "bg-emerald-500/60" : "bg-slate-200 dark:bg-slate-700")} />
-                                                                                                        <span className="text-[10px] font-semibold tracking-tight truncate">{sub.title}</span>
+                                                                                                        <span className="text-[10px] font-semibold tracking-tight truncate flex-1">{sub.title}</span>
+                                                                                                        {sMember && (
+                                                                                                            <div className="w-3.5 h-3.5 rounded-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[6px] font-bold uppercase overflow-hidden shrink-0">
+                                                                                                                {sMember.avatar_url ? (
+                                                                                                                    <img src={sMember.avatar_url} alt="" className="w-full h-full object-cover" />
+                                                                                                                ) : (
+                                                                                                                    (sMember.user_tag || sMember.user_settings?.[0]?.user_tag || sMember.user_settings?.user_tag || sMember.username || 'M').charAt(0).toUpperCase()
+                                                                                                                )}
+                                                                                                            </div>
+                                                                                                        )}
                                                                                                     </motion.div>
                                                                                                 </motion.div>
                                                                                             );

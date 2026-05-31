@@ -98,7 +98,11 @@ const reorder = (list, startIndex, endIndex) => {
 
 // --- Sub-components ---
 
-const SubMilestoneItem = ({ sub, index, onToggle, onDelete, canToggle }) => {
+const SubMilestoneItem = ({ sub, index, onToggle, onDelete, canToggle, teamMembers, onAssign, isTeamGoal, canAssign }) => {
+    const assignedMember = isTeamGoal && sub.assigned_to
+        ? (teamMembers || []).find(member => (member.user?.id || member.user_id) === sub.assigned_to)
+        : null;
+
     return (
         <Draggable draggableId={sub.id} index={index}>
             {(provided, snapshot) => (
@@ -106,7 +110,7 @@ const SubMilestoneItem = ({ sub, index, onToggle, onDelete, canToggle }) => {
                     ref={provided.innerRef}
                     {...provided.draggableProps}
                     className={cn(
-                        "relative flex items-center gap-3 pl-3 py-1 group/sub transition-all duration-200",
+                        "relative flex flex-col gap-1 pl-3 py-1 group/sub transition-all duration-200",
                         snapshot.isDragging
                             ? "bg-slate-50 dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700 z-50 rounded-lg"
                             : "hover:bg-slate-50/50 dark:hover:bg-slate-800/30"
@@ -115,46 +119,85 @@ const SubMilestoneItem = ({ sub, index, onToggle, onDelete, canToggle }) => {
                         ...provided.draggableProps.style,
                     }}
                 >
-                    <div
-                        {...provided.dragHandleProps}
-                        className={cn(
-                            "opacity-0 group-hover/sub:opacity-100 p-1 cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 transition-opacity"
-                        )}
-                    >
-                        <GripVertical className="w-3 h-3" />
+                    <div className="flex items-center gap-3">
+                        <div
+                            {...provided.dragHandleProps}
+                            className={cn(
+                                "opacity-0 group-hover/sub:opacity-100 p-1 cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 transition-opacity"
+                            )}
+                        >
+                            <GripVertical className="w-3 h-3" />
+                        </div>
+
+                        <Checkbox
+                            className={cn(
+                                "h-3 w-3 rounded-sm border-slate-300 dark:border-slate-700 data-[state=checked]:bg-slate-700 dark:data-[state=checked]:bg-slate-300 data-[state=checked]:border-slate-700 dark:data-[state=checked]:border-slate-300",
+                                !canToggle && "opacity-50 cursor-not-allowed"
+                            )}
+                            checked={sub.completed}
+                            onCheckedChange={(checked) => canToggle && onToggle(checked)}
+                            disabled={!canToggle}
+                        />
+
+                        <span className={cn(
+                            "flex-1 text-[12px] font-semibold transition-colors select-none",
+                            sub.completed ? "text-slate-400 line-through" : "text-slate-600 dark:text-slate-400"
+                        )}>
+                            {sub.title}
+                        </span>
+
+                        <div className="flex items-center gap-0.5 opacity-0 group-hover/sub:opacity-100 transition-opacity pr-1">
+                            {isTeamGoal && canAssign && (
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-slate-600">
+                                            <UserPlus className="w-3 h-3" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-48 p-1 border-slate-200 dark:border-slate-800" align="end">
+                                        {(teamMembers || []).map(member => {
+                                            const mUserId = member.user?.id || member.user_id;
+                                            const mUsername = member.user?.username || member.user_tag || 'member';
+                                            return (
+                                                <Button
+                                                    key={mUserId}
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => onAssign(mUserId)}
+                                                    className={cn(
+                                                        "w-full justify-start text-[11px] font-semibold h-8 rounded-md px-2",
+                                                        sub.assigned_to === mUserId ? "bg-slate-100 text-slate-900" : "text-slate-600"
+                                                    )}
+                                                >
+                                                    @{mUsername}
+                                                </Button>
+                                            );
+                                        })}
+                                    </PopoverContent>
+                                </Popover>
+                            )}
+
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDelete();
+                                }}
+                                className="h-6 w-6 text-slate-300 hover:text-red-500 hover:bg-transparent"
+                            >
+                                <X className="w-3 h-3" />
+                            </Button>
+                        </div>
                     </div>
-
-                    <Checkbox
-                        className={cn(
-                            "h-3 w-3 rounded-sm border-slate-300 dark:border-slate-700 data-[state=checked]:bg-slate-700 dark:data-[state=checked]:bg-slate-300 data-[state=checked]:border-slate-700 dark:data-[state=checked]:border-slate-300",
-                            !canToggle && "opacity-50 cursor-not-allowed"
-                        )}
-                        checked={sub.completed}
-                        onCheckedChange={(checked) => canToggle && onToggle(checked)}
-                        disabled={!canToggle}
-                    />
-
-                    <span className={cn(
-                        "flex-1 text-[12px] font-semibold transition-colors select-none",
-                        sub.completed ? "text-slate-400 line-through" : "text-slate-600 dark:text-slate-400"
-                    )}>
-                        {sub.title}
-                    </span>
-
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onDelete();
-                        }}
-                        className={cn(
-                            "h-5 w-5 text-slate-300 hover:text-red-500 hover:bg-transparent transition-opacity",
-                            snapshot.isDragging ? "opacity-100" : "opacity-0 group-hover/sub:opacity-100"
-                        )}
-                    >
-                        <X className="w-3 h-3" />
-                    </Button>
+                    {assignedMember && (
+                        <div className="ml-9 mb-1">
+                            <span className="text-[10px] font-bold text-indigo-500/80 dark:text-indigo-400/80 flex items-center gap-1 transition-colors uppercase tracking-wider">
+                                <User className="w-2.5 h-2.5" />
+                                {assignedMember.user?.username || assignedMember.user_tag || 'assigned'}
+                            </span>
+                        </div>
+                    )}
                 </div>
             )}
         </Draggable>
@@ -253,6 +296,23 @@ const MilestoneItem = ({
         // Trigger update to parent
         const newProgress = calculateProgressForUpdate(newList);
         onUpdate({ id: goal.id, data: { milestones: newList, progress: newProgress } });
+    };
+
+    const handleSubAssign = (subIndex, userId) => {
+        if (!canAssign) return;
+        const newList = [...localList];
+        const itemIndex = newList.findIndex(item => item.id === m.id);
+        if (itemIndex === -1) return;
+
+        const subs = [...newList[itemIndex].subMilestones];
+        subs[subIndex] = { 
+            ...subs[subIndex], 
+            assigned_to: userId === subs[subIndex].assigned_to ? null : userId 
+        };
+        newList[itemIndex].subMilestones = subs;
+
+        updateLocalMilestones(newList);
+        onUpdate({ id: goal.id, data: { milestones: newList } });
     };
 
     const handleAddSub = (val) => {
@@ -440,6 +500,10 @@ const MilestoneItem = ({
                                                             canToggle={canToggle}
                                                             onToggle={(checked) => handleSubToggle(subIdx, checked)}
                                                             onDelete={() => handleDeleteSub(subIdx)}
+                                                            teamMembers={teamMembers}
+                                                            onAssign={(userId) => handleSubAssign(subIdx, userId)}
+                                                            isTeamGoal={isTeamGoal}
+                                                            canAssign={canAssign}
                                                         />
                                                     ))}
                                                     {provided.placeholder}

@@ -181,11 +181,58 @@ const MilestoneItemForm = ({
                             </div>
                         </div>
 
-                        {m.assigned_to && assignedMember && (
-                            <Badge variant="secondary" className="bg-indigo-50 text-indigo-600 border-none text-[9px] font-black uppercase tracking-wider py-0 px-2 rounded-full">
-                                @{assignedMember.user?.username || assignedMember.user_tag || 'member'}
-                            </Badge>
-                        )}
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                            {teamMembers && teamMembers.length > 0 && (
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className={cn(
+                                                "h-6 px-2 text-[9px] font-black uppercase tracking-wider rounded-full border border-dashed",
+                                                m.assigned_to ? "bg-indigo-50 text-indigo-600 border-indigo-200" : "text-slate-400 border-slate-200 hover:border-indigo-400 hover:text-indigo-500"
+                                            )}
+                                        >
+                                            <UserPlus className="w-2.5 h-2.5 mr-1" />
+                                            {m.assigned_to && assignedMember ? `@${assignedMember.user?.username || assignedMember.user_tag}` : 'Assignee'}
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-48 p-1 border-slate-200 dark:border-slate-800" align="start">
+                                        {teamMembers.map(member => {
+                                            const mUserId = member.user?.id || member.user_id;
+                                            const mUsername = member.user?.username || member.user_tag || 'member';
+                                            return (
+                                                <Button
+                                                    key={mUserId}
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => onUpdate({ assigned_to: m.assigned_to === mUserId ? null : mUserId })}
+                                                    className={cn(
+                                                        "w-full justify-start text-[11px] font-semibold h-8 rounded-md px-2",
+                                                        m.assigned_to === mUserId ? "bg-slate-100 text-slate-900" : "text-slate-600"
+                                                    )}
+                                                >
+                                                    @{mUsername}
+                                                </Button>
+                                            );
+                                        })}
+                                    </PopoverContent>
+                                </Popover>
+                            )}
+
+                            {showDates && (
+                                <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-50 dark:bg-slate-800/50 rounded-full border border-slate-100 dark:border-slate-800">
+                                        <Calendar className="w-2.5 h-2.5 text-slate-400" />
+                                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tight">
+                                            {m.start_date ? formatDate(m.start_date) : 'Start'} - {m.end_date ? formatDate(m.end_date) : 'End'}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
 
                         {showDates && (
                             <div className="grid grid-cols-2 gap-3 pt-1">
@@ -261,7 +308,53 @@ const MilestoneItemForm = ({
                                                             </Button>
                                                         </div>
 
-                                                        <div className="flex items-center gap-4 pl-8">
+                                                        <div className="flex flex-wrap items-center gap-3 pl-8">
+                                                            {teamMembers && teamMembers.length > 0 && (
+                                                                <Popover>
+                                                                    <PopoverTrigger asChild>
+                                                                        <Button
+                                                                            type="button"
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            className={cn(
+                                                                                "h-5 px-1.5 text-[8px] font-black uppercase tracking-wider rounded-full border border-dashed",
+                                                                                sub.assigned_to ? "bg-indigo-50 text-indigo-600 border-indigo-200" : "text-slate-400 border-slate-200 hover:border-indigo-400 hover:text-indigo-500"
+                                                                            )}
+                                                                        >
+                                                                            <UserPlus className="w-2 h-2 mr-1" />
+                                                                            {sub.assigned_to ? (
+                                                                                `@${(teamMembers.find(tm => (tm.user?.id || tm.user_id) === sub.assigned_to)?.user?.username || 'member')}`
+                                                                            ) : 'Assign'}
+                                                                        </Button>
+                                                                    </PopoverTrigger>
+                                                                    <PopoverContent className="w-48 p-1 border-slate-200 dark:border-slate-800" align="start">
+                                                                        {teamMembers.map(member => {
+                                                                            const mUserId = member.user?.id || member.user_id;
+                                                                            const mUsername = member.user?.username || member.user_tag || 'member';
+                                                                            return (
+                                                                                <Button
+                                                                                    key={mUserId}
+                                                                                    type="button"
+                                                                                    variant="ghost"
+                                                                                    size="sm"
+                                                                                    onClick={() => {
+                                                                                        const subs = [...m.subMilestones];
+                                                                                        subs[sIdx].assigned_to = subs[sIdx].assigned_to === mUserId ? null : mUserId;
+                                                                                        onUpdate({ subMilestones: subs });
+                                                                                    }}
+                                                                                    className={cn(
+                                                                                        "w-full justify-start text-[11px] font-semibold h-8 rounded-md px-2",
+                                                                                        sub.assigned_to === mUserId ? "bg-slate-100 text-slate-900" : "text-slate-600"
+                                                                                    )}
+                                                                                >
+                                                                                    @{mUsername}
+                                                                                </Button>
+                                                                            );
+                                                                        })}
+                                                                    </PopoverContent>
+                                                                </Popover>
+                                                            )}
+
                                                             <div className="flex items-center gap-2">
                                                                 <Label className="text-[10px] text-slate-400 font-bold uppercase whitespace-nowrap">From</Label>
                                                                 <Input
