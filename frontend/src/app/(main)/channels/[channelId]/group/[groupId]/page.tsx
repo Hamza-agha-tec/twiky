@@ -6,7 +6,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { WorkspaceEmptyState } from '@/components/chat/workspace-empty-state'
-import { useGroupMessageRealtime, useGroupMessages, useGroupMembers, useSendGroupMessage, useChannelGroups, useToggleGroupMessageReaction, backendGroupToMock } from '@/hooks/use-groups'
+import { useGroupMessageRealtime, useGroupMessages, useGroupMembers, useSendGroupMessage, useChannelGroups, useToggleGroupMessageReaction, useDeleteGroupMessage, backendGroupToMock } from '@/hooks/use-groups'
 import { useChannelProjects, useProjectGroups } from '@/hooks/use-projects'
 import { isWorkspaceChannel } from '@/lib/channel-utils'
 import { useCreateDirectConversation } from '@/hooks/use-direct-conversations'
@@ -106,11 +106,15 @@ function PixelRoomGate({
 
   const setActiveRoom = pixel.setActiveRoom
   const activeRoomId = pixel.activeRoom?.groupId
+  const hasJoinedRef = useRef(false)
   useEffect(() => {
     if (blocked) return
-    if (activeRoomId !== groupId) {
-      setActiveRoom({ groupId, channelId, groupName })
+    if (activeRoomId === groupId) {
+      hasJoinedRef.current = true
+      return
     }
+    if (hasJoinedRef.current) return // user left intentionally — don't rejoin
+    setActiveRoom({ groupId, channelId, groupName })
   }, [blocked, groupId, channelId, groupName, activeRoomId, setActiveRoom])
 
   if (blocked) {
@@ -163,7 +167,17 @@ function toFeedPosts(messages: GroupMessage[], myId?: string): FeedPost[] {
     authorIsVerified: msg.sender?.is_verified ?? false,
     authorSubPlan: (msg.sender?.sub_plan as FeedPost['authorSubPlan']) ?? null,
     role: '',
-    time: msg.created_at,
+    time: (() => {
+      const d = new Date(msg.created_at)
+      if (Number.isNaN(d.getTime())) return ''
+      const now = new Date()
+      const isToday = d.toDateString() === now.toDateString()
+      const isYesterday = d.toDateString() === new Date(now.getTime() - 86400000).toDateString()
+      const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+      if (isToday) return `Today at ${timeStr}`
+      if (isYesterday) return `Yesterday at ${timeStr}`
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' at ' + timeStr
+    })(),
     body: msg.content ?? '',
     isOwn: msg.sender_id === myId,
     imageUrl: (msg.type === 'image' || msg.type === 'gif' || msg.type === 'sticker') ? (msg.file_url ?? undefined) : undefined,
@@ -204,6 +218,7 @@ export default function GroupPage() {
 
   const { mutateAsync: sendMessage } = useSendGroupMessage(gId)
   const { mutate: toggleReaction } = useToggleGroupMessageReaction(gId, profile?.id)
+  const { mutateAsync: deleteMessage } = useDeleteGroupMessage(gId)
   const [activeTab, setActiveTab] = useState<MainAreaTab>('feed')
   const [startingEvent, setStartingEvent] = useState(false)
   const { data: channelGroups = [], isLoading: channelGroupsLoading } = useChannelGroups(channelId)
@@ -643,6 +658,7 @@ export default function GroupPage() {
           })
         }}
         onToggleReaction={(postId, emoji) => toggleReaction({ messageId: postId, emoji })}
+        onDeletePost={async (postId) => { await deleteMessage(postId) }}
       />
     </MainArea>
   )

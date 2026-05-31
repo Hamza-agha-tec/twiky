@@ -9,12 +9,14 @@ import { VideoPlayer } from './video-player';
 import { AppleText, EmojiImg } from './apple-text';
 import { Message } from '@/lib/mock-data';
 import { format } from 'date-fns';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { MessageContextMenu } from './message-context-menu';
 import { HoverProfileCard } from '@/components/chat/hover-profile-card'
 import { LinkPreviewCard, extractFirstUrl } from '@/components/chat/link-preview-card';
 import { useVoiceRoomLive } from '@/hooks/use-voice-room-live';
+import { groupsApi } from '@/lib/groups-api';
+import { getSocket } from '@/lib/socket';
 
 interface MessageBubbleProps {
   message: Message;
@@ -87,39 +89,89 @@ export function tryParsePixelRoomInvite(content: string): PixelRoomInvitePayload
 
 export function PixelRoomInviteCard({ data }: { data: PixelRoomInvitePayload }) {
   const router = useRouter()
+  const [isActive, setIsActive] = useState<boolean | null>(null)
+
+  const checkStatus = useCallback(() => {
+    groupsApi.getSessionStatuses([data.groupId])
+      .then(s => setIsActive(!!s[data.groupId]))
+      .catch(() => setIsActive(false))
+  }, [data.groupId])
+
+  useEffect(() => {
+    checkStatus()
+    window.addEventListener('focus', checkStatus)
+    return () => window.removeEventListener('focus', checkStatus)
+  }, [checkStatus])
+
+  useEffect(() => {
+    let mounted = true
+    let unsub: (() => void) | null = null
+    getSocket().then(socket => {
+      if (!mounted) return
+      const onSessionEnded = (payload: { groupId: string }) => {
+        if (payload.groupId === data.groupId) setIsActive(false)
+      }
+      socket.on('pixel-room:session-ended', onSessionEnded)
+      unsub = () => socket.off('pixel-room:session-ended', onSessionEnded)
+    })
+    return () => { mounted = false; unsub?.() }
+  }, [data.groupId])
+
   function handleEnter(e: React.MouseEvent) {
     e.stopPropagation()
+    if (!isActive) return
     router.push(`/channels/${data.channelId}/group/${data.groupId}`)
   }
+
+  const active = isActive === true
+  const loading = isActive === null
+
   return (
-    <div className="mt-1 w-[268px] overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-xl transition-all duration-300 hover:border-zinc-700">
-      <div className="h-0.5 w-full bg-gradient-to-r from-fuchsia-700 via-fuchsia-500 to-fuchsia-700" />
+    <div className={`mt-1 w-[268px] overflow-hidden rounded-2xl border shadow-xl transition-all duration-300 ${active || loading ? 'border-zinc-800 bg-zinc-950 hover:border-zinc-700' : 'border-zinc-800/40 bg-zinc-950/50'}`}>
+      <div className={`h-0.5 w-full bg-gradient-to-r ${active || loading ? 'from-fuchsia-700 via-fuchsia-500 to-fuchsia-700' : 'from-zinc-800/60 via-zinc-700/60 to-zinc-800/60'}`} />
       <div className="p-4 space-y-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1 space-y-1.5">
             <div className="flex items-center gap-1.5">
-              <span className="relative flex h-1.5 w-1.5 shrink-0">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-fuchsia-400 opacity-60" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-fuchsia-500" />
-              </span>
-              <span className="text-[9px] font-semibold uppercase tracking-widest text-fuchsia-400">Pixel Room</span>
+              {active || loading ? (
+                <>
+                  <span className="relative flex h-1.5 w-1.5 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-fuchsia-400 opacity-60" />
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-fuchsia-500" />
+                  </span>
+                  <span className="text-[9px] font-semibold uppercase tracking-widest text-fuchsia-400">Pixel Room</span>
+                </>
+              ) : (
+                <>
+                  <span className="relative inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-600" />
+                  <span className="text-[9px] font-semibold uppercase tracking-widest text-zinc-600">Session Ended</span>
+                </>
+              )}
             </div>
-            <p className="text-[14px] font-bold leading-snug truncate text-zinc-50">{data.groupName}</p>
+            <p className={`text-[14px] font-bold leading-snug truncate ${active || loading ? 'text-zinc-50' : 'text-zinc-500'}`}>{data.groupName}</p>
             <p className="text-[10px] text-zinc-600">
               Shared by <span className="text-zinc-500">@{data.inviterName}</span>
             </p>
           </div>
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 text-fuchsia-400">
-            <Gamepad2 className="h-4 w-4" />
+          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all ${active || loading ? 'bg-zinc-900 border-zinc-800 text-fuchsia-400' : 'bg-zinc-900/30 border-zinc-800/30 text-zinc-700'}`}>
+            <Gamepad2 className={`h-4 w-4 ${!active && !loading && 'opacity-30'}`} />
           </div>
         </div>
-        <button
-          onClick={handleEnter}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-100 px-3 py-2 text-[11px] font-bold text-zinc-900 shadow-sm transition-all hover:bg-white active:scale-[0.98]"
-        >
-          <Play className="h-3 w-3 fill-current" />
-          Enter Pixel Room
-        </button>
+        {active || loading ? (
+          <button
+            onClick={handleEnter}
+            disabled={loading}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-100 px-3 py-2 text-[11px] font-bold text-zinc-900 shadow-sm transition-all hover:bg-white active:scale-[0.98] disabled:opacity-50"
+          >
+            <Play className="h-3 w-3 fill-current" />
+            Enter Pixel Room
+          </button>
+        ) : (
+          <div className="flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900/40 border border-zinc-800/30 px-3 py-2 text-[11px] font-medium text-zinc-600 cursor-not-allowed select-none">
+            <Gamepad2 className="h-3 w-3 opacity-50" />
+            Session no longer active
+          </div>
+        )}
       </div>
     </div>
   )

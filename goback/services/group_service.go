@@ -911,3 +911,40 @@ func (s *GroupService) DeleteGroupEvent(groupID, eventID, requestingUserID strin
 	return nil
 }
 
+func (s *GroupService) MarkSessionEnded(groupID string) error {
+	_, err := s.db.Exec(`UPDATE group_sessions SET is_active=false, ended_at=NOW() WHERE group_id=$1`, groupID)
+	return err
+}
+
+func (s *GroupService) GetSessionStatuses(groupIDs []string) (map[string]bool, error) {
+	result := make(map[string]bool, len(groupIDs))
+	for _, id := range groupIDs {
+		result[id] = false
+	}
+	if len(groupIDs) == 0 {
+		return result, nil
+	}
+	placeholders := make([]string, len(groupIDs))
+	args := make([]interface{}, len(groupIDs))
+	for i, id := range groupIDs {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	rows, err := s.db.Query(
+		`SELECT group_id, is_active FROM group_sessions WHERE group_id IN (`+strings.Join(placeholders, ",")+`)`,
+		args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var gid string
+		var isActive bool
+		if err := rows.Scan(&gid, &isActive); err == nil {
+			result[gid] = isActive
+		}
+	}
+	return result, nil
+}
+

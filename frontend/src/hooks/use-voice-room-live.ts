@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { getSocket } from '@/lib/socket'
+import { groupsApi } from '@/lib/groups-api'
 
 export interface LiveParticipant {
   id: string
@@ -20,6 +21,14 @@ export function useVoiceRoomLive(groupId: string) {
   const [lastEvent, setLastEvent] = useState<RoomEvent | null>(null)
   const nameMapRef = useRef<Map<string, string>>(new Map())
   const eventTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // DB check: if session is not active, mark expired immediately
+  useEffect(() => {
+    if (!groupId) return
+    groupsApi.getSessionStatuses([groupId]).then(statuses => {
+      if (!statuses[groupId]) setParticipants([])
+    }).catch(() => setParticipants([]))
+  }, [groupId])
 
   useEffect(() => {
     if (!groupId) return

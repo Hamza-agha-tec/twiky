@@ -131,6 +131,10 @@ func NewSocketIOService(db *sql.DB) *SocketIOService {
 		spotifyCancel: make(map[string]func()),
 	}
 	svc.setupHandlers()
+	// Clear any stale active sessions left from previous run
+	if db != nil {
+		db.Exec(`UPDATE group_sessions SET is_active=false, ended_at=NOW() WHERE is_active=true`)
+	}
 	return svc
 }
 
@@ -335,6 +339,12 @@ func (s *SocketIOService) removeFromAllVoiceRooms(socketID string) (roomID, user
 	if roomID != "" {
 		if room, ok := s.voiceRooms[roomID]; ok {
 			delete(room, userID)
+			if len(room) == 0 {
+				delete(s.voiceRooms, roomID)
+				if s.db != nil {
+					go s.db.Exec(`UPDATE group_sessions SET is_active=false,ended_at=NOW() WHERE group_id=$1`, roomID)
+				}
+			}
 		}
 		delete(s.socketVoice, socketID)
 	}
@@ -485,6 +495,9 @@ func (s *SocketIOService) removeFromPixelRoom(socketID string) (groupID, userID 
 		if len(room) == 0 {
 			delete(s.pixelRooms, groupID)
 			delete(s.pixelRoomMeta, groupID)
+			if s.db != nil {
+				go s.db.Exec(`UPDATE group_sessions SET is_active=false,ended_at=NOW() WHERE group_id=$1`, groupID)
+			}
 		}
 	}
 	s.pixelMu.Unlock()
@@ -560,6 +573,11 @@ func (s *SocketIOService) setupHandlers() {
 			userPayload, _ := payload["user"]
 
 			oldRoomID := s.joinVoiceRoom(socketID, roomID, userPayload)
+
+			// Mark session active in DB
+			if s.db != nil {
+				go s.db.Exec(`INSERT INTO group_sessions(group_id,type,is_active) VALUES($1,'voice',true) ON CONFLICT(group_id) DO UPDATE SET is_active=true,ended_at=NULL`, roomID)
+			}
 
 			// Leave old socket.io room and notify its participants
 			if oldRoomID != "" && oldRoomID != roomID {
@@ -1709,6 +1727,9 @@ func (s *SocketIOService) setupHandlers() {
 			// Record session start time on first join
 			if _, exists := s.pixelRoomMeta[groupID]; !exists {
 				s.pixelRoomMeta[groupID] = time.Now().UnixMilli()
+				if s.db != nil {
+					go s.db.Exec(`INSERT INTO group_sessions(group_id,type,is_active) VALUES($1,'pixel',true) ON CONFLICT(group_id) DO UPDATE SET is_active=true,ended_at=NULL`, groupID)
+				}
 			}
 			joinPayloadData := s.pixelPayload(groupID)
 			s.pixelMu.Unlock()
@@ -1776,34 +1797,48 @@ func (s *SocketIOService) setupHandlers() {
 		})
 
 		client.On("pixel-room:leave", func(datas ...any) {
-			groupID := ""
-			if len(datas) > 0 {
-				if payload := asMap(datas[0]); payload != nil {
-					groupID = mapStr(payload, "groupId")
-				}
-			}
+			// Read presenceMu BEFORE acquiring pixelMu to avoid deadlock
 			s.presenceMu.RLock()
-			userID := s.socketUsers[socketID]
+			presenceUserID := s.socketUsers[socketID]
 			s.presenceMu.RUnlock()
 
 			s.pixelMu.Lock()
-			if groupID == "" {
-				if old, ok := s.pixelSocketIndex[socketID]; ok {
-					groupID = old[0]
+			entry, hasEntry := s.pixelSocketIndex[socketID]
+			groupID := ""
+			userID := ""
+			if hasEntry {
+				groupID, userID = entry[0], entry[1]
+			} else {
+				// Fallback: use payload groupId + presence userID
+				if len(datas) > 0 {
+					if payload := asMap(datas[0]); payload != nil {
+						groupID = mapStr(payload, "groupId")
+					}
 				}
+				userID = presenceUserID
 			}
-			if groupID != "" {
+
+			roomBecameEmpty := false
+			if groupID != "" && userID != "" {
 				delete(s.pixelSocketIndex, socketID)
 				if room := s.pixelRooms[groupID]; room != nil {
 					delete(room, userID)
 					if len(room) == 0 {
 						delete(s.pixelRooms, groupID)
 						delete(s.pixelRoomMeta, groupID)
+						roomBecameEmpty = true
 					}
 				}
 			}
 			leavePayloadData := s.pixelPayload(groupID)
 			s.pixelMu.Unlock()
+
+			if roomBecameEmpty {
+				if s.db != nil {
+					s.db.Exec(`UPDATE group_sessions SET is_active=false,ended_at=NOW() WHERE group_id=$1`, groupID)
+				}
+				server.Emit("pixel-room:session-ended", map[string]interface{}{"groupId": groupID})
+			}
 
 			if groupID != "" {
 				client.Leave(socketio.Room("group_" + groupID))
@@ -2051,13 +2086,16 @@ func (s *SocketIOService) setupHandlers() {
 			}
 
 			// Pixel room cleanup
-			if pixelGroupID, pixelUserID := s.removeFromPixelRoom(socketID); pixelGroupID != "" {
-				_ = pixelUserID
+			if pixelGroupID, _ := s.removeFromPixelRoom(socketID); pixelGroupID != "" {
 				s.pixelMu.RLock()
 				disconnPayload := s.pixelPayload(pixelGroupID)
+				roomGone := s.pixelRooms[pixelGroupID] == nil
 				s.pixelMu.RUnlock()
 				server.To(socketio.Room("group_" + pixelGroupID)).Emit("pixel-room:participants", disconnPayload)
 				server.To(socketio.Room("sub_pixel_" + pixelGroupID)).Emit("pixel-room:participants", disconnPayload)
+				if roomGone {
+					server.Emit("pixel-room:session-ended", map[string]interface{}{"groupId": pixelGroupID})
+				}
 			}
 
 			// Spotify sub cleanup
@@ -2246,6 +2284,13 @@ func (s *SocketIOService) BroadcastToAll(event string, data interface{}) {
 
 func (s *SocketIOService) BroadcastToUser(userID, event string, data interface{}) {
 	s.server.To(socketio.Room("user_" + userID)).Emit(event, data)
+}
+
+// IsPixelRoomActive returns true when at least one user is in the in-memory room.
+func (s *SocketIOService) IsPixelRoomActive(groupID string) bool {
+	s.pixelMu.RLock()
+	defer s.pixelMu.RUnlock()
+	return len(s.pixelRooms[groupID]) > 0
 }
 
 func (s *SocketIOService) GetConnectedClientsCount() int {

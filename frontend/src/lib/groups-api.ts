@@ -202,6 +202,9 @@ export const groupsApi = {
 
   markGroupRead: (groupId: string) =>
     authedFetch<{ success: boolean }>(`/groups/${groupId}/mark-read`, { method: 'POST' }),
+
+  getSessionStatuses: (groupIds: string[]) =>
+    authedFetch<Record<string, boolean>>(`/groups/session-status?groupIds=${groupIds.join(',')}`),
 };
 
 export interface VoiceEvent {

@@ -3,6 +3,7 @@ package groups
 import (
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/Hamza-agha-tec/goback/middleware"
 	"github.com/Hamza-agha-tec/goback/models"
@@ -348,6 +349,31 @@ func (h *GroupHandler) StartGroupEvent(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, event)
+}
+
+func (h *GroupHandler) GetSessionStatuses(c echo.Context) error {
+	raw := c.QueryParam("groupIds")
+	if raw == "" {
+		return c.JSON(http.StatusOK, map[string]bool{})
+	}
+	ids := strings.Split(raw, ",")
+	// Start with DB state
+	statuses, err := h.groupService.GetSessionStatuses(ids)
+	if err != nil {
+		statuses = make(map[string]bool)
+	}
+	// Override with live in-memory truth — avoids stale DB state
+	for _, id := range ids {
+		live := h.socketIOService.IsPixelRoomActive(id)
+		if live {
+			statuses[id] = true
+		} else if statuses[id] {
+			// DB says active but no one in memory — mark ended
+			statuses[id] = false
+			go h.groupService.MarkSessionEnded(id)
+		}
+	}
+	return c.JSON(http.StatusOK, statuses)
 }
 
 func (h *GroupHandler) GetGroupUnreadCounts(c echo.Context) error {

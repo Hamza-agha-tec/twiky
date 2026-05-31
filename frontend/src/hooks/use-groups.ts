@@ -152,6 +152,18 @@ export function useToggleGroupMessageReaction(groupId: string, currentUserId?: s
   });
 }
 
+export function useDeleteGroupMessage(groupId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (messageId: string) => groupsApi.deleteGroupMessage(messageId),
+    onSuccess: (_, messageId) => {
+      queryClient.setQueryData<GroupMessage[]>(GROUP_KEYS.messages(groupId), (old = []) =>
+        old.filter(m => m.id !== messageId)
+      )
+    },
+  })
+}
+
 function upsertGroupMessage(messages: GroupMessage[], message: GroupMessage) {
   const next = messages.some((item) => item.id === message.id)
     ? messages.map((item) => item.id === message.id ? message : item)
