@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  ArrowLeft, ChevronLeft, ChevronRight, Edit3, Maximize2, MessageCircle,
-  Mic, MicOff, Minimize2, PackagePlus, RotateCw, Save, Search, Smile,
+  ArrowLeft, ChevronLeft, ChevronRight, Edit3, LogOut, Maximize2, MessageCircle,
+  Mic, MicOff, Minimize2, PackagePlus, RotateCw, Save, Search, Share2, Smile,
   Trash2, Users, X,
 } from 'lucide-react'
 import { motion as Motion } from 'framer-motion'
@@ -98,9 +98,12 @@ interface Props {
   channelId: string
   myId?: string
   isChannelAdmin?: boolean
+  isHidden?: boolean
+  onLeave?: () => void
+  onShare?: () => void
 }
 
-export function PixelRoomGroupView({ group, channelId, myId, isChannelAdmin = false }: Props) {
+export function PixelRoomGroupView({ group, channelId, myId, isChannelAdmin = false, isHidden = false, onLeave, onShare }: Props) {
   const router = useRouter()
   const { data: currentUser } = useProfile()
   const { data: nowPlaying } = useSpotifyNowPlaying(currentUser?.id)
@@ -387,7 +390,7 @@ export function PixelRoomGroupView({ group, channelId, myId, isChannelAdmin = fa
       ...prev,
       avatarX: seat.obj.x,
       avatarY: seat.obj.y,
-      avatarDirection: seat.asset.seatDirection ?? prev.avatarDirection,
+      avatarDirection: seat.asset.seatDirection === 'up' ? 'down' : (seat.asset.seatDirection ?? prev.avatarDirection),
       isSitting: true,
       sittingObjectId: seat.obj.id,
     }
@@ -489,8 +492,9 @@ export function PixelRoomGroupView({ group, channelId, myId, isChannelAdmin = fa
     ? OBJECT_CATALOG.find(i => i.id === selectedEditObject.itemId)
     : null
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts (skip while hidden)
   useEffect(() => {
+    if (isHidden) return
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       const key = e.key.toLowerCase()
@@ -506,7 +510,7 @@ export function PixelRoomGroupView({ group, channelId, myId, isChannelAdmin = fa
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [toggleMic, isEditMode, cancelEditMode])
+  }, [toggleMic, isEditMode, cancelEditMode, isHidden])
 
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -561,6 +565,16 @@ export function PixelRoomGroupView({ group, channelId, myId, isChannelAdmin = fa
             <Users className="h-3 w-3" />
             {participantCount}
           </span>
+          {onShare && !isEditMode && (
+            <button
+              onClick={onShare}
+              className="flex h-8 items-center gap-1.5 rounded-[8px] border border-border px-2.5 text-[11px] font-medium text-muted-foreground hover:border-primary hover:text-primary"
+              title="Share room"
+            >
+              <Share2 className="h-3.5 w-3.5" />
+              Share
+            </button>
+          )}
           {isChannelAdmin && !isEditMode && (
             <button
               onClick={enterEditMode}
@@ -569,6 +583,16 @@ export function PixelRoomGroupView({ group, channelId, myId, isChannelAdmin = fa
             >
               <Edit3 className="h-3.5 w-3.5" />
               Edit Room
+            </button>
+          )}
+          {onLeave && !isEditMode && (
+            <button
+              onClick={onLeave}
+              className="flex h-8 items-center gap-1.5 rounded-[8px] border border-red-500/30 bg-red-500/10 px-2.5 text-[11px] font-medium text-red-400 hover:bg-red-500/20"
+              title="Leave room"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Leave
             </button>
           )}
           <button

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Search, ChevronRight, Check, Send, Mic, PhoneCall } from 'lucide-react'
+import { Search, ChevronRight, Check, Send, Mic, PhoneCall, Gamepad2 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { useChannels } from '@/hooks/use-channels'
@@ -90,6 +90,14 @@ export function ShareModal({ open, onClose, payload, title = 'Share to…', part
     return null
   }, [payload.content])
 
+  const pixelRoomData = useMemo(() => {
+    try {
+      const parsed = JSON.parse(payload.content)
+      if (parsed.__twiky_type === 'pixel_room_invite') return parsed as { groupName: string; inviterName: string }
+    } catch {}
+    return null
+  }, [payload.content])
+
   const dmItems = useMemo(() => {
     return (dms ?? []).map(conv => {
       const other = conv.user_one_id === currentUser?.id ? conv.user_two : conv.user_one
@@ -161,6 +169,24 @@ export function ShareModal({ open, onClose, payload, title = 'Share to…', part
         <DialogHeader className="px-4 pt-4 pb-3 border-b border-zinc-800/60">
           <DialogTitle className="text-[13px] font-semibold text-zinc-100">{title}</DialogTitle>
         </DialogHeader>
+
+        {/* Pixel room invite preview card */}
+        {pixelRoomData && (
+          <div className="px-3 pt-3 pb-0">
+            <div className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/80 px-3.5 py-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-fuchsia-500/15 text-fuchsia-400">
+                <Gamepad2 className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[12px] font-semibold text-zinc-100">{pixelRoomData.groupName}</p>
+                <p className="mt-1 text-[10px] text-zinc-500">Pixel Room</p>
+              </div>
+              <span className="shrink-0 rounded-lg bg-fuchsia-500/15 px-2 py-1 text-[10px] font-semibold text-fuchsia-400">
+                LIVE
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Voice invite preview card */}
         {voiceInviteData && (

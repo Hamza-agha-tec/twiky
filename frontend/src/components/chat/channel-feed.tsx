@@ -29,6 +29,7 @@ import {
   Bookmark,
   Crown,
   FileUp,
+  Gamepad2,
   Heart,
   Mic,
   Square,
@@ -859,6 +860,64 @@ function VoiceInviteEmbed({ data }: { data: VoiceInviteEmbedPayload }) {
   )
 }
 
+// ─── Pixel Room Invite Card ─────────────────────────────────────────────────
+
+interface PixelRoomInviteEmbedPayload {
+  __twiky_type: 'pixel_room_invite'
+  groupId: string
+  groupName: string
+  channelId: string
+  inviterName: string
+}
+
+function tryParsePixelRoomInvite(body: string): PixelRoomInviteEmbedPayload | null {
+  try {
+    const p = JSON.parse(body)
+    if (p?.__twiky_type === 'pixel_room_invite') return p as PixelRoomInviteEmbedPayload
+  } catch { /* not JSON */ }
+  return null
+}
+
+function PixelRoomInviteEmbed({ data }: { data: PixelRoomInviteEmbedPayload }) {
+  const router = useNextRouter()
+  function handleEnter(e: React.MouseEvent) {
+    e.stopPropagation()
+    router.push(`/channels/${data.channelId}/group/${data.groupId}`)
+  }
+  return (
+    <div className="mt-1 w-[268px] overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-xl transition-all duration-300 hover:border-zinc-700">
+      <div className="h-0.5 w-full bg-gradient-to-r from-fuchsia-700 via-fuchsia-500 to-fuchsia-700" />
+      <div className="p-4 space-y-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <span className="relative flex h-1.5 w-1.5 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-fuchsia-400 opacity-60" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-fuchsia-500" />
+              </span>
+              <span className="text-[9px] font-semibold uppercase tracking-widest text-fuchsia-400">Pixel Room</span>
+            </div>
+            <p className="text-[14px] font-bold leading-snug truncate text-zinc-50">{data.groupName}</p>
+            <p className="text-[10px] text-zinc-600">
+              Shared by <span className="text-zinc-500">@{data.inviterName}</span>
+            </p>
+          </div>
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 text-fuchsia-400">
+            <Gamepad2 className="h-4 w-4" />
+          </div>
+        </div>
+        <button
+          onClick={handleEnter}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-100 px-3 py-2 text-[11px] font-bold text-zinc-900 shadow-sm transition-all hover:bg-white active:scale-[0.98]"
+        >
+          <Play className="h-3 w-3 fill-current" />
+          Enter Pixel Room
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ReactionsBar({
@@ -1092,6 +1151,8 @@ function MessageRow({
             {post.body ? (() => {
               const voiceInvite = tryParseVoiceInvite(post.body)
               if (voiceInvite) return <VoiceInviteEmbed data={voiceInvite} />
+              const pixelInvite = tryParsePixelRoomInvite(post.body)
+              if (pixelInvite) return <PixelRoomInviteEmbed data={pixelInvite} />
               const forumPost = tryParseForumPost(post.body)
               if (forumPost) return <ForumPostEmbed data={forumPost} />
               const firstUrl = extractFirstUrl(post.body)
@@ -2202,6 +2263,8 @@ function FeedProfileRow({
         {post.body ? (() => {
           const voiceInvite = tryParseVoiceInvite(post.body)
           if (voiceInvite) return <VoiceInviteEmbed data={voiceInvite} />
+          const pixelInvite = tryParsePixelRoomInvite(post.body)
+          if (pixelInvite) return <PixelRoomInviteEmbed data={pixelInvite} />
           const forumPost = tryParseForumPost(post.body)
           if (forumPost) return <ForumPostEmbed data={forumPost} />
           const firstUrl = extractFirstUrl(post.body)

@@ -209,9 +209,21 @@ export default function ChannelLayout({ children }: { children: React.ReactNode 
       </div>
 
       {/* Main Content Area (Group Chat or Empty State) */}
-      <div className="flex-1 flex flex-col min-w-0 bg-background">
+      <div className="flex-1 flex flex-col min-w-0 bg-background relative">
         {children}
+        <PixelRoomMountSlot channelId={channelId as string} />
       </div>
     </div>
+  )
+}
+
+function PixelRoomMountSlot({ channelId }: { channelId: string }) {
+  const { activeRoom, setMountTarget } = usePixelPresence()
+  if (activeRoom?.channelId !== channelId) return null
+  return (
+    <div
+      ref={setMountTarget}
+      className="absolute inset-0 z-30"
+    />
   )
 }

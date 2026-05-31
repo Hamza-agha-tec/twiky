@@ -349,7 +349,7 @@ export function PixelRoomCanvas({
 
         ctx.fillStyle = 'rgba(2, 6, 23, 0.48)'
         ctx.beginPath()
-        ctx.ellipse(p.x, p.y + 2, state.isSitting ? 12 : 15, state.isSitting ? 4 : 5, 0, 0, Math.PI * 2)
+        ctx.ellipse(p.x, p.y + 2, state.isSitting ? 10 : 15, state.isSitting ? 3 : 5, 0, 0, Math.PI * 2)
         ctx.fill()
 
         if (avatarAsset && image) {
@@ -362,7 +362,7 @@ export function PixelRoomCanvas({
             : directionFrames.idle
           const availableFrames = Math.max(1, Math.floor(image.naturalWidth / sourceSize))
           const sourceX = Math.min(frame, availableFrames - 1) * sourceSize
-          const avatarTop = state.isSitting ? p.y - 42 : p.y - 50
+          const avatarTop = p.y - 50
           ctx.drawImage(image, sourceX, 0, sourceSize, sourceSize, p.x - 24, avatarTop, 48, 48)
         } else {
           ctx.fillStyle = '#38bdf8'
@@ -376,7 +376,7 @@ export function PixelRoomCanvas({
         const labelTextWidth = ctx.measureText(label).width
         const micPad = 14
         const labelWidth = labelTextWidth + 16 + micPad
-        const labelTop = state.isSitting ? p.y - 60 : p.y - 68
+        const labelTop = p.y - 68
         ctx.fillStyle = 'rgba(6, 9, 16, 0.9)'
         ctx.strokeStyle = localIsSpeaking ? 'rgba(34, 197, 94, 0.7)' : 'rgba(30, 58, 95, 0.9)'
         ctx.lineWidth = 1
@@ -450,7 +450,7 @@ export function PixelRoomCanvas({
 
         ctx.fillStyle = 'rgba(2, 6, 23, 0.38)'
         ctx.beginPath()
-        ctx.ellipse(p.x, p.y + 2, op.isSitting ? 12 : 15, op.isSitting ? 4 : 5, 0, 0, Math.PI * 2)
+        ctx.ellipse(p.x, p.y + 2, op.isSitting ? 10 : 15, op.isSitting ? 3 : 5, 0, 0, Math.PI * 2)
         ctx.fill()
 
         if (avatarAsset && image) {
@@ -464,7 +464,7 @@ export function PixelRoomCanvas({
             : directionFrames.idle
           const availableFrames = Math.max(1, Math.floor(image.naturalWidth / sourceSize))
           const sourceX = Math.min(frame, availableFrames - 1) * sourceSize
-          const avatarTop = op.isSitting ? p.y - 42 : p.y - 50
+          const avatarTop = p.y - 50
           ctx.drawImage(image, sourceX, 0, sourceSize, sourceSize, p.x - 24, avatarTop, 48, 48)
         } else {
           ctx.fillStyle = '#f59e0b'
@@ -478,7 +478,7 @@ export function PixelRoomCanvas({
         const otherTextWidth = ctx.measureText(otherLabel).width
         const otherMicPad = 14
         const otherLabelWidth = otherTextWidth + 16 + otherMicPad
-        const otherLabelTop = op.isSitting ? p.y - 60 : p.y - 68
+        const otherLabelTop = p.y - 68
         ctx.fillStyle = 'rgba(6, 9, 16, 0.75)'
         ctx.strokeStyle = op.isSpeaking && inProximity ? 'rgba(34, 197, 94, 0.7)' : 'rgba(30, 58, 95, 0.7)'
         ctx.lineWidth = 1
@@ -624,6 +624,36 @@ export function PixelRoomCanvas({
     }
 
     hitRectsRef.current = hitRects
+
+    // Second pass: redraw chairs on top of sitting avatars so legs appear tucked under
+    const drawChairOnTop = (objId: string | null, tileX: number, tileY: number) => {
+      const obj = objId
+        ? state.objects.find(o => o.id === objId)
+        : state.objects.find(o => o.x === tileX && o.y === tileY)
+      if (!obj) return
+      const asset = assetMap.get(obj.itemId)
+      const image = images[obj.itemId]
+      if (!asset || !image) return
+      const tile = tileToScreen(obj.x, obj.y, originX, originY)
+      const left = tile.x + TILE_WIDTH / 2 - asset.width / 2
+      const top = tile.y + TILE_HEIGHT - asset.height
+      if (asset.frame) {
+        const { sx, sy, sw, sh } = asset.frame
+        ctx.drawImage(image, sx, sy, sw, sh, left, top, asset.width, asset.height)
+      } else {
+        ctx.drawImage(image, left, top, asset.width, asset.height)
+      }
+    }
+
+    if (state.isSitting) {
+      drawChairOnTop(state.sittingObjectId, visualAvatar.x, visualAvatar.y)
+    }
+    for (const op of otherParticipants) {
+      if (op.isSitting) {
+        const ipos = ip[op.userId] ?? { rx: op.x, ry: op.y }
+        drawChairOnTop(null, Math.round(ipos.rx), Math.round(ipos.ry))
+      }
+    }
 
     // Draw hover card for hovered Spotify bubble
     const mouse = mousePosRef.current
