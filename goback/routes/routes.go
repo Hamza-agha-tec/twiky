@@ -17,6 +17,8 @@ import (
 	"github.com/Hamza-agha-tec/goback/handlers/messaging"
 	"github.com/Hamza-agha-tec/goback/handlers/notifications"
 	"github.com/Hamza-agha-tec/goback/handlers/payments"
+	"github.com/Hamza-agha-tec/goback/handlers/rooms"
+	githubhandler "github.com/Hamza-agha-tec/goback/handlers/github"
 	projecthandlers "github.com/Hamza-agha-tec/goback/handlers/projects"
 	"github.com/Hamza-agha-tec/goback/handlers/spotify"
 	userhandlers "github.com/Hamza-agha-tec/goback/handlers/users"
@@ -55,8 +57,11 @@ func SetupRoutes(e *echo.Echo) {
 	contentService := services.NewContentService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	fileService := services.NewFileService(os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	spotifyService := services.NewSpotifyService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
+	githubService := services.NewGitHubService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	invitationService := services.NewInvitationService(os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	boardService := services.NewBoardService(db.DB, os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SERVICE_ROLE_KEY"), socketIOService)
+	roomService := services.NewRoomService(db.DB)
+	socketIOService.SetSpotifyService(spotifyService)
 
 	// Add user routes with new code style
 	userRoutes(e, userService, contentService, notificationService, socketIOService)
@@ -81,8 +86,10 @@ func SetupRoutes(e *echo.Echo) {
 	contentHandler := content.NewContentHandler(contentService, notificationService, socketIOService)
 	fileHandler := files.NewFileHandler(fileService)
 	spotifyHandler := spotify.NewSpotifyHandler(spotifyService)
+	githubHandler := githubhandler.NewGitHubHandler(githubService)
 	invitationHandler := invitations.NewInvitationHandler(invitationService)
 	boardHandler := boards.NewBoardHandler(boardService)
+	roomHandler := rooms.NewRoomHandler(roomService)
 
 	// Health check
 	e.GET("/health", func(c echo.Context) error {
@@ -94,6 +101,7 @@ func SetupRoutes(e *echo.Echo) {
 	public.GET("/users", userhandlers.GetAllUsers(userService))
 	public.GET("/users/:id", userhandlers.GetUserByID(userService))
 	public.POST("/auth", authHandler.Authenticate)
+	public.GET("/spotify/callback", spotifyHandler.Callback)
 
 	// Optional auth routes (work with or without auth)
 	optionalAuth := e.Group("/api")
@@ -199,6 +207,8 @@ func SetupRoutes(e *echo.Echo) {
 	protected.POST("/groups/:groupId/events", groupHandler.CreateGroupEvent)
 	protected.POST("/groups/:groupId/events/:eventId/start", groupHandler.StartGroupEvent)
 	protected.DELETE("/groups/:groupId/events/:eventId", groupHandler.DeleteGroupEvent)
+	protected.GET("/groups/:groupId/pixel-room", roomHandler.GetGroupPixelRoom)
+	protected.PUT("/groups/:groupId/pixel-room", roomHandler.SaveGroupPixelRoom)
 
 	// WebSocket routes
 	protected.GET("/websocket", webSocketHandler.HandleWebSocket)
@@ -301,12 +311,19 @@ func SetupRoutes(e *echo.Echo) {
 
 	// Spotify routes
 	protected.GET("/spotify/auth", spotifyHandler.GetAuthURL)
-	protected.GET("/spotify/callback", spotifyHandler.Callback)
 	protected.GET("/spotify/connect", spotifyHandler.Connect)
 	protected.DELETE("/spotify/disconnect", spotifyHandler.Disconnect)
 	protected.GET("/spotify/now-playing/:userId", spotifyHandler.GetNowPlaying)
 	protected.GET("/spotify/profile/:userId", spotifyHandler.GetProfile)
 	protected.GET("/spotify/search", spotifyHandler.Search)
+
+	// GitHub routes
+	protected.GET("/github/auth", githubHandler.GetAuthURL)
+	protected.GET("/github/callback", githubHandler.Callback)
+	protected.DELETE("/github/disconnect", githubHandler.Disconnect)
+	protected.GET("/github/profile/:userId", githubHandler.GetProfile)
+	protected.GET("/github/activity/:userId", githubHandler.GetActivity)
+	protected.GET("/github/status/:userId", githubHandler.GetStatus)
 
 	// Invitation routes
 	protected.POST("/invitations", invitationHandler.Create)
@@ -325,6 +342,13 @@ func SetupRoutes(e *echo.Echo) {
 	protected.DELETE("/board-posts/:postId", boardHandler.DeletePost)
 	protected.POST("/board-posts/:postId/likes", boardHandler.LikePost)
 	protected.DELETE("/board-posts/:postId/likes", boardHandler.UnlikePost)
+
+	// Pixel Room routes
+	protected.GET("/rooms/me", roomHandler.GetMyRoom)
+	protected.PUT("/rooms/me", roomHandler.SaveMyRoom)
+	protected.GET("/rooms/user/:username", roomHandler.GetPublicRoom)
+	protected.POST("/rooms/user/:username/visit", roomHandler.VisitRoom)
+	protected.POST("/rooms/user/:username/like", roomHandler.ToggleLike)
 
 	protected.GET("/board-posts/:postId/comments", boardHandler.GetComments)
 	protected.POST("/board-posts/:postId/comments", boardHandler.AddComment)

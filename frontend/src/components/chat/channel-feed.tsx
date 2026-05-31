@@ -3,6 +3,14 @@
 import Image from 'next/image'
 import { useRouter as useNextRouter } from 'next/navigation'
 import {
+  fetchPublicRoom,
+  toggleRoomLike,
+  type PublicRoomPayload,
+} from '@/lib/rooms-api'
+import type { PixelRoomState } from '@/components/game/game-data'
+
+type PublicPixelRoomPayload = PublicRoomPayload<PixelRoomState>
+import {
   type ChangeEvent,
   KeyboardEvent,
   MouseEvent,
@@ -21,6 +29,7 @@ import {
   Bookmark,
   Crown,
   FileUp,
+  Gamepad2,
   Heart,
   Mic,
   Square,
@@ -881,6 +890,64 @@ function VoiceInviteEmbed({ data }: { data: VoiceInviteEmbedPayload }) {
   )
 }
 
+// ─── Pixel Room Invite Card ─────────────────────────────────────────────────
+
+interface PixelRoomInviteEmbedPayload {
+  __twiky_type: 'pixel_room_invite'
+  groupId: string
+  groupName: string
+  channelId: string
+  inviterName: string
+}
+
+function tryParsePixelRoomInvite(body: string): PixelRoomInviteEmbedPayload | null {
+  try {
+    const p = JSON.parse(body)
+    if (p?.__twiky_type === 'pixel_room_invite') return p as PixelRoomInviteEmbedPayload
+  } catch { /* not JSON */ }
+  return null
+}
+
+function PixelRoomInviteEmbed({ data }: { data: PixelRoomInviteEmbedPayload }) {
+  const router = useNextRouter()
+  function handleEnter(e: React.MouseEvent) {
+    e.stopPropagation()
+    router.push(`/channels/${data.channelId}/group/${data.groupId}`)
+  }
+  return (
+    <div className="mt-1 w-[268px] overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-xl transition-all duration-300 hover:border-zinc-700">
+      <div className="h-0.5 w-full bg-gradient-to-r from-fuchsia-700 via-fuchsia-500 to-fuchsia-700" />
+      <div className="p-4 space-y-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <span className="relative flex h-1.5 w-1.5 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-fuchsia-400 opacity-60" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-fuchsia-500" />
+              </span>
+              <span className="text-[9px] font-semibold uppercase tracking-widest text-fuchsia-400">Pixel Room</span>
+            </div>
+            <p className="text-[14px] font-bold leading-snug truncate text-zinc-50">{data.groupName}</p>
+            <p className="text-[10px] text-zinc-600">
+              Shared by <span className="text-zinc-500">@{data.inviterName}</span>
+            </p>
+          </div>
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 text-fuchsia-400">
+            <Gamepad2 className="h-4 w-4" />
+          </div>
+        </div>
+        <button
+          onClick={handleEnter}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-100 px-3 py-2 text-[11px] font-bold text-zinc-900 shadow-sm transition-all hover:bg-white active:scale-[0.98]"
+        >
+          <Play className="h-3 w-3 fill-current" />
+          Enter Pixel Room
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ReactionsBar({
@@ -1114,6 +1181,8 @@ function MessageRow({
             {post.body ? (() => {
               const voiceInvite = tryParseVoiceInvite(post.body)
               if (voiceInvite) return <VoiceInviteEmbed data={voiceInvite} />
+              const pixelInvite = tryParsePixelRoomInvite(post.body)
+              if (pixelInvite) return <PixelRoomInviteEmbed data={pixelInvite} />
               const forumPost = tryParseForumPost(post.body)
               if (forumPost) return <ForumPostEmbed data={forumPost} />
               const firstUrl = extractFirstUrl(post.body)
@@ -1503,12 +1572,13 @@ export function FeedMemberProfileView({
   storyRingState?: StoryRingState
   hideRole?: boolean
 }) {
-  const [activeTab, setActiveTab] = useState<'posts' | 'articles' | 'pixel-room' | 'saved'>('posts')
+  const [activeTab, setActiveTab] = useState<'posts' | 'articles' | 'pixel-room' | 'saved'>('pixel-room')
   const [followRequested, setFollowRequested] = useState(false)
-  const [pixelRoomLiked, setPixelRoomLiked] = useState(false)
   const [followSheet, setFollowSheet] = useState<'followers' | 'following' | null>(null)
   const [viewingUser, setViewingUser] = useState<FeedMemberProfile | null>(null)
   const [roomPreview, setRoomPreview] = useState<StoredRoomPreview | null>(null)
+  const [roomPayload, setRoomPayload] = useState<PublicPixelRoomPayload | null>(null)
+  const pixelRouter = useNextRouter()
 
   const { user: authUser } = useAuth()
   const { data: currentUser } = useProfile()
@@ -1572,6 +1642,8 @@ export function FeedMemberProfileView({
   const profileBadgeVariant = getVerifiedBadgeVariant(resolvedProfile.subPlan)
   const canOpenStory = storyRingState !== 'none' && Boolean(memberProfile.id && onOpenStory)
 
+  const roomUsername = realUser?.username ?? resolvedProfile.handle
+
   useEffect(() => {
     const refreshRoomPreview = () => {
       setRoomPreview(readStoredRoomPreview(realUser?.id ?? memberProfile.id, realUser?.username ?? resolvedProfile.handle))
@@ -1582,6 +1654,45 @@ export function FeedMemberProfileView({
 
     return () => window.removeEventListener('twiky-pixel-room-preview-saved', refreshRoomPreview)
   }, [memberProfile.id, realUser?.id, realUser?.username, resolvedProfile.handle])
+
+  useEffect(() => {
+    const uname = memberProfile.handle || null
+    if (!uname) {
+      setRoomPayload(null)
+      return
+    }
+    let cancelled = false
+    fetchPublicRoom<PixelRoomState>(uname)
+      .then((res) => {
+        if (!cancelled) setRoomPayload(res)
+      })
+      .catch(() => {
+        if (!cancelled) setRoomPayload(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [memberProfile.handle, memberProfile.id])
+
+  const handleEnterPixelRoom = () => {
+    if (!roomUsername) return
+    onBack()
+    pixelRouter.push(`/room/${roomUsername}`)
+  }
+
+  const handleTogglePixelRoomLike = async () => {
+    if (!roomUsername) return
+    try {
+      const result = await toggleRoomLike(roomUsername)
+      setRoomPayload((prev) =>
+        prev ? { ...prev, hasLiked: result.liked, likeCount: result.likeCount } : prev,
+      )
+    } catch (err) {
+      console.warn('[pixel-room] like failed', err)
+    }
+  }
+
+  const pixelRoomLiked = roomPayload?.hasLiked ?? false
 
   const fallbackPosts = posts.slice(0, 3)
   const profilePosts = memberProfile.id
@@ -1863,8 +1974,8 @@ export function FeedMemberProfileView({
       >
         <div className="flex items-center gap-0.5 rounded-xl border border-border bg-card p-1">
           {([
-            { id: 'posts' as const, label: 'Posts' },
             { id: 'pixel-room' as const, label: 'Pixel Room' },
+            { id: 'posts' as const, label: 'Posts' },
             { id: 'articles' as const, label: 'Articles' },
             { id: 'saved' as const, label: 'Saved' },
           ]).map((tab) => {
@@ -1993,29 +2104,46 @@ export function FeedMemberProfileView({
           >
             <div className="relative overflow-hidden rounded-2xl border border-border bg-card">
               <img
-                src={roomPreview?.image ?? PIXEL_ROOM_PREVIEW_SRC}
+                src={roomPayload?.image ?? roomPreview?.image ?? PIXEL_ROOM_PREVIEW_SRC}
                 alt={`${resolvedProfile.name}'s Pixel Room`}
-                className="h-32 w-full object-cover"
+                className="h-32 w-full object-cover [image-rendering:pixelated]"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
               <div className="absolute bottom-2.5 left-3 right-3 flex items-end justify-between gap-2">
                 <div className="min-w-0">
                   <p className="truncate text-[12px] font-bold text-white">{resolvedProfile.name}&apos;s Room</p>
                   <p className="text-[10px] text-white/70">
-                    {roomPreview ? 'Pixel World - saved preview' : 'Pixel World - no saved room yet'}
+                    {roomPayload?.image
+                      ? 'Pixel World - live snapshot'
+                      : roomPreview
+                        ? 'Pixel World - saved preview'
+                        : 'Pixel World - no saved room yet'}
                   </p>
                 </div>
                 <span className="rounded-full bg-white/15 px-2 py-0.5 text-[9px] font-semibold text-white backdrop-blur-sm">
-                  Preview only
+                  {roomPayload ? `${roomPayload.likeCount} likes` : 'Preview only'}
                 </span>
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-1.5">
               {[
-                { label: 'Objects', value: roomPreview ? String(roomPreview.objectCount) : '-' },
-                { label: 'Visitors', value: formatCompactCount(resolvedProfile.followers) },
-                { label: 'Style', value: 'Loft' },
+                {
+                  label: 'Objects',
+                  value: roomPayload?.state?.objects
+                    ? String(roomPayload.state.objects.length)
+                    : roomPreview
+                      ? String(roomPreview.objectCount)
+                      : '-',
+                },
+                {
+                  label: 'Visitors',
+                  value: roomPayload ? formatCompactCount(roomPayload.visitorCount) : '-',
+                },
+                {
+                  label: 'Likes',
+                  value: roomPayload ? formatCompactCount(roomPayload.likeCount) : '-',
+                },
               ].map(({ label, value }) => (
                 <div key={label} className="rounded-lg border border-border bg-card/70 px-2 py-1.5 text-center">
                   <p className="text-[12px] font-bold leading-none text-foreground">{value}</p>
@@ -2027,24 +2155,28 @@ export function FeedMemberProfileView({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                disabled
-                className="h-8 flex-1 cursor-not-allowed rounded-lg bg-muted px-3 text-[11px] font-semibold text-muted-foreground"
+                onClick={handleEnterPixelRoom}
+                disabled={!roomUsername}
+                className="h-8 flex-1 rounded-lg bg-primary px-3 text-[11px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Enter Room Later
+                Enter Room
               </button>
-              <button
-                type="button"
-                onClick={() => setPixelRoomLiked((liked) => !liked)}
-                aria-pressed={pixelRoomLiked}
-                className={cn(
-                  'flex h-8 w-9 items-center justify-center rounded-lg border transition-colors',
-                  pixelRoomLiked
-                    ? 'border-rose-400/30 bg-rose-500/10 text-rose-500'
-                    : 'border-border bg-card text-muted-foreground hover:text-foreground',
-                )}
-              >
-                <Heart className={cn('h-3.5 w-3.5', pixelRoomLiked && 'fill-current')} />
-              </button>
+              {!roomPayload?.isOwn && (
+                <button
+                  type="button"
+                  onClick={handleTogglePixelRoomLike}
+                  disabled={!roomUsername}
+                  aria-pressed={pixelRoomLiked}
+                  className={cn(
+                    'flex h-8 w-9 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                    pixelRoomLiked
+                      ? 'border-rose-400/30 bg-rose-500/10 text-rose-500'
+                      : 'border-border bg-card text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  <Heart className={cn('h-3.5 w-3.5', pixelRoomLiked && 'fill-current')} />
+                </button>
+              )}
             </div>
           </motion.div>
         ) : (
@@ -2161,6 +2293,8 @@ function FeedProfileRow({
         {post.body ? (() => {
           const voiceInvite = tryParseVoiceInvite(post.body)
           if (voiceInvite) return <VoiceInviteEmbed data={voiceInvite} />
+          const pixelInvite = tryParsePixelRoomInvite(post.body)
+          if (pixelInvite) return <PixelRoomInviteEmbed data={pixelInvite} />
           const forumPost = tryParseForumPost(post.body)
           if (forumPost) return <ForumPostEmbed data={forumPost} />
           const firstUrl = extractFirstUrl(post.body)

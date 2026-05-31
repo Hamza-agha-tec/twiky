@@ -31,7 +31,7 @@ export interface BackendGroup {
   name: string;
   description: string | null;
   is_general: boolean;
-  group_type: 'text' | 'board' | 'voice' | 'watch';
+  group_type: 'text' | 'board' | 'voice' | 'watch' | 'pixel-room';
   access_type: 'PUBLIC' | 'PRIVATE';
   created_at: string;
   is_member?: boolean;
@@ -97,7 +97,7 @@ export const groupsApi = {
   getChannelGroups: (channelId: string) =>
     authedFetch<BackendGroup[]>(`/channels/${channelId}/groups`),
 
-  createGroup: (channelId: string, data: { name: string; description?: string; is_general?: boolean; group_type?: 'text' | 'board' | 'voice' | 'watch'; access_type?: 'PUBLIC' | 'PRIVATE' }) =>
+  createGroup: (channelId: string, data: { name: string; description?: string; is_general?: boolean; group_type?: 'text' | 'board' | 'voice' | 'watch' | 'pixel-room'; access_type?: 'PUBLIC' | 'PRIVATE' }) =>
     authedFetch<BackendGroup>(`/channels/${channelId}/groups`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -173,7 +173,7 @@ export const groupsApi = {
       method: 'DELETE',
     }),
 
-  updateGroup: (groupId: string, data: { name?: string; description?: string; group_type?: 'text' | 'board' | 'voice' | 'watch'; access_type?: 'PUBLIC' | 'PRIVATE' }) =>
+  updateGroup: (groupId: string, data: { name?: string; description?: string; group_type?: 'text' | 'board' | 'voice' | 'watch' | 'pixel-room'; access_type?: 'PUBLIC' | 'PRIVATE' }) =>
     authedFetch<BackendGroup>(`/groups/${groupId}`, {
       method: 'PATCH',
       body: JSON.stringify(data),

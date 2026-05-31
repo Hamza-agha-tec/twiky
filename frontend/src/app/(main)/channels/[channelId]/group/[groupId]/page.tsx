@@ -11,8 +11,9 @@ import { useChannelProjects, useProjectGroups } from '@/hooks/use-projects'
 import { isWorkspaceChannel } from '@/lib/channel-utils'
 import { useCreateDirectConversation } from '@/hooks/use-direct-conversations'
 import { useVoice } from '@/context/VoiceContext'
+import { usePixelPresence } from '@/context/PixelPresenceContext'
 import { Button } from '@/components/ui/button'
-import { AudioLines, PhoneOff, Popcorn } from 'lucide-react'
+import { AudioLines, Gamepad2, PhoneOff, Popcorn } from 'lucide-react'
 
 import { useProfile } from '@/hooks/use-user'
 import { useOnlineUsers } from '@/hooks/use-socket'
@@ -76,6 +77,81 @@ function BlockedOverlay({ icon, title, description, btnText, onAction, onCancel 
     </div>,
     document.body
   )
+}
+
+// ── Pixel Room gate — registers active room into context, blocks on conflicts ─
+interface PixelRoomGateProps {
+  groupId: string
+  channelId: string
+  groupName: string
+  voiceActive: boolean
+  watchActive: boolean
+  callActive: boolean
+  activeVoiceName: string
+  watchRoomName: string
+  onVoiceLeave: () => void
+  onWatchLeave: () => void
+  onCallHangup: () => void
+}
+
+function PixelRoomGate({
+  groupId, channelId, groupName,
+  voiceActive, watchActive, callActive,
+  activeVoiceName, watchRoomName,
+  onVoiceLeave, onWatchLeave, onCallHangup,
+}: PixelRoomGateProps) {
+  const router = useRouter()
+  const pixel = usePixelPresence()
+  const blocked = voiceActive || watchActive || callActive
+
+  const setActiveRoom = pixel.setActiveRoom
+  const activeRoomId = pixel.activeRoom?.groupId
+  useEffect(() => {
+    if (blocked) return
+    if (activeRoomId !== groupId) {
+      setActiveRoom({ groupId, channelId, groupName })
+    }
+  }, [blocked, groupId, channelId, groupName, activeRoomId, setActiveRoom])
+
+  if (blocked) {
+    return (
+      <div className="relative flex h-full w-full overflow-hidden bg-background">
+        {voiceActive && (
+          <BlockedOverlay
+            icon={<AudioLines className="h-6 w-6 text-muted-foreground" />}
+            title="Voice Channel Active"
+            description={<>Connected to <span className="font-medium text-foreground">"{activeVoiceName}"</span>. Disconnect to enter this pixel room.</>}
+            btnText="Disconnect Voice"
+            onAction={onVoiceLeave}
+            onCancel={() => router.back()}
+          />
+        )}
+        {!voiceActive && watchActive && (
+          <BlockedOverlay
+            icon={<Popcorn className="h-6 w-6 text-muted-foreground" />}
+            title="Watch Room Active"
+            description={<>You're watching <span className="font-medium text-foreground">"{watchRoomName}"</span>. Leave to enter this pixel room.</>}
+            btnText="Leave Watch Room"
+            onAction={onWatchLeave}
+            onCancel={() => router.back()}
+          />
+        )}
+        {!voiceActive && !watchActive && callActive && (
+          <BlockedOverlay
+            icon={<PhoneOff className="h-6 w-6 text-muted-foreground" />}
+            title="Direct Call Active"
+            description="Hang up your current call to enter this pixel room."
+            btnText="Hang Up Call"
+            onAction={onCallHangup}
+            onCancel={() => router.back()}
+          />
+        )}
+      </div>
+    )
+  }
+
+  // Render-empty: PersistentPixelRoom in layout draws the room.
+  return <div className="h-full w-full bg-background" />
 }
 
 function toFeedPosts(messages: GroupMessage[], myId?: string): FeedPost[] {
@@ -174,6 +250,7 @@ export default function GroupPage() {
   )
   
   const voice = useVoice()
+  const pixel = usePixelPresence()
   const onlineUsers = useOnlineUsers()
   const dmCall = useDmCallContext()
 
@@ -202,6 +279,21 @@ export default function GroupPage() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [channelId, router, backendGroup?.group_type])
+
+  // Navigate when admin moves us to a different voice group in this channel
+  useEffect(() => {
+    if (backendGroup?.group_type !== 'voice') return
+    const handler = (e: Event) => {
+      const { targetRoomId } = (e as CustomEvent).detail
+      if (!targetRoomId || targetRoomId === gId) return
+      const targetGroup = channelGroups.find(g => g.id === targetRoomId)
+      if (targetGroup) {
+        router.push(`/channels/${channelId}/group/${targetRoomId}`)
+      }
+    }
+    window.addEventListener('twiky-voice-moved', handler)
+    return () => window.removeEventListener('twiky-voice-moved', handler)
+  }, [backendGroup?.group_type, gId, channelId, channelGroups, router])
 
   // Sync voice meta for PiP
   useEffect(() => {
@@ -312,10 +404,13 @@ export default function GroupPage() {
     if (raw) { try { const p = JSON.parse(raw); if (p.groupName) activeVoiceName = p.groupName } catch {} }
   }
 
+  const activePixelName = pixel.activeRoom?.groupName ?? 'pixel room'
+
   if (group.kind === 'voice') {
     const watchBlocked = !!activeWatchRoomLS
     const callBlocked = isInDmCall
-    const isBlocked = watchBlocked || callBlocked
+    const pixelBlocked = !!pixel.activeRoom
+    const isBlocked = watchBlocked || callBlocked || pixelBlocked
 
     if (isBlocked) {
       // Don't mount VoiceGroupView — it auto-joins on mount via useEffect
@@ -334,7 +429,17 @@ export default function GroupPage() {
               onCancel={() => router.back()}
             />
           )}
-          {callBlocked && (
+          {!watchBlocked && pixelBlocked && (
+            <BlockedOverlay
+              icon={<Gamepad2 className="h-6 w-6 text-muted-foreground" />}
+              title="Pixel Room Active"
+              description={<>You're in <span className="font-medium text-foreground">"{activePixelName}"</span>. Leave to join this voice channel.</>}
+              btnText="Leave Pixel Room"
+              onAction={() => pixel.leaveRoom()}
+              onCancel={() => router.back()}
+            />
+          )}
+          {!watchBlocked && !pixelBlocked && callBlocked && (
             <BlockedOverlay
               icon={<PhoneOff className="h-6 w-6 text-muted-foreground" />}
               title="Direct Call Active"
@@ -398,6 +503,7 @@ export default function GroupPage() {
   if (group.kind === 'watch') {
     const voiceBlocked = !!voice.joinedGroupId
     const callBlocked = isInDmCall
+    const pixelBlocked = !!pixel.activeRoom
     return (
       <div className="relative flex h-full w-full items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
@@ -414,7 +520,17 @@ export default function GroupPage() {
             onCancel={() => router.back()}
           />
         )}
-        {callBlocked && (
+        {!voiceBlocked && pixelBlocked && (
+          <BlockedOverlay
+            icon={<Gamepad2 className="h-6 w-6 text-muted-foreground" />}
+            title="Pixel Room Active"
+            description={<>You're in <span className="font-medium text-foreground">"{activePixelName}"</span>. Leave to join this watch room.</>}
+            btnText="Leave Pixel Room"
+            onAction={() => pixel.leaveRoom()}
+            onCancel={() => router.back()}
+          />
+        )}
+        {!voiceBlocked && !pixelBlocked && callBlocked && (
           <BlockedOverlay
             icon={<PhoneOff className="h-6 w-6 text-muted-foreground" />}
             title="Direct Call Active"
@@ -451,6 +567,27 @@ export default function GroupPage() {
           onViewProfile={() => {}}
         />
       </div>
+    )
+  }
+
+  if (group.kind === 'pixel-room') {
+    return (
+      <PixelRoomGate
+        groupId={gId}
+        channelId={channelId as string}
+        groupName={group.label}
+        voiceActive={!!voice.joinedGroupId}
+        watchActive={!!activeWatchRoomLS}
+        callActive={isInDmCall}
+        activeVoiceName={activeVoiceName}
+        watchRoomName={watchRoomName}
+        onVoiceLeave={() => voice.leave()}
+        onWatchLeave={() => {
+          localStorage.removeItem('twiky-active-watch-room')
+          window.dispatchEvent(new Event('twiky-watch-room-changed'))
+        }}
+        onCallHangup={() => dmCall.hangUp()}
+      />
     )
   }
 

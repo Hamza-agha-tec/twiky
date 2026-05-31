@@ -20,6 +20,57 @@ type HitRect = {
   bottom: number
 }
 
+export type OtherParticipant = {
+  userId: string
+  username: string
+  avatarId: string
+  x: number
+  y: number
+  direction: PixelDirection
+  isSitting: boolean
+  micMuted?: boolean
+  isSpeaking?: boolean
+  chatBubble?: string | null
+  chatBubbleAt?: number
+  floatingEmoji?: string | null
+  floatingEmojiAt?: number
+  movedAt?: number
+  spotifyTrack?: {
+    name: string
+    artist: string
+    album_art?: string
+    album?: string
+    spotify_url?: string
+    progress_ms?: number
+    duration_ms?: number
+  } | null
+}
+
+const SPOTIFY_PATH = typeof window !== 'undefined'
+  ? new Path2D('M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z')
+  : null
+
+function drawSpotifyLogo(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number) {
+  if (!SPOTIFY_PATH) return
+  ctx.save()
+  ctx.translate(cx - size / 2, cy - size / 2)
+  ctx.scale(size / 24, size / 24)
+  ctx.fillStyle = '#1DB954'
+  ctx.fill(SPOTIFY_PATH)
+  ctx.restore()
+}
+
+const artCache: Record<string, HTMLImageElement | 'loading'> = {}
+function loadArt(src: string) {
+  if (artCache[src]) return
+  artCache[src] = 'loading'
+  const img = new Image()
+  img.crossOrigin = 'anonymous'
+  img.onload = () => { artCache[src] = img }
+  img.onerror = () => { delete artCache[src] }
+  img.src = src
+}
+
 type PixelRoomCanvasProps = {
   state: PixelRoomState
   playerName: string
@@ -29,6 +80,13 @@ type PixelRoomCanvasProps = {
   onMoveAvatar: (dx: number, dy: number) => void
   onToggleSit: () => void
   captureRef?: React.MutableRefObject<(() => string | null) | null>
+  otherParticipants?: OtherParticipant[]
+  localMicMuted?: boolean
+  localIsSpeaking?: boolean
+  localChatBubble?: string | null
+  localChatBubbleAt?: number
+  localFloatingEmoji?: string | null
+  localFloatingEmojiAt?: number
 }
 
 function isFloorLayer(assetId: string) {
@@ -83,12 +141,23 @@ export function PixelRoomCanvas({
   onMoveAvatar,
   onToggleSit,
   captureRef,
+  otherParticipants = [],
+  localMicMuted = false,
+  localIsSpeaking = false,
+  localChatBubble = null,
+  localChatBubbleAt = 0,
+  localFloatingEmoji = null,
+  localFloatingEmojiAt = 0,
 }: PixelRoomCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const hitRectsRef = useRef<HitRect[]>([])
   const dragObjectIdRef = useRef<string | null>(null)
   const lastMoveAtRef = useRef(0)
   const pressedKeysRef = useRef(new Set<string>())
+  const interpRef = useRef<Record<string, { rx: number; ry: number }>>({})
+  const prevFrameTimeRef = useRef(0)
+  const spotifyBubblesRef = useRef<Array<{ bx: number; by: number; bw: number; bh: number; track: NonNullable<OtherParticipant['spotifyTrack']> }>>([])
+  const mousePosRef = useRef<{ x: number; y: number } | null>(null)
   const [images, setImages] = useState<Record<string, HTMLImageElement>>({})
 
   const assetMap = useMemo(() => {
@@ -114,6 +183,26 @@ export function PixelRoomCanvas({
       captureRef.current = null
     }
   }, [captureRef])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const onMove = (e: MouseEvent) => {
+      const r = canvas.getBoundingClientRect()
+      mousePosRef.current = { x: e.clientX - r.left, y: e.clientY - r.top }
+      canvas.style.cursor = spotifyBubblesRef.current.some(b =>
+        e.clientX - r.left >= b.bx && e.clientX - r.left <= b.bx + b.bw &&
+        e.clientY - r.top >= b.by && e.clientY - r.top <= b.by + b.bh
+      ) ? 'pointer' : ''
+    }
+    const onLeave = () => { mousePosRef.current = null; canvas.style.cursor = '' }
+    canvas.addEventListener('mousemove', onMove)
+    canvas.addEventListener('mouseleave', onLeave)
+    return () => {
+      canvas.removeEventListener('mousemove', onMove)
+      canvas.removeEventListener('mouseleave', onLeave)
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -152,6 +241,33 @@ export function PixelRoomCanvas({
     if (!ctx) return
 
     const now = performance.now()
+    const wallNow = Date.now()
+
+    // Per-frame dt for smooth interpolation
+    const dt = prevFrameTimeRef.current > 0 ? Math.min(0.1, (now - prevFrameTimeRef.current) / 1000) : 0
+    prevFrameTimeRef.current = now
+
+    // Lerp other participants toward their target tile at 12 tiles/sec
+    const ip = interpRef.current
+    const activeIds = new Set(otherParticipants.map(p => p.userId))
+    for (const id of Object.keys(ip)) { if (!activeIds.has(id)) delete ip[id] }
+    for (const op of otherParticipants) {
+      if (!ip[op.userId]) {
+        ip[op.userId] = { rx: op.x, ry: op.y }
+      } else {
+        const ipos = ip[op.userId]
+        const tdx = op.x - ipos.rx
+        const tdy = op.y - ipos.ry
+        const dist = Math.sqrt(tdx * tdx + tdy * tdy)
+        if (dist > 5) { ipos.rx = op.x; ipos.ry = op.y }
+        else if (dist > 0.01) {
+          const step = Math.min(dist, (WALK_SPEED_PX_PER_SECOND / TILE_WIDTH) * dt)
+          ipos.rx += (tdx / dist) * step
+          ipos.ry += (tdy / dist) * step
+        }
+      }
+    }
+
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.imageSmoothingEnabled = false
     ctx.clearRect(0, 0, width, height)
@@ -218,6 +334,10 @@ export function PixelRoomCanvas({
         return { kind: 'object' as const, sort: getObjectSort(object.itemId, object.x, object.y, asset), object }
       }),
       { kind: 'avatar' as const, sort: visualAvatar.y * TILE_HEIGHT + visualAvatar.x + 0.1 },
+      ...otherParticipants.map((p) => {
+        const ipos = ip[p.userId] ?? { rx: p.x, ry: p.y }
+        return { kind: 'other' as const, sort: ipos.ry * TILE_HEIGHT + ipos.rx + 0.05, participant: p }
+      }),
     ].sort((a, b) => a.sort - b.sort)
 
     for (const drawable of drawables) {
@@ -229,7 +349,7 @@ export function PixelRoomCanvas({
 
         ctx.fillStyle = 'rgba(2, 6, 23, 0.48)'
         ctx.beginPath()
-        ctx.ellipse(p.x, p.y + 2, state.isSitting ? 12 : 15, state.isSitting ? 4 : 5, 0, 0, Math.PI * 2)
+        ctx.ellipse(p.x, p.y + 2, state.isSitting ? 10 : 15, state.isSitting ? 3 : 5, 0, 0, Math.PI * 2)
         ctx.fill()
 
         if (avatarAsset && image) {
@@ -242,8 +362,7 @@ export function PixelRoomCanvas({
             : directionFrames.idle
           const availableFrames = Math.max(1, Math.floor(image.naturalWidth / sourceSize))
           const sourceX = Math.min(frame, availableFrames - 1) * sourceSize
-          const avatarTop = state.isSitting ? p.y - 42 : p.y - 50
-
+          const avatarTop = p.y - 50
           ctx.drawImage(image, sourceX, 0, sourceSize, sourceSize, p.x - 24, avatarTop, 48, 48)
         } else {
           ctx.fillStyle = '#38bdf8'
@@ -254,19 +373,219 @@ export function PixelRoomCanvas({
 
         ctx.font = '600 11px Segoe UI, sans-serif'
         const label = playerName || 'You'
-        const labelWidth = ctx.measureText(label).width + 16
+        const labelTextWidth = ctx.measureText(label).width
+        const micPad = 14
+        const labelWidth = labelTextWidth + 16 + micPad
+        const labelTop = p.y - 68
         ctx.fillStyle = 'rgba(6, 9, 16, 0.9)'
-        ctx.strokeStyle = 'rgba(30, 58, 95, 0.9)'
+        ctx.strokeStyle = localIsSpeaking ? 'rgba(34, 197, 94, 0.7)' : 'rgba(30, 58, 95, 0.9)'
         ctx.lineWidth = 1
-        const labelTop = state.isSitting ? p.y - 60 : p.y - 68
         ctx.beginPath()
         ctx.roundRect(p.x - labelWidth / 2, labelTop, labelWidth, 22, 11)
         ctx.fill()
         ctx.stroke()
         ctx.fillStyle = '#e2e8f0'
         ctx.textAlign = 'center'
-        ctx.fillText(label, p.x, labelTop + 15)
+        ctx.fillText(label, p.x - micPad / 2, labelTop + 15)
         ctx.textAlign = 'start'
+
+        // Mic status dot
+        const micDotX = p.x + (labelTextWidth + 16) / 2
+        const micDotY = labelTop + 11
+        ctx.fillStyle = localMicMuted ? '#ef4444' : localIsSpeaking ? '#22c55e' : '#64748b'
+        ctx.beginPath()
+        ctx.arc(micDotX, micDotY, 3.5, 0, Math.PI * 2)
+        ctx.fill()
+        if (localMicMuted) {
+          ctx.strokeStyle = '#ef4444'
+          ctx.lineWidth = 1
+          ctx.beginPath()
+          ctx.moveTo(micDotX - 3, micDotY - 3)
+          ctx.lineTo(micDotX + 3, micDotY + 3)
+          ctx.stroke()
+        }
+
+        // Chat bubble
+        if (localChatBubble && localChatBubbleAt && wallNow - localChatBubbleAt < 4000) {
+          const elapsed = wallNow - localChatBubbleAt
+          const alpha = elapsed > 3000 ? Math.max(0, 1 - (elapsed - 3000) / 1000) : 1
+          ctx.font = '500 10px Segoe UI, sans-serif'
+          const tw = Math.min(ctx.measureText(localChatBubble).width, 120)
+          const bw = tw + 14; const bh = 18
+          const bx = p.x - bw / 2; const by = labelTop - bh - 6
+          ctx.globalAlpha = alpha
+          ctx.fillStyle = '#f1f5f9'
+          ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 5); ctx.fill()
+          ctx.beginPath()
+          ctx.moveTo(p.x - 4, by + bh); ctx.lineTo(p.x, by + bh + 5); ctx.lineTo(p.x + 4, by + bh)
+          ctx.closePath(); ctx.fill()
+          ctx.fillStyle = '#1e293b'; ctx.textAlign = 'center'
+          ctx.fillText(localChatBubble, p.x, by + 12, 120)
+          ctx.textAlign = 'start'; ctx.globalAlpha = 1
+          ctx.font = '600 11px Segoe UI, sans-serif'
+        }
+
+        // Floating emoji
+        if (localFloatingEmoji && localFloatingEmojiAt && wallNow - localFloatingEmojiAt < 2000) {
+          const progress = (wallNow - localFloatingEmojiAt) / 2000
+          ctx.globalAlpha = 1 - progress
+          ctx.font = '20px sans-serif'; ctx.textAlign = 'center'
+          ctx.fillText(localFloatingEmoji, p.x, labelTop - 12 - progress * 40)
+          ctx.textAlign = 'start'; ctx.globalAlpha = 1
+          ctx.font = '600 11px Segoe UI, sans-serif'
+        }
+
+        continue
+      }
+
+      if (drawable.kind === 'other') {
+        const op = drawable.participant
+        const avatarAsset = assetMap.get(op.avatarId)
+        const image = images[op.avatarId]
+        const ipos = ip[op.userId] ?? { rx: op.x, ry: op.y }
+        const tile = tileToScreen(ipos.rx, ipos.ry, originX, originY)
+        const p = { x: tile.x + TILE_WIDTH / 2, y: tile.y + TILE_HEIGHT - 4 }
+        const proximityDist = Math.sqrt((ipos.rx - state.avatarX) ** 2 + (ipos.ry - state.avatarY) ** 2)
+        const inProximity = proximityDist <= 8
+
+        ctx.fillStyle = 'rgba(2, 6, 23, 0.38)'
+        ctx.beginPath()
+        ctx.ellipse(p.x, p.y + 2, op.isSitting ? 10 : 15, op.isSitting ? 3 : 5, 0, 0, Math.PI * 2)
+        ctx.fill()
+
+        if (avatarAsset && image) {
+          const sourceSize = image.naturalHeight >= 32 ? 32 : image.naturalHeight
+          const directionFrames = AVATAR_FRAMES[op.direction] ?? AVATAR_FRAMES.down
+          const frameTick = Math.floor(now / 120)
+          const idist = Math.abs(ipos.rx - op.x) + Math.abs(ipos.ry - op.y)
+          const isWalking = !op.isSitting && (idist > 0.02 || (op.movedAt !== undefined && now - op.movedAt < 350))
+          const frame = isWalking
+            ? directionFrames.walk[frameTick % directionFrames.walk.length]
+            : directionFrames.idle
+          const availableFrames = Math.max(1, Math.floor(image.naturalWidth / sourceSize))
+          const sourceX = Math.min(frame, availableFrames - 1) * sourceSize
+          const avatarTop = p.y - 50
+          ctx.drawImage(image, sourceX, 0, sourceSize, sourceSize, p.x - 24, avatarTop, 48, 48)
+        } else {
+          ctx.fillStyle = '#f59e0b'
+          ctx.beginPath()
+          ctx.arc(p.x, p.y - 32, 18, 0, Math.PI * 2)
+          ctx.fill()
+        }
+
+        ctx.font = '600 11px Segoe UI, sans-serif'
+        const otherLabel = op.username || 'Visitor'
+        const otherTextWidth = ctx.measureText(otherLabel).width
+        const otherMicPad = 14
+        const otherLabelWidth = otherTextWidth + 16 + otherMicPad
+        const otherLabelTop = p.y - 68
+        ctx.fillStyle = 'rgba(6, 9, 16, 0.75)'
+        ctx.strokeStyle = op.isSpeaking && inProximity ? 'rgba(34, 197, 94, 0.7)' : 'rgba(30, 58, 95, 0.7)'
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        ctx.roundRect(p.x - otherLabelWidth / 2, otherLabelTop, otherLabelWidth, 22, 11)
+        ctx.fill()
+        ctx.stroke()
+        ctx.fillStyle = '#cbd5e1'
+        ctx.textAlign = 'center'
+        ctx.fillText(otherLabel, p.x - otherMicPad / 2, otherLabelTop + 15)
+        ctx.textAlign = 'start'
+
+        // Mic status dot
+        const otherMicDotX = p.x + (otherTextWidth + 16) / 2
+        const otherMicDotY = otherLabelTop + 11
+        ctx.fillStyle = op.micMuted ? '#ef4444' : op.isSpeaking ? '#22c55e' : '#64748b'
+        ctx.beginPath()
+        ctx.arc(otherMicDotX, otherMicDotY, 3.5, 0, Math.PI * 2)
+        ctx.fill()
+        if (op.micMuted) {
+          ctx.strokeStyle = '#ef4444'
+          ctx.lineWidth = 1
+          ctx.beginPath()
+          ctx.moveTo(otherMicDotX - 3, otherMicDotY - 3)
+          ctx.lineTo(otherMicDotX + 3, otherMicDotY + 3)
+          ctx.stroke()
+        }
+
+        // Chat bubble — proximity only
+        if (op.chatBubble && op.chatBubbleAt && wallNow - op.chatBubbleAt < 4000 && inProximity) {
+          const elapsed = wallNow - op.chatBubbleAt
+          const alpha = elapsed > 3000 ? Math.max(0, 1 - (elapsed - 3000) / 1000) : 1
+          ctx.font = '500 10px Segoe UI, sans-serif'
+          const tw = Math.min(ctx.measureText(op.chatBubble).width, 120)
+          const bw = tw + 14; const bh = 18
+          const bx = p.x - bw / 2; const by = otherLabelTop - bh - 6
+          ctx.globalAlpha = alpha
+          ctx.fillStyle = '#f1f5f9'
+          ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 5); ctx.fill()
+          ctx.beginPath()
+          ctx.moveTo(p.x - 4, by + bh); ctx.lineTo(p.x, by + bh + 5); ctx.lineTo(p.x + 4, by + bh)
+          ctx.closePath(); ctx.fill()
+          ctx.fillStyle = '#1e293b'; ctx.textAlign = 'center'
+          ctx.fillText(op.chatBubble, p.x, by + 12, 120)
+          ctx.textAlign = 'start'; ctx.globalAlpha = 1
+          ctx.font = '600 11px Segoe UI, sans-serif'
+        }
+
+        // Floating emoji — proximity only
+        if (op.floatingEmoji && op.floatingEmojiAt && wallNow - op.floatingEmojiAt < 2000 && inProximity) {
+          const progress = (wallNow - op.floatingEmojiAt) / 2000
+          ctx.globalAlpha = 1 - progress
+          ctx.font = '20px sans-serif'; ctx.textAlign = 'center'
+          ctx.fillText(op.floatingEmoji, p.x, otherLabelTop - 12 - progress * 40)
+          ctx.textAlign = 'start'; ctx.globalAlpha = 1
+          ctx.font = '600 11px Segoe UI, sans-serif'
+        }
+
+        // Spotify bubble — glassy pill with real logo + wave bars
+        if (op.spotifyTrack?.name) {
+          const trackName = op.spotifyTrack.name.length > 17 ? op.spotifyTrack.name.slice(0, 16) + '…' : op.spotifyTrack.name
+          ctx.font = '500 10px Segoe UI, sans-serif'
+          const textW = ctx.measureText(trackName).width
+          const logoSz = 13; const waveW = 16; const pad = 7; const gap = 5
+          const bw = pad + logoSz + gap + textW + gap + waveW + pad
+          const bh = 22
+          const bx = p.x - bw / 2
+          const by = otherLabelTop - bh - 6
+
+          // glassy base
+          ctx.fillStyle = 'rgba(8,8,12,0.82)'
+          ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 11); ctx.fill()
+          // top sheen
+          ctx.fillStyle = 'rgba(255,255,255,0.05)'
+          ctx.beginPath(); ctx.roundRect(bx + 1, by + 1, bw - 2, bh * 0.45, [10, 10, 0, 0]); ctx.fill()
+          // green border
+          ctx.strokeStyle = 'rgba(29,185,84,0.5)'
+          ctx.lineWidth = 1
+          ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 11); ctx.stroke()
+
+          // real Spotify logo
+          drawSpotifyLogo(ctx, bx + pad + logoSz / 2, by + bh / 2, logoSz)
+
+          // track name
+          ctx.fillStyle = 'rgba(255,255,255,0.9)'
+          ctx.textAlign = 'left'
+          ctx.fillText(trackName, bx + pad + logoSz + gap, by + 14.5)
+
+          // animated wave bars
+          const waveX = bx + bw - pad - waveW + 1
+          const waveY = by + bh / 2
+          const barW = 2.5; const barGap = 1.2
+          for (let i = 0; i < 4; i++) {
+            const h = 3 + 6 * Math.abs(Math.sin(now / 190 + i * 1.1))
+            ctx.fillStyle = '#1DB954'
+            ctx.beginPath()
+            ctx.roundRect(waveX + i * (barW + barGap), waveY - h / 2, barW, h, 1.2)
+            ctx.fill()
+          }
+
+          ctx.textAlign = 'start'
+          ctx.font = '600 11px Segoe UI, sans-serif'
+
+          // register for hover detection
+          spotifyBubblesRef.current.push({ bx, by, bw, bh, track: op.spotifyTrack })
+        }
+
         continue
       }
 
@@ -282,7 +601,12 @@ export function PixelRoomCanvas({
       const bottom = top + asset.height
 
       if (image) {
-        ctx.drawImage(image, left, top, asset.width, asset.height)
+        if (asset.frame) {
+          const { sx, sy, sw, sh } = asset.frame
+          ctx.drawImage(image, sx, sy, sw, sh, left, top, asset.width, asset.height)
+        } else {
+          ctx.drawImage(image, left, top, asset.width, asset.height)
+        }
       } else {
         ctx.fillStyle = '#1e293b'
         ctx.fillRect(left, top, asset.width, asset.height)
@@ -300,7 +624,128 @@ export function PixelRoomCanvas({
     }
 
     hitRectsRef.current = hitRects
-  }, [assetMap, images, playerName, selectedObjectId, state])
+
+    // Second pass: redraw chairs on top of sitting avatars so legs appear tucked under
+    const drawChairOnTop = (objId: string | null, tileX: number, tileY: number) => {
+      const obj = objId
+        ? state.objects.find(o => o.id === objId)
+        : state.objects.find(o => o.x === tileX && o.y === tileY)
+      if (!obj) return
+      const asset = assetMap.get(obj.itemId)
+      const image = images[obj.itemId]
+      if (!asset || !image) return
+      const tile = tileToScreen(obj.x, obj.y, originX, originY)
+      const left = tile.x + TILE_WIDTH / 2 - asset.width / 2
+      const top = tile.y + TILE_HEIGHT - asset.height
+      if (asset.frame) {
+        const { sx, sy, sw, sh } = asset.frame
+        ctx.drawImage(image, sx, sy, sw, sh, left, top, asset.width, asset.height)
+      } else {
+        ctx.drawImage(image, left, top, asset.width, asset.height)
+      }
+    }
+
+    if (state.isSitting) {
+      drawChairOnTop(state.sittingObjectId, visualAvatar.x, visualAvatar.y)
+    }
+    for (const op of otherParticipants) {
+      if (op.isSitting) {
+        const ipos = ip[op.userId] ?? { rx: op.x, ry: op.y }
+        drawChairOnTop(null, Math.round(ipos.rx), Math.round(ipos.ry))
+      }
+    }
+
+    // Draw hover card for hovered Spotify bubble
+    const mouse = mousePosRef.current
+    const hovered = mouse ? spotifyBubblesRef.current.find(b =>
+      mouse.x >= b.bx && mouse.x <= b.bx + b.bw &&
+      mouse.y >= b.by && mouse.y <= b.by + b.bh
+    ) : null
+
+    // Reset for next frame after checking
+    spotifyBubblesRef.current = []
+
+    if (hovered) {
+      const t = hovered.track
+      if (t.album_art) loadArt(t.album_art)
+      const artSize = 52
+      const cardPad = 10
+      const cardW = 192
+      const cardH = artSize + cardPad * 2
+      let cardX = hovered.bx + hovered.bw / 2 - cardW / 2
+      let cardY = hovered.by - cardH - 10
+      cardX = Math.max(4, Math.min(width - cardW - 4, cardX))
+      if (cardY < 4) cardY = hovered.by + hovered.bh + 10
+
+      // shadow
+      ctx.shadowColor = 'rgba(0,0,0,0.55)'
+      ctx.shadowBlur = 20
+      ctx.fillStyle = 'rgba(10,10,14,0.94)'
+      ctx.beginPath(); ctx.roundRect(cardX, cardY, cardW, cardH, 14); ctx.fill()
+      ctx.shadowBlur = 0
+
+      // border
+      ctx.strokeStyle = 'rgba(29,185,84,0.45)'
+      ctx.lineWidth = 1
+      ctx.beginPath(); ctx.roundRect(cardX, cardY, cardW, cardH, 14); ctx.stroke()
+
+      // top sheen
+      ctx.fillStyle = 'rgba(255,255,255,0.045)'
+      ctx.beginPath(); ctx.roundRect(cardX + 1, cardY + 1, cardW - 2, cardH * 0.4, [13, 13, 0, 0]); ctx.fill()
+
+      // album art
+      const artX = cardX + cardPad; const artY = cardY + cardPad
+      const artImg = t.album_art ? artCache[t.album_art] : null
+      if (artImg && artImg !== ('loading' as any)) {
+        ctx.save()
+        ctx.beginPath(); ctx.roundRect(artX, artY, artSize, artSize, 8); ctx.clip()
+        ctx.drawImage(artImg as HTMLImageElement, artX, artY, artSize, artSize)
+        ctx.restore()
+      } else {
+        ctx.fillStyle = 'rgba(29,185,84,0.15)'
+        ctx.beginPath(); ctx.roundRect(artX, artY, artSize, artSize, 8); ctx.fill()
+        ctx.font = '22px sans-serif'; ctx.textAlign = 'center'
+        ctx.fillStyle = 'rgba(29,185,84,0.5)'
+        ctx.fillText('♫', artX + artSize / 2, artY + artSize / 2 + 8)
+        ctx.textAlign = 'start'
+      }
+
+      // text area
+      const tx = artX + artSize + 10
+      const maxTW = cardW - artSize - cardPad * 3 - artSize * 0 - 28
+
+      ctx.font = '700 9px Segoe UI, sans-serif'
+      ctx.fillStyle = '#1DB954'
+      ctx.letterSpacing = '0.5px'
+      ctx.fillText('NOW PLAYING', tx, artY + 11)
+      ctx.letterSpacing = '0px'
+
+      ctx.font = '600 12px Segoe UI, sans-serif'
+      ctx.fillStyle = 'rgba(255,255,255,0.95)'
+      const tn = t.name.length > 16 ? t.name.slice(0, 15) + '…' : t.name
+      ctx.fillText(tn, tx, artY + 27)
+
+      ctx.font = '500 10.5px Segoe UI, sans-serif'
+      ctx.fillStyle = 'rgba(255,255,255,0.48)'
+      const ar = (t.artist || '').length > 16 ? t.artist!.slice(0, 15) + '…' : (t.artist || '')
+      ctx.fillText(ar, tx, artY + 42)
+
+      // Spotify logo bottom-right
+      drawSpotifyLogo(ctx, cardX + cardW - 14, cardY + cardH - 13, 14)
+
+      // progress bar
+      if (t.progress_ms != null && t.duration_ms && t.duration_ms > 0) {
+        const pct = Math.min(1, t.progress_ms / t.duration_ms)
+        const barX = tx; const barY = artY + 52; const barW = maxTW + 10
+        ctx.fillStyle = 'rgba(255,255,255,0.12)'
+        ctx.beginPath(); ctx.roundRect(barX, barY, barW, 3, 1.5); ctx.fill()
+        ctx.fillStyle = '#1DB954'
+        ctx.beginPath(); ctx.roundRect(barX, barY, barW * pct, 3, 1.5); ctx.fill()
+      }
+    } else {
+      spotifyBubblesRef.current = []
+    }
+  }, [assetMap, images, localChatBubble, localChatBubbleAt, localFloatingEmoji, localFloatingEmojiAt, localIsSpeaking, localMicMuted, otherParticipants, playerName, selectedObjectId, state])
 
   useEffect(() => {
     let frameId = 0

@@ -27,4 +27,6 @@ frontend/public/pixel/game/objects/
 frontend/public/pixel/game/avatars/
 
 goback/tmp/*
+goback/.env
+goback/.env.local
 Add Workspace Project Channel Settings.md

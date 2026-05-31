@@ -33,7 +33,6 @@ const VoiceContext = createContext<VoiceContextType | undefined>(undefined)
 
 export function VoiceProvider({ children }: { children: React.ReactNode }) {
   const { data: profile } = useProfile()
-
   const voiceMyInfo = useMemo(() => profile ? {
     id: profile.id,
     name: profile.fullname ?? profile.username ?? 'You',
@@ -44,17 +43,13 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
     enterSoundUrl: profile.enter_sound_url ?? null,
   } : null, [profile])
 
-  const voiceGroupIds = useMemo(() => [], [])
-
-  const voice = useVoicePresence(voiceMyInfo, voiceGroupIds, (payload) => {
+  const voice = useVoicePresence(voiceMyInfo, [], (payload) => {
     const { groupId, groupName, inviterName, inviterAvatar } = payload
     toast.info(`Invite to ${groupName} from ${inviterName}`)
-    // You can add a more complex toast here later
   })
 
   const webrtc = useLiveKitVoice(voice.joinedGroupId, profile?.id ?? null, voice.isMuted)
 
-  // Sync speaking state
   React.useEffect(() => {
     voice.setSpeaking(webrtc.isSpeaking)
   }, [webrtc.isSpeaking, voice])

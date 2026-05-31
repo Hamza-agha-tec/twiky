@@ -8,6 +8,7 @@ import { useChannelProjects } from '@/hooks/use-projects'
 import { WorkspaceEmptyState } from '@/components/chat/workspace-empty-state'
 import { useVoice } from '@/context/VoiceContext'
 import { useWatchPresence } from '@/context/WatchPresenceContext'
+import { usePixelPresence } from '@/context/PixelPresenceContext'
 import { useProfile } from '@/hooks/use-user'
 import { useEffect, useState } from 'react'
 import { useOnlineUsers } from '@/hooks/use-socket'
@@ -30,6 +31,7 @@ export default function ChannelLayout({ children }: { children: React.ReactNode 
   
   const voice = useVoice()
   const { watchParticipants, watchSessionStarts, setGroupParticipants, setGroupSessionStart } = useWatchPresence()
+  const { pixelParticipants, pixelSessionStarts, setGroupParticipants: setPixelParticipants, setGroupSessionStart: setPixelSessionStarts, updateSpeaking: updatePixelSpeaking } = usePixelPresence()
   const onlineUsers = useOnlineUsers()
   const [voiceTimer, setVoiceTimer] = useState<string>('00:00')
 
@@ -62,32 +64,63 @@ export default function ChannelLayout({ children }: { children: React.ReactNode 
     return () => { mounted = false }
   }, [setGroupParticipants, setGroupSessionStart])
 
-  // Subscribe to voice room presence for this channel's voice groups
+  // Pixel room participants
+  const pixelGroupIdsKey = channelGroups.filter(g => g.group_type === 'pixel-room').map(g => g.id).join(',')
   useEffect(() => {
-    const voiceGroupIds = channelGroups
-      .filter(g => g.group_type === 'voice')
-      .map(g => g.id)
-    if (!voiceGroupIds.length) return
-
-    let socket: Awaited<ReturnType<typeof getSocket>> | null = null
+    const pixelGroupIds = pixelGroupIdsKey ? pixelGroupIdsKey.split(',') : []
+    if (!pixelGroupIds.length) return
     let cancelled = false
+    let socket: Awaited<ReturnType<typeof getSocket>> | null = null
 
-    const subscribe = (s: Awaited<ReturnType<typeof getSocket>>) => {
-      s.emit('subscribe-voice-rooms', { roomIds: voiceGroupIds })
+    const onPixelParticipants = (data: { groupId: string; participants: { userId: string; username: string; avatarUrl?: string | null; bannerUrl?: string | null; subPlan?: string | null; micMuted: boolean; isSpeaking: boolean }[]; sessionStartedAt?: number | null }) => {
+      if (!pixelGroupIds.includes(data.groupId)) return
+      setPixelParticipants(data.groupId, data.participants)
+      setPixelSessionStarts(data.groupId, data.sessionStartedAt ?? null)
+    }
+    const onPixelSpeaking = (data: { groupId: string; userId: string; speaking: boolean }) => {
+      if (!pixelGroupIds.includes(data.groupId)) return
+      updatePixelSpeaking(data.groupId, data.userId, data.speaking)
     }
 
     getSocket().then(s => {
       if (cancelled) return
       socket = s
-      subscribe(s)
-      s.on('connect', () => subscribe(s))
+      s.emit('subscribe-pixel-rooms', { groupIds: pixelGroupIds })
+      s.on('pixel-room:participants', onPixelParticipants)
+      s.on('pixel-room:speaking', onPixelSpeaking)
     })
-
     return () => {
       cancelled = true
-      socket?.emit('unsubscribe-voice-rooms', { roomIds: voiceGroupIds })
+      if (socket) {
+        socket.emit('unsubscribe-pixel-rooms', { groupIds: pixelGroupIds })
+        socket.off('pixel-room:participants', onPixelParticipants)
+        socket.off('pixel-room:speaking', onPixelSpeaking)
+      }
     }
-  }, [channelGroups])
+  }, [pixelGroupIdsKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Subscribe socket to voice room presence rooms — fast path, no extra render cycle
+  const voiceGroupIdsKey = channelGroups.filter(g => g.group_type === 'voice').map(g => g.id).join(',')
+  useEffect(() => {
+    const voiceGroupIds = voiceGroupIdsKey ? voiceGroupIdsKey.split(',') : []
+    if (!voiceGroupIds.length) return
+    let cancelled = false
+    let socket: Awaited<ReturnType<typeof getSocket>> | null = null
+    const onConnect = () => socket?.emit('subscribe-voice-rooms', { roomIds: voiceGroupIds })
+    getSocket().then(s => {
+      if (cancelled) return
+      socket = s
+      s.emit('subscribe-voice-rooms', { roomIds: voiceGroupIds })
+      s.on('connect', onConnect)
+    })
+    return () => {
+      cancelled = true
+      if (socket) {
+        socket.emit('unsubscribe-voice-rooms', { roomIds: voiceGroupIds })
+        socket.off('connect', onConnect)
+      }
+    }
+  }, [voiceGroupIdsKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Voice call duration timer
   useEffect(() => {
@@ -198,6 +231,10 @@ export default function ChannelLayout({ children }: { children: React.ReactNode 
           onKickVoiceParticipant={(targetId) => voice.kick(targetId)}
           soundboardUserId={voice.soundboardUserId}
           soundboardIntensity={voice.soundboardIntensity}
+          // Pixel room props
+          pixelParticipants={pixelParticipants}
+          pixelSessionStarts={pixelSessionStarts}
+          activePixelGroupId={groupId as string | undefined}
           // Watch props
           watchParticipants={watchParticipants}
           watchSessionStarts={watchSessionStarts}
@@ -220,9 +257,21 @@ export default function ChannelLayout({ children }: { children: React.ReactNode 
       </div>
 
       {/* Main Content Area (Group Chat or Empty State) */}
-      <div className="flex-1 flex flex-col min-w-0 bg-background">
+      <div className="flex-1 flex flex-col min-w-0 bg-background relative">
         {children}
+        <PixelRoomMountSlot channelId={channelId as string} />
       </div>
     </div>
+  )
+}
+
+function PixelRoomMountSlot({ channelId }: { channelId: string }) {
+  const { activeRoom, setMountTarget } = usePixelPresence()
+  if (activeRoom?.channelId !== channelId) return null
+  return (
+    <div
+      ref={setMountTarget}
+      className="absolute inset-0 z-30"
+    />
   )
 }

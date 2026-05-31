@@ -23,6 +23,11 @@ import { useVoice } from '@/context/VoiceContext'
 import { FloatingVoicePiP } from '@/components/chat/floating-voice-pip'
 import { WatchRoomView } from '@/components/watch/watch-room-view'
 import { useWatchPresence } from '@/context/WatchPresenceContext'
+import { usePixelPresence } from '@/context/PixelPresenceContext'
+import { PersistentPixelRoom } from '@/components/game/persistent-pixel-room'
+import { PixelRoomPiP } from '@/components/game/pixel-room-pip'
+import { Popcorn, Maximize2, Minimize2, PhoneOff, X, Users, Settings } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
@@ -133,6 +138,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   }
 
   const voice = useVoice()
+  const pixel = usePixelPresence()
   const [activeWatchRoom, setActiveWatchRoom] = useState<{ roomId: string; channelId: string; groupName: string } | null>(null)
   const [isWatchWindowMinimized, setIsWatchWindowMinimized] = useState(true)
 
@@ -191,6 +197,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   }, [])
 
   const isViewingVoiceGroup = voice.joinedGroupId && pathname.includes(`/group/${voice.joinedGroupId}`)
+  const isViewingPixelRoom = !!pixel.activeRoom && pathname.includes(`/group/${pixel.activeRoom.groupId}`)
 
   // Compute if user is host of watch room
   const activeWatchChannelHost = useMemo(() => {
@@ -249,6 +256,8 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
             const parsed = JSON.parse(msg.content)
             if (parsed?.__twiky_type === 'voice_invite') {
               lastMessageStr = `Voice Room: ${parsed.groupName || 'Unknown'}`
+            } else if (parsed?.__twiky_type === 'pixel_room_invite') {
+              lastMessageStr = `Pixel Room: ${parsed.groupName || 'Unknown'}`
             } else {
               lastMessageStr = msg.content
             }
@@ -430,7 +439,12 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
 
 
-      {!isViewingVoiceGroup && <FloatingVoicePiP 
+      {pixel.activeRoom && (
+        <PersistentPixelRoom activeRoom={pixel.activeRoom} isHidden={!isViewingPixelRoom} />
+      )}
+      {!isViewingPixelRoom && <PixelRoomPiP />}
+
+      {!isViewingVoiceGroup && <FloatingVoicePiP
         groupName={activeVoiceMeta?.groupName} 
         channelUrl={activeVoiceMeta ? `/channels/${activeVoiceMeta.channelId}/group/${voice.joinedGroupId}` : undefined} 
       />}

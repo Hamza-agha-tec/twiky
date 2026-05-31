@@ -98,6 +98,10 @@ export default function DirectMessagePage() {
                   isVerified: otherUser?.is_verified ?? undefined,
                   subPlan: otherUser?.sub_plan,
                 } : undefined}
+                onOpenPixelRoom={(username) => {
+                  setSelectedProfileId(null)
+                  router.push(`/room/${username}`)
+                }}
               />
             </div>
           </motion.div>

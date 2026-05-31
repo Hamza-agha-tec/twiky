@@ -1,7 +1,7 @@
 'use client'
 
 import { type ChangeEvent, FormEvent, useRef, useState } from 'react'
-import { AudioLines, Globe, Hash, ImagePlus, Lock, Bird , Popcorn, UserCircle2 } from 'lucide-react'
+import { AudioLines, Gamepad2, Globe, Hash, ImagePlus, Lock, Bird, Popcorn, UserCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -14,7 +14,7 @@ export interface CreateEntityValues {
   avatarFile?: File | null
   bannerFile?: File | null
   access_type?: 'PUBLIC' | 'PRIVATE'
-  group_type?: 'text' | 'board' | 'voice' | 'watch'
+  group_type?: 'text' | 'board' | 'voice' | 'watch' | 'pixel-room'
   type?: 'NORMAL' | 'WORKSPACE'
 }
 
@@ -72,6 +72,15 @@ const GROUP_TYPES = [
     color: 'text-amber-400',
     border: 'border-amber-500/30',
   },
+  {
+    value: 'pixel-room' as const,
+    icon: Gamepad2,
+    label: 'Pixel Room',
+    desc: 'Shared avatar room',
+    gradient: 'from-pink-500/20 to-rose-500/10',
+    color: 'text-pink-400',
+    border: 'border-pink-500/30',
+  },
 ] as const
 
 export function CreateEntityDialog({
@@ -93,7 +102,7 @@ export function CreateEntityDialog({
   const [name, setName] = useState(defaultName)
   const [details, setDetails] = useState(defaultDescription)
   const [accessType, setAccessType] = useState<'PUBLIC' | 'PRIVATE'>('PUBLIC')
-  const [groupType, setGroupType] = useState<'text' | 'board' | 'voice' | 'watch'>('text')
+  const [groupType, setGroupType] = useState<'text' | 'board' | 'voice' | 'watch' | 'pixel-room'>('text')
   const [groupAccess, setGroupAccess] = useState<'PUBLIC' | 'PRIVATE'>('PUBLIC')
   const [channelType, setChannelType] = useState<'NORMAL' | 'WORKSPACE'>('NORMAL')
   const [bannerUrl, setBannerUrl] = useState<string | null>(null)
@@ -240,7 +249,7 @@ export function CreateEntityDialog({
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <p className="truncate text-[13px] font-bold text-foreground">
-                              {groupType === 'board' ? 'Forum: ' : groupType !== 'voice' && groupType !== 'watch' ? '#' : ''}{previewName}
+                              {groupType === 'board' ? 'Forum: ' : groupType === 'voice' || groupType === 'watch' || groupType === 'pixel-room' ? '' : '#'}{previewName}
                             </p>
                             {groupAccess === 'PRIVATE' && <Lock className="h-3 w-3 text-muted-foreground shrink-0" />}
                           </div>

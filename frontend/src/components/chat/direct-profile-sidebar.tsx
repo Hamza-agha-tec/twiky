@@ -28,7 +28,7 @@ interface DirectProfileSidebarProps {
   onClose: () => void
   onVoiceCall?: () => void
   onVideoCall?: () => void
-  onOpenPixelRoom?: () => void
+  onOpenPixelRoom?: (username: string) => void
   onOpenStory?: (userId: string) => void
   storyRingState?: StoryRingState
 }
@@ -188,7 +188,7 @@ export function DirectProfileSidebar({
                 { icon: MessageCircle, label: 'Message', action: onClose },
                 { icon: Phone, label: 'Call', action: onVoiceCall },
                 { icon: Video, label: 'Video', action: onVideoCall },
-                { icon: Gamepad2, label: 'Pixel Room', action: onOpenPixelRoom },
+                { icon: Gamepad2, label: 'Pixel Room', action: username && onOpenPixelRoom ? () => onOpenPixelRoom(username) : undefined },
                 { icon: QrCode, label: 'QR Code', action: username ? () => setQrOpen(true) : undefined },
               ].map(({ icon: Icon, label, action }) => (
                 <button

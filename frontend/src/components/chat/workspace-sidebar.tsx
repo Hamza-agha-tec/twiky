@@ -11,6 +11,7 @@ import {
   AudioLines,
   Monitor,
   Bird,
+  Gamepad2,
   Popcorn,
   Plus,
 } from 'lucide-react'
@@ -20,8 +21,8 @@ import { type WorkspaceChannel } from '@/components/chat/channels-panel'
 import { ConversationContextMenu } from '@/components/chat/conversation-context-menu'
 import { useVoice } from '@/context/VoiceContext'
 import { useWatchPresence } from '@/context/WatchPresenceContext'
+import { usePixelPresence } from '@/context/PixelPresenceContext'
 import { useChannelGroups, backendGroupToMock } from '@/hooks/use-groups'
-import { getSocket } from '@/lib/socket'
 import { Button } from '@/components/ui/button'
 import { HoverCard, HoverCardArrow, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -123,31 +124,14 @@ function ChannelHoverCard({ channel, children }: { channel: WorkspaceChannel; ch
   const [open, setOpen] = useState(false)
   const { participantsByGroup } = useVoice()
   const { watchParticipants } = useWatchPresence()
-  const socketRef = useRef<Awaited<ReturnType<typeof getSocket>> | null>(null)
-
+  const { pixelParticipants } = usePixelPresence()
   // Fetch real groups for this channel (cached after first fetch)
   const { data: backendGroups = [] } = useChannelGroups(channel.id)
   const groups = useMemo(() => backendGroups.map(backendGroupToMock), [backendGroups])
 
   const voiceGroupIds = useMemo(() => groups.filter(g => g.kind === 'voice').map(g => g.id), [groups])
   const watchGroupIds = useMemo(() => groups.filter(g => g.kind === 'watch').map(g => g.id), [groups])
-
-  // Subscribe to voice rooms when card opens so participantsByGroup gets populated
-  useEffect(() => {
-    if (!open || voiceGroupIds.length === 0) return
-    let cancelled = false
-
-    getSocket().then(s => {
-      if (cancelled) return
-      socketRef.current = s
-      s.emit('subscribe-voice-rooms', { roomIds: voiceGroupIds })
-    })
-
-    return () => {
-      cancelled = true
-      socketRef.current?.emit('unsubscribe-voice-rooms', { roomIds: voiceGroupIds })
-    }
-  }, [open, voiceGroupIds.join(',')])
+  const pixelGroupIds = useMemo(() => groups.filter(g => g.kind === 'pixel-room').map(g => g.id), [groups])
 
   const voiceRows = useMemo(() =>
     voiceGroupIds
@@ -163,7 +147,14 @@ function ChannelHoverCard({ channel, children }: { channel: WorkspaceChannel; ch
     [watchGroupIds, watchParticipants],
   )
 
-  const hasActivity = voiceRows.length > 0 || watchRows.length > 0
+  const pixelRows = useMemo(() =>
+    pixelGroupIds
+      .map(id => ({ groupId: id, participants: (pixelParticipants[id] ?? []).map(p => ({ id: p.userId, name: p.username, avatarUrl: p.avatarUrl ?? null })) }))
+      .filter(r => r.participants.length > 0),
+    [pixelGroupIds, pixelParticipants],
+  )
+
+  const hasActivity = voiceRows.length > 0 || watchRows.length > 0 || pixelRows.length > 0
 
   return (
     <HoverCard open={open} onOpenChange={setOpen} openDelay={400} closeDelay={150}>
@@ -194,6 +185,13 @@ function ChannelHoverCard({ channel, children }: { channel: WorkspaceChannel; ch
                 <div key={groupId} className="flex items-center gap-2.5 px-3 py-2">
                   <Popcorn className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   <ParticipantAvatars participants={participants.map(p => ({ id: p.userId, name: p.fullname ?? p.username, avatarUrl: p.avatarUrl ?? null }))} />
+                </div>
+              ))}
+
+              {pixelRows.map(({ groupId, participants }) => (
+                <div key={groupId} className="flex items-center gap-2.5 px-3 py-2">
+                  <Gamepad2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <ParticipantAvatars participants={participants} />
                 </div>
               ))}
             </div>
