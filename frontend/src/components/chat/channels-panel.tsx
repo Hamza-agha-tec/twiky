@@ -26,8 +26,7 @@ import {
   UserX,
   AudioLines  ,
   Gamepad2,
-  X,
-  AudioLines
+  X
 } from 'lucide-react'
 import { ChannelEventsDialog } from '@/components/chat/channel-events-dialog'
 import { CreateEntityDialog, type CreateEntityValues } from '@/components/chat/create-entity-dialog'
